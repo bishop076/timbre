@@ -1,0 +1,23 @@
+[project]
+name = "timbre-ytmusic"
+version = "0.0.0"
+description = "Internal sidecar exposing YouTube Music via ytmusicapi as JSON."
+requires-python = ">=3.11"
+dependencies = [
+    # Pinned to a minor range on purpose: ytmusicapi is unofficial and tracks
+    # YouTube's private web API, so a surprise upgrade can break ingest.
+    "ytmusicapi>=1.12,<2",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.7"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

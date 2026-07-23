@@ -22,6 +22,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+# build artifact from `pip install -e`
+*.egg-info/
 .pytest_cache/
 .ruff_cache/
 
