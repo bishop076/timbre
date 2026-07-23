@@ -1,0 +1,26 @@
+{
+  "name": "timbre",
+  "version": "0.0.0",
+  "private": true,
+  "description": "One library across Spotify, YouTube Music, and SoundCloud.",
+  "scripts": {
+    "dev": "pnpm --filter @timbre/web dev",
+    "dev:ytmusic": "dotenv -e .env -- apps/ytmusic/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
+    "dev:ytmusic:posix": "dotenv -e .env -- apps/ytmusic/.venv/bin/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
+    "build": "pnpm --filter @timbre/web build",
+    "start": "pnpm --filter @timbre/web start",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @timbre/db generate",
+    "db:migrate": "pnpm --filter @timbre/db migrate",
+    "db:studio": "pnpm --filter @timbre/db studio"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.10.0",
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0"
+  }
+}
