@@ -1,0 +1,34 @@
+# Local development dependencies. Not a deployment topology.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: timbre
+    ports:
+      # Loopback-only. A bare "5432:5432" publishes on 0.0.0.0, putting a
+      # database with default credentials on the local network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18+ images expect the mount one level up, at
+      # /var/lib/postgresql, and place data in a version-specific subdirectory
+      # so that pg_upgrade --link works. Mounting .../data fails to start.
+      - timbre-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d timbre"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Catches magic-link sign-in emails locally so no real SMTP is needed.
+  # Web UI at http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      # Loopback-only: the web UI exposes every captured email.
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  timbre-pgdata:
