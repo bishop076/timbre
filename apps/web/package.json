@@ -1,0 +1,41 @@
+{
+  "name": "@timbre/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "_comment": "Env lives in one root .env; dotenv-cli loads it for the child process and its workers, which Next would not otherwise see from apps/web.",
+    "dev": "dotenv -e ../../.env -- next dev --hostname 127.0.0.1",
+    "build": "dotenv -e ../../.env -- next build",
+    "start": "dotenv -e ../../.env -- next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@auth/drizzle-adapter": "^1.11.3",
+    "@timbre/core": "workspace:*",
+    "@timbre/db": "workspace:*",
+    "@timbre/providers": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "next": "16.3.0",
+    "next-auth": "5.0.0-beta.32",
+    "nodemailer": "^9.0.5",
+    "pg": "^8.23.0",
+    "pg-boss": "^12.27.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.21.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
