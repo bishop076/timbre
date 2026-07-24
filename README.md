@@ -1,37 +1,55 @@
 # Timbre
 
-One library across Spotify, YouTube Music, and SoundCloud — unified browsing and search now, playlist sync next.
+**A music player for people who don't pay for streaming.**
 
-## The constraint that shapes everything
+One search box, one queue, across YouTube Music and SoundCloud — with Spotify alongside where it's allowed.
 
-Timbre does not hold Spotify or YouTube API keys, and that is deliberate rather than an oversight.
+## Why this exists
 
-As of February 2026 a Spotify app in Development Mode is capped at **5 users**, and extended quota requires a registered business with **250,000 monthly active users** — you must be big before you are permitted to grow. YouTube has no official Music API, and its 10,000 units/day default works out to roughly 200 track-adds.
+Spotify, Apple and Tidal serve people who pay. Nobody builds well for people who don't.
 
-So **credentials belong to the user**: each person registers their own free developer app and Timbre encrypts and stores those credentials for them. Each user then spends their own quota, and there is no cap to hit. SoundCloud, whose self-service registration reopened in May 2026, is the one provider Timbre keys centrally.
+YouTube Music's free tier plus SoundCloud is an enormous catalogue — remixes, DJ sets, live rips, indie uploads and unofficial releases that **aren't on Spotify at all** — and there's no good unified player for it.
 
-Full reasoning and sources: [docs/PLAN.md](docs/PLAN.md).
+Timbre is a shell around other services' own players. **It hosts nothing.** Audio always streams from the service it belongs to, through that service's official player, so ads run and artists are paid exactly as they would be otherwise. What belongs to Spotify stays in Spotify.
+
+The full reasoning — including why the original "connect all three accounts" idea is impossible — is in [docs/PLAN.md](docs/PLAN.md).
+
+## What it does
+
+- **Search** one box → results from YouTube Music, merged with availability on Deezer and Apple
+- **Play** one continuous queue mixing YouTube Music and SoundCloud
+- **Spotify panel** — the official embed plays **full tracks for free Spotify accounts** when signed in
+- **Playlists** of your own, referencing source tracks
+
+## What it deliberately doesn't do
+
+These aren't missing features — they're rules Timbre respects.
+
+- **No background playback on mobile.** On desktop, Timbre plays in a background tab exactly like YouTube's or Spotify's own web player. On mobile, locking the screen stops playback — the audio lives inside YouTube's iframe, and background play there is the feature YouTube Premium sells. There's no legitimate way around it.
+- **No audio-only YouTube.** The video player stays visible; isolating audio is prohibited.
+- **No downloading or caching audio.** Ever.
+- **No blending Spotify into the queue.** Spotify's Developer Terms §IV.2 forbid integrating their streams with another service's. The embed is a separate, clearly attributed panel.
+- **No gapless cross-source playback.** Handing off between two iframe players always has a small gap. Continuous, not gapless.
 
 ## Status
 
-**Phase 0 (foundation) is complete.** The scaffolding, schema, crypto, rate limiter, and both services run and are verified. No provider adapters exist yet — that is Phase 1.
+**Phase 0 (foundation) complete.** Monorepo, schema, rate limiter, matching engine and both services run and are verified. **Phase A (search) is next.** See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Prerequisites
 
 - Node.js 22+ (developed on 26)
 - pnpm 11+
 - Python 3.11+
-- Docker (for local Postgres and a mail catcher)
+- Docker (local Postgres and a mail catcher)
+
+No API keys, no developer accounts, no subscriptions.
 
 ## Setup
 
 ```bash
 pnpm install
+docker compose up -d          # Postgres :5432, Mailpit :8025
 
-# Postgres on :5432 and Mailpit on :8025
-docker compose up -d
-
-# Secrets. Generate real values for anything deployed.
 cp .env.example .env
 # TIMBRE_ENCRYPTION_KEY: openssl rand -base64 32
 # AUTH_SECRET:           npx auth secret
@@ -39,7 +57,6 @@ cp .env.example .env
 
 pnpm db:migrate
 
-# Python sidecar
 cd apps/ytmusic
 python -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"   # POSIX: .venv/bin/python
@@ -50,39 +67,33 @@ All environment variables live in **one root `.env`**. Next.js and drizzle-kit e
 
 ## Running
 
-Two processes:
-
 ```bash
-pnpm dev            # Next.js on http://localhost:3000
+pnpm dev            # Next.js on http://127.0.0.1:3000
 pnpm dev:ytmusic    # FastAPI sidecar on http://127.0.0.1:8787
 ```
 
-On macOS or Linux use `pnpm dev:ytmusic:posix` (different venv layout).
-
-Check both at once:
+macOS/Linux: `pnpm dev:ytmusic:posix`.
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://127.0.0.1:3000/api/health
 # {"status":"ok","services":{"database":{"status":"ok"},"ytmusic":{"status":"ok"}}, ...}
 ```
 
-It returns **503** with the failing service named if either is down.
-
-Sign-in emails are caught by Mailpit at http://localhost:8025 — no real SMTP needed.
+Returns **503** naming the failing service if either is down. Sign-in emails land in Mailpit at http://localhost:8025.
 
 ## Layout
 
 ```
 apps/
-  web/        Next.js 16 (App Router) — UI, OAuth callbacks, API routes
-  ytmusic/    FastAPI + ytmusicapi — stateless, internal-only, holds no secrets
+  web/        Next.js 16 — search, player orchestration, playlists
+  ytmusic/    FastAPI + ytmusicapi — unauthenticated search, holds no secrets
 packages/
-  core/       canonical models, AES-256-GCM crypto, rate limiter, normalization
-  providers/  MusicProvider interface + registry (adapters land in Phase 1)
-  db/         Drizzle schema, migrations, Postgres-backed rate buckets
+  core/       canonical models, matching, rate limiter, crypto
+  providers/  SearchProvider interface + per-source adapters
+  db/         Drizzle schema and migrations
 ```
 
-The `MusicProvider` interface in `packages/providers/src/types.ts` is the seam the whole app is built on: every service quirk is absorbed by an adapter, and nothing above that layer branches on which service a track came from.
+The matching engine in `packages/core` is the heart of the product: showing one song across several sources *is* a matching problem.
 
 ## Tests
 
@@ -91,12 +102,10 @@ pnpm test        # all workspace packages
 pnpm typecheck
 ```
 
-Unit tests cover the logic that is genuinely ours and worth pinning — token-bucket accounting, quota-vs-throttle classification, envelope encryption, and title normalization. Provider integrations are verified against real accounts instead, because mocking a third-party API mostly tests the mock.
-
-One normalization rule is worth knowing about: `(Remastered 2011)` and `(Official Video)` are stripped as noise, but `(Live)`, `(Acoustic)` and `- Remix` are preserved as *variants*. Collapsing those would silently swap a user's studio track for a live cut, which is the most damaging thing a playlist transfer can do.
+One normalization rule matters more than the rest: `(Remastered 2011)` and `(Official Video)` are stripped as noise, but `(Live)`, `(Acoustic)` and `- Remix` are preserved as **variants** and must agree before two tracks merge. On SoundCloud, where remixes *are* the catalogue, collapsing them would be catastrophic.
 
 ## Notes
 
 - Next.js 16 renamed the `middleware` convention to `proxy` — see [apps/web/proxy.ts](apps/web/proxy.ts).
-- `ytmusicapi` is unofficial and can break when YouTube changes its web client. It is pinned to a minor range and isolated in its own service so the blast radius is one deployable.
-- Never commit `.env`. It holds keys that decrypt users' stored tokens.
+- `ytmusicapi` is unofficial and can break when YouTube changes its web client. It's pinned to a minor range and isolated in its own service. It is also Timbre's primary source, so budget for maintenance.
+- Never commit `.env`.
