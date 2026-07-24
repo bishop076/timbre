@@ -3,25 +3,27 @@
 Exists for one reason: `ytmusicapi` is Python and has no maintained TypeScript
 equivalent, while the rest of Timbre is a Next.js app.
 
-Design rules, which the Phase 1 routes must keep to:
+Design rules the routes keep to:
 
-* Stateless. No database, no session store, no on-disk credential cache.
-  The web app decrypts the user's OAuth credentials and passes them per call.
-* Internal only. Bound to loopback, guarded by a shared secret.
-* Thin. Translate to `ytmusicapi` and return its data. Normalization into
-  canonical tracks belongs in the TypeScript adapter, so that all three
-  providers normalize in exactly one place.
+* **Stateless and credential-free.** Search and public lookup work
+  unauthenticated, so this service holds no user tokens, no sessions and no
+  database connection. Compromising it yields nothing at rest.
+* **Internal only.** Bound to loopback, guarded by a shared secret.
+* **Thin.** Flatten `ytmusicapi`'s shapes and return them. Canonical
+  normalization lives in @timbre/core so every source normalizes once.
+* **Never extracts streams.** Timbre embeds official players. Signed audio
+  URLs returned by upstream calls are ignored, never forwarded.
 """
 
 from fastapi import Depends, FastAPI
 
 from .config import PORT
-from .routes import library
+from .routes import search
 from .security import require_shared_secret
 
 app = FastAPI(
     title="Timbre YouTube Music sidecar",
-    version="0.0.0",
+    version="0.1.0",
     # Internal service: no public docs.
     docs_url=None,
     redoc_url=None,
@@ -30,7 +32,7 @@ app = FastAPI(
 
 
 @app.get("/health")
-async def health() -> dict[str, object]:
+def health() -> dict[str, object]:
     """Unauthenticated liveness probe, aggregated by the web app's /api/health.
 
     Deliberately open and deliberately empty of detail: a probe that leaks
@@ -40,8 +42,7 @@ async def health() -> dict[str, object]:
 
 
 app.include_router(
-    library.router,
-    prefix="/library",
+    search.router,
     dependencies=[Depends(require_shared_secret)],
 )
 
