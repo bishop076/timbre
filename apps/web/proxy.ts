@@ -3,16 +3,17 @@ import { auth } from "@/auth";
 /**
  * Route protection.
  *
+ * Timbre is deliberately usable without an account: searching and playing
+ * require no sign-in, because the whole point is that someone can open a link
+ * and listen. Only routes holding a user's own data are gated.
+ *
  * Next.js 16 renamed the `middleware` convention to `proxy`; the named export
  * must be `proxy`. Unlike middleware, `proxy` always runs on the Node.js
- * runtime, which is a real simplification here — Auth.js v5 normally needs a
- * split config to keep the database adapter out of the edge bundle, and that
- * is unnecessary now.
+ * runtime, which removes the split config Auth.js v5 normally needs to keep
+ * the database adapter out of an edge bundle.
  */
 export const proxy = auth;
 
 export const config = {
-  // Everything except Next internals, the auth endpoints themselves, the
-  // health probe, and static assets.
-  matcher: ["/((?!api/auth|api/health|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/playlists/:path*", "/settings/:path*"],
 };

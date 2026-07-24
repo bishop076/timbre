@@ -30,6 +30,42 @@ test("keeps variant markers so a live cut never matches the studio take", () => 
   assert.notEqual(dedupeKey("Redbone", ["Childish Gambino"]), dedupeKey("Redbone (Live)", ["Childish Gambino"]));
 });
 
+test("keeps unrecognized bracketed text as a distinguishing variant", () => {
+  // Regression: "(Unplugged)" was silently discarded, making an unplugged
+  // recording identical to the studio one. The variant list can never be
+  // complete, so anything unrecognized must distinguish rather than vanish.
+  const studio = parseTitle("Wonderwall");
+  const unplugged = parseTitle("Wonderwall (Unplugged)");
+  const mystery = parseTitle("Wonderwall (Glastonbury 1995)");
+
+  assert.equal(studio.base, unplugged.base, "base title is shared");
+  assert.deepEqual(studio.variants, []);
+  assert.notDeepEqual(unplugged.variants, [], "unplugged must not look like the studio take");
+  assert.notDeepEqual(mystery.variants, [], "an unknown parenthetical must still distinguish");
+
+  assert.notEqual(dedupeKey("Wonderwall", ["Oasis"]), dedupeKey("Wonderwall (Unplugged)", ["Oasis"]));
+  assert.notEqual(
+    dedupeKey("Wonderwall", ["Oasis"]),
+    dedupeKey("Wonderwall (Glastonbury 1995)", ["Oasis"]),
+  );
+});
+
+test("still ignores pure noise inside brackets", () => {
+  // The new rule must not defeat noise stripping: these reduce to nothing.
+  for (const title of [
+    "Wonderwall (Remastered 2011)",
+    "Wonderwall (Official Video)",
+    "Wonderwall [HD]",
+    "Wonderwall (Deluxe Edition)",
+  ]) {
+    assert.equal(
+      dedupeKey(title, ["Oasis"]),
+      dedupeKey("Wonderwall", ["Oasis"]),
+      `${title} should match the plain title`,
+    );
+  }
+});
+
 test("pulls featured artists out of the title", () => {
   const parsed = parseTitle("Sunflower (feat. Swae Lee)");
   assert.equal(parsed.base, "sunflower");
