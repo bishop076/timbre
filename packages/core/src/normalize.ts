@@ -34,6 +34,8 @@ const VARIANT_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /\bremix\b/i, tag: "remix" },
   { pattern: /\blive\b(?!\s*(?:from\s+the\s+studio))/i, tag: "live" },
   { pattern: /\bacoustic\b/i, tag: "acoustic" },
+  { pattern: /\bunplugged\b/i, tag: "acoustic" },
+  { pattern: /\bsession\b/i, tag: "session" },
   { pattern: /\binstrumental\b/i, tag: "instrumental" },
   { pattern: /\bkaraoke\b/i, tag: "karaoke" },
   { pattern: /\bdemo\b/i, tag: "demo" },
@@ -97,9 +99,28 @@ export function parseTitle(raw: string): ParsedTitle {
       featured.push(...splitArtists(feature[1]));
       return;
     }
+
+    let recognized = false;
     for (const { pattern, tag } of VARIANT_PATTERNS) {
-      if (pattern.test(text)) variants.add(tag);
+      if (pattern.test(text)) {
+        variants.add(tag);
+        recognized = true;
+      }
     }
+    if (recognized) return;
+
+    // Unrecognized bracketed text is kept as a variant rather than discarded.
+    // Dropping it would make "Wonderwall (Unplugged)" identical to
+    // "Wonderwall" — the exact silent-substitution failure this module exists
+    // to prevent. The variant list can never be complete, so the safe default
+    // is that anything we do not understand distinguishes the recording.
+    //
+    // Noise is stripped first, so "(Remastered 2011)" reduces to nothing and
+    // is correctly ignored.
+    let residue = text;
+    for (const pattern of NOISE_PATTERNS) residue = residue.replace(pattern, " ");
+    const normalized = normalizeLoose(residue);
+    if (normalized) variants.add(normalized);
   };
 
   for (const segment of segments) classify(segment);
