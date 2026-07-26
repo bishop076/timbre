@@ -24,6 +24,15 @@ export function PlayIcon({ className }: IconProps) {
   );
 }
 
+export function PauseIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+      <rect x="6" y="4.5" width="4" height="15" rx="1.2" />
+      <rect x="14" y="4.5" width="4" height="15" rx="1.2" />
+    </svg>
+  );
+}
+
 export function ExternalIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
