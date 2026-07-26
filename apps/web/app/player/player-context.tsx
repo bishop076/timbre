@@ -33,6 +33,9 @@ interface PlayerState {
   state: PlayState;
   /** Why the current song could not be played, when state is "unplayable". */
   problem: string | null;
+  /** Playback position and length in seconds, reported by the embedded player. */
+  position: number;
+  duration: number;
 }
 
 interface PlayerControls extends PlayerState {
@@ -44,7 +47,10 @@ interface PlayerControls extends PlayerState {
   /** Called by the embedded player when a track finishes. */
   handleEnded: () => void;
   handleStateChange: (state: PlayState) => void;
+  handleProgress: (position: number, duration: number) => void;
+  seek: (seconds: number) => void;
   registerToggle: (fn: (() => void) | null) => void;
+  registerSeek: (fn: ((seconds: number) => void) | null) => void;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
@@ -66,9 +72,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   // Set by the embedded player so the bar's play/pause button can reach it.
   const toggleRef = useRef<(() => void) | null>(null);
+  const seekRef = useRef<((seconds: number) => void) | null>(null);
   const resolving = useRef<AbortController | null>(null);
 
   const current = queue[index] ?? null;
@@ -79,6 +88,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * exactly the cross-source promise, just applied at play time.
    */
   const load = useCallback(async (song: Song) => {
+    setPosition(0);
+    setDuration(0);
+
     const direct = youtubeIdOf(song);
     if (direct) {
       setVideoId(direct);
@@ -147,6 +159,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
+  const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
+
+  const handleProgress = useCallback((next: number, total: number) => {
+    setPosition(next);
+    setDuration(total);
+  }, []);
 
   const handleEnded = useCallback(() => {
     if (index + 1 < queue.length) goTo(index + 1);
@@ -157,6 +175,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     toggleRef.current = fn;
   }, []);
 
+  const registerSeek = useCallback((fn: ((seconds: number) => void) | null) => {
+    seekRef.current = fn;
+  }, []);
+
   const value = useMemo<PlayerControls>(
     () => ({
       queue,
@@ -165,13 +187,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId,
       state,
       problem,
+      position,
+      duration,
       play,
       toggle,
       next,
       previous,
       handleEnded,
       handleStateChange: setState,
+      handleProgress,
+      seek,
       registerToggle,
+      registerSeek,
     }),
     [
       queue,
@@ -180,12 +207,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId,
       state,
       problem,
+      position,
+      duration,
       play,
       toggle,
       next,
       previous,
       handleEnded,
+      handleProgress,
+      seek,
       registerToggle,
+      registerSeek,
     ],
   );
 

@@ -24,7 +24,7 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
       title={`Play ${song.title}`}
     >
       <div
-        className={`relative aspect-square overflow-hidden rounded-lg bg-[var(--surface-hover)] ring-1 transition ${
+        className={`relative aspect-square overflow-hidden rounded-xl bg-[var(--surface-hover)] ring-1 transition ${
           isCurrent ? "ring-2 ring-[var(--accent)]" : "ring-[var(--border)] group-hover:ring-[var(--accent)]"
         }`}
       >
@@ -49,8 +49,8 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
               : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
           }`}
         >
-          <span className="flex size-9 items-center justify-center rounded-full bg-white/95 text-black shadow-lg">
-            <PlayIcon className="size-4 translate-x-px" />
+          <span className="flex size-11 items-center justify-center rounded-full bg-white/95 text-black shadow-lg">
+            <PlayIcon className="size-5 translate-x-px" />
           </span>
         </span>
 
@@ -61,18 +61,18 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
               title={sourceStyle(source.source).label}
               aria-label={sourceStyle(source.source).label}
               style={{ backgroundColor: sourceStyle(source.source).color }}
-              className="size-1.5 rounded-full ring-1 ring-black/30"
+              className="size-2 rounded-full ring-2 ring-black/30"
             />
           ))}
         </span>
       </div>
 
       <p
-        className={`mt-1.5 truncate text-xs font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
+        className={`mt-2 truncate text-sm font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
       >
         {song.title}
       </p>
-      <p className="truncate text-[11px] text-[var(--muted)]">
+      <p className="truncate text-xs text-[var(--muted)]">
         {song.artists.join(", ") || "Unknown artist"}
       </p>
     </button>
