@@ -12,15 +12,22 @@ import { usePlayer } from "./player-context";
  * shows the real player rather than dressing an invisible one in its own
  * controls. It sits in the player bar at a real 16:9 size.
  *
- * Two things here are load-bearing and easy to get wrong:
+ * Three things here are load-bearing and easy to get wrong:
  *
  * 1. `new YT.Player(node)` **replaces** the node it is given. Handing it a
  *    React-managed element makes React and YouTube fight over the same DOM,
  *    and the player silently fails to initialise. So a plain div is created
  *    imperatively for YouTube to consume, inside a container React owns.
  *
- * 2. The player must be **created at a real size**. Building it inside a
- *    zero-width box produces a player that never becomes ready.
+ * 2. **The player must be at least 200×200 pixels.** YouTube's IFrame API
+ *    documents this as a minimum, and below it playback fails with a bare
+ *    "Video unavailable" in every browser — which reads exactly like an ad
+ *    blocker and sends you hunting in the wrong place entirely. A thumbnail
+ *    in the player bar is therefore not an option; the video needs a real
+ *    panel, which YouTube's policy on keeping the player visible wants anyway.
+ *
+ * 3. Do not pass an `origin` player var on a local http origin. It is
+ *    unnecessary and is itself a common cause of "Video unavailable".
  */
 
 interface YTPlayer {
@@ -85,18 +92,25 @@ function loadApi(): Promise<YTNamespace> {
 }
 
 export function YouTubePlayer() {
-  const { videoId, handleEnded, handleStateChange, handleProgress, registerToggle, registerSeek } =
-    usePlayer();
+  const {
+    videoId,
+    handleEnded,
+    handleStateChange,
+    handleProgress,
+    handleError,
+    registerToggle,
+    registerSeek,
+  } = usePlayer();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const readyRef = useRef(false);
   const pendingId = useRef<string | null>(null);
 
-  const handlers = useRef({ handleEnded, handleStateChange, handleProgress });
+  const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
-    handlers.current = { handleEnded, handleStateChange, handleProgress };
-  }, [handleEnded, handleStateChange, handleProgress]);
+    handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
+  }, [handleEnded, handleStateChange, handleProgress, handleError]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -110,8 +124,20 @@ export function YouTubePlayer() {
 
     let cancelled = false;
 
+    // An ad blocker — especially a DNS-level one — can stop the IFrame API
+    // loading at all. Without this the bar sits on a black box indefinitely
+    // with nothing to explain it.
+    const blocked = setTimeout(() => {
+      if (!cancelled && !readyRef.current) {
+        handlers.current.handleError(
+          "Couldn't load YouTube's player. An ad blocker or network filter may be blocking it.",
+        );
+      }
+    }, 8000);
+
     void loadApi().then((YT) => {
       if (cancelled) return;
+      clearTimeout(blocked);
 
       playerRef.current = new YT.Player(host, {
         width: "100%",
@@ -121,7 +147,6 @@ export function YouTubePlayer() {
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
-          origin: window.location.origin,
         },
         events: {
           onReady: () => {
@@ -142,11 +167,20 @@ export function YouTubePlayer() {
             // offers a play button instead of spinning forever.
             else if (event.data === CUED) handlers.current.handleStateChange("paused");
           },
-          onError: () => {
-            // Embedding disabled, age-restricted, or removed. Skip rather than
-            // stall the queue on a track that will never start.
-            handlers.current.handleStateChange("unplayable");
-            handlers.current.handleEnded();
+          onError: (event: { data: number }) => {
+            // YouTube's documented codes. Worth distinguishing: 101/150 means
+            // the owner disabled embedding, which is a property of the track
+            // and warrants trying another source, whereas 5 is a player fault
+            // that may just be this once.
+            const reason =
+              event.data === 100
+                ? "This video is private or removed."
+                : event.data === 101 || event.data === 150
+                  ? "The owner disabled playback on other sites."
+                  : event.data === 5
+                    ? "The player couldn't load this track."
+                    : "Playback was blocked.";
+            handlers.current.handleError(reason);
           },
         },
       });
@@ -154,6 +188,7 @@ export function YouTubePlayer() {
 
     return () => {
       cancelled = true;
+      clearTimeout(blocked);
       try {
         // destroy() throws if the player never finished initialising, which
         // happens routinely under React's development double-mount.
@@ -212,12 +247,12 @@ export function YouTubePlayer() {
   }, [registerToggle]);
 
   return (
-    // Always rendered at a real size: a player built inside a zero-width box
-    // never becomes ready, and hiding it would breach YouTube's policies.
-    // Sized off the bar's height so a 16:9 box cannot overflow it.
+    // 16:9 at 200px tall is 356×200 — over YouTube's documented minimum on
+    // both axes. Never shrink this below 200px in either dimension.
     <div
       ref={containerRef}
-      className="aspect-video h-14 shrink-0 overflow-hidden rounded-lg bg-black sm:h-16"
+      className="aspect-video w-full overflow-hidden rounded-lg bg-black"
+      style={{ minHeight: 200, minWidth: 200 }}
       aria-label="YouTube player"
     />
   );
