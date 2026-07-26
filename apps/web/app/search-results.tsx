@@ -103,7 +103,7 @@ export function SearchResults() {
 
   return (
     <>
-      <div className="timbre-frost sticky top-0 z-20 -mx-5 px-5 pb-4 pt-1 sm:-mx-8 sm:px-8">
+      <div className="sticky top-0 z-10 -mx-5 bg-[var(--background)]/80 px-5 pb-4 pt-1 backdrop-blur-xl sm:-mx-8 sm:px-8">
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--muted)]" />
           <input
