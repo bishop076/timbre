@@ -1,7 +1,10 @@
 "use client";
 
-import { NextIcon, NoteIcon, PauseIcon, PlayIcon, PrevIcon, SpinnerIcon } from "../icons";
+import { useState } from "react";
+
+import { NextIcon, NoteIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, SpinnerIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
+import { QueuePanel } from "../player/queue-panel";
 import { YouTubePlayer } from "../player/youtube-player";
 import { sourceStyle } from "../sources";
 
@@ -24,6 +27,8 @@ export function PlayerBar() {
   const { current, state, problem, queue, index, position, duration, toggle, next, previous, seek } =
     usePlayer();
 
+  const [showQueue, setShowQueue] = useState(false);
+
   const busy = state === "resolving" || state === "loading";
   const playing = state === "playing";
   const hasNext = index + 1 < queue.length;
@@ -31,6 +36,8 @@ export function PlayerBar() {
 
   return (
     <footer className="shrink-0 border-t border-[var(--border)] bg-[var(--surface)]">
+      {showQueue && <QueuePanel onClose={() => setShowQueue(false)} />}
+
       {/* Progress sits flush along the top edge, full width, so it reads as
           part of the bar rather than a control competing with the buttons. */}
       <div
@@ -137,6 +144,20 @@ export function PlayerBar() {
             className="flex size-9 items-center justify-center rounded-full text-[var(--muted)] transition hover:text-[var(--foreground)] disabled:opacity-30 disabled:hover:text-[var(--muted)]"
           >
             <NextIcon className="size-4.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowQueue((open) => !open)}
+            aria-label="Queue"
+            aria-expanded={showQueue}
+            className={`ml-1 hidden size-9 items-center justify-center rounded-full transition sm:flex ${
+              showQueue
+                ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            <QueueIcon className="size-4.5" />
           </button>
         </div>
       </div>
