@@ -79,3 +79,35 @@ export async function searchAll(
 
   return { tracks, failures };
 }
+
+/**
+ * What's popular right now, for the home page.
+ *
+ * Only some sources publish a chart without credentials — YouTube Music does
+ * not — so this draws from whichever can, and merging turns the overlap into
+ * one entry per song.
+ */
+export async function chartAll(ctx: SearchContext, limit: number): Promise<SearchAllResult> {
+  const providers = listProviders().filter((provider) => provider.chart !== undefined);
+
+  const settled = await Promise.allSettled(
+    providers.map((provider) => provider.chart!(ctx, limit)),
+  );
+
+  const tracks: SourceTrack[] = [];
+  const failures: SearchAllResult["failures"] = [];
+
+  settled.forEach((result, index) => {
+    const provider = providers[index]!;
+    if (result.status === "fulfilled") {
+      tracks.push(...result.value);
+    } else {
+      failures.push({
+        source: provider.id,
+        message: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+    }
+  });
+
+  return { tracks, failures };
+}

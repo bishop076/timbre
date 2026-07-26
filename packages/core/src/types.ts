@@ -3,7 +3,11 @@
  * nothing above the adapter layer has to branch on which service a track came from.
  */
 
-export const PROVIDER_IDS = ["spotify", "ytmusic", "soundcloud"] as const;
+/**
+ * Every service Timbre knows about. Ordered by how useful each is to the
+ * product: sources it can actually play come first.
+ */
+export const PROVIDER_IDS = ["ytmusic", "soundcloud", "spotify", "deezer", "apple"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 /**
