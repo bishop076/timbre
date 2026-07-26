@@ -15,7 +15,7 @@ import { NextIcon, NoteIcon, PlayIcon, PrevIcon } from "../icons";
  */
 export function PlayerBar() {
   return (
-    <footer className="flex h-20 shrink-0 items-center gap-4 border-t border-[var(--border)] bg-[var(--surface)] px-4 lg:px-6">
+    <footer className="timbre-frost timbre-raised z-30 flex h-20 shrink-0 items-center gap-4 border-t border-[var(--border)] px-4 lg:px-6">
       <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] text-[var(--muted)]">
         <NoteIcon className="size-5" />
       </div>

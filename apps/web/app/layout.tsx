@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Barlow, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { PlayerBar } from "./shell/player-bar";
 import { Sidebar } from "./shell/sidebar";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Barlow, following YesPlayMusic (MIT) — see docs/CREDITS.md. Slightly
+// condensed and geometric, so track titles stay readable in tight rows.
+const barlow = Barlow({
+  variable: "--font-barlow",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -32,7 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${barlow.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="h-full">
         <div className="flex h-full flex-col">
