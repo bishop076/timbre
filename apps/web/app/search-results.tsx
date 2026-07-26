@@ -98,7 +98,7 @@ export function SearchResults() {
 
   return (
     <>
-      <div className="sticky top-0 z-10 -mx-5 bg-[var(--background)]/80 px-5 pb-4 pt-1 backdrop-blur-xl sm:-mx-8 sm:px-8">
+      <div className="sticky top-0 z-20 -mx-4 bg-[var(--background)]/85 px-4 pb-4 pt-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--muted)]" />
           <input
@@ -164,23 +164,23 @@ function Home({ charts }: { charts: SongsResponse | null }) {
     <div className="timbre-rise">
       <section className="mb-2 mt-4">
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">Trending now</h2>
-          <p className="text-xs text-[var(--muted)]">Across Deezer and Apple Music</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Trending now</h2>
+          <p className="text-sm text-[var(--muted)]">Across Deezer and Apple Music</p>
         </div>
 
         {charts === null ? (
-          <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
-            {Array.from({ length: 12 }, (_, index) => (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
+            {Array.from({ length: 10 }, (_, index) => (
               <div key={index}>
-                <div className="aspect-square animate-pulse rounded-lg bg-[var(--surface-hover)]" />
+                <div className="aspect-square animate-pulse rounded-xl bg-[var(--surface-hover)]" />
                 <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-[var(--surface-hover)]" />
                 <div className="mt-1 h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-hover)]" />
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
-            {charts.songs.slice(0, 18).map((song) => (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-5 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
+            {charts.songs.slice(0, 20).map((song) => (
               <SongCard key={song.id} song={song} queue={charts.songs} />
             ))}
           </div>
@@ -210,17 +210,17 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
       <button
         type="button"
         onClick={() => play(song, queue)}
-        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left focus:outline-none sm:gap-4"
+        className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left focus:outline-none sm:gap-4"
         aria-label={`Play ${song.title}`}
       >
-        <span className="relative size-11 shrink-0 overflow-hidden rounded-md bg-[var(--surface)]">
+        <span className="relative size-14 shrink-0 overflow-hidden rounded-md bg-[var(--surface)]">
           {song.artworkUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
             <img
               src={song.artworkUrl}
               alt=""
-              width={44}
-              height={44}
+              width={56}
+              height={56}
               loading="lazy"
               className="size-full object-cover"
             />
@@ -242,18 +242,18 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
 
         <span className="min-w-0 flex-1">
           <span
-            className={`block truncate text-sm font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
+            className={`block truncate text-[15px] font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
           >
             {song.title}
           </span>
-          <span className="block truncate text-xs text-[var(--muted)]">
+          <span className="block truncate text-sm text-[var(--muted)]">
             {song.artists.join(", ") || "Unknown artist"}
             {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
           </span>
         </span>
       </button>
 
-      <div className="hidden shrink-0 items-center gap-1 sm:flex">
+      <div className="hidden shrink-0 items-center gap-1 @xl:flex">
         {song.sources.map((source) => {
           const style = sourceStyle(source.source);
           return (
@@ -264,7 +264,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
               rel="noreferrer noopener"
               title={`Open on ${style.label}`}
               style={{ color: style.color, backgroundColor: style.tint }}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100"
             >
               {style.short}
               <ExternalIcon className="size-2.5" />
@@ -273,7 +273,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
         })}
       </div>
 
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-xs tabular-nums text-[var(--muted)]">
+      <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--muted)] @md:block">
         {formatDuration(song.durationMs)}
       </span>
     </li>
