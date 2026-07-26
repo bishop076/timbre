@@ -18,7 +18,7 @@ export function Sidebar() {
   return (
     <aside className="flex w-16 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--surface)] lg:w-56">
       <div className="flex h-16 items-center gap-2.5 px-4 lg:px-5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-white">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-[var(--accent-contrast)]">
           <NoteIcon className="size-4.5" />
         </span>
         <span className="hidden text-lg font-semibold tracking-tight lg:block">Timbre</span>
