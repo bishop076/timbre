@@ -5,7 +5,6 @@ import { useState } from "react";
 import { NextIcon, NoteIcon, PauseIcon, PlayIcon, PrevIcon, QueueIcon, SpinnerIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { QueuePanel } from "../player/queue-panel";
-import { YouTubePlayer } from "../player/youtube-player";
 import { sourceStyle } from "../sources";
 
 function clock(seconds: number): string {
@@ -18,10 +17,9 @@ function clock(seconds: number): string {
 /**
  * The persistent player bar.
  *
- * Hosts the real YouTube player rather than a facade over a hidden one:
- * YouTube's policies require the player to stay visible and forbid isolating
- * audio from video, so it sits here at a genuine 16:9 size, sized off the bar's
- * height so it cannot overflow.
+ * Transport controls and progress only. The video itself lives in <NowPlaying>,
+ * because YouTube's IFrame API refuses to play below 200x200 pixels and no
+ * player that small could ever fit in a bar this height.
  */
 export function PlayerBar() {
   const { current, state, problem, queue, index, position, duration, toggle, next, previous, seek } =
@@ -66,13 +64,14 @@ export function PlayerBar() {
       </div>
 
       <div className="flex h-[4.5rem] items-center gap-3 px-3 sm:h-20 sm:gap-4 sm:px-6">
-        <YouTubePlayer />
-
-        {!current && (
-          <div className="hidden size-12 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] text-[var(--muted)] sm:flex">
+        <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--surface-hover)] text-[var(--muted)]">
+          {current?.artworkUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
+            <img src={current.artworkUrl} alt="" className="size-full object-cover" />
+          ) : (
             <NoteIcon className="size-5" />
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="min-w-0 flex-1">
           {current ? (

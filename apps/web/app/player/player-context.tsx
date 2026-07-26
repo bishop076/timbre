@@ -48,6 +48,8 @@ interface PlayerControls extends PlayerState {
   handleEnded: () => void;
   handleStateChange: (state: PlayState) => void;
   handleProgress: (position: number, duration: number) => void;
+  /** Reports a playback failure with a reason worth showing the user. */
+  handleError: (reason: string) => void;
   seek: (seconds: number) => void;
   registerToggle: (fn: (() => void) | null) => void;
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
@@ -166,6 +168,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(total);
   }, []);
 
+  const handleError = useCallback((reason: string) => {
+    setState("unplayable");
+    setProblem(reason);
+  }, []);
+
   const handleEnded = useCallback(() => {
     if (index + 1 < queue.length) goTo(index + 1);
     else setState("idle");
@@ -196,6 +203,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleEnded,
       handleStateChange: setState,
       handleProgress,
+      handleError,
       seek,
       registerToggle,
       registerSeek,
@@ -215,6 +223,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       previous,
       handleEnded,
       handleProgress,
+      handleError,
       seek,
       registerToggle,
       registerSeek,

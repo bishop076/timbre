@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { NowPlaying } from "./player/now-playing";
 import { PlayerProvider } from "./player/player-context";
 import { PlayerBar } from "./shell/player-bar";
 import { Sidebar } from "./shell/sidebar";
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </div>
             <PlayerBar />
           </div>
+          <NowPlaying />
         </PlayerProvider>
       </body>
     </html>
