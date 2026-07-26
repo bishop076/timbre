@@ -76,6 +76,15 @@ export function NextIcon({ className }: IconProps) {
   );
 }
 
+export function QueueIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path d="M4 6h11M4 12h11M4 18h7" strokeLinecap="round" />
+      <path d="m17 14 4 2.5-4 2.5z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function SpinnerIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={className} aria-hidden>
