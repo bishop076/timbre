@@ -3,30 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
-import { SUGGESTED_SEARCHES, sourceStyle } from "./sources";
-
-/** Mirrors the `Song` shape returned by /api/search. */
-interface SourceTrack {
-  source: string;
-  sourceId: string;
-  url: string | null;
-  playback: "queue" | "manual" | "link";
-}
-
-interface Song {
-  id: string;
-  title: string;
-  artists: string[];
-  album: string | null;
-  durationMs: number | null;
-  artworkUrl: string | null;
-  sources: SourceTrack[];
-}
-
-interface SearchResponse {
-  songs: Song[];
-  failures: { source: string; message: string }[];
-}
+import { SongCard } from "./song-card";
+import { sourceStyle } from "./sources";
+import type { Song, SongsResponse } from "./types";
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return "—";
@@ -40,24 +19,36 @@ function formatDuration(ms: number | null): string {
 
 export function SearchResults() {
   const [query, setQuery] = useState("");
-  const [data, setData] = useState<SearchResponse | null>(null);
+  const [results, setResults] = useState<SongsResponse | null>(null);
+  const [charts, setCharts] = useState<SongsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const controller = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Charts load once and stay: they are the home page, so returning to it
+  // after a search should be instant rather than refetching.
+  useEffect(() => {
+    const aborter = new AbortController();
+    fetch("/api/charts", { signal: aborter.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
+      .then((data) => data && setCharts(data))
+      .catch(() => {
+        // A missing chart is not worth an error message — the search box
+        // still works, which is the point of the page.
+      });
+    return () => aborter.abort();
+  }, []);
+
   useEffect(() => {
     const trimmed = query.trim();
 
-    // Everything runs inside the debounce callback, including clearing a
-    // cleared box: setting state synchronously in an effect body is both a
-    // lint error and a per-keystroke render.
     const timer = setTimeout(() => {
       controller.current?.abort();
 
       if (!trimmed) {
-        setData(null);
+        setResults(null);
         setLoading(false);
         setError(null);
         return;
@@ -71,10 +62,10 @@ export function SearchResults() {
       fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { signal: next.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error(`Search failed (${response.status})`);
-          return (await response.json()) as SearchResponse;
+          return (await response.json()) as SongsResponse;
         })
-        .then((result) => {
-          setData(result);
+        .then((data) => {
+          setResults(data);
           setLoading(false);
         })
         .catch((cause: unknown) => {
@@ -87,7 +78,6 @@ export function SearchResults() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  // "/" focuses search, the convention every search-first app shares.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -96,13 +86,20 @@ export function SearchResults() {
         event.preventDefault();
         inputRef.current?.focus();
       }
+      if (event.key === "Escape" && typing) inputRef.current?.blur();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const pick = (value: string) => {
+    setQuery(value);
+    inputRef.current?.focus();
+    document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const hasQuery = query.trim().length > 0;
-  const songs = data?.songs ?? [];
+  const songs = results?.songs ?? [];
 
   return (
     <>
@@ -129,14 +126,14 @@ export function SearchResults() {
         </div>
       </div>
 
-      <div aria-live="polite" className="mt-2">
+      <div aria-live="polite">
         {error && (
           <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </p>
         )}
 
-        {data?.failures.map((failure) => (
+        {results?.failures.map((failure) => (
           <p
             key={failure.source}
             className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500"
@@ -145,7 +142,7 @@ export function SearchResults() {
           </p>
         ))}
 
-        {!hasQuery && <EmptyState onPick={setQuery} />}
+        {!hasQuery && <Home charts={charts} onPick={pick} />}
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
@@ -155,7 +152,7 @@ export function SearchResults() {
           </p>
         )}
 
-        {songs.length > 0 && (
+        {hasQuery && songs.length > 0 && (
           <ul className="timbre-rise divide-y divide-[var(--border)]">
             {songs.map((song) => (
               <SongRow key={song.id} song={song} />
@@ -164,6 +161,48 @@ export function SearchResults() {
         )}
       </div>
     </>
+  );
+}
+
+function Home({
+  charts,
+  onPick,
+}: {
+  charts: SongsResponse | null;
+  onPick: (query: string) => void;
+}) {
+  return (
+    <div className="timbre-rise">
+      <section className="mb-2 mt-4">
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-xl font-semibold tracking-tight">Trending now</h2>
+          <p className="text-xs text-[var(--muted)]">Across Deezer and Apple Music</p>
+        </div>
+
+        {charts === null ? (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }, (_, index) => (
+              <div key={index}>
+                <div className="aspect-square animate-pulse rounded-xl bg-[var(--surface-hover)]" />
+                <div className="mt-2 h-4 w-3/4 animate-pulse rounded bg-[var(--surface-hover)]" />
+                <div className="mt-1.5 h-3 w-1/2 animate-pulse rounded bg-[var(--surface-hover)]" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+            {charts.songs.slice(0, 16).map((song) => (
+              <SongCard key={song.id} song={song} onPick={onPick} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <p className="mt-10 border-t border-[var(--border)] pt-6 text-xs leading-relaxed text-[var(--muted)]">
+        Charts come from Deezer and Apple Music, which Timbre can&rsquo;t play directly — picking one
+        searches for a copy it can. Everything plays from the service it belongs to.
+      </p>
+    </div>
   );
 }
 
@@ -231,34 +270,6 @@ function SongRow({ song }: { song: Song }) {
         {formatDuration(song.durationMs)}
       </span>
     </li>
-  );
-}
-
-function EmptyState({ onPick }: { onPick: (value: string) => void }) {
-  return (
-    <div className="timbre-rise py-14 text-center">
-      <div className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)]">
-        <NoteIcon className="size-7" />
-      </div>
-      <p className="text-lg font-medium">Search once, find it everywhere</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-[var(--muted)]">
-        Timbre looks across the music you don&rsquo;t have to pay for, and shows you every
-        service that has it.
-      </p>
-
-      <div className="mt-7 flex flex-wrap justify-center gap-2">
-        {SUGGESTED_SEARCHES.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => onPick(suggestion)}
-            className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--muted)] transition hover:border-[var(--accent)] hover:text-[var(--foreground)]"
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 

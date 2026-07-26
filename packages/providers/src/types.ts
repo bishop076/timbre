@@ -7,10 +7,11 @@
  * that nothing above this layer branches on which service a track came from.
  */
 
-import type { CanonicalTrack, RateLimiter } from "@timbre/core";
+import { PROVIDER_IDS, type CanonicalTrack, type ProviderId, type RateLimiter } from "@timbre/core";
 
-export const SOURCE_IDS = ["ytmusic", "soundcloud", "spotify", "deezer", "apple"] as const;
-export type SourceId = (typeof SOURCE_IDS)[number];
+/** Re-exported from @timbre/core so there is one list of sources, not two. */
+export const SOURCE_IDS = PROVIDER_IDS;
+export type SourceId = ProviderId;
 
 /**
  * How Timbre can play a source, which is dictated by that service's terms and
@@ -79,6 +80,12 @@ export interface SearchProvider {
 
   /** Turns a pasted URL into a track. The only way to reach SoundCloud today. */
   resolve?(ctx: SearchContext, url: string): Promise<SourceTrack | null>;
+
+  /**
+   * What's popular right now, for the home page. Optional because not every
+   * source publishes a chart without credentials — YouTube Music does not.
+   */
+  chart?(ctx: SearchContext, limit: number): Promise<SourceTrack[]>;
 }
 
 /** Ordering used when choosing which source actually plays a song. */

@@ -81,13 +81,18 @@ export function tryConsume(
  * than running slightly under the ceiling.
  */
 export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
+  // Unofficial endpoints. Slow and steady; the source most likely to notice
+  // and least likely to tell us why.
+  ytmusic: { capacity: 10, refillPerSecond: 2 },
+  soundcloud: { capacity: 30, refillPerSecond: 5 },
   // Spotify's published limit is a rolling 30s window and is not a documented
   // constant. ~8 req/s with room for a short burst has headroom under it.
   spotify: { capacity: 40, refillPerSecond: 8 },
-  // Unofficial endpoints. Slow and steady; this is the provider most likely to
-  // notice and least likely to tell us why.
-  ytmusic: { capacity: 10, refillPerSecond: 2 },
-  soundcloud: { capacity: 30, refillPerSecond: 5 },
+  // Deezer's public catalogue is generous — roughly 50 requests per 5 seconds.
+  deezer: { capacity: 20, refillPerSecond: 8 },
+  // Apple's iTunes Search API is the tightest of the lot: about 20 requests
+  // per minute per IP, and it answers with 403 rather than 429 when exceeded.
+  apple: { capacity: 5, refillPerSecond: 0.3 },
 };
 
 /**
