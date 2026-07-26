@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
+import { usePlayer } from "./player/player-context";
 import { SongCard } from "./song-card";
 import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
@@ -92,12 +93,6 @@ export function SearchResults() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const pick = (value: string) => {
-    setQuery(value);
-    inputRef.current?.focus();
-    document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   const hasQuery = query.trim().length > 0;
   const songs = results?.songs ?? [];
 
@@ -142,7 +137,7 @@ export function SearchResults() {
           </p>
         ))}
 
-        {!hasQuery && <Home charts={charts} onPick={pick} />}
+        {!hasQuery && <Home charts={charts} />}
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
@@ -155,7 +150,7 @@ export function SearchResults() {
         {hasQuery && songs.length > 0 && (
           <ul className="timbre-rise divide-y divide-[var(--border)]">
             {songs.map((song) => (
-              <SongRow key={song.id} song={song} />
+              <SongRow key={song.id} song={song} queue={songs} />
             ))}
           </ul>
         )}
@@ -164,13 +159,7 @@ export function SearchResults() {
   );
 }
 
-function Home({
-  charts,
-  onPick,
-}: {
-  charts: SongsResponse | null;
-  onPick: (query: string) => void;
-}) {
+function Home({ charts }: { charts: SongsResponse | null }) {
   return (
     <div className="timbre-rise">
       <section className="mb-2 mt-4">
@@ -180,19 +169,19 @@ function Home({
         </div>
 
         {charts === null ? (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: 8 }, (_, index) => (
+          <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
+            {Array.from({ length: 12 }, (_, index) => (
               <div key={index}>
-                <div className="aspect-square animate-pulse rounded-xl bg-[var(--surface-hover)]" />
-                <div className="mt-2 h-4 w-3/4 animate-pulse rounded bg-[var(--surface-hover)]" />
-                <div className="mt-1.5 h-3 w-1/2 animate-pulse rounded bg-[var(--surface-hover)]" />
+                <div className="aspect-square animate-pulse rounded-lg bg-[var(--surface-hover)]" />
+                <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-[var(--surface-hover)]" />
+                <div className="mt-1 h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-hover)]" />
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
-            {charts.songs.slice(0, 16).map((song) => (
-              <SongCard key={song.id} song={song} onPick={onPick} />
+          <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 lg:grid-cols-6">
+            {charts.songs.slice(0, 18).map((song) => (
+              <SongCard key={song.id} song={song} queue={charts.songs} />
             ))}
           </div>
         )}
@@ -206,47 +195,65 @@ function Home({
   );
 }
 
-function SongRow({ song }: { song: Song }) {
-  const primary = song.sources[0];
+function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
+  const { play, current, state } = usePlayer();
+  const isCurrent = current?.id === song.id;
 
   return (
-    <li className="group flex items-center gap-4 rounded-xl px-3 py-3 transition hover:bg-[var(--surface-hover)]">
-      <a
-        href={primary?.url ?? undefined}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-[var(--surface)]"
+    <li
+      className={`group flex items-center gap-3 rounded-lg px-2 transition sm:gap-4 ${
+        isCurrent ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-hover)]"
+      }`}
+    >
+      {/* The row itself plays. Opening the source is a deliberate secondary
+          action on the badges, not what a click does by default. */}
+      <button
+        type="button"
+        onClick={() => play(song, queue)}
+        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 text-left focus:outline-none sm:gap-4"
         aria-label={`Play ${song.title}`}
       >
-        {song.artworkUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-          <img
-            src={song.artworkUrl}
-            alt=""
-            width={56}
-            height={56}
-            loading="lazy"
-            className="size-full object-cover"
-          />
-        ) : (
-          <span className="flex size-full items-center justify-center text-[var(--muted)]">
-            <NoteIcon className="size-6" />
+        <span className="relative size-11 shrink-0 overflow-hidden rounded-md bg-[var(--surface)]">
+          {song.artworkUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
+            <img
+              src={song.artworkUrl}
+              alt=""
+              width={44}
+              height={44}
+              loading="lazy"
+              className="size-full object-cover"
+            />
+          ) : (
+            <span className="flex size-full items-center justify-center text-[var(--muted)]">
+              <NoteIcon className="size-5" />
+            </span>
+          )}
+          <span
+            className={`absolute inset-0 flex items-center justify-center bg-black/55 transition ${
+              isCurrent && state === "playing"
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+            }`}
+          >
+            <PlayIcon className="size-5 text-white" />
           </span>
-        )}
-        <span className="absolute inset-0 flex items-center justify-center bg-black/55 opacity-0 transition group-hover:opacity-100">
-          <PlayIcon className="size-6 text-white" />
         </span>
-      </a>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-medium">{song.title}</p>
-        <p className="truncate text-sm text-[var(--muted)]">
-          {song.artists.join(", ") || "Unknown artist"}
-          {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
-        </p>
-      </div>
+        <span className="min-w-0 flex-1">
+          <span
+            className={`block truncate text-sm font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
+          >
+            {song.title}
+          </span>
+          <span className="block truncate text-xs text-[var(--muted)]">
+            {song.artists.join(", ") || "Unknown artist"}
+            {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
+          </span>
+        </span>
+      </button>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="hidden shrink-0 items-center gap-1 sm:flex">
         {song.sources.map((source) => {
           const style = sourceStyle(source.source);
           return (
@@ -256,17 +263,17 @@ function SongRow({ song }: { song: Song }) {
               target="_blank"
               rel="noreferrer noopener"
               title={`Open on ${style.label}`}
-              style={{ color: style.color, backgroundColor: style.tint, borderColor: style.color }}
-              className="hidden items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium opacity-90 transition hover:opacity-100 sm:inline-flex"
+              style={{ color: style.color, backgroundColor: style.tint }}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100"
             >
               {style.short}
-              <ExternalIcon className="size-3" />
+              <ExternalIcon className="size-2.5" />
             </a>
           );
         })}
       </div>
 
-      <span className="w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--muted)]">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-xs tabular-nums text-[var(--muted)]">
         {formatDuration(song.durationMs)}
       </span>
     </li>

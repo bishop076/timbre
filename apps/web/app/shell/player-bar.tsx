@@ -1,54 +1,98 @@
 "use client";
 
-import { NextIcon, NoteIcon, PlayIcon, PrevIcon } from "../icons";
+import { NextIcon, NoteIcon, PauseIcon, PlayIcon, PrevIcon, SpinnerIcon } from "../icons";
+import { usePlayer } from "../player/player-context";
+import { YouTubePlayer } from "../player/youtube-player";
+import { sourceStyle } from "../sources";
 
 /**
  * The persistent player bar.
  *
- * A placeholder until Phase B, but it exists now on purpose: it is where the
- * queue controller and the embedded players will live, and building the shell
- * around it first means the layout does not have to be rearranged later.
- *
- * When it is wired up, the YouTube iframe must be **visible** during playback
- * — YouTube's Developer Policies forbid hiding it — so this bar expands into a
- * player panel rather than staying a thin strip.
+ * Hosts the real YouTube player rather than a facade over a hidden one:
+ * YouTube's policies require the player to stay visible and forbid isolating
+ * audio from video, so it sits here at a small but genuine 16:9 size.
  */
 export function PlayerBar() {
+  const { current, state, problem, queue, index, toggle, next, previous } = usePlayer();
+
+  const busy = state === "resolving" || state === "loading";
+  const playing = state === "playing";
+  const hasNext = index + 1 < queue.length;
+
   return (
-    <footer className="flex h-20 shrink-0 items-center gap-4 border-t border-[var(--border)] bg-[var(--surface)] px-4 lg:px-6">
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] text-[var(--muted)]">
-        <NoteIcon className="size-5" />
-      </div>
+    <footer className="flex h-20 shrink-0 items-center gap-3 border-t border-[var(--border)] bg-[var(--surface)] px-3 sm:gap-4 sm:px-6">
+      <YouTubePlayer />
+
+      {!current && (
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-hover)] text-[var(--muted)]">
+          <NoteIcon className="size-5" />
+        </div>
+      )}
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-[var(--muted)]">Nothing playing</p>
-        <p className="truncate text-xs text-[var(--muted)] opacity-70">
-          Search for something and press play
-        </p>
+        {current ? (
+          <>
+            <p className="truncate text-sm font-medium">{current.title}</p>
+            <p className="flex items-center gap-2 truncate text-xs text-[var(--muted)]">
+              <span className="truncate">{current.artists.join(", ") || "Unknown artist"}</span>
+              {state === "unplayable" ? (
+                <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
+              ) : (
+                <span
+                  className="shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium"
+                  style={{
+                    color: sourceStyle("ytmusic").color,
+                    backgroundColor: sourceStyle("ytmusic").tint,
+                  }}
+                >
+                  {state === "resolving" ? "finding a copy…" : "YT Music"}
+                </span>
+              )}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="truncate text-sm text-[var(--muted)]">Nothing playing</p>
+            <p className="truncate text-xs text-[var(--muted)] opacity-70">
+              Pick a song and it plays right here
+            </p>
+          </>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
         <button
           type="button"
-          disabled
+          onClick={previous}
+          disabled={!current || index === 0}
           aria-label="Previous track"
-          className="flex size-9 items-center justify-center rounded-full text-[var(--muted)] transition disabled:opacity-30"
+          className="flex size-9 items-center justify-center rounded-full text-[var(--muted)] transition hover:text-[var(--foreground)] disabled:opacity-30 disabled:hover:text-[var(--muted)]"
         >
           <PrevIcon className="size-4.5" />
         </button>
+
         <button
           type="button"
-          disabled
-          aria-label="Play"
-          className="flex size-11 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] transition disabled:opacity-30"
+          onClick={toggle}
+          disabled={!current || state === "unplayable"}
+          aria-label={playing ? "Pause" : "Play"}
+          className="flex size-11 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)] transition hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
         >
-          <PlayIcon className="size-5" />
+          {busy ? (
+            <SpinnerIcon className="size-5 animate-spin" />
+          ) : playing ? (
+            <PauseIcon className="size-5" />
+          ) : (
+            <PlayIcon className="size-5 translate-x-px" />
+          )}
         </button>
+
         <button
           type="button"
-          disabled
+          onClick={next}
+          disabled={!hasNext}
           aria-label="Next track"
-          className="flex size-9 items-center justify-center rounded-full text-[var(--muted)] transition disabled:opacity-30"
+          className="flex size-9 items-center justify-center rounded-full text-[var(--muted)] transition hover:text-[var(--foreground)] disabled:opacity-30 disabled:hover:text-[var(--muted)]"
         >
           <NextIcon className="size-4.5" />
         </button>
