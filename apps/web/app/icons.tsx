@@ -85,6 +85,27 @@ export function QueueIcon({ className }: IconProps) {
   );
 }
 
+/** Shows the video surface. Paired with {@link VideoOffIcon} as a toggle. */
+export function VideoIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <rect x="2.5" y="6" width="13" height="12" rx="2.5" />
+      <path d="m15.5 12 5-3.2v6.4z" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Hides the video surface — the same shape, struck through. */
+export function VideoOffIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <rect x="2.5" y="6" width="13" height="12" rx="2.5" />
+      <path d="m15.5 12 5-3.2v6.4z" fill="currentColor" stroke="none" />
+      <path d="M3 21 21 3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
