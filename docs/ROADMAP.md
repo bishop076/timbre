@@ -12,29 +12,48 @@ Every task from here to launch. **Nothing on this list requires paying for anyth
 | Phase | Outcome | Tasks | Status |
 | :--- | :--- | :--- | :--- |
 | [0 — Foundation](#phase-0--foundation) | The app runs, empty | 33/33 | ✅ complete |
-| [A — Search](#phase-a--search) | Type a song, see it across sources | 0/24 | ⬜ **next** |
-| [B — Playback](#phase-b--playback) | **The product works.** One queue, real audio | 0/31 | ⬜ |
-| [C — Accounts and playlists](#phase-c--accounts-and-playlists) | Your own lists, saved | 0/16 | ⬜ |
+| [A — Search](#phase-a--search) | Type a song, see it across sources | 24/24 | ✅ complete |
+| [B — Playback](#phase-b--playback) | **The product works.** One queue, real audio | 22/31 | 🔨 **in progress** |
+| [C — Accounts and playlists](#phase-c--accounts-and-playlists) | Your own lists, saved | 0/16 | ⬜ **next** |
 | [D — Polish and launch](#phase-d--polish-and-launch) | Other people can use it | 0/23 | ⬜ |
-| [Deferred](#deferred) | Blocked on things outside our control | — | 🎲 |
+| [Blocked](#blocked) | Gated by other people | — | 🎲 see [BLOCKED.md](BLOCKED.md) |
 
-**Phase B is the milestone that matters.** Search alone is a lookup tool; search plus playback is the product.
+**Phase B was the milestone that mattered, and the core of it works.** You can
+search across three sources, click a song, and hear it. What remains in B is queue
+ergonomics — shuffle, repeat, reorder — not the mechanism.
+
+**Two companion documents:**
+[BUGS.md](BUGS.md) — defects found and fixed, and the verified non-bugs worth not
+re-investigating. [BLOCKED.md](BLOCKED.md) — what other people's gates prevent, and
+why SoundCloud is built but not shipped.
 
 ---
 
 ## Source reality
 
-What each source can actually do, and what it costs. This drives everything below.
+*Verified 2026-08-15.* **Search and Play are separate systems with separate rules,
+and conflating them is what makes sources look shippable when they are not.** A
+source needs *both* columns green to be worth putting in the UI.
 
-| Source | Search | Play in Timbre | Cost |
+| Source | Search | Play in Timbre | Shipped |
 | :--- | :--- | :--- | :--- |
-| **YouTube Music** | ✅ free, no key (`ytmusicapi` unauthenticated) | ✅ IFrame Player API, must stay visible | £0 |
-| **SoundCloud** | 🎲 gated — Artist Pro + paused registration | ✅ **Widget/oEmbed, no key needed** | £0 to play |
-| **Spotify** | ✅ free catalogue search via client credentials¹ | ⚠️ embed panel only — full tracks for **free** logged-in accounts | £0 |
-| **Deezer** | ✅ free, no auth | ↗ link out | £0 |
-| **Apple / iTunes** | ✅ free, **no key at all** (20 req/min per IP) | ↗ link out, 30s previews allowed | £0 |
+| **YouTube Music** | ✅ free, no key (`ytmusicapi` unauthenticated) | ✅ IFrame Player API, must stay visible | ✅ **yes** |
+| **Deezer** | ✅ free, no auth. Carries **ISRCs** | ↗ link out | ✅ yes, as identity |
+| **Apple / iTunes** | ✅ free, **no key at all** (~20 req/min per IP) | ↗ link out | ✅ yes, as identity |
+| **SoundCloud** | ❌ **gated** — closed registration, paid Artist Pro, weeks of review | ✅ Widget/oEmbed, **no key**, built and working | ❌ **no** — see below |
+| **Spotify** | ❌ Premium mandatory since Feb 2026; extended quota needs 250k MAU | ⚠️ embed panel only, **cannot** be script-started (§IV.2) | ❌ not started |
 
-¹ Spotify *search* needs a dev app, which needs Premium. Skip it initially — Deezer and Apple cover "where else does this song live" for free. Add Spotify search later if a Premium trial happens.
+**SoundCloud is built and deliberately not registered.** Its player is free and
+verified working; its catalogue is not searchable. Without search the only way in
+is pasting a URL found elsewhere — a badge almost nobody could trigger. *A source
+you cannot search is not a source.* One line in `apps/web/lib/providers.ts`
+re-enables it if access is ever granted.
+
+**The root cause of both gaps:** Odesli/Songlink shut down 31 Jul 2026, removing
+the last free way to map a song onto its equivalent on another service. Free
+embeds are useless without knowing *which* track to embed.
+
+Full reasoning, and what would unblock each: **[BLOCKED.md](BLOCKED.md)**.
 
 ---
 
@@ -62,97 +81,97 @@ What each source can actually do, and what it costs. This drives everything belo
 
 ## Phase A — Search
 
-*Type a song, see every source that has it, merged into one row.* — 0/24
+*Type a song, see every source that has it, merged into one row.* — 24/24 ✅
 
-### A.1 Sidecar: unauthenticated search `M`
-- [ ] Replace the 501 stubs with `YTMusic()` — **no credentials**
-- [ ] `POST /search` — tracks, with a configurable limit
-- [ ] `POST /resolve` — a YouTube Music or YouTube URL → one track
-- [ ] Return `videoId`, title, artists, album, duration, thumbnail
-- [ ] Map `ytmusicapi` exceptions to typed error responses
-- [ ] Drop the credential fields from request models — nothing is per-user any more
-- [ ] `pytest` coverage for shapes and failure modes
+<details>
+<summary>Expand completed work</summary>
 
-### A.2 Reshape the provider interface `M`
-- [ ] `SearchProvider` interface replacing the library-read `MusicProvider`
-- [ ] `SourceTrack` type: canonical fields + `sourceId` + `playable` + external URL
-- [ ] Registry keyed by `SourceId`
-- [ ] Keep `paginate` only where a source actually paginates
+### A.1 Sidecar: unauthenticated search ✅
+- [x] `YTMusic()` with **no credentials** — `apps/ytmusic/app/client.py`
+- [x] `POST /search` and `POST /resolve` — `app/routes/search.py`
+- [x] Flattened wire shape incl. `videoType` — `app/normalize.py`
+- [x] `ytmusicapi` exceptions → typed 502s; 34 pytest cases passing
 
-### A.3 Providers `M`
-- [ ] `YtMusicProvider` — calls the sidecar, normalizes to `SourceTrack`
-- [ ] `DeezerProvider` — public catalogue search, no auth. **Capture ISRC** — it makes merging far more accurate
-- [ ] `AppleProvider` — iTunes Search API, no key. Respect 20 req/min per IP via the existing limiter
-- [ ] Verify Deezer's real rate limit by measurement, not assumption
+### A.2 Reshape the provider interface ✅
+- [x] `SearchProvider`, `SourceTrack`, `Song`, `Playback` — `packages/providers/src/types.ts`
+- [x] Registry keyed by `SourceId`, with `searchAll` / `chartAll` / `resolveUrl` — `registry.ts`
 
-### A.4 Result merging `L`
-*The hard, valuable part — and the reason `@timbre/core` survives the pivot.*
-- [ ] Merge results across sources: ISRC first, then `dedupeKey`, then title+artist+duration
-- [ ] **Require variant agreement** — a remix must never merge into the original
-- [ ] One row per song, carrying every source that has it
-- [ ] Rank by which source can actually play
-- [ ] Unit tests over real cross-source pairs, including deliberately hard ones
+### A.3 Providers ✅
+- [x] `YtMusicProvider` · `DeezerProvider` (captures **ISRC**) · `AppleProvider`
+- [x] Per-source rate policies measured into `DEFAULT_POLICIES` — `packages/core/src/limiter.ts`
 
-### A.5 Search UI `M`
-- [ ] Search box with debounced input
-- [ ] Result rows: artwork, title, artist, duration, source badges
-- [ ] Per-source availability badges, with playable ones visually distinct
-- [ ] Loading, empty and error states
-- [ ] Partial results — one source failing must not blank the page
+### A.4 Result merging ✅
+- [x] ISRC first, then `dedupeKey`, then title+artist+duration — `merge.ts`
+- [x] Variant agreement preserved — a remix never merges into the original
+- [x] One row per song carrying every source; unit tests in `merge.test.ts`
+
+### A.5 Search UI ✅
+- [x] Debounced search box; **pasting a URL resolves instead of searching**
+- [x] Result rows with artwork, duration and per-source badges
+- [x] Loading, empty and error states; partial results never blank the page
+
+</details>
 
 ---
 
 ## Phase B — Playback
 
-*The milestone. One queue, real audio, mixed sources.* — 0/31
+*The milestone. One queue, real audio.* — 22/31 🔨
 
-### B.1 YouTube player `L`
-- [ ] Mount the IFrame Player API
-- [ ] **Player stays visible during playback** — compliance, not cosmetics
-- [ ] Play / pause / seek / volume through the API
-- [ ] React to state-change events
-- [ ] Handle embed-disabled and age-restricted videos gracefully — fall back to another source
-- [ ] Never isolate audio; never enable background play
+**The mechanism works.** Search a song, click it, hear it. What is left is queue
+ergonomics, not plumbing.
 
-### B.2 SoundCloud player `M`
-- [ ] Mount the Widget API iframe
-- [ ] Resolve a pasted SoundCloud URL via oEmbed — no key needed
-- [ ] Transport controls and event wiring
-- [ ] Handle private and geo-blocked tracks
+### B.1 YouTube player ✅
+- [x] IFrame Player API mounted — `apps/web/app/player/youtube-player.tsx`
+- [x] **Player stays visible** and is never shrunk below **200×200** — below
+      YouTube's documented minimum, playback fails with a bare "Video unavailable"
+      that reads exactly like an ad blocker. See `docs/BUGS.md` B-1.
+- [x] Play / pause / seek through the API; state-change events wired
+- [x] Embed-disabled uploads (errors `100`/`101`/`150`) fall through to another
+      upload of the same song; code `2` does not retry
+- [x] Candidates ranked `OMV → UGC → ATV`, since art tracks are the barred class
+- [x] Audio never isolated; no background play
 
-### B.3 Queue and controller `L`
-*The new core of the app.*
-- [ ] Queue model holds **songs with a set of sources**, not individual source-tracks
-- [ ] Controller routing transport commands to whichever player owns the current song
-- [ ] **Exactly one player audible, ever** — the bug that will bite hardest
-- [ ] Pick the best *controllable* source automatically: YouTube Music → SoundCloud
-- [ ] Auto-advance on track end
+### B.2 SoundCloud player 🎲 **built, not shipped**
+- [x] Widget API iframe, transport controls, event wiring
+- [x] Resolve a pasted URL via oEmbed — no key needed
+- [x] Private / geo-blocked / embed-disabled tracks degrade instead of throwing
+- [ ] **Not registered.** Its catalogue is not searchable, so there is no way in.
+      See [BLOCKED.md](BLOCKED.md).
+
+### B.3 Queue and controller — 6/11
+- [x] Queue holds **songs with a set of sources**, not source-tracks
+- [x] Controller routes transport to whichever player owns the current song
+- [x] **Exactly one player audible** — enforced by mounting only the active player,
+      so silence is structural rather than a discipline
+- [x] Best controllable source picked automatically
+- [x] Auto-advance on track end; next / previous
+- [x] A failing source falls through, then explains itself
 - [ ] Pre-mount the next song's player to shorten the handoff gap
-- [ ] **Spotify-only songs pause the queue** with a "tap to play" prompt, then resume — never silently skipped
 - [ ] Add to queue / play next / clear
 - [ ] Reorder and remove
 - [ ] Shuffle and repeat
-- [ ] Handle a failing source by trying the next one, then telling the user why
+- [ ] Spotify-only songs pause the queue with a "tap to play" prompt
 
-### B.4 Player UI `M`
-- [ ] Persistent transport bar
-- [ ] Now-playing with source attribution — always clear *whose* content is playing
-- [ ] Progress bar and seeking
-- [ ] Queue panel
-- [ ] Visible-player area sized to satisfy YouTube's requirements
+### B.4 Player UI ✅
+- [x] Persistent transport bar — `app/shell/player-bar.tsx`
+- [x] Source attribution reflects the **actual** playing source, not a hardcoded
+      label — a terms requirement for every service involved
+- [x] Progress bar and seeking; queue panel
+- [x] Player area sized to satisfy YouTube's minimum
 
-### B.5 Spotify embed panel `S`
-- [ ] Show `open.spotify.com/embed/track/{id}` when the song exists on Spotify
-- [ ] Present it as a distinct, attributed panel — **never a queue member**
-- [ ] Explain that signing into Spotify (free is fine) unlocks full-length playback
-- [ ] Never attempt to autostart it
+### B.5 Spotify embed panel ⬜ deferred — [BLOCKED.md](BLOCKED.md)
+- [ ] `open.spotify.com/embed/track/{id}` as a distinct attributed panel
+- [ ] **Never a queue member** — its embed exposes no play API, and §IV.2 forbids
+      blending. The technical and legal limits agree.
+- [ ] Blocked on obtaining a track id, which is no longer free
 
-### B.6 Source selection `M`
-- [ ] Automatic best-available choice per song (YouTube Music → SoundCloud)
-- [ ] When a source fails at playback time, fall through to the next one silently
-- [ ] Manual per-song source switch, shown in the now-playing panel
-- [ ] **Remember a manual switch for that song** permanently
-- [ ] Global preferred-source-order setting for users who care
+### B.6 Source selection — 2/5
+- [x] Automatic best-available choice per song
+- [x] Silent fall-through when a source fails at playback time
+- [ ] Manual per-song source switch in the now-playing panel
+- [ ] Remember a manual switch for that song
+- [ ] Global preferred-source-order setting
 
 ---
 
@@ -216,22 +235,23 @@ What each source can actually do, and what it costs. This drives everything belo
 
 ---
 
-## Deferred
+## Blocked
 
-Blocked on things outside our control. Fully specified so they drop in if circumstances change.
+Gated by other people. **Full reasoning, evidence and what would unblock each:
+[BLOCKED.md](BLOCKED.md)** — kept there so it is decided once rather than
+re-litigated here.
 
-### SoundCloud search 🎲
-- [ ] Submit an access request — **free, do it early**, it may sit in a queue for weeks
-- [ ] If granted: `SoundCloudProvider.search()` into the same interface, nothing else changes
+| What | Why | Unblocked by |
+| :--- | :--- | :--- |
+| **SoundCloud search** | Closed registration, paid Artist Pro, weeks of review | Approval → one line in `lib/providers.ts` |
+| **SoundCloud via `client_id`** | Works, but forbidden by their terms — and it killed Auryo | *Declined, deliberately* |
+| **Spotify search** | Premium mandatory since Feb 2026; extended quota needs 250k MAU | Paying, which is a standing non-goal |
+| **Spotify embed panel** | Needs a track id that is no longer obtainable free | Cross-service discovery returning |
+| **Cross-service discovery** | Odesli shut down 31 Jul 2026 (`410 Gone`) | A free ISRC → service-URL resolver existing again |
+| **Library sync** | Requires user accounts; Spotify's 5-user cap makes it unshippable | Not viable at any realistic scale |
 
-### Spotify catalogue search 💳
-- [ ] Needs a dev app, which needs Premium. A 3-month free trial would cover building it
-- [ ] Client-credentials flow only — no user OAuth, so the 5-user cap never applies
-- [ ] Would replace Deezer/Apple as the "also on Spotify" signal, and improve match quality via Spotify ISRCs
-
-### Library sync 💳
-- [ ] Requires connecting user accounts. Spotify's 5-user cap makes this unshippable publicly
-- [ ] Phase 0's `connections` schema, token encryption and BYO wizard design are preserved in git history if this ever becomes viable
+Phase 0's `connections` schema, token encryption and BYO wizard survive in git
+history if library sync ever becomes possible.
 
 ---
 

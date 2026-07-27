@@ -8,6 +8,11 @@ import { SongCard } from "./song-card";
 import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
 
+/** Whether what was typed is a link to resolve rather than words to search. */
+function isUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
 function formatDuration(ms: number | null): string {
   if (ms === null) return "—";
   const total = Math.round(ms / 1000);
@@ -60,10 +65,25 @@ export function SearchResults() {
       setLoading(true);
       setError(null);
 
-      fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { signal: next.signal })
+      // A pasted link is resolved rather than searched. This is the only way
+      // SoundCloud tracks get in: its catalogue cannot be searched without a
+      // paid account, while its player needs no credentials at all. Sharing a
+      // link is also just how people pass songs around.
+      const endpoint = isUrl(trimmed)
+        ? `/api/resolve?url=${encodeURIComponent(trimmed)}`
+        : `/api/search?q=${encodeURIComponent(trimmed)}`;
+
+      fetch(endpoint, { signal: next.signal })
         .then(async (response) => {
+          if (response.status === 404 && isUrl(trimmed)) {
+            const body = (await response.json()) as { error?: string };
+            throw new Error(body.error ?? "That link isn't one Timbre can play.");
+          }
           if (!response.ok) throw new Error(`Search failed (${response.status})`);
-          return (await response.json()) as SongsResponse;
+          const body = (await response.json()) as SongsResponse | { song: Song };
+          // /api/resolve answers with a single song; normalise so the rest of
+          // the component only ever handles one shape.
+          return "song" in body ? { songs: [body.song], failures: [] } : body;
         })
         .then((data) => {
           setResults(data);
@@ -106,7 +126,7 @@ export function SearchResults() {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search for a song, artist or mix…"
+            placeholder="Search for a song, artist or mix — or paste a link…"
             autoFocus
             aria-label="Search for a song"
             className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] py-4 pl-12 pr-14 text-base outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
