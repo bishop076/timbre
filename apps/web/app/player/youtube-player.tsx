@@ -91,7 +91,14 @@ function loadApi(): Promise<YTNamespace> {
   return apiPromise;
 }
 
-export function YouTubePlayer() {
+/**
+ * `size` sets the player's box and nothing else. It is a prop rather than a
+ * fixed class because the same player is shown docked in the panel and expanded
+ * over the content area, and it must be **the same element** in both — a player
+ * that moved in the tree would re-parent its iframe, and a re-parented iframe
+ * reloads. Whatever is passed must stay at or above 200px on both axes.
+ */
+export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string }) {
   const {
     videoId,
     handleEnded,
@@ -273,7 +280,7 @@ export function YouTubePlayer() {
     // player itself remains fully visible and unobscured.
     <div
       ref={containerRef}
-      className="pointer-events-none aspect-video w-full select-none overflow-hidden rounded-lg bg-black"
+      className={`pointer-events-none select-none overflow-hidden bg-black ${size}`}
       style={{ minHeight: 200, minWidth: 200 }}
       aria-label="YouTube player"
     />
