@@ -44,6 +44,55 @@
 
   --bar-h: 5.5rem;
   --nav-h: 4rem;
+
+  /**
+   * The hard edge.
+   *
+   * Every panel, card and control carries a solid border and a **hard offset
+   * shadow with no blur**. That is the whole trick: a blurred shadow says
+   * "floating and soft", an offset solid one says "a physical thing sitting on
+   * another thing". Used consistently it holds the interface together far more
+   * than gradients would, and it survives being recoloured by the artwork —
+   * which a soft, light-source-implying shadow does not.
+   */
+  --edge: 2px;
+  --ink: hsl(0 0% 8%);
+  --drop: 3px 3px 0 var(--ink);
+  --drop-sm: 2px 2px 0 var(--ink);
+  --drop-lg: 5px 5px 0 var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* On a dark ground the same idea needs the opposite ink, or the shadow
+       disappears into the background it is meant to lift away from. */
+    --ink: hsl(0 0% 0%);
+    --drop: 3px 3px 0 hsl(0 0% 0% / 0.75);
+    --drop-sm: 2px 2px 0 hsl(0 0% 0% / 0.75);
+    --drop-lg: 5px 5px 0 hsl(0 0% 0% / 0.75);
+  }
+}
+
+/** A bordered, offset-shadowed block. The base unit of the whole interface. */
+.slab {
+  border: var(--edge) solid var(--ink);
+  box-shadow: var(--drop);
+}
+.slab-sm {
+  border: var(--edge) solid var(--ink);
+  box-shadow: var(--drop-sm);
+}
+
+/* Pressable things sink into their own shadow rather than scaling — the
+   physical read that matches a hard edge. */
+.press {
+  transition:
+    transform 0.09s var(--ease),
+    box-shadow 0.09s var(--ease);
+}
+.press:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
 }
 
 @media (prefers-color-scheme: dark) {

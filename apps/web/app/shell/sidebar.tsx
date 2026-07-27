@@ -25,7 +25,7 @@ export function Sidebar() {
     <aside className="hidden w-60 shrink-0 flex-col gap-2 p-2 lg:flex">
       <div className="flex items-center gap-2.5 px-3 py-4">
         <span
-          className="tint flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)]"
+          className="slab-sm tint flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)]"
           style={{ background: "var(--accent)" }}
         >
           <NoteIcon className="size-4.5" />
@@ -33,19 +33,19 @@ export function Sidebar() {
         <span className="text-[17px] font-semibold tracking-tight">Timbre</span>
       </div>
 
-      <nav className="flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
+      <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
         {NAV.map((item) => (
           <button
             key={item.id}
             type="button"
             disabled={!item.active}
             aria-current={item.active ? "page" : undefined}
-            className={`flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-medium transition ${
+            className={`press flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-semibold ${
               item.active
-                ? "tint text-[var(--accent)]"
-                : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--fg-dim)]"
+                ? "slab-sm tint text-[var(--accent-fg)]"
+                : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             }`}
-            style={item.active ? { background: "var(--accent-wash)" } : undefined}
+            style={item.active ? { background: "var(--accent)" } : undefined}
           >
             <item.icon className="size-[18px] shrink-0" />
             {item.label}
@@ -57,14 +57,14 @@ export function Sidebar() {
           the column. It holds the library once there is one; until then it
           states what Timbre actually is, which is the more useful thing to put
           in front of someone on their first visit. */}
-      <div className="flex min-h-0 flex-1 flex-col rounded-[var(--r-lg)] bg-[var(--surface-1)]">
+      <div className="slab flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)]">
         <div className="flex items-center gap-3 px-4 pb-2 pt-4">
           <LibraryIcon className="size-[18px] shrink-0 text-[var(--fg-dim)]" />
           <span className="text-sm font-semibold text-[var(--fg-dim)]">Your library</span>
         </div>
 
         <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 py-2">
-          <div className="rounded-[var(--r-md)] bg-[var(--surface-2)] p-4">
+          <div className="slab-sm rounded-[var(--r-md)] bg-[var(--surface-2)] p-4">
             <p className="text-sm font-semibold">Nothing saved yet</p>
             <p className="mt-1.5 text-xs leading-relaxed text-[var(--fg-dim)]">
               Playlists live here once accounts land. Search something in the meantime.
@@ -102,7 +102,7 @@ export function Sidebar() {
  */
 export function BottomNav() {
   return (
-    <nav className="flex h-[var(--nav-h)] shrink-0 items-stretch border-t border-[var(--line)] bg-[var(--surface-1)] lg:hidden">
+    <nav className="flex h-[var(--nav-h)] shrink-0 items-stretch border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] lg:hidden">
       {NAV.map((item) => (
         <button
           key={item.id}

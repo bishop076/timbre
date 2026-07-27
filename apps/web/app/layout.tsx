@@ -51,7 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <div className="flex h-full flex-col overflow-hidden">
             <div className="flex min-h-0 flex-1">
               <Sidebar />
-              <main className="ambient scroller relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)]">
+              <main className="ambient scroller relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)]">
                 {children}
               </main>
             </div>

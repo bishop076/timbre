@@ -262,9 +262,18 @@ export function YouTubePlayer() {
   return (
     // 16:9 at 200px tall is 356×200 — over YouTube's documented minimum on
     // both axes. Never shrink this below 200px in either dimension.
+    // `pointer-events: none` is what actually makes this a display rather than
+    // a player. `controls: 0` removes the bottom control bar, but YouTube still
+    // paints a hover overlay — title, channel, share, logo, a big pause button
+    // — over the picture the moment the pointer crosses it, and there is no
+    // parameter that turns that off. Not taking input removes the hover state
+    // entirely, so the video stays a video.
+    //
+    // Nothing is lost: play, pause and seek all live in the player bar, and the
+    // player itself remains fully visible and unobscured.
     <div
       ref={containerRef}
-      className="aspect-video w-full overflow-hidden rounded-lg bg-black"
+      className="pointer-events-none aspect-video w-full select-none overflow-hidden rounded-lg bg-black"
       style={{ minHeight: 200, minWidth: 200 }}
       aria-label="YouTube player"
     />
