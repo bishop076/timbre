@@ -118,9 +118,9 @@ export function SearchResults() {
 
   return (
     <>
-      <div className="sticky top-0 z-20 -mx-4 bg-[var(--background)]/85 px-4 pb-4 pt-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      <div className="sticky top-0 z-20 -mx-4 bg-[var(--bg)]/85 px-4 pb-4 pt-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--muted)]" />
+          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--fg-dim)]" />
           <input
             ref={inputRef}
             type="search"
@@ -129,12 +129,12 @@ export function SearchResults() {
             placeholder="Search for a song, artist or mix — or paste a link…"
             autoFocus
             aria-label="Search for a song"
-            className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] py-4 pl-12 pr-14 text-base outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+            className="w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] py-4 pl-12 pr-14 text-base outline-none transition placeholder:text-[var(--fg-dim)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-wash)]"
           />
           {loading ? (
             <SpinnerIcon className="absolute right-4 top-1/2 size-5 -translate-y-1/2 animate-spin text-[var(--accent)]" />
           ) : (
-            <kbd className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--border)] px-1.5 py-0.5 font-mono text-xs text-[var(--muted)] sm:block">
+            <kbd className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--line)] px-1.5 py-0.5 font-mono text-xs text-[var(--fg-dim)] sm:block">
               /
             </kbd>
           )}
@@ -162,13 +162,13 @@ export function SearchResults() {
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
         {hasQuery && !loading && songs.length === 0 && !error && (
-          <p className="py-16 text-center text-[var(--muted)]">
+          <p className="py-16 text-center text-[var(--fg-dim)]">
             Nothing found for “{query.trim()}”.
           </p>
         )}
 
         {hasQuery && songs.length > 0 && (
-          <ul className="timbre-rise divide-y divide-[var(--border)]">
+          <ul className="rise divide-y divide-[var(--line)]">
             {songs.map((song) => (
               <SongRow key={song.id} song={song} queue={songs} />
             ))}
@@ -179,35 +179,85 @@ export function SearchResults() {
   );
 }
 
-function Home({ charts }: { charts: SongsResponse | null }) {
+/**
+ * A horizontal row of tiles.
+ *
+ * Shelves rather than one long grid, because a grid of twenty covers reads as a
+ * catalogue to be worked through, while a shelf reads as a selection to browse
+ * — and it leaves room for more than one shelf on a screen without scrolling
+ * past a wall of artwork first.
+ *
+ * Tiles are a fixed width and the row scrolls. Snapping is `proximity`, not
+ * `mandatory`, so a deliberate flick still lands where it was aimed.
+ */
+function Shelf({
+  title,
+  caption,
+  children,
+}: {
+  title: string;
+  caption?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="timbre-rise">
-      <section className="mb-2 mt-4">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-2xl font-semibold tracking-tight">Trending now</h2>
-          <p className="text-sm text-[var(--muted)]">Across Deezer and Apple Music</p>
-        </div>
+    <section className="mb-9">
+      <div className="mb-3.5 flex items-baseline justify-between gap-4 px-1">
+        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+        {caption && (
+          <p className="shrink-0 text-xs text-[var(--fg-faint)]">{caption}</p>
+        )}
+      </div>
+      {/* Negative margin lets the row bleed to the panel edge, so the last tile
+          is visibly cut rather than stopping short — the cue that says "this
+          scrolls" without needing an arrow. */}
+      {/*
+        `scroll-pl-*` must match `px-*`. Without it the browser snaps the first
+        tile to the raw scroll origin, which sits inside the padding — the row
+        silently starts scrolled by exactly the padding width and the first
+        cover is clipped against the edge on load.
+      */}
+      <div className="shelf -mx-5 flex gap-4 overflow-x-auto px-5 pb-1 scroll-pl-5 sm:-mx-7 sm:px-7 sm:scroll-pl-7">
+        {children}
+      </div>
+    </section>
+  );
+}
 
-        {charts === null ? (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-5 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
-            {Array.from({ length: 10 }, (_, index) => (
-              <div key={index}>
-                <div className="aspect-square animate-pulse rounded-xl bg-[var(--surface-hover)]" />
-                <div className="mt-1.5 h-3 w-3/4 animate-pulse rounded bg-[var(--surface-hover)]" />
-                <div className="mt-1 h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-hover)]" />
+/** One tile's worth of width, shared by the real card and its skeleton. */
+const TILE = "w-[9.5rem] shrink-0 sm:w-[10.5rem]";
+
+function Home({ charts }: { charts: SongsResponse | null }) {
+  const songs = charts?.songs ?? [];
+
+  return (
+    <div className="rise pt-2">
+      <Shelf title="Trending now" caption="Deezer · Apple Music">
+        {charts === null
+          ? Array.from({ length: 8 }, (_, index) => (
+              <div key={index} className={TILE} aria-hidden>
+                <div className="aspect-square animate-pulse rounded-[var(--r-lg)] bg-[var(--surface-2)]" />
+                <div className="mt-2.5 h-3 w-3/4 animate-pulse rounded bg-[var(--surface-2)]" />
+                <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-2)]" />
+              </div>
+            ))
+          : songs.slice(0, 12).map((song) => (
+              <div key={song.id} className={TILE}>
+                <SongCard song={song} queue={songs} />
               </div>
             ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-5 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
-            {charts.songs.slice(0, 20).map((song) => (
-              <SongCard key={song.id} song={song} queue={charts.songs} />
-            ))}
-          </div>
-        )}
-      </section>
+      </Shelf>
 
-      <p className="mt-10 border-t border-[var(--border)] pt-6 text-xs leading-relaxed text-[var(--muted)]">
+      {songs.length > 12 && (
+        <Shelf title="More to hear" caption="Further down the charts">
+          {songs.slice(12, 24).map((song) => (
+            <div key={song.id} className={TILE}>
+              <SongCard song={song} queue={songs} />
+            </div>
+          ))}
+        </Shelf>
+      )}
+
+      <p className="mt-2 border-t border-[var(--line)] pt-5 text-xs leading-relaxed text-[var(--fg-faint)]">
         Charts come from Deezer and Apple Music, which Timbre can&rsquo;t play directly — picking one
         searches for a copy it can. Everything plays from the service it belongs to.
       </p>
@@ -222,7 +272,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
   return (
     <li
       className={`group flex items-center gap-3 rounded-lg px-2 transition sm:gap-4 ${
-        isCurrent ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-hover)]"
+        isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
       }`}
     >
       {/* The row itself plays. Opening the source is a deliberate secondary
@@ -233,7 +283,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
         className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left focus:outline-none sm:gap-4"
         aria-label={`Play ${song.title}`}
       >
-        <span className="relative size-14 shrink-0 overflow-hidden rounded-md bg-[var(--surface)]">
+        <span className="relative size-14 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)]">
           {song.artworkUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
             <img
@@ -245,7 +295,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
               className="size-full object-cover"
             />
           ) : (
-            <span className="flex size-full items-center justify-center text-[var(--muted)]">
+            <span className="flex size-full items-center justify-center text-[var(--fg-dim)]">
               <NoteIcon className="size-5" />
             </span>
           )}
@@ -266,7 +316,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
           >
             {song.title}
           </span>
-          <span className="block truncate text-sm text-[var(--muted)]">
+          <span className="block truncate text-sm text-[var(--fg-dim)]">
             {song.artists.join(", ") || "Unknown artist"}
             {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
           </span>
@@ -293,7 +343,7 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
         })}
       </div>
 
-      <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--muted)] @md:block">
+      <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
         {formatDuration(song.durationMs)}
       </span>
     </li>
@@ -302,17 +352,17 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
 
 function Skeletons() {
   return (
-    <ul className="divide-y divide-[var(--border)]" aria-hidden>
+    <ul className="divide-y divide-[var(--line)]" aria-hidden>
       {Array.from({ length: 6 }, (_, index) => (
         <li key={index} className="flex items-center gap-4 px-3 py-3">
-          <div className="size-14 shrink-0 animate-pulse rounded-lg bg-[var(--surface-hover)]" />
+          <div className="size-14 shrink-0 animate-pulse rounded-lg bg-[var(--surface-2)]" />
           <div className="flex-1 space-y-2">
             <div
-              className="h-4 animate-pulse rounded bg-[var(--surface-hover)]"
+              className="h-4 animate-pulse rounded bg-[var(--surface-2)]"
               style={{ width: `${55 - index * 4}%` }}
             />
             <div
-              className="h-3 animate-pulse rounded bg-[var(--surface-hover)]"
+              className="h-3 animate-pulse rounded bg-[var(--surface-2)]"
               style={{ width: `${35 - index * 2}%` }}
             />
           </div>
