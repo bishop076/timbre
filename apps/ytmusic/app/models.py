@@ -21,6 +21,16 @@ class Track(BaseModel):
     # 'song' is a proper Music track; 'video' is a YouTube video surfaced in
     # Music — often the only home of a remix, live set or unofficial upload.
     result_type: str = "song"
+    # MUSIC_VIDEO_TYPE_ATV (auto-generated Topic art track), _OMV (official
+    # music video), _UGC (user upload), and others. Decides embed ranking in
+    # routes/search.py: art tracks are the class rights holders bar from
+    # embedding, so they are attempted last.
+    #
+    # This field must exist here for that ranking to work at all. Without it
+    # pydantic silently drops the value normalize.py passes, and every track
+    # compares equal — which is why the ranking added in 4c49037 never did
+    # anything, despite ytmusicapi populating videoType perfectly well.
+    video_type: str | None = None
 
 
 class SearchRequest(BaseModel):
