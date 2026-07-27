@@ -102,7 +102,14 @@ function widgetSrc(trackUrl: string): string {
   return `https://w.soundcloud.com/player/?${params.toString()}`;
 }
 
-export function SoundCloudPlayer({ trackUrl }: { trackUrl: string | null }) {
+export function SoundCloudPlayer({
+  trackUrl,
+  size = "w-full",
+}: {
+  trackUrl: string | null;
+  /** Sizing only, for the same reason as {@link YouTubePlayer}'s. */
+  size?: string;
+}) {
   const {
     handleEnded,
     handleStateChange,
@@ -251,7 +258,7 @@ export function SoundCloudPlayer({ trackUrl }: { trackUrl: string | null }) {
   return (
     <div
       ref={containerRef}
-      className="w-full overflow-hidden rounded-lg bg-black"
+      className={`overflow-hidden bg-black ${size}`}
       aria-label="SoundCloud player"
     />
   );
