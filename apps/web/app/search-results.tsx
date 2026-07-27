@@ -129,7 +129,7 @@ export function SearchResults() {
             placeholder="Search for a song, artist or mix — or paste a link…"
             autoFocus
             aria-label="Search for a song"
-            className="w-full rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] py-4 pl-12 pr-14 text-base outline-none transition placeholder:text-[var(--fg-dim)] focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-wash)]"
+            className="slab w-full rounded-[var(--r-lg)] bg-[var(--surface-2)] py-3.5 pl-12 pr-14 text-base font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:shadow-[var(--drop-lg)]"
           />
           {loading ? (
             <SpinnerIcon className="absolute right-4 top-1/2 size-5 -translate-y-1/2 animate-spin text-[var(--accent)]" />
@@ -202,9 +202,9 @@ function Shelf({
   return (
     <section className="mb-9">
       <div className="mb-3.5 flex items-baseline justify-between gap-4 px-1">
-        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+        <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
         {caption && (
-          <p className="shrink-0 text-xs text-[var(--fg-faint)]">{caption}</p>
+          <p className="slab-sm shrink-0 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--fg-dim)]">{caption}</p>
         )}
       </div>
       {/* Negative margin lets the row bleed to the panel edge, so the last tile

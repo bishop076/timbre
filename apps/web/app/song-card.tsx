@@ -29,7 +29,7 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
       className="group w-full text-left focus:outline-none"
       title={`Play ${song.title}`}
     >
-      <div className="relative aspect-square overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-2)]">
+      <div className="slab press relative aspect-square overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-2)]">
         {song.artworkUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
           <img
@@ -49,7 +49,7 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
         <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition group-hover:opacity-100" />
 
         <span
-          className={`tint absolute bottom-2 right-2 flex size-10 items-center justify-center rounded-full text-[var(--accent-fg)] shadow-lg transition duration-300 ease-[var(--ease)] ${
+          className={`slab-sm tint absolute bottom-2 right-2 flex size-10 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)] transition duration-300 ease-[var(--ease)] ${
             isPlaying
               ? "translate-y-0 opacity-100"
               : "translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
@@ -74,7 +74,7 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
               title={sourceStyle(source.source).label}
               aria-label={sourceStyle(source.source).label}
               style={{ backgroundColor: sourceStyle(source.source).color }}
-              className="size-1.5 rounded-full opacity-0 shadow transition group-hover:opacity-100"
+              className="size-2 rounded-full border-2 border-[var(--ink)] opacity-0 transition group-hover:opacity-100"
             />
           ))}
         </span>
