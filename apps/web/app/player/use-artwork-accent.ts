@@ -41,10 +41,6 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   return [h, s, l];
 }
 
-function hslToCss(h: number, s: number, l: number): string {
-  return `hsl(${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
-}
-
 /** 24 hue buckets — fine enough to separate teal from green, coarse enough that
  *  gradients and compression noise don't split one colour across two. */
 const BUCKETS = 24;
