@@ -22,8 +22,20 @@ function clock(seconds: number): string {
  * player that small could ever fit in a bar this height.
  */
 export function PlayerBar() {
-  const { current, state, problem, queue, index, position, duration, toggle, next, previous, seek } =
-    usePlayer();
+  const {
+    current,
+    state,
+    problem,
+    activeSource,
+    queue,
+    index,
+    position,
+    duration,
+    toggle,
+    next,
+    previous,
+    seek,
+  } = usePlayer();
 
   const [showQueue, setShowQueue] = useState(false);
 
@@ -82,14 +94,20 @@ export function PlayerBar() {
                 {state === "unplayable" ? (
                   <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
                 ) : (
+                  // Attribution has to name the source actually playing, not a
+                  // hardcoded one: it is a terms requirement for both YouTube
+                  // and SoundCloud, and it is the only way the listener can
+                  // tell whose player they are hearing.
                   <span
                     className="hidden shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium sm:inline"
                     style={{
-                      color: sourceStyle("ytmusic").color,
-                      backgroundColor: sourceStyle("ytmusic").tint,
+                      color: sourceStyle(activeSource ?? "ytmusic").color,
+                      backgroundColor: sourceStyle(activeSource ?? "ytmusic").tint,
                     }}
                   >
-                    {state === "resolving" ? "finding a copy…" : "YT Music"}
+                    {state === "resolving"
+                      ? "finding a copy…"
+                      : sourceStyle(activeSource ?? "ytmusic").short}
                   </span>
                 )}
               </p>
