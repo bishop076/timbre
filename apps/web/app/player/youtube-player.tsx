@@ -131,6 +131,7 @@ export function YouTubePlayer() {
       if (!cancelled && !readyRef.current) {
         handlers.current.handleError(
           "Couldn't load YouTube's player. An ad blocker or network filter may be blocking it.",
+          false,
         );
       }
     }, 8000);
@@ -168,19 +169,21 @@ export function YouTubePlayer() {
             else if (event.data === CUED) handlers.current.handleStateChange("paused");
           },
           onError: (event: { data: number }) => {
-            // YouTube's documented codes. Worth distinguishing: 101/150 means
-            // the owner disabled embedding, which is a property of the track
-            // and warrants trying another source, whereas 5 is a player fault
-            // that may just be this once.
+            // 101 and 150 are the same condition reported two ways: the rights
+            // holder barred embedding on this upload. 100 means it is gone.
+            // All three are properties of *this upload*, so another copy of the
+            // same song is worth trying. Code 2 (bad parameter) is ours to fix
+            // and retrying would only loop.
+            const blockedUpload = [100, 101, 150].includes(event.data);
             const reason =
               event.data === 100
-                ? "This video is private or removed."
-                : event.data === 101 || event.data === 150
+                ? "That upload has been removed."
+                : blockedUpload
                   ? "The owner disabled playback on other sites."
                   : event.data === 5
                     ? "The player couldn't load this track."
                     : "Playback was blocked.";
-            handlers.current.handleError(reason);
+            handlers.current.handleError(reason, blockedUpload || event.data === 5);
           },
         },
       });
