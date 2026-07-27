@@ -1,62 +1,50 @@
 "use client";
 
-import { useState } from "react";
-
-import { ChevronIcon, ExternalIcon } from "../icons";
+import { ExternalIcon } from "../icons";
 import { usePlayer } from "./player-context";
 import { SoundCloudPlayer } from "./soundcloud-player";
 import { YouTubePlayer } from "./youtube-player";
 
 /**
- * The video panel.
+ * The video surface.
  *
- * This exists because the player **cannot** be a thumbnail: YouTube's IFrame
- * API requires at least 200×200 pixels, and below that playback fails with a
- * bare "Video unavailable" in every browser. It is also what YouTube's policy
- * on keeping the player visible and unobscured wants.
+ * **It has no controls of its own.** Play, pause, seek, skip and even hiding
+ * this panel all live in the player bar, so there is exactly one place that
+ * acts on playback whether or not the current track happens to have pictures.
+ * That is how Spotify handles tracks with video: the visual is a passive
+ * surface, the transport never moves.
  *
- * So it floats above the player bar at a genuine size. It can be collapsed —
- * the player keeps its dimensions when collapsed and is merely moved out of
- * sight, because resizing it below the minimum would break playback.
+ * It cannot be a thumbnail either. YouTube's IFrame API requires at least
+ * 200×200 and fails below it with a bare "Video unavailable" — see docs/BUGS.md
+ * B-1, which is what actually broke this app once. So hiding clips the panel
+ * away at full size rather than shrinking it, and the player keeps its
+ * dimensions the whole time.
  */
 export function NowPlaying() {
-  const { current, state, problem, activeSource, soundcloudUrl } = usePlayer();
-  const [collapsed, setCollapsed] = useState(false);
+  const { current, state, problem, activeSource, soundcloudUrl, videoOpen } = usePlayer();
 
   const active = current !== null;
 
   const youtubeUrl =
     current?.sources.find((source) => source.source === "ytmusic")?.url ??
-    (current ? `https://www.youtube.com/results?search_query=${encodeURIComponent(
-      [current.title, current.artists[0]].filter(Boolean).join(" "),
-    )}` : null);
+    (current
+      ? `https://www.youtube.com/results?search_query=${encodeURIComponent(
+          [current.title, current.artists[0]].filter(Boolean).join(" "),
+        )}`
+      : null);
 
+  // Sits clear of the player bar on desktop, and of the mini player plus bottom
+  // nav on a phone.
   return (
     <div
-      className={`pointer-events-none fixed bottom-24 right-4 z-40 w-[356px] max-w-[calc(100vw-2rem)] transition-all duration-300 ${
-        active ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"
+      className={`pointer-events-none fixed bottom-[calc(var(--bar-h)+var(--nav-h)+0.75rem)] right-3 z-40 w-[19rem] max-w-[calc(100vw-1.5rem)] transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+0.75rem)] lg:right-4 lg:w-[21rem] ${
+        active && videoOpen
+          ? "translate-y-0 scale-100 opacity-100"
+          : "pointer-events-none translate-y-3 scale-[0.98] opacity-0"
       }`}
+      aria-hidden={!active || !videoOpen}
     >
-      <div className="pointer-events-auto overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl">
-        <div className="flex items-center justify-between gap-2 px-3 py-1.5">
-          <p className="truncate text-xs font-medium text-[var(--muted)]">
-            {state === "resolving"
-              ? "Finding a playable copy…"
-              : state === "unplayable"
-                ? (problem ?? "Can't play this")
-                : (current?.title ?? "")}
-          </p>
-          <button
-            type="button"
-            onClick={() => setCollapsed((value) => !value)}
-            aria-label={collapsed ? "Show video" : "Hide video"}
-            aria-expanded={!collapsed}
-            className="shrink-0 rounded p-1 text-[var(--muted)] transition hover:text-[var(--foreground)]"
-          >
-            <ChevronIcon className={`size-4 transition ${collapsed ? "" : "rotate-180"}`} />
-          </button>
-        </div>
-
+      <div className="pointer-events-auto overflow-hidden rounded-[var(--r-lg)] bg-black shadow-2xl ring-1 ring-white/10">
         {/*
           Some songs exist only as uploads that bar embedding everywhere. That
           cannot be worked around — it is the rights holder's setting — so the
@@ -67,17 +55,13 @@ export function NowPlaying() {
             href={youtubeUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="flex items-center justify-center gap-2 border-t border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2.5 text-xs font-medium text-[var(--foreground)] transition hover:text-[var(--accent)]"
+            className="flex items-center justify-center gap-2 bg-[var(--surface-2)] px-3 py-2.5 text-xs font-medium text-[var(--fg)] transition hover:text-[var(--accent)]"
           >
-            Watch on YouTube instead
+            {problem ?? "Can't play this here"}
             <ExternalIcon className="size-3" />
           </a>
         )}
 
-        {/*
-          Collapsing hides the panel by clipping it, and never by shrinking the
-          player: dropping under 200px would stop playback dead.
-        */}
         {/*
           Exactly one player is mounted at a time. Unmounting the other is what
           makes "only one audible" true by construction rather than by careful
@@ -85,11 +69,7 @@ export function NowPlaying() {
           during handoff. It costs a remount on every source switch, which is
           the right trade for never having two songs at once.
         */}
-        <div
-          className={`overflow-hidden transition-all duration-300 ${
-            collapsed ? "h-0" : "h-[200px]"
-          }`}
-        >
+        <div className="h-[200px]">
           {activeSource === "soundcloud" ? (
             <SoundCloudPlayer trackUrl={soundcloudUrl} />
           ) : (

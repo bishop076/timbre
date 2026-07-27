@@ -148,6 +148,16 @@ export function YouTubePlayer() {
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
+          // The video is a display, not a control surface: every transport
+          // action lives in Timbre's player bar, so YouTube's own overlay would
+          // be a second set of buttons doing the same job in a different place.
+          //
+          // This hides the controls, it does not remove the functionality —
+          // play, pause and seek are all still offered, which is what YouTube's
+          // Required Minimum Functionality actually asks for. The player itself
+          // stays visible and unobscured.
+          controls: 0,
+          disablekb: 1,
         },
         events: {
           onReady: () => {

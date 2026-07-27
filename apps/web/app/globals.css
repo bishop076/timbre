@@ -1,70 +1,152 @@
 @import "tailwindcss";
 
-/* Light is the fallback; the app is designed dark-first, as music apps tend
-   to be. Both palettes are defined in full so neither is an afterthought. */
+/**
+ * Timbre's visual system.
+ *
+ * Dark-first, as music apps are. Three ideas do the work:
+ *
+ * 1. **Layered surfaces, not borders.** Depth comes from successively lighter
+ *    planes over a near-black ground, so the UI reads as stacked panels rather
+ *    than a grid of outlined boxes. Borders are used only where two surfaces of
+ *    the same elevation meet.
+ *
+ * 2. **The accent is dynamic.** `--accent` is rewritten at runtime from the
+ *    current track's artwork, so the player takes on the colour of what is
+ *    playing. The values below are the fallback for "nothing playing" and for
+ *    artwork whose colour cannot be read.
+ *
+ * 3. **One radius scale.** Every rounded thing picks from it, so the app has a
+ *    single corner language instead of six.
+ */
+
 :root {
-  --background: #fbfbfd;
-  --surface: #ffffff;
-  --surface-hover: #f4f4f7;
-  --foreground: #17171a;
-  --muted: #6b6b76;
-  --border: #e6e6ec;
+  /* Light is a genuine second theme, not an inversion. */
+  --bg: #f7f7fa;
+  --surface-1: #ffffff;
+  --surface-2: #f0f0f5;
+  --surface-3: #e6e6ee;
+  --fg: #131316;
+  --fg-dim: #5c5c68;
+  --fg-faint: #8e8e9c;
+  --line: #e3e3ea;
+
   --accent: #6d28d9;
-  --accent-soft: #ede9fe;
-  --glow: rgba(109, 40, 217, 0.12);
+  --accent-fg: #ffffff;
+  --accent-wash: rgba(109, 40, 217, 0.1);
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --r-full: 999px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --bar-h: 5.5rem;
+  --nav-h: 4rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #08080b;
-    --surface: #121216;
-    --surface-hover: #1c1c22;
-    --foreground: #f2f2f5;
-    --muted: #8b8b98;
-    --border: #26262e;
+    --bg: #08080a;
+    --surface-1: #101014;
+    --surface-2: #17171d;
+    --surface-3: #212129;
+    --fg: #f4f4f7;
+    --fg-dim: #a0a0af;
+    --fg-faint: #6e6e7e;
+    --line: #23232c;
+
     --accent: #a78bfa;
-    --accent-soft: #2a1f52;
-    --glow: rgba(167, 139, 250, 0.18);
+    --accent-fg: #0b0b0f;
+    --accent-wash: rgba(167, 139, 250, 0.14);
   }
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-surface-hover: var(--surface-hover);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
+  --color-bg: var(--bg);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-fg: var(--fg);
+  --color-fg-dim: var(--fg-dim);
+  --color-fg-faint: var(--fg-faint);
+  --color-line: var(--line);
   --color-accent: var(--accent);
-  --color-accent-soft: var(--accent-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--fg);
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
 }
 
-/* A single soft light source behind the header, so the page has some depth
-   rather than being a flat sheet. */
-.timbre-glow::before {
+/* The accent moves with the artwork, so anything tinted by it must ease rather
+   than snap when the track changes. */
+.tint {
+  transition:
+    background-color 0.6s var(--ease),
+    color 0.6s var(--ease),
+    border-color 0.6s var(--ease);
+}
+
+/**
+ * The ambient wash behind the content panel — a single diffuse light in the
+ * current accent, which is what makes the album's colour feel like it is
+ * lighting the room rather than just colouring a button.
+ */
+.ambient::before {
   content: "";
   position: absolute;
-  inset-inline: 0;
-  top: -14rem;
-  height: 28rem;
-  background: radial-gradient(50% 50% at 50% 50%, var(--glow), transparent 70%);
+  inset-inline: -20%;
+  top: -30%;
+  height: 60%;
+  background: radial-gradient(45% 50% at 50% 50%, var(--accent-wash), transparent 72%);
   pointer-events: none;
-  z-index: -1;
+  transition: background 0.8s var(--ease);
+  z-index: 0;
 }
 
-@keyframes timbre-rise {
+/* Horizontal shelves scroll without a visible scrollbar; the row is snapped so
+   cards never come to rest half-cut. */
+.shelf {
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+.shelf::-webkit-scrollbar {
+  display: none;
+}
+.shelf > * {
+  scroll-snap-align: start;
+}
+
+/* The vertical scroller keeps a scrollbar, but a quiet one. */
+.scroller {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.scroller::-webkit-scrollbar {
+  width: 10px;
+}
+.scroller::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -72,12 +154,48 @@ body {
   }
 }
 
-.timbre-rise {
-  animation: timbre-rise 0.25s ease-out both;
+.rise {
+  animation: rise 0.32s var(--ease) both;
+}
+
+/* Three bars that pulse while a track plays — the "this one is playing" marker
+   that every music app has and that reads instantly. */
+@keyframes bounce-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq span {
+  display: block;
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: currentColor;
+  transform-origin: bottom;
+  animation: bounce-bar 0.9s var(--ease) infinite;
+}
+.eq span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.eq span:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .timbre-rise {
+  .rise {
     animation: none;
+  }
+  .eq span {
+    animation: none;
+    transform: scaleY(0.6);
+  }
+  .tint,
+  .ambient::before {
+    transition: none;
   }
 }

@@ -53,6 +53,19 @@ interface PlayerState {
    * discipline — this is the bug most likely to bite.
    */
   activeSource: "ytmusic" | "soundcloud" | null;
+  /**
+   * Whether the video surface is shown.
+   *
+   * The video itself carries **no controls of its own** — it is a display, and
+   * everything that acts on it lives in the player bar. That is how Spotify
+   * treats a track that happens to have a video: one set of controls, always in
+   * the same place, whether or not there are pictures.
+   *
+   * Hiding it never unmounts or resizes the player, only clips it. YouTube's
+   * IFrame API stops playback below 200×200, so shrinking to hide would be
+   * indistinguishable from breaking it — see docs/BUGS.md B-1.
+   */
+  videoOpen: boolean;
   state: PlayState;
   /** Why the current song could not be played, when state is "unplayable". */
   problem: string | null;
@@ -78,6 +91,8 @@ interface PlayerControls extends PlayerState {
    */
   handleError: (reason: string, worthRetrying: boolean) => void;
   seek: (seconds: number) => void;
+  /** Shows or hides the video surface. Never resizes it. */
+  toggleVideo: () => void;
   registerToggle: (fn: (() => void) | null) => void;
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
 }
@@ -109,6 +124,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | null>(null);
+  const [videoOpen, setVideoOpen] = useState(true);
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
@@ -207,7 +223,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [attempt, findCandidates],
+    [attempt, attemptSoundCloud, findCandidates],
   );
 
   const play = useCallback(
@@ -238,6 +254,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
+  const toggleVideo = useCallback(() => setVideoOpen((open) => !open), []);
 
   const handleProgress = useCallback((next: number, total: number) => {
     setPosition(next);
@@ -312,6 +329,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId,
       soundcloudUrl,
       activeSource,
+      videoOpen,
       state,
       problem,
       position,
@@ -325,6 +343,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleProgress,
       handleError,
       seek,
+      toggleVideo,
       registerToggle,
       registerSeek,
     }),
@@ -335,6 +354,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId,
       soundcloudUrl,
       activeSource,
+      videoOpen,
       state,
       problem,
       position,
@@ -347,6 +367,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleProgress,
       handleError,
       seek,
+      toggleVideo,
       registerToggle,
       registerSeek,
     ],

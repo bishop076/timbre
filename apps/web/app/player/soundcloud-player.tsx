@@ -195,6 +195,11 @@ export function SoundCloudPlayer({ trackUrl }: { trackUrl: string | null }) {
       readyRef.current = false;
       host.remove();
     };
+    // `trackUrl` is deliberately not a dependency. It seeds the iframe's initial
+    // src and must not re-run this effect, because tearing the widget down and
+    // rebuilding it on every track change would restart the whole handshake.
+    // Track *changes* are handled by the effect below, which calls load().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Only an actual track *change* reloads the widget. Reloading the track it

@@ -15,25 +15,25 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
   const upcoming = queue.slice(index + 1);
 
   return (
-    <div className="max-h-72 overflow-y-auto border-t border-[var(--border)] bg-[var(--surface)]">
-      <div className="sticky top-0 flex items-baseline justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 sm:px-6">
+    <div className="max-h-72 overflow-y-auto border-t border-[var(--line)] bg-[var(--surface-1)]">
+      <div className="sticky top-0 flex items-baseline justify-between border-b border-[var(--line)] bg-[var(--surface-1)] px-4 py-2.5 sm:px-6">
         <h2 className="text-sm font-semibold">
           Queue
-          <span className="ml-2 font-normal text-[var(--muted)]">
+          <span className="ml-2 font-normal text-[var(--fg-dim)]">
             {upcoming.length === 0 ? "nothing next" : `${upcoming.length} coming up`}
           </span>
         </h2>
         <button
           type="button"
           onClick={onClose}
-          className="text-xs text-[var(--muted)] transition hover:text-[var(--foreground)]"
+          className="text-xs text-[var(--fg-dim)] transition hover:text-[var(--fg)]"
         >
           Close
         </button>
       </div>
 
       {queue.length === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-[var(--muted)] sm:px-6">
+        <p className="px-4 py-8 text-center text-sm text-[var(--fg-dim)] sm:px-6">
           Nothing queued yet. Playing a song queues whatever it was listed with.
         </p>
       ) : (
@@ -48,15 +48,15 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
                   type="button"
                   onClick={() => play(song, queue)}
                   className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition ${
-                    isCurrent ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-hover)]"
+                    isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
                   } ${isPast ? "opacity-45" : ""}`}
                 >
-                  <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-hover)]">
+                  <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded bg-[var(--surface-2)]">
                     {song.artworkUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
                       <img src={song.artworkUrl} alt="" className="size-full object-cover" loading="lazy" />
                     ) : (
-                      <NoteIcon className="size-4 text-[var(--muted)]" />
+                      <NoteIcon className="size-4 text-[var(--fg-dim)]" />
                     )}
                   </span>
 
@@ -66,7 +66,7 @@ export function QueuePanel({ onClose }: { onClose: () => void }) {
                     >
                       {song.title}
                     </span>
-                    <span className="block truncate text-xs text-[var(--muted)]">
+                    <span className="block truncate text-xs text-[var(--fg-dim)]">
                       {song.artists.join(", ") || "Unknown artist"}
                     </span>
                   </span>
