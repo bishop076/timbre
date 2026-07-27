@@ -32,15 +32,28 @@ const globalForProviders = globalThis as unknown as {
 function registerAll(): void {
   const env = getEnv();
 
-  // YouTube Music first: the only source Timbre can actually play, so its
-  // results lead. Deezer and Apple contribute identity, artwork and
-  // availability — Deezer's ISRCs are what make cross-source matching reliable.
+  // YouTube Music first: it is the only source that can be *searched* and
+  // played, so its results lead. Deezer and Apple contribute identity, artwork
+  // and availability — Deezer's ISRCs are what make cross-source matching
+  // reliable.
   registerProvider(
     createYtMusicProvider({
       baseUrl: env.YTMUSIC_SERVICE_URL,
       sharedSecret: env.YTMUSIC_SHARED_SECRET,
     }),
   );
+  // SoundCloud is deliberately NOT registered, and that is not an oversight.
+  //
+  // Its player is free and needs no credentials — `createSoundCloudProvider()`
+  // is written, tested and working. Its *catalogue search* is not: that needs a
+  // client_id, which needs a paid Artist Pro account and a case-by-case approval
+  // taking weeks. Without search the only way in is a user pasting a URL they
+  // already found elsewhere, which is a badge in the UI almost nobody could
+  // trigger — a source you cannot search is not a source.
+  //
+  // To ship it: set `searchable: true` in soundcloud.ts and add
+  // `registerProvider(createSoundCloudProvider())` here. Nothing else changes.
+  // See docs/BLOCKED.md.
   registerProvider(createDeezerProvider());
   registerProvider(createAppleProvider());
 }
