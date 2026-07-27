@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { ChevronIcon } from "../icons";
+import { ChevronIcon, ExternalIcon } from "../icons";
 import { usePlayer } from "./player-context";
 import { YouTubePlayer } from "./youtube-player";
 
@@ -23,6 +23,12 @@ export function NowPlaying() {
   const [collapsed, setCollapsed] = useState(false);
 
   const active = current !== null;
+
+  const youtubeUrl =
+    current?.sources.find((source) => source.source === "ytmusic")?.url ??
+    (current ? `https://www.youtube.com/results?search_query=${encodeURIComponent(
+      [current.title, current.artists[0]].filter(Boolean).join(" "),
+    )}` : null);
 
   return (
     <div
@@ -49,6 +55,23 @@ export function NowPlaying() {
             <ChevronIcon className={`size-4 transition ${collapsed ? "" : "rotate-180"}`} />
           </button>
         </div>
+
+        {/*
+          Some songs exist only as uploads that bar embedding everywhere. That
+          cannot be worked around — it is the rights holder's setting — so the
+          honest fallback is a link to the one place it will play.
+        */}
+        {state === "unplayable" && youtubeUrl && (
+          <a
+            href={youtubeUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="flex items-center justify-center gap-2 border-t border-[var(--border)] bg-[var(--surface-hover)] px-3 py-2.5 text-xs font-medium text-[var(--foreground)] transition hover:text-[var(--accent)]"
+          >
+            Watch on YouTube instead
+            <ExternalIcon className="size-3" />
+          </a>
+        )}
 
         {/*
           Collapsing hides the panel by clipping it, and never by shrinking the
