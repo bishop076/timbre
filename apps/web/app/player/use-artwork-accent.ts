@@ -23,9 +23,6 @@ import { useEffect, useRef } from "react";
  * silent and total, never a half-applied colour.
  */
 
-/** The palette in globals.css, restored whenever artwork can't be read. */
-const FALLBACK = { light: "#6d28d9", dark: "#a78bfa" };
-
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   const rn = r / 255;
   const gn = g / 255;
@@ -99,36 +96,63 @@ function dominantHue(data: Uint8ClampedArray): { h: number; s: number; l: number
   };
 }
 
+/**
+ * Paints the **whole interface** in one hue, not just an accent.
+ *
+ * This is the Material You idea PixelPlayer is built on: every surface, line
+ * and label is a step on a single tonal ramp derived from the cover, so the app
+ * reads as one tinted material rather than a grey chrome with a coloured button
+ * in it. Neutral greys are deliberately absent — a "grey" here is the same hue
+ * at very low saturation, which is what keeps the tint from looking bolted on.
+ */
 function apply(color: { h: number; s: number; l: number } | null): void {
   const root = document.documentElement;
   const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-  if (!color) {
-    root.style.setProperty("--accent", dark ? FALLBACK.dark : FALLBACK.light);
-    root.style.setProperty("--accent-fg", dark ? "#0b0b0f" : "#ffffff");
-    root.style.setProperty(
-      "--accent-wash",
-      dark ? "rgba(167, 139, 250, 0.14)" : "rgba(109, 40, 217, 0.1)",
-    );
-    return;
+  const hue = color ? Math.round(color.h * 360) : dark ? 258 : 262;
+  // Saturation drives how strongly the hue reads. Surfaces stay well below the
+  // accent so artwork remains the most colourful thing on screen.
+  const sat = color ? Math.min(0.7, Math.max(0.3, color.s)) : 0.5;
+
+  const tone = (l: number, s = sat) =>
+    `hsl(${hue} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
+
+  if (dark) {
+    // Saturation stays high on every surface. A timid tint reads as "grey app
+    // with a coloured button"; the whole point is that the app is *made of* the
+    // album's colour, so even the darkest plane is unmistakably that hue.
+    root.style.setProperty("--bg", tone(0.1, sat * 0.9));
+    root.style.setProperty("--surface-1", tone(0.16, sat * 0.85));
+    root.style.setProperty("--surface-2", tone(0.23, sat * 0.8));
+    root.style.setProperty("--surface-3", tone(0.31, sat * 0.75));
+    root.style.setProperty("--fg", tone(0.95, sat * 0.45));
+    root.style.setProperty("--fg-dim", tone(0.76, sat * 0.4));
+    root.style.setProperty("--fg-faint", tone(0.6, sat * 0.4));
+    // The hard edge has to be *lighter* than the plane it outlines on a dark
+    // ground. Black-on-black is the whole brutalist look made invisible.
+    root.style.setProperty("--ink", tone(0.05, sat * 0.9));
+    root.style.setProperty("--line", tone(0.4, sat * 0.5));
+    root.style.setProperty("--accent", tone(0.72, Math.min(0.9, Math.max(0.6, sat))));
+    root.style.setProperty("--accent-fg", tone(0.1, sat * 0.9));
+  } else {
+    root.style.setProperty("--bg", tone(0.9, sat * 0.85));
+    root.style.setProperty("--surface-1", tone(0.86, sat * 0.9));
+    root.style.setProperty("--surface-2", tone(0.8, sat * 0.95));
+    root.style.setProperty("--surface-3", tone(0.72, sat));
+    root.style.setProperty("--fg", tone(0.12, sat * 0.7));
+    root.style.setProperty("--fg-dim", tone(0.34, sat * 0.5));
+    root.style.setProperty("--fg-faint", tone(0.48, sat * 0.45));
+    root.style.setProperty("--ink", tone(0.09, sat * 0.8));
+    root.style.setProperty("--line", tone(0.09, sat * 0.8));
+    root.style.setProperty("--accent", tone(0.62, Math.min(0.95, Math.max(0.7, sat))));
+    root.style.setProperty("--accent-fg", tone(0.1, sat * 0.8));
   }
 
-  // Clamp into a band that stays legible against the ground it sits on. A
-  // washed-out cover must not produce an invisible accent, and a neon one must
-  // not produce something that vibrates.
-  const s = Math.min(0.82, Math.max(0.45, color.s));
-  const l = dark
-    ? Math.min(0.74, Math.max(0.58, color.l))
-    : Math.min(0.5, Math.max(0.34, color.l));
-
-  root.style.setProperty("--accent", hslToCss(color.h, s, l));
-  // Text sitting *on* the accent flips with its lightness, so contrast holds
-  // whichever colour the artwork produced.
-  root.style.setProperty("--accent-fg", l > 0.55 ? "#0b0b0f" : "#ffffff");
-  root.style.setProperty(
-    "--accent-wash",
-    `hsl(${Math.round(color.h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}% / ${dark ? 0.16 : 0.1})`,
-  );
+  const ink = dark ? "0 0% 0%" : `${hue} ${Math.round(sat * 80)}% 9%`;
+  root.style.setProperty("--drop", `3px 3px 0 hsl(${ink} / ${dark ? 0.85 : 1})`);
+  root.style.setProperty("--drop-sm", `2px 2px 0 hsl(${ink} / ${dark ? 0.85 : 1})`);
+  root.style.setProperty("--drop-lg", `5px 5px 0 hsl(${ink} / ${dark ? 0.85 : 1})`);
+  root.style.setProperty("--accent-wash", `hsl(${hue} ${Math.round(sat * 100)}% 55% / 0.2)`);
 }
 
 export function useArtworkAccent(artworkUrl: string | null | undefined): void {

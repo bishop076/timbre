@@ -16,6 +16,7 @@ import {
 import { usePlayer } from "../player/player-context";
 import { QueuePanel } from "../player/queue-panel";
 import { useArtworkAccent } from "../player/use-artwork-accent";
+import { WavyHandle, WavyProgress } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 
 function clock(seconds: number): string {
@@ -84,10 +85,8 @@ export function PlayerBar() {
       disabled={!current}
       aria-label={videoOpen ? "Hide video" : "Show video"}
       aria-pressed={videoOpen}
-      className={`tint flex size-9 items-center justify-center rounded-full transition disabled:opacity-25 ${
-        videoOpen ? "text-[var(--accent)]" : "text-[var(--fg-dim)] hover:text-[var(--fg)]"
-      }`}
-      style={videoOpen && current ? { background: "var(--accent-wash)" } : undefined}
+      className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
+      style={{ background: videoOpen ? "var(--accent)" : "var(--surface-2)" }}
     >
       {videoOpen ? <VideoIcon className="size-[18px]" /> : <VideoOffIcon className="size-[18px]" />}
     </button>
@@ -113,26 +112,16 @@ export function PlayerBar() {
       }}
       // The hit area is deliberately taller than the visible line: a 4px
       // target is unusable with a mouse and impossible with a thumb.
-      className="group relative -my-2 flex h-5 w-full cursor-pointer items-center"
+      className="tint group relative flex h-6 w-full cursor-pointer items-center text-[var(--accent)]"
     >
-      <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--surface-3)]">
-        <div
-          className="tint h-full rounded-full transition-[width] duration-200 ease-linear"
-          style={{ width: `${progress}%`, background: "var(--accent)" }}
-        />
-      </div>
-      {/* The handle appears on hover only, so the resting state stays a clean
-          line rather than a control asking to be fiddled with. */}
-      <span
-        className="tint pointer-events-none absolute size-3 -translate-x-1/2 rounded-full opacity-0 shadow transition group-hover:opacity-100"
-        style={{ left: `${progress}%`, background: "var(--accent)" }}
-      />
+      <WavyProgress percent={progress} playing={playing} />
+      <WavyHandle percent={progress} />
     </div>
   );
 
   const artwork = (size: string) => (
     <div
-      className={`${size} shrink-0 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg-faint)]`}
+      className={`slab-sm ${size} shrink-0 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg-faint)]`}
     >
       {current?.artworkUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
@@ -194,7 +183,7 @@ export function PlayerBar() {
       onClick={toggle}
       disabled={!current || state === "unplayable"}
       aria-label={playing ? "Pause" : "Play"}
-      className={`tint flex ${size} items-center justify-center rounded-full text-[var(--accent-fg)] transition hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100`}
+      className={`slab press tint flex ${size} items-center justify-center rounded-[var(--r-lg)] text-[var(--accent-fg)] disabled:opacity-40`}
       style={{ background: "var(--accent)" }}
     >
       {busy ? (
@@ -212,7 +201,7 @@ export function PlayerBar() {
       {showQueue && <QueuePanel onClose={() => setShowQueue(false)} />}
 
       {/* ── Mobile: mini player, stacked directly on the bottom nav ────────── */}
-      <footer className="shrink-0 border-t border-[var(--line)] bg-[var(--surface-1)] px-3 pb-2 pt-2.5 lg:hidden">
+      <footer className="shrink-0 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-3 pb-2 pt-2.5 lg:hidden">
         <div className="mb-2 flex items-center gap-2">
           {artwork("size-11")}
           {meta}
@@ -223,7 +212,7 @@ export function PlayerBar() {
       </footer>
 
       {/* ── Desktop: three zones ───────────────────────────────────────────── */}
-      <footer className="hidden shrink-0 items-center gap-6 px-4 py-3 lg:flex">
+      <footer className="hidden shrink-0 items-center gap-6 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-4 py-3 lg:flex">
         {/* Left — what is playing */}
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {artwork("size-14")}
@@ -238,7 +227,7 @@ export function PlayerBar() {
               onClick={previous}
               disabled={!current || index === 0}
               aria-label="Previous track"
-              className="flex size-9 items-center justify-center rounded-full text-[var(--fg-dim)] transition hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:text-[var(--fg-dim)]"
+              className="slab-sm press flex h-10 w-14 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
             >
               <PrevIcon className="size-[18px]" />
             </button>
@@ -250,7 +239,7 @@ export function PlayerBar() {
               onClick={next}
               disabled={!hasNext}
               aria-label="Next track"
-              className="flex size-9 items-center justify-center rounded-full text-[var(--fg-dim)] transition hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:text-[var(--fg-dim)]"
+              className="slab-sm press flex h-10 w-14 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
             >
               <NextIcon className="size-[18px]" />
             </button>
@@ -276,10 +265,8 @@ export function PlayerBar() {
             onClick={() => setShowQueue((open) => !open)}
             aria-label="Queue"
             aria-expanded={showQueue}
-            className={`tint flex size-9 items-center justify-center rounded-full transition ${
-              showQueue ? "text-[var(--accent)]" : "text-[var(--fg-dim)] hover:text-[var(--fg)]"
-            }`}
-            style={showQueue ? { background: "var(--accent-wash)" } : undefined}
+            className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)]"
+            style={{ background: showQueue ? "var(--accent)" : "var(--surface-2)" }}
           >
             <QueueIcon className="size-[18px]" />
           </button>
