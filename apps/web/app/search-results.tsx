@@ -118,7 +118,11 @@ export function SearchResults() {
 
   return (
     <>
-      <div className="sticky top-0 z-20 -mx-4 bg-[var(--bg)]/85 px-4 pb-4 pt-1 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+      {/* The bleed must match the page's own padding exactly — `page.tsx` uses
+          px-5 / sm:px-7. When they disagree the sticky backdrop renders as a
+          second, slightly-offset box around the input instead of a clean band
+          across the panel. */}
+      <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-1 bg-[var(--surface-1)] px-5 pb-4 pt-5 sm:-mx-7 sm:px-7">
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--fg-dim)]" />
           <input
