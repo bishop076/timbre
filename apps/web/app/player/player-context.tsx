@@ -54,7 +54,8 @@ interface PlayerState {
    */
   activeSource: "ytmusic" | "soundcloud" | null;
   /**
-   * Whether the video surface is shown.
+   * Whether the now-playing panel is shown — the third column on desktop, a
+   * floating card above the mini player on a phone. The video lives inside it.
    *
    * The video itself carries **no controls of its own** — it is a display, and
    * everything that acts on it lives in the player bar. That is how Spotify
@@ -65,7 +66,16 @@ interface PlayerState {
    * IFrame API stops playback below 200×200, so shrinking to hide would be
    * indistinguishable from breaking it — see docs/BUGS.md B-1.
    */
-  videoOpen: boolean;
+  panelOpen: boolean;
+  /**
+   * Whether the panel has taken over the content area as a big video.
+   *
+   * Clicking the picture expands it; clicking again puts it back. Both states
+   * render **the same element**, only sized differently, because moving the
+   * player to a different place in the tree would re-parent its iframe — and a
+   * re-parented iframe reloads, which means playback stops dead.
+   */
+  theater: boolean;
   state: PlayState;
   /** Why the current song could not be played, when state is "unplayable". */
   problem: string | null;
@@ -91,8 +101,10 @@ interface PlayerControls extends PlayerState {
    */
   handleError: (reason: string, worthRetrying: boolean) => void;
   seek: (seconds: number) => void;
-  /** Shows or hides the video surface. Never resizes it. */
-  toggleVideo: () => void;
+  /** Shows or hides the now-playing panel. Never resizes the player inside it. */
+  togglePanel: () => void;
+  /** Expands the video to fill the content area, or puts it back in the panel. */
+  toggleTheater: () => void;
   registerToggle: (fn: (() => void) | null) => void;
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
 }
@@ -124,7 +136,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | null>(null);
-  const [videoOpen, setVideoOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
@@ -254,7 +267,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
-  const toggleVideo = useCallback(() => setVideoOpen((open) => !open), []);
+  // Closing the panel leaves theater too: the expanded video *is* the panel, so
+  // a hidden panel that is still "expanded" would blank the content area for a
+  // video nobody can see.
+  const togglePanel = useCallback(() => {
+    setPanelOpen((open) => {
+      if (open) setTheater(false);
+      return !open;
+    });
+  }, []);
+
+  const toggleTheater = useCallback(() => {
+    if (!current) return;
+    setPanelOpen(true);
+    setTheater((expanded) => !expanded);
+  }, [current]);
 
   const handleProgress = useCallback((next: number, total: number) => {
     setPosition(next);
@@ -329,7 +356,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId,
       soundcloudUrl,
       activeSource,
-      videoOpen,
+      panelOpen,
+      theater,
       state,
       problem,
       position,
@@ -343,7 +371,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleProgress,
       handleError,
       seek,
-      toggleVideo,
+      togglePanel,
+      toggleTheater,
       registerToggle,
       registerSeek,
     }),
@@ -354,7 +383,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       videoId,
       soundcloudUrl,
       activeSource,
-      videoOpen,
+      panelOpen,
+      theater,
       state,
       problem,
       position,
@@ -367,7 +397,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleProgress,
       handleError,
       seek,
-      toggleVideo,
+      togglePanel,
+      toggleTheater,
       registerToggle,
       registerSeek,
     ],
