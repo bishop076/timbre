@@ -81,6 +81,33 @@ export async function searchAll(
 }
 
 /**
+ * Turns a pasted URL into a track, by asking each provider that can resolve.
+ *
+ * This is how SoundCloud gets in at all: its catalogue cannot be searched, so a
+ * URL is the only entry point. Providers are tried in registry order and the
+ * first match wins.
+ *
+ * **Failures are swallowed on purpose.** A provider handed a URL belonging to a
+ * different service is expected to reject it — the YouTube Music sidecar answers
+ * 400 for anything that is not a YouTube URL — and that is a non-answer, not an
+ * error worth surfacing. Only a URL that no provider claims is a real failure,
+ * and that is reported as `null`.
+ */
+export async function resolveUrl(ctx: SearchContext, url: string): Promise<SourceTrack | null> {
+  for (const provider of listProviders()) {
+    if (!provider.resolve) continue;
+    try {
+      const track = await provider.resolve(ctx, url);
+      if (track) return track;
+    } catch {
+      // Wrong provider for this URL, or that service is briefly unavailable.
+      // Either way, try the next one.
+    }
+  }
+  return null;
+}
+
+/**
  * What's popular right now, for the home page.
  *
  * Only some sources publish a chart without credentials — YouTube Music does

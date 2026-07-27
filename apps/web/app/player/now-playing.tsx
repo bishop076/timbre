@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ChevronIcon, ExternalIcon } from "../icons";
 import { usePlayer } from "./player-context";
+import { SoundCloudPlayer } from "./soundcloud-player";
 import { YouTubePlayer } from "./youtube-player";
 
 /**
@@ -19,7 +20,7 @@ import { YouTubePlayer } from "./youtube-player";
  * sight, because resizing it below the minimum would break playback.
  */
 export function NowPlaying() {
-  const { current, state, problem } = usePlayer();
+  const { current, state, problem, activeSource, soundcloudUrl } = usePlayer();
   const [collapsed, setCollapsed] = useState(false);
 
   const active = current !== null;
@@ -77,12 +78,23 @@ export function NowPlaying() {
           Collapsing hides the panel by clipping it, and never by shrinking the
           player: dropping under 200px would stop playback dead.
         */}
+        {/*
+          Exactly one player is mounted at a time. Unmounting the other is what
+          makes "only one audible" true by construction rather than by careful
+          pausing — a torn-down player cannot be restarted by a stray event
+          during handoff. It costs a remount on every source switch, which is
+          the right trade for never having two songs at once.
+        */}
         <div
           className={`overflow-hidden transition-all duration-300 ${
             collapsed ? "h-0" : "h-[200px]"
           }`}
         >
-          <YouTubePlayer />
+          {activeSource === "soundcloud" ? (
+            <SoundCloudPlayer trackUrl={soundcloudUrl} />
+          ) : (
+            <YouTubePlayer />
+          )}
         </div>
       </div>
     </div>

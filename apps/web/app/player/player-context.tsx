@@ -41,6 +41,18 @@ interface PlayerState {
   current: Song | null;
   /** YouTube video id currently loaded, or null. */
   videoId: string | null;
+  /** SoundCloud permalink currently loaded, or null. */
+  soundcloudUrl: string | null;
+  /**
+   * Which player owns the current song.
+   *
+   * **Exactly one player is ever mounted**, and this is what selects it.
+   * Mounting only the active player is deliberate: an unmounted player cannot
+   * make sound, whereas a merely-paused one can be restarted by a stray event
+   * or a race during handoff. Silence by construction beats silence by
+   * discipline — this is the bug most likely to bite.
+   */
+  activeSource: "ytmusic" | "soundcloud" | null;
   state: PlayState;
   /** Why the current song could not be played, when state is "unplayable". */
   problem: string | null;
@@ -83,10 +95,20 @@ function youtubeIdOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null;
 }
 
+/**
+ * The SoundCloud copy, if it has one. The widget takes a permalink rather than
+ * an id, which is why this returns `url` and not `sourceId`.
+ */
+function soundcloudUrlOf(song: Song): string | null {
+  return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<Song[]>([]);
   const [index, setIndex] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | null>(null);
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
@@ -106,7 +128,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const attempt = useCallback((id: string) => {
     attempted.current.add(id);
+    // Switching players tears the other one down, which is what guarantees
+    // only one is audible.
+    setSoundcloudUrl(null);
+    setActiveSource("ytmusic");
     setVideoId(id);
+    setProblem(null);
+    setState("loading");
+  }, []);
+
+  /** Hands the song to the SoundCloud widget instead of the YouTube player. */
+  const attemptSoundCloud = useCallback((url: string) => {
+    setVideoId(null);
+    setActiveSource("soundcloud");
+    setSoundcloudUrl(url);
     setProblem(null);
     setState("loading");
   }, []);
@@ -131,6 +166,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       attempted.current = new Set();
       setPosition(0);
       setDuration(0);
+      setActiveSource(null);
+      setVideoId(null);
+      setSoundcloudUrl(null);
 
       // A song found on YouTube Music already has a copy to try; alternatives
       // are fetched only if it turns out to be blocked, so the common case
@@ -138,6 +176,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const direct = youtubeIdOf(song);
       if (direct) {
         attempt(direct);
+        return;
+      }
+
+      // No YouTube copy, but SoundCloud can play it. This is the only path for
+      // a pasted SoundCloud link, since that catalogue cannot be searched.
+      const soundcloud = soundcloudUrlOf(song);
+      if (soundcloud) {
+        attemptSoundCloud(soundcloud);
         return;
       }
 
@@ -227,10 +273,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
       }
 
+      // Every YouTube upload refused. If SoundCloud has this song, it is a
+      // genuinely different service with its own rights position, so it is
+      // worth one last try before declaring defeat.
+      //
+      // The SoundCloud player always reports errors as not-worth-retrying, so
+      // a failure here exits above rather than looping back into this branch.
+      const soundcloud = soundcloudUrlOf(song);
+      if (soundcloud) {
+        attemptSoundCloud(soundcloud);
+        return;
+      }
+
       setState("unplayable");
       setProblem("Every copy of this song blocks playback outside YouTube.");
     },
-    [attempt, findCandidates],
+    [attempt, attemptSoundCloud, findCandidates],
   );
 
   const handleEnded = useCallback(() => {
@@ -252,6 +310,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       index,
       current,
       videoId,
+      soundcloudUrl,
+      activeSource,
       state,
       problem,
       position,
@@ -273,6 +333,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       index,
       current,
       videoId,
+      soundcloudUrl,
+      activeSource,
       state,
       problem,
       position,
