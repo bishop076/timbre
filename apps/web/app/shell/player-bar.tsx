@@ -1,20 +1,18 @@
 "use client";
 
-import { useState } from "react";
-
 import {
+  CollapseIcon,
+  ExpandIcon,
   NextIcon,
   NoteIcon,
   PauseIcon,
   PlayIcon,
   PrevIcon,
-  QueueIcon,
   SpinnerIcon,
   VideoIcon,
   VideoOffIcon,
 } from "../icons";
 import { usePlayer } from "../player/player-context";
-import { QueuePanel } from "../player/queue-panel";
 import { useArtworkAccent } from "../player/use-artwork-accent";
 import { WavyHandle, WavyProgress } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
@@ -48,7 +46,8 @@ export function PlayerBar() {
     state,
     problem,
     activeSource,
-    videoOpen,
+    panelOpen,
+    theater,
     queue,
     index,
     position,
@@ -57,10 +56,9 @@ export function PlayerBar() {
     next,
     previous,
     seek,
-    toggleVideo,
+    togglePanel,
+    toggleTheater,
   } = usePlayer();
-
-  const [showQueue, setShowQueue] = useState(false);
 
   useArtworkAccent(current?.artworkUrl);
 
@@ -71,24 +69,43 @@ export function PlayerBar() {
   const source = sourceStyle(activeSource ?? "ytmusic");
 
   /**
-   * Shows or hides the video surface.
+   * Shows or hides the now-playing panel — the video, the track, what's next.
    *
    * Lives here rather than on the video itself so the transport never moves:
    * one row of controls, in one place, whether the current track has pictures
    * or not. Hiding only clips the panel — the player keeps its size, because
    * shrinking it below 200×200 stops YouTube playback outright.
    */
-  const videoButton = (
+  const panelButton = (
     <button
       type="button"
-      onClick={toggleVideo}
+      onClick={togglePanel}
       disabled={!current}
-      aria-label={videoOpen ? "Hide video" : "Show video"}
-      aria-pressed={videoOpen}
+      aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
+      aria-pressed={panelOpen}
       className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
-      style={{ background: videoOpen ? "var(--accent)" : "var(--surface-2)" }}
+      style={{ background: panelOpen ? "var(--accent)" : "var(--surface-2)" }}
     >
-      {videoOpen ? <VideoIcon className="size-[18px]" /> : <VideoOffIcon className="size-[18px]" />}
+      {panelOpen ? <VideoIcon className="size-[18px]" /> : <VideoOffIcon className="size-[18px]" />}
+    </button>
+  );
+
+  /**
+   * The same thing clicking the picture does, offered where the rest of the
+   * controls are — because a click target with no marking on it is not
+   * discoverable, and this is the only one in the app.
+   */
+  const theaterButton = (
+    <button
+      type="button"
+      onClick={toggleTheater}
+      disabled={!current}
+      aria-label={theater ? "Shrink video" : "Expand video"}
+      aria-pressed={theater}
+      className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
+      style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
+    >
+      {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
     </button>
   );
 
@@ -198,14 +215,12 @@ export function PlayerBar() {
 
   return (
     <>
-      {showQueue && <QueuePanel onClose={() => setShowQueue(false)} />}
-
       {/* ── Mobile: mini player, stacked directly on the bottom nav ────────── */}
       <footer className="shrink-0 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-3 pb-2 pt-2.5 lg:hidden">
         <div className="mb-2 flex items-center gap-2">
           {artwork("size-11")}
           {meta}
-          {videoButton}
+          {panelButton}
           {playButton("size-10", "size-5")}
         </div>
         {scrub}
@@ -258,18 +273,9 @@ export function PlayerBar() {
 
         {/* Right — everything else. Balances the left zone so the transport
             sits optically centred rather than merely mathematically. */}
-        <div className="flex flex-1 items-center justify-end gap-1">
-          {videoButton}
-          <button
-            type="button"
-            onClick={() => setShowQueue((open) => !open)}
-            aria-label="Queue"
-            aria-expanded={showQueue}
-            className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)]"
-            style={{ background: showQueue ? "var(--accent)" : "var(--surface-2)" }}
-          >
-            <QueueIcon className="size-[18px]" />
-          </button>
+        <div className="flex flex-1 items-center justify-end gap-1.5">
+          {theaterButton}
+          {panelButton}
         </div>
       </footer>
     </>
