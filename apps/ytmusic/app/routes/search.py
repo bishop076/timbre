@@ -70,6 +70,17 @@ def search(request: SearchRequest) -> SearchResponse:
                     seen.add(track.video_id)
                     tracks.append(track)
 
+    # Art tracks (MUSIC_VIDEO_TYPE_ATV) are auto-generated Topic uploads and the
+    # most likely to have embedding barred by the rights holder. Ranking them
+    # last improves the odds of the client's first attempt playing.
+    #
+    # Note that ytmusicapi usually omits videoType from *search* results, so
+    # this is frequently a no-op — it costs nothing and helps when the field is
+    # present. Embeddability genuinely cannot be determined server-side (a
+    # blocked upload still answers oEmbed 200 and reports playableInEmbed:true),
+    # so the client falling through to another copy is the real remedy.
+    tracks.sort(key=lambda track: track.video_type == "MUSIC_VIDEO_TYPE_ATV")
+
     return SearchResponse(items=tracks[: request.limit])
 
 

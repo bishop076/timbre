@@ -103,6 +103,7 @@ def to_track(raw: Any) -> Track | None:
         thumbnail_url=_largest_thumbnail(raw),
         is_explicit=bool(raw.get("isExplicit", False)),
         result_type=result_type,
+        video_type=raw.get("videoType") if isinstance(raw.get("videoType"), str) else None,
     )
 
 

@@ -20,6 +20,17 @@ import type { Song, SongsResponse } from "../types";
  * Deezer and Apple are link-only, and Spotify's embed exposes no play API — so
  * a chart entry from Deezer is resolved to its YouTube Music copy before it can
  * play. That resolution is the whole point of the matcher.
+ *
+ * **One copy is never enough.** Rights holders routinely bar embedding on
+ * individual uploads — most often the auto-generated "art tracks" on Topic
+ * channels that YouTube Music returns for a plain song search. The embedded
+ * player reports only "Video unavailable", and crucially this cannot be
+ * detected from the server: a blocked upload still answers oEmbed with 200 and
+ * still reports playableInEmbed:true on its watch page. Only the browser
+ * learns the truth, and only by trying.
+ *
+ * So a song carries a list of candidate uploads and falls through to the next
+ * when one refuses, instead of declaring the song unplayable on first refusal.
  */
 
 export type PlayState = "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
@@ -48,8 +59,12 @@ interface PlayerControls extends PlayerState {
   handleEnded: () => void;
   handleStateChange: (state: PlayState) => void;
   handleProgress: (position: number, duration: number) => void;
-  /** Reports a playback failure with a reason worth showing the user. */
-  handleError: (reason: string) => void;
+  /**
+   * Reports a playback failure. `worthRetrying` is true when the fault belongs
+   * to this upload — embedding disabled, video removed — so another copy of
+   * the same song stands a chance.
+   */
+  handleError: (reason: string, worthRetrying: boolean) => void;
   seek: (seconds: number) => void;
   registerToggle: (fn: (() => void) | null) => void;
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
@@ -82,57 +97,72 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const seekRef = useRef<((seconds: number) => void) | null>(null);
   const resolving = useRef<AbortController | null>(null);
 
+  // Fallback bookkeeping for the song currently being attempted.
+  const songRef = useRef<Song | null>(null);
+  const candidates = useRef<string[]>([]);
+  const attempted = useRef<Set<string>>(new Set());
+
   const current = queue[index] ?? null;
 
-  /**
-   * Finds a playable copy. Songs that came from a chart usually have no
-   * YouTube Music source attached, so Timbre searches for one — which is
-   * exactly the cross-source promise, just applied at play time.
-   */
-  const load = useCallback(async (song: Song) => {
-    setPosition(0);
-    setDuration(0);
-
-    const direct = youtubeIdOf(song);
-    if (direct) {
-      setVideoId(direct);
-      setProblem(null);
-      setState("loading");
-      return;
-    }
-
-    resolving.current?.abort();
-    const aborter = new AbortController();
-    resolving.current = aborter;
-
-    setState("resolving");
+  const attempt = useCallback((id: string) => {
+    attempted.current.add(id);
+    setVideoId(id);
     setProblem(null);
+    setState("loading");
+  }, []);
 
+  /** Every YouTube Music upload of this song the search knows about. */
+  const findCandidates = useCallback(async (song: Song, signal: AbortSignal) => {
     const query = [song.title, song.artists[0]].filter(Boolean).join(" ");
-    try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=5`, {
-        signal: aborter.signal,
-      });
-      if (!response.ok) throw new Error("search failed");
-      const data = (await response.json()) as SongsResponse;
+    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
+    if (!response.ok) throw new Error("search failed");
+    const data = (await response.json()) as SongsResponse;
+    return data.songs.map(youtubeIdOf).filter((id): id is string => id !== null);
+  }, []);
 
-      const match = data.songs.map(youtubeIdOf).find((id): id is string => id !== null);
-      if (!match) {
-        setVideoId(null);
-        setState("unplayable");
-        setProblem("No playable copy found on YouTube Music.");
+  const load = useCallback(
+    async (song: Song) => {
+      resolving.current?.abort();
+      const aborter = new AbortController();
+      resolving.current = aborter;
+
+      songRef.current = song;
+      candidates.current = [];
+      attempted.current = new Set();
+      setPosition(0);
+      setDuration(0);
+
+      // A song found on YouTube Music already has a copy to try; alternatives
+      // are fetched only if it turns out to be blocked, so the common case
+      // costs no extra request.
+      const direct = youtubeIdOf(song);
+      if (direct) {
+        attempt(direct);
         return;
       }
 
-      setVideoId(match);
-      setState("loading");
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === "AbortError") return;
-      setVideoId(null);
-      setState("unplayable");
-      setProblem("Couldn't find a playable copy.");
-    }
-  }, []);
+      setState("resolving");
+      setProblem(null);
+
+      try {
+        candidates.current = await findCandidates(song, aborter.signal);
+        const first = candidates.current[0];
+        if (!first) {
+          setVideoId(null);
+          setState("unplayable");
+          setProblem("No copy of this song exists on YouTube Music.");
+          return;
+        }
+        attempt(first);
+      } catch (cause) {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setVideoId(null);
+        setState("unplayable");
+        setProblem("Couldn't find a playable copy.");
+      }
+    },
+    [attempt, findCandidates],
+  );
 
   const play = useCallback(
     (song: Song, rest: Song[] = []) => {
@@ -168,10 +198,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(total);
   }, []);
 
-  const handleError = useCallback((reason: string) => {
-    setState("unplayable");
-    setProblem(reason);
-  }, []);
+  /**
+   * A copy refused to play. Blocked embedding belongs to one upload, not to
+   * the song, so try the next upload before giving up on it.
+   */
+  const handleError = useCallback(
+    async (reason: string, worthRetrying: boolean) => {
+      const song = songRef.current;
+      if (!worthRetrying || !song) {
+        setState("unplayable");
+        setProblem(reason);
+        return;
+      }
+
+      setState("resolving");
+      try {
+        if (candidates.current.length === 0) {
+          const aborter = new AbortController();
+          resolving.current = aborter;
+          candidates.current = await findCandidates(song, aborter.signal);
+        }
+        const alternative = candidates.current.find((id) => !attempted.current.has(id));
+        if (alternative) {
+          attempt(alternative);
+          return;
+        }
+      } catch (cause) {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+      }
+
+      setState("unplayable");
+      setProblem("Every copy of this song blocks playback outside YouTube.");
+    },
+    [attempt, findCandidates],
+  );
 
   const handleEnded = useCallback(() => {
     if (index + 1 < queue.length) goTo(index + 1);
