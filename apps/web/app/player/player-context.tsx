@@ -7,10 +7,18 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
 import type { Song, SongsResponse } from "../types";
+import {
+  getVolumeServerSnapshot,
+  getVolumeSnapshot,
+  subscribeVolume,
+  writeMuteToggle,
+  writeVolume,
+} from "./volume-store";
 
 /**
  * The queue holds **songs**, not source-tracks.
@@ -82,6 +90,16 @@ interface PlayerState {
   /** Playback position and length in seconds, reported by the embedded player. */
   position: number;
   duration: number;
+  /**
+   * Output level, 0–100, and whether it is muted.
+   *
+   * Held here rather than in the player because the player is torn down and
+   * rebuilt on every source switch — a level living inside it would reset to
+   * full every time a track fell through to another copy. Each player reads
+   * this and applies it on ready.
+   */
+  volume: number;
+  muted: boolean;
 }
 
 interface PlayerControls extends PlayerState {
@@ -101,6 +119,9 @@ interface PlayerControls extends PlayerState {
    */
   handleError: (reason: string, worthRetrying: boolean) => void;
   seek: (seconds: number) => void;
+  /** Sets the level, 0–100. Setting it unmutes, since that is what was meant. */
+  setVolume: (level: number) => void;
+  toggleMute: () => void;
   /** Shows or hides the now-playing panel. Never resizes the player inside it. */
   togglePanel: () => void;
   /** Expands the video to fill the content area, or puts it back in the panel. */
@@ -142,6 +163,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
+  const { volume, muted } = useSyncExternalStore(
+    subscribeVolume,
+    getVolumeSnapshot,
+    getVolumeServerSnapshot,
+  );
 
   // Set by the embedded player so the bar's play/pause button can reach it.
   const toggleRef = useRef<(() => void) | null>(null);
@@ -267,6 +293,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
+
+  const setVolume = useCallback((level: number) => writeVolume(level), []);
+  const toggleMute = useCallback(() => writeMuteToggle(), []);
   // Closing the panel leaves theater too: the expanded video *is* the panel, so
   // a hidden panel that is still "expanded" would blank the content area for a
   // video nobody can see.
@@ -362,6 +391,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       problem,
       position,
       duration,
+      volume,
+      muted,
       play,
       toggle,
       next,
@@ -371,6 +402,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleProgress,
       handleError,
       seek,
+      setVolume,
+      toggleMute,
       togglePanel,
       toggleTheater,
       registerToggle,
@@ -389,6 +422,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       problem,
       position,
       duration,
+      volume,
+      muted,
       play,
       toggle,
       next,
@@ -397,6 +432,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       handleProgress,
       handleError,
       seek,
+      setVolume,
+      toggleMute,
       togglePanel,
       toggleTheater,
       registerToggle,
