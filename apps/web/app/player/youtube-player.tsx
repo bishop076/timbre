@@ -34,6 +34,7 @@ interface YTPlayer {
   loadVideoById(id: string): void;
   playVideo(): void;
   pauseVideo(): void;
+  setVolume(level: number): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   getDuration(): number;
@@ -101,6 +102,8 @@ function loadApi(): Promise<YTNamespace> {
 export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string }) {
   const {
     videoId,
+    volume,
+    muted,
     handleEnded,
     handleStateChange,
     handleProgress,
@@ -118,6 +121,15 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
   useEffect(() => {
     handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
   }, [handleEnded, handleStateChange, handleProgress, handleError]);
+
+  // Mute is a level of zero rather than YouTube's mute(), so one call covers
+  // both and there is no way for the two to disagree about what is audible.
+  const level = muted ? 0 : volume;
+  const levelRef = useRef(level);
+  useEffect(() => {
+    levelRef.current = level;
+    if (readyRef.current) playerRef.current?.setVolume(level);
+  }, [level]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -169,6 +181,9 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
         events: {
           onReady: () => {
             readyRef.current = true;
+            // A fresh player starts at full. Applying the stored level here is
+            // what stops a source switch from undoing the volume you chose.
+            playerRef.current?.setVolume(levelRef.current);
             if (pendingId.current) {
               playerRef.current?.loadVideoById(pendingId.current);
               pendingId.current = null;

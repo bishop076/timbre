@@ -6,7 +6,7 @@
  * whole point is that there is more than one.
  */
 
-import { SOURCE_IDS, type SearchContext, type SearchProvider, type SourceId, type SourceTrack } from "./types.ts";
+import { SOURCE_IDS, type ArtistInfo, type SearchContext, type SearchProvider, type SourceId, type SourceTrack } from "./types.ts";
 
 const registry = new Map<SourceId, SearchProvider>();
 
@@ -102,6 +102,27 @@ export async function resolveUrl(ctx: SearchContext, url: string): Promise<Sourc
     } catch {
       // Wrong provider for this URL, or that service is briefly unavailable.
       // Either way, try the next one.
+    }
+  }
+  return null;
+}
+
+/**
+ * Who an artist is, from the first provider that can say.
+ *
+ * Same shape and same reasoning as {@link resolveUrl}: a provider with no
+ * answer is not a failure, so it falls through to the next rather than
+ * surfacing an error for something the panel can simply omit.
+ */
+export async function lookupArtist(ctx: SearchContext, name: string): Promise<ArtistInfo | null> {
+  for (const provider of listProviders()) {
+    if (!provider.artist) continue;
+    try {
+      const info = await provider.artist(ctx, name);
+      if (info) return info;
+    } catch {
+      // That source is briefly unavailable; an artist card is not worth failing
+      // the page over.
     }
   }
   return null;

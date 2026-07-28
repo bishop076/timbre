@@ -97,6 +97,34 @@ export function VideoOffIcon({ className }: IconProps) {
   );
 }
 
+export function VolumeIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path
+        d="M11 4.6 6.5 8.5H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2.5l4.5 3.9V4.6Z"
+        fill="currentColor"
+        strokeLinejoin="round"
+      />
+      <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" strokeLinecap="round" />
+      <path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Muted — the same speaker, waves struck out. */
+export function VolumeMuteIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path
+        d="M11 4.6 6.5 8.5H4a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h2.5l4.5 3.9V4.6Z"
+        fill="currentColor"
+        strokeLinejoin="round"
+      />
+      <path d="m15.5 10 5 4M20.5 10l-5 4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Expands the video to fill the content area. */
 export function ExpandIcon({ className }: IconProps) {
   return (

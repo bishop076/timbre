@@ -59,6 +59,23 @@ export interface Song {
   sources: SourceTrack[];
 }
 
+/**
+ * Who made the recording.
+ *
+ * Deliberately thin, and every field is something a keyless source actually
+ * publishes. There is no bio here because no free source gives one, and a
+ * plausible-sounding paragraph about a real musician is not something to
+ * invent.
+ */
+export interface ArtistInfo {
+  name: string;
+  imageUrl: string | null;
+  /** Followers on the source that answered, and which source that was. */
+  followers: number | null;
+  source: SourceId;
+  url: string | null;
+}
+
 export interface SearchContext {
   limiter: RateLimiter;
   signal?: AbortSignal;
@@ -86,6 +103,9 @@ export interface SearchProvider {
    * source publishes a chart without credentials — YouTube Music does not.
    */
   chart?(ctx: SearchContext, limit: number): Promise<SourceTrack[]>;
+
+  /** Who the artist is. Optional; only Deezer publishes this without a key. */
+  artist?(ctx: SearchContext, name: string): Promise<ArtistInfo | null>;
 }
 
 /** Ordering used when choosing which source actually plays a song. */
