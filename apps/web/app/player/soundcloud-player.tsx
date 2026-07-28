@@ -28,6 +28,7 @@ interface SCWidget {
   load(url: string, options: { callback?: () => void; auto_play?: boolean }): void;
   play(): void;
   pause(): void;
+  setVolume(level: number): void;
   seekTo(milliseconds: number): void;
   getDuration(callback: (duration: number) => void): void;
   getPosition(callback: (position: number) => void): void;
@@ -111,6 +112,8 @@ export function SoundCloudPlayer({
   size?: string;
 }) {
   const {
+    volume,
+    muted,
     handleEnded,
     handleStateChange,
     handleProgress,
@@ -129,6 +132,14 @@ export function SoundCloudPlayer({
   useEffect(() => {
     handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
   }, [handleEnded, handleStateChange, handleProgress, handleError]);
+
+  // Same 0–100 scale as the YouTube player, so one stored level drives both.
+  const level = muted ? 0 : volume;
+  const levelRef = useRef(level);
+  useEffect(() => {
+    levelRef.current = level;
+    if (readyRef.current) widgetRef.current?.setVolume(level);
+  }, [level]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -174,6 +185,7 @@ export function SoundCloudPlayer({
         widget.bind(SC.Widget.Events.READY, () => {
           clearTimeout(blocked);
           readyRef.current = true;
+          widget.setVolume(levelRef.current);
           // The track is already in the iframe src, so nothing is loaded here.
           // `play()` covers the case where the browser refused the autoplay in
           // the URL; it is a no-op if playback already started.

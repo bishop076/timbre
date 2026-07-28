@@ -14,6 +14,7 @@ import {
 } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { useArtworkAccent } from "../player/use-artwork-accent";
+import { Volume } from "../player/volume";
 import { WavyHandle, WavyProgress } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 
@@ -234,8 +235,11 @@ export function PlayerBar() {
           {meta}
         </div>
 
-        {/* Centre — transport. Fixed max width so it stays put as titles change. */}
-        <div className="flex w-full max-w-[34rem] shrink-0 flex-col items-center gap-1.5">
+        {/* Centre — transport. Capped so it stays put as titles change, but the
+            cap has to give way on a smaller desktop: a fixed 34rem centre left
+            the two side zones about 240px each, which truncated most titles to
+            a couple of words. */}
+        <div className="flex w-full max-w-[22rem] shrink-0 flex-col items-center gap-1.5 xl:max-w-[34rem]">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -274,6 +278,8 @@ export function PlayerBar() {
         {/* Right — everything else. Balances the left zone so the transport
             sits optically centred rather than merely mathematically. */}
         <div className="flex flex-1 items-center justify-end gap-1.5">
+          <Volume />
+          <span className="mx-1 h-6 w-px bg-[var(--line)]" />
           {theaterButton}
           {panelButton}
         </div>

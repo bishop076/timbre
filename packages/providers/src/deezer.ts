@@ -13,7 +13,7 @@
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
-import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import type { ArtistInfo, SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 
 const API = "https://api.deezer.com";
 
@@ -26,6 +26,16 @@ interface DeezerTrack {
   explicit_lyrics?: boolean;
   artist?: { name?: string };
   album?: { title?: string; cover_medium?: string; cover_big?: string };
+}
+
+interface DeezerArtist {
+  name: string;
+  link?: string;
+  picture_medium?: string;
+  picture_big?: string;
+  picture_xl?: string;
+  /** Deezer calls followers "fans". */
+  nb_fan?: number;
 }
 
 function toSourceTrack(raw: DeezerTrack): SourceTrack {
@@ -87,6 +97,35 @@ export function createDeezerProvider(): SearchProvider {
     async chart(ctx, limit) {
       const data = await get<{ data?: DeezerTrack[] }>(ctx, `/chart/0/tracks?limit=${limit}`);
       return (data.data ?? []).map(toSourceTrack);
+    },
+
+    /**
+     * Deezer is the only free source that publishes artist pictures and a
+     * follower count without a key, which is what makes an "about the artist"
+     * panel possible at all.
+     *
+     * Matched on name, because that is all a track from YouTube Music carries —
+     * so the first result is accepted only when the names agree, rather than
+     * showing a photo of whoever Deezer thought was closest.
+     */
+    async artist(ctx, name): Promise<ArtistInfo | null> {
+      const wanted = name.trim().toLowerCase();
+      if (!wanted) return null;
+
+      const data = await get<{ data?: DeezerArtist[] }>(
+        ctx,
+        `/search/artist?q=${encodeURIComponent(name)}&limit=5`,
+      );
+      const match = (data.data ?? []).find((entry) => entry.name?.toLowerCase() === wanted);
+      if (!match) return null;
+
+      return {
+        name: match.name,
+        imageUrl: match.picture_xl ?? match.picture_big ?? match.picture_medium ?? null,
+        followers: typeof match.nb_fan === "number" ? match.nb_fan : null,
+        source: "deezer",
+        url: match.link ?? null,
+      };
     },
   };
 }
