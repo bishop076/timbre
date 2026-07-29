@@ -196,6 +196,16 @@ input[type="search"]::-webkit-search-results-decoration {
 .shelf {
   scrollbar-width: none;
   scroll-snap-type: x proximity;
+  /*
+   * Scroll anchoring off.
+   *
+   * "Recently played" prepends the newest song, and anchoring exists precisely
+   * to keep already-visible content from moving when something is inserted
+   * before it — so the browser helpfully pushed the *new* tile out past the left
+   * edge to hold the old ones still. Correct in general, exactly wrong for a
+   * list whose whole point is that the newest arrives at the front.
+   */
+  overflow-anchor: none;
 }
 .shelf::-webkit-scrollbar {
   display: none;
