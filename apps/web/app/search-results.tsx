@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { CloseIcon, ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
+import { ChevronIcon, CloseIcon, ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
 import { useHistory } from "./player/history-store";
 import { usePlayer } from "./player/player-context";
 import { SongCard } from "./song-card";
@@ -217,30 +217,120 @@ export function SearchResults() {
 function Shelf({
   title,
   caption,
+  resetKey,
   children,
 }: {
   title: string;
   caption?: string;
+  /**
+   * Changes when the row's *first* item changes, sending it back to the start.
+   *
+   * Disabling scroll anchoring stops the browser fighting a prepend, but a row
+   * the user had already scrolled would still be left mid-way with the newest
+   * item behind them. Only shelves whose head genuinely changes pass this.
+   */
+  resetKey?: string;
   children: React.ReactNode;
 }) {
+  const row = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    row.current?.scrollTo({ left: 0, behavior: "smooth" });
+  }, [resetKey]);
+
+  /*
+   * Which arrows are live.
+   *
+   * Deliberately driven by the scroll event and a ResizeObserver rather than
+   * measured directly in this effect: a synchronous read-and-set here would be
+   * a second render pass to correct the first, and the observer fires on
+   * observe anyway — so the initial state arrives without one.
+   */
+  useEffect(() => {
+    const el = row.current;
+    if (!el) return;
+
+    const measure = () => {
+      // A pixel of slack: fractional scroll positions mean `scrollLeft` rarely
+      // lands exactly on 0 or on the maximum.
+      const max = el.scrollWidth - el.clientWidth;
+      setCanLeft(el.scrollLeft > 1);
+      setCanRight(el.scrollLeft < max - 1);
+    };
+
+    el.addEventListener("scroll", measure, { passive: true });
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    for (const child of el.children) observer.observe(child);
+
+    return () => {
+      el.removeEventListener("scroll", measure);
+      observer.disconnect();
+    };
+  }, [children]);
+
+  /** Scrolls by most of a screenful, leaving one tile as a visual anchor. */
+  const nudge = (direction: 1 | -1) => {
+    const el = row.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+  };
+
   return (
     <section className="mb-9">
-      <div className="mb-3.5 flex items-baseline justify-between gap-4 px-1">
+      <div className="mb-3.5 flex items-center justify-between gap-4 px-1">
         <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
-        {caption && (
-          <p className="slab-sm shrink-0 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--fg-dim)]">{caption}</p>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {caption && (
+            <p className="slab-sm hidden rounded-[var(--r-full)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--fg-dim)] @md:block">
+              {caption}
+            </p>
+          )}
+          {/*
+            Arrows appear only when the row actually overflows, and each one
+            disables at its end. A control that is always present but usually
+            does nothing teaches people to ignore it.
+          */}
+          {(canLeft || canRight) && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => nudge(-1)}
+                disabled={!canLeft}
+                aria-label={`Scroll ${title} left`}
+                className="slab-sm press flex size-7 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] transition-opacity disabled:opacity-30"
+              >
+                <ChevronIcon className="size-4 rotate-90" />
+              </button>
+              <button
+                type="button"
+                onClick={() => nudge(1)}
+                disabled={!canRight}
+                aria-label={`Scroll ${title} right`}
+                className="slab-sm press flex size-7 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] transition-opacity disabled:opacity-30"
+              >
+                <ChevronIcon className="size-4 -rotate-90" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       {/* Negative margin lets the row bleed to the panel edge, so the last tile
           is visibly cut rather than stopping short — the cue that says "this
-          scrolls" without needing an arrow. */}
+          scrolls". The arrows above make it operable without a trackpad. */}
       {/*
         `scroll-pl-*` must match `px-*`. Without it the browser snaps the first
         tile to the raw scroll origin, which sits inside the padding — the row
         silently starts scrolled by exactly the padding width and the first
         cover is clipped against the edge on load.
       */}
-      <div className="shelf -mx-5 flex gap-4 overflow-x-auto px-5 pb-1 scroll-pl-5 sm:-mx-7 sm:px-7 sm:scroll-pl-7">
+      <div
+        ref={row}
+        className="shelf -mx-5 flex gap-4 overflow-x-auto px-5 pb-1 scroll-pl-5 sm:-mx-7 sm:px-7 sm:scroll-pl-7"
+      >
         {children}
       </div>
     </section>
@@ -310,7 +400,7 @@ function ForYou() {
 
   return (
     <>
-      <Shelf title="Recently played" caption="Only on this device">
+      <Shelf title="Recently played" caption="Only on this device" resetKey={recent[0]?.id}>
         {recent.map((song) => (
           <div key={song.id} className={TILE}>
             <SongCard song={song} queue={recent} />
