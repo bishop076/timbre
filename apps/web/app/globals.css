@@ -42,7 +42,16 @@
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
 
-  --bar-h: 5.5rem;
+  /*
+   * How tall the player bar is, so the floating video can clear it.
+   *
+   * Two values because there are two bars: the phone's stacks a scrub row under
+   * the mini player, while the desktop's is a single row with the scrub on its
+   * top border. Measured rather than guessed — 96px and 62px — and rounded up,
+   * since overshooting only floats the video a little higher while
+   * undershooting puts it behind the controls.
+   */
+  --bar-h: 6rem;
   --nav-h: 4rem;
 
   /**
@@ -60,6 +69,13 @@
   --drop: 3px 3px 0 var(--ink);
   --drop-sm: 2px 2px 0 var(--ink);
   --drop-lg: 5px 5px 0 var(--ink);
+}
+
+/* The desktop bar is one row, so it needs far less clearance. */
+@media (min-width: 64rem) {
+  :root {
+    --bar-h: 4.25rem;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
