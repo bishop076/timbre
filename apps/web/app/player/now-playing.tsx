@@ -343,26 +343,32 @@ export function NowPlayingPanel() {
                 )}
 
                 <SimilarSongs />
-              </div>
 
-              {/* The queue, reduced to the one thing worth knowing: what plays
-                  when this ends. Pinned below the scroll area so it stays put. */}
-              {upcoming[0] && (
-                <div className="border-t-[length:var(--edge)] border-[var(--ink)] px-3 py-2.5">
-                  <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-                    Next in queue
-                    {upcoming.length > 1 && (
-                      <span className="ml-1.5 font-semibold text-[var(--fg-faint)]">
-                        +{upcoming.length - 1} more
-                      </span>
-                    )}
-                  </p>
-                  <QueueRow
-                    song={upcoming[0]}
-                    onPlay={() => play(upcoming[0]!, upcoming)}
-                  />
-                </div>
-              )}
+                {/*
+                  The queue, reduced to the one thing worth knowing: what plays
+                  when this ends.
+
+                  **Inside the scroll area, not pinned below it.** Pinned, it ate
+                  a fixed slice of a column that is already narrow, and whatever
+                  sat above was clipped mid-row — the credits list was being cut
+                  through the middle of a line with nothing to indicate more
+                  existed. Scrolling with the rest costs its permanent visibility
+                  and buys a panel where nothing is ever severed.
+                */}
+                {upcoming[0] && (
+                  <div className="border-t-[length:var(--edge)] border-[var(--ink)] pt-2.5">
+                    <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
+                      Next in queue
+                      {upcoming.length > 1 && (
+                        <span className="ml-1.5 font-semibold text-[var(--fg-faint)]">
+                          +{upcoming.length - 1} more
+                        </span>
+                      )}
+                    </p>
+                    <QueueRow song={upcoming[0]} onPlay={() => play(upcoming[0]!, upcoming)} />
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
