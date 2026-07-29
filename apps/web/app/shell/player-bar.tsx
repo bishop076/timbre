@@ -8,6 +8,9 @@ import {
   PauseIcon,
   PlayIcon,
   PrevIcon,
+  RepeatIcon,
+  RepeatOneIcon,
+  ShuffleIcon,
   SpinnerIcon,
   VideoIcon,
   VideoOffIcon,
@@ -51,6 +54,7 @@ export function PlayerBar() {
     theater,
     queue,
     index,
+    radio,
     position,
     duration,
     toggle,
@@ -59,13 +63,19 @@ export function PlayerBar() {
     seek,
     togglePanel,
     toggleTheater,
+    shuffle,
+    repeat,
+    toggleShuffle,
+    cycleRepeat,
   } = usePlayer();
 
   useArtworkAccent(current?.artworkUrl);
 
   const busy = state === "resolving" || state === "loading";
   const playing = state === "playing";
-  const hasNext = index + 1 < queue.length;
+  // Next is live whenever anything *can* follow: the rest of the queue, a
+  // repeat that will wrap, or a blend waiting to be stepped into.
+  const hasNext = index + 1 < queue.length || repeat !== "off" || radio.length > 0;
   const progress = duration > 0 ? (position / duration) * 100 : 0;
   const source = sourceStyle(activeSource ?? "ytmusic");
 
@@ -107,6 +117,40 @@ export function PlayerBar() {
       style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
     >
       {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
+    </button>
+  );
+
+  /**
+   * Shuffle and repeat flank the transport, as they do in every player.
+   *
+   * They are drawn as plain tinted icons rather than as slabs: the three
+   * central buttons are the transport, and giving a mode toggle the same
+   * physical weight as Play would misstate what it does. Colour carries "on",
+   * which is the only state that needs announcing.
+   */
+  const modeButton = (
+    label: string,
+    on: boolean,
+    onClick: () => void,
+    icon: React.ReactNode,
+  ) => (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={on}
+      className={`press relative flex size-9 items-center justify-center rounded-[var(--r-md)] transition-colors ${
+        on ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)] hover:text-[var(--fg)]"
+      }`}
+    >
+      {icon}
+      {/* A dot under an active mode. The accent is recoloured from the artwork,
+          so on some covers colour alone is too quiet to read at a glance. */}
+      <span
+        className={`absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current transition-opacity ${
+          on ? "opacity-100" : "opacity-0"
+        }`}
+      />
     </button>
   );
 
@@ -240,7 +284,9 @@ export function PlayerBar() {
             the two side zones about 240px each, which truncated most titles to
             a couple of words. */}
         <div className="flex w-full max-w-[22rem] shrink-0 flex-col items-center gap-1.5 xl:max-w-[34rem]">
-          <div className="flex items-center gap-2">
+          <div className="relative flex items-center gap-2">
+            {modeButton("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
+
             <button
               type="button"
               onClick={previous}
@@ -262,6 +308,17 @@ export function PlayerBar() {
             >
               <NextIcon className="size-[18px]" />
             </button>
+
+            {modeButton(
+              repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat queue" : "Repeat off",
+              repeat !== "off",
+              cycleRepeat,
+              repeat === "one" ? (
+                <RepeatOneIcon className="size-[18px]" />
+              ) : (
+                <RepeatIcon className="size-[18px]" />
+              ),
+            )}
           </div>
 
           <div className="flex w-full items-center gap-2.5">
