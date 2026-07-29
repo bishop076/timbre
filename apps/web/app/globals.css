@@ -204,21 +204,91 @@ input[type="search"]::-webkit-search-results-decoration {
   scroll-snap-align: start;
 }
 
-/*
- * Scrollers keep their scrolling and lose their scrollbars.
+/**
+ * The scrollbar.
  *
- * A permanent gutter down the side of every panel is the loudest thing in an
- * interface built out of quiet ones, and it also reserves width — which is
- * what made the panel edges never quite line up with the shelves' bleed. This
- * is the same treatment `.shelf` has always had, applied consistently.
+ * Visible on purpose — knowing there is more below is worth a few pixels — but
+ * drawn rather than defaulted. The browser's own bar is a chunky, grey,
+ * square-cornered thing that belongs to no theme, and the previous attempt only
+ * recoloured it to `--surface-3`, which on a near-black ground is nearly
+ * invisible until it is nearly opaque. Neither read as part of this interface.
  *
- * Wheel, trackpad, touch, keyboard and drag-select all still scroll; only the
- * indicator is gone.
+ * What this is instead: a slim pill floating in a track with no background at
+ * all, mixed from the foreground colour so it adapts to light and dark without
+ * a second set of values, and picking up the artwork's accent under the
+ * pointer. The track is transparent so it reads as a mark on the panel rather
+ * than as a channel cut into it.
+ *
+ * `--sb` is the full track width; the thumb is that minus twice the inset,
+ * which is how a webkit thumb is made thin without making the *target* thin —
+ * the grabbable area stays the full width.
  */
 .scroller {
+  --sb: 14px;
+  /* 14px track less 4px of inset each side leaves an 8px pill: substantial
+     enough to look drawn rather than left over, while the *target* stays the
+     full 14px so it is still easy to grab. */
+  --sb-inset: 4px;
+  --sb-thumb: color-mix(in oklab, var(--fg) 30%, transparent);
+  --sb-thumb-hover: var(--accent);
+}
+
+/*
+ * The two engines are mutually exclusive, and that is not a nicety.
+ *
+ * Chrome supports the standard `scrollbar-width`, and **setting it makes Chrome
+ * ignore every `::-webkit-scrollbar` rule on the element.** Declaring both — the
+ * obvious "cross-browser" thing — silently threw away all the styling below and
+ * left the default bar. So the standard properties are given only to engines
+ * with no webkit pseudo-elements, which in practice means Firefox.
+ */
+@supports not selector(::-webkit-scrollbar) {
+  .scroller {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sb-thumb) transparent;
+  }
+  .scroller:hover {
+    scrollbar-color: var(--sb-thumb-hover) transparent;
+  }
+}
+
+.scroller::-webkit-scrollbar {
+  width: var(--sb);
+  height: var(--sb);
+}
+
+.scroller::-webkit-scrollbar-track,
+.scroller::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scroller::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb);
+  /* A transparent border plus `content-box` clipping is the only way to inset a
+     webkit thumb; padding does nothing here. */
+  border: var(--sb-inset) solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-full);
+  transition: background-color 0.15s var(--ease);
+}
+
+.scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--sb-thumb-hover);
+  background-clip: content-box;
+}
+
+/**
+ * A scroller with no bar at all.
+ *
+ * For panels narrow enough that a permanent gutter is a real cost — the
+ * now-playing column especially, where a bar beside the artist card and credits
+ * competes with content that is already tight. It still scrolls by wheel,
+ * trackpad, touch, keyboard and drag-select; only the indicator is absent.
+ */
+.scroller-quiet {
   scrollbar-width: none;
 }
-.scroller::-webkit-scrollbar {
+.scroller-quiet::-webkit-scrollbar {
   display: none;
 }
 
