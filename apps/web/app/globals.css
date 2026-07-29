@@ -135,6 +135,25 @@ body {
   overscroll-behavior: none;
 }
 
+/*
+ * The browser's own clear button, removed.
+ *
+ * `input[type="search"]` gets a `-webkit-search-cancel-button` drawn by the
+ * browser in its own colours — a blue ✕ that ignores the theme completely and
+ * cannot be recoloured, only removed. Timbre draws its own in `search-results`
+ * instead, which is themed, keyboard-reachable and labelled.
+ *
+ * The type stays `search` rather than `text`: it is what tells assistive
+ * technology and mobile keyboards what this field is for.
+ */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* The accent moves with the artwork, so anything tinted by it must ease rather
    than snap when the track changes. */
 .tint {
@@ -149,6 +168,17 @@ body {
  * current accent, which is what makes the album's colour feel like it is
  * lighting the room rather than just colouring a button.
  */
+.ambient {
+  /*
+   * The wash below is inset by -20% on both sides, and this element scrolls
+   * vertically — which forces `overflow-x` to compute to `auto` rather than
+   * `visible`. So a purely decorative glow was producing a real horizontal
+   * scrollbar: measured at 265px of overflow on a 1324px panel, which is 20% of
+   * it to the pixel. Clipping the axis is what lets the wash spread for free.
+   */
+  overflow-x: hidden;
+}
+
 .ambient::before {
   content: "";
   position: absolute;
@@ -174,22 +204,22 @@ body {
   scroll-snap-align: start;
 }
 
-/* The vertical scroller keeps a scrollbar, but a quiet one. */
+/*
+ * Scrollers keep their scrolling and lose their scrollbars.
+ *
+ * A permanent gutter down the side of every panel is the loudest thing in an
+ * interface built out of quiet ones, and it also reserves width — which is
+ * what made the panel edges never quite line up with the shelves' bleed. This
+ * is the same treatment `.shelf` has always had, applied consistently.
+ *
+ * Wheel, trackpad, touch, keyboard and drag-select all still scroll; only the
+ * indicator is gone.
+ */
 .scroller {
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
+  scrollbar-width: none;
 }
 .scroller::-webkit-scrollbar {
-  width: 10px;
-}
-.scroller::-webkit-scrollbar-thumb {
-  background: var(--surface-3);
-  border-radius: var(--r-full);
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-.scroller::-webkit-scrollbar-track {
-  background: transparent;
+  display: none;
 }
 
 @keyframes rise {
