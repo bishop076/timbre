@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { LibraryIcon, NoteIcon, SearchIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
-import { sourceStyle } from "../sources";
+import { useSessionUser } from "./use-session-user";
 
 /**
  * Primary navigation and library.
@@ -29,26 +29,6 @@ const NAV = [
   { id: "library", label: "Library", icon: LibraryIcon, href: "/library" },
 ];
 
-/**
- * Sources that can actually play audio. **Only these are listed.**
- *
- * This used to list all three searchable sources under a line about playback,
- * which reads as a promise that all three play. They do not: Deezer and Apple
- * both need a paid subscription for full audio, and Apple additionally needs a
- * paid developer membership to sign a token, so neither can ever be a play
- * source under Timbre's no-paying rule.
- *
- * They still contribute identity, artwork and charts — Deezer's ISRCs are what
- * make cross-source matching reliable at all — but a legend in the shell is
- * read as "here is what you can hear", so contributing behind the scenes does
- * not earn a dot. Where a link-out genuinely exists it is offered in place, on
- * the search row itself, labelled "Open on …" rather than implied here.
- *
- * SoundCloud belongs in this list the day its search is unblocked: its player
- * is free and already built. See docs/BLOCKED.md.
- */
-const PLAYS = ["ytmusic"] as const;
-
 // "Artists" is absent rather than disabled. Timbre has artist *pages*, reached
 // from any song, but nothing follows an artist — so a chip here would promise a
 // collection that does not exist.
@@ -56,6 +36,7 @@ const FILTERS = ["Queue", "Playlists"] as const;
 
 export function Sidebar() {
   const { queue, current, play, exitTheater } = usePlayer();
+  const user = useSessionUser();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
   const { playlists, signedIn } = usePlaylists();
   const pathname = usePathname();
@@ -70,14 +51,41 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col gap-2 p-2 lg:flex">
-      <div className="flex items-center gap-2.5 px-3 py-4">
+      {/*
+        Whose app this is.
+
+        Signed in, the block wears the account's own picture and carries their
+        name. A guest gets the mark alone and **no name at all** — putting the
+        product's name where a person's belongs is the kind of label you stop
+        reading by the second visit, and Timbre is meant to be usable without
+        an account, so "no name" is the ordinary case rather than an error.
+      */}
+      <div className="relative mb-1 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-3">
+        {user?.image && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element -- avatars come from arbitrary identity providers */}
+            <img src={user.image} alt="" className="absolute inset-0 size-full object-cover" />
+            {/* Enough scrim to keep a name legible over any photograph. */}
+            <span className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/65 to-black/25" />
+          </>
+        )}
+
         <span
-          className="slab-sm tint flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)]"
+          className="slab-sm tint relative flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)]"
           style={{ background: "var(--accent)" }}
         >
           <NoteIcon className="size-4.5" />
         </span>
-        <span className="text-[17px] font-extrabold tracking-tight">Timbre</span>
+
+        {user?.name && (
+          <span
+            className={`relative truncate text-[17px] font-extrabold tracking-tight ${
+              user.image ? "text-white" : ""
+            }`}
+          >
+            {user.name}
+          </span>
+        )}
       </div>
 
       <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
@@ -188,21 +196,6 @@ export function Sidebar() {
               })}
             </ul>
           )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t-[length:var(--edge)] border-[var(--ink)] px-4 py-3">
-          {PLAYS.map((id) => (
-            <span key={id} className="flex items-center gap-1.5 text-[11px] text-[var(--fg-dim)]">
-              <span
-                className="size-2 shrink-0 rounded-full border border-[var(--ink)]"
-                style={{ backgroundColor: sourceStyle(id).color }}
-              />
-              {sourceStyle(id).short}
-            </span>
-          ))}
-          <p className="w-full text-[10px] leading-relaxed text-[var(--fg-faint)]">
-            Timbre hosts nothing. Audio plays from YouTube Music&rsquo;s own player.
-          </p>
         </div>
       </div>
     </aside>
