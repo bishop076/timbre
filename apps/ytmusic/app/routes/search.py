@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 from fastapi import APIRouter, HTTPException, status
 
 from ..client import get_client
+from ..errors import upstream_error
 from ..models import (
     ResolveRequest,
     ResolveResponse,
@@ -45,17 +46,6 @@ def _embed_rank(track: Track) -> int:
     return _EMBED_RANK.get(track.video_type or "", _EMBED_RANK_UNKNOWN)
 
 
-def _upstream_error(action: str, error: Exception) -> HTTPException:
-    """ytmusicapi rides YouTube's private API, so failures are upstream
-    problems rather than bad requests. 502 tells the caller to retry or fall
-    back to another source rather than to fix its input."""
-    logger.warning("ytmusicapi %s failed: %s", action, error, exc_info=error)
-    return HTTPException(
-        status_code=status.HTTP_502_BAD_GATEWAY,
-        detail=f"YouTube Music {action} failed.",
-    )
-
-
 @router.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest) -> SearchResponse:
     try:
@@ -65,7 +55,7 @@ def search(request: SearchRequest) -> SearchResponse:
             limit=request.limit,
         )
     except Exception as error:  # noqa: BLE001 — any upstream failure is a 502
-        raise _upstream_error("search", error) from error
+        raise upstream_error("search", error) from error
 
     tracks = to_tracks(results)
 
@@ -152,7 +142,7 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
     try:
         song = get_client().get_song(video_id)
     except Exception as error:  # noqa: BLE001
-        raise _upstream_error("lookup", error) from error
+        raise upstream_error("lookup", error) from error
 
     details = song.get("videoDetails") if isinstance(song, dict) else None
     if not isinstance(details, dict):

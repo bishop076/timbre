@@ -50,3 +50,28 @@ class ResolveRequest(BaseModel):
 
 class ResolveResponse(BaseModel):
     track: Track | None
+
+
+class RadioRequest(BaseModel):
+    """What YouTube Music itself plays after a track."""
+
+    video_id: str = Field(pattern=r"^[A-Za-z0-9_-]{11}$")
+    # `le=50` is load-bearing rather than arbitrary. ytmusicapi treats `limit`
+    # as a *minimum*, and one page of a watch queue already returns about 50 —
+    # so any value up to 50 costs exactly one upstream request, while 51 starts
+    # fetching continuations.
+    limit: int = Field(default=25, ge=1, le=50)
+
+
+class RadioResponse(BaseModel):
+    """Two independently-derived lists, kept separate on purpose.
+
+    `radio` is the sequential watch queue — what plays next if you do nothing.
+    `related` is the watch panel's "You might also like", which YouTube derives
+    a different way. The ranker in @timbre/providers scores a track higher when
+    several independent lists reach it, so collapsing these two into one here
+    would destroy the signal it exists to measure.
+    """
+
+    radio: list[Track]
+    related: list[Track]
