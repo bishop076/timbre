@@ -94,7 +94,7 @@ export function PlayerBar() {
       disabled={!current}
       aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
       aria-pressed={panelOpen}
-      className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
+      className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
       style={{ background: panelOpen ? "var(--accent)" : "var(--surface-2)" }}
     >
       {panelOpen ? <VideoIcon className="size-[18px]" /> : <VideoOffIcon className="size-[18px]" />}
@@ -113,7 +113,7 @@ export function PlayerBar() {
       disabled={!current}
       aria-label={theater ? "Shrink video" : "Expand video"}
       aria-pressed={theater}
-      className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
+      className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
       style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
     >
       {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
@@ -139,7 +139,7 @@ export function PlayerBar() {
       onClick={onClick}
       aria-label={label}
       aria-pressed={on}
-      className={`press relative flex size-9 items-center justify-center rounded-[var(--r-md)] transition-colors ${
+      className={`press relative flex size-8 items-center justify-center rounded-[var(--r-md)] transition-colors ${
         on ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)] hover:text-[var(--fg)]"
       }`}
     >
@@ -154,7 +154,7 @@ export function PlayerBar() {
     </button>
   );
 
-  const scrub = (
+  const scrubBar = (height: string, waveHeight: string) => (
     <div
       role="slider"
       tabIndex={0}
@@ -174,9 +174,9 @@ export function PlayerBar() {
       }}
       // The hit area is deliberately taller than the visible line: a 4px
       // target is unusable with a mouse and impossible with a thumb.
-      className="tint group relative flex h-6 w-full cursor-pointer items-center text-[var(--accent)]"
+      className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
     >
-      <WavyProgress percent={progress} playing={playing} />
+      <WavyProgress percent={progress} playing={playing} className={waveHeight} />
       <WavyHandle percent={progress} />
     </div>
   );
@@ -268,22 +268,33 @@ export function PlayerBar() {
           {panelButton}
           {playButton("size-10", "size-5")}
         </div>
-        {scrub}
+        {scrubBar("h-6", "h-6")}
       </footer>
 
       {/* ── Desktop: three zones ───────────────────────────────────────────── */}
-      <footer className="hidden shrink-0 items-center gap-6 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-4 py-3 lg:flex">
+      {/*
+        One row, with the scrub on the top edge.
+
+        It used to be two stacked rows — transport above, scrub below — which is
+        Spotify's shape and cost 100px of a 900px window for four controls and a
+        line. Moving the scrub onto the border turns the divider itself into the
+        progress indicator, which is what YouTube Music does, and halves the
+        height without dropping a single control.
+      */}
+      <footer className="relative hidden shrink-0 items-center gap-6 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-4 py-2 lg:flex">
+        {/* Straddles the top border, so the seek line *is* the divider. */}
+        <div className="absolute inset-x-0 -top-2 z-10 px-2">
+          {scrubBar("h-4", "h-4")}
+        </div>
+
         {/* Left — what is playing */}
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {artwork("size-14")}
+          {artwork("size-11")}
           {meta}
         </div>
 
-        {/* Centre — transport. Capped so it stays put as titles change, but the
-            cap has to give way on a smaller desktop: a fixed 34rem centre left
-            the two side zones about 240px each, which truncated most titles to
-            a couple of words. */}
-        <div className="flex w-full max-w-[22rem] shrink-0 flex-col items-center gap-1.5 xl:max-w-[34rem]">
+        {/* Centre — transport, now the only thing in this zone. */}
+        <div className="flex shrink-0 items-center justify-center">
           <div className="relative flex items-center gap-2">
             {modeButton("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
 
@@ -292,19 +303,19 @@ export function PlayerBar() {
               onClick={previous}
               disabled={!current || index === 0}
               aria-label="Previous track"
-              className="slab-sm press flex h-10 w-14 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
+              className="slab-sm press flex h-9 w-12 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
             >
               <PrevIcon className="size-[18px]" />
             </button>
 
-            {playButton("size-11", "size-5")}
+            {playButton("size-10", "size-5")}
 
             <button
               type="button"
               onClick={next}
               disabled={!hasNext}
               aria-label="Next track"
-              className="slab-sm press flex h-10 w-14 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
+              className="slab-sm press flex h-9 w-12 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
             >
               <NextIcon className="size-[18px]" />
             </button>
@@ -320,21 +331,17 @@ export function PlayerBar() {
               ),
             )}
           </div>
-
-          <div className="flex w-full items-center gap-2.5">
-            <span className="w-9 shrink-0 text-right font-mono text-[11px] tabular-nums text-[var(--fg-faint)]">
-              {clock(position)}
-            </span>
-            {scrub}
-            <span className="w-9 shrink-0 font-mono text-[11px] tabular-nums text-[var(--fg-faint)]">
-              {duration > 0 ? clock(duration) : "—:—"}
-            </span>
-          </div>
         </div>
 
         {/* Right — everything else. Balances the left zone so the transport
             sits optically centred rather than merely mathematically. */}
         <div className="flex flex-1 items-center justify-end gap-1.5">
+          {/* The times move here now that the scrub is on the border. Elapsed
+              and total in one label rather than flanking a bar that no longer
+              sits between them. */}
+          <span className="mr-1 hidden font-mono text-[11px] tabular-nums text-[var(--fg-faint)] xl:inline">
+            {clock(position)} / {duration > 0 ? clock(duration) : "—:—"}
+          </span>
           <Volume />
           <span className="mx-1 h-6 w-px bg-[var(--line)]" />
           {theaterButton}
