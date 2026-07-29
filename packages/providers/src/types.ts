@@ -36,6 +36,16 @@ export interface SourceTrack extends CanonicalTrack {
   artworkUrl: string | null;
   playback: Playback;
   isExplicit: boolean;
+  /**
+   * YouTube Music's upload kind — `MUSIC_VIDEO_TYPE_ATV` (auto-generated Topic
+   * art track), `_OMV` (official video), `_UGC` (user upload).
+   *
+   * Only YouTube Music reports one, and it is the only source Timbre can
+   * actually play, so it is the only place this is meaningful. Art tracks were
+   * measured barred from embedding ~7% of the time and official videos never
+   * were, which is why the recommendation ranker reads it.
+   */
+  videoType?: string | null;
 }
 
 /**
@@ -76,6 +86,34 @@ export interface ArtistInfo {
   url: string | null;
 }
 
+/**
+ * Where to start a radio.
+ *
+ * Two fields because sources start from different things: YouTube Music
+ * continues from a specific upload, while Deezer can only start from an
+ * artist. A provider takes whichever it can use and ignores the rest.
+ */
+export interface RadioSeed {
+  /** This source's own id for the seed track, when it has a copy of it. */
+  sourceId?: string;
+  /** The seed's primary artist, for sources that cannot start from a track. */
+  artist?: string;
+}
+
+/**
+ * One source's suggestions, in the order that source ranked them.
+ *
+ * Lists are kept separate rather than concatenated because **agreement between
+ * independent lists is the signal** — see `recommend.ts`. A source may return
+ * several, as YouTube Music does: its sequential watch queue and its "you might
+ * also like" panel are derived differently and genuinely disagree.
+ */
+export interface RankedList {
+  /** Stable identifier for the list, e.g. "ytmusic:radio". Diagnostics only. */
+  list: string;
+  tracks: SourceTrack[];
+}
+
 export interface SearchContext {
   limiter: RateLimiter;
   signal?: AbortSignal;
@@ -106,6 +144,17 @@ export interface SearchProvider {
 
   /** Who the artist is. Optional; only Deezer publishes this without a key. */
   artist?(ctx: SearchContext, name: string): Promise<ArtistInfo | null>;
+
+  /**
+   * What this source would play next, as one or more ranked lists.
+   *
+   * Optional because it needs a service that publishes a continuation without
+   * credentials. YouTube Music and Deezer both do; **Apple has no related or
+   * similar endpoint at all**, and SoundCloud's catalogue cannot be reached.
+   * Those two abstain rather than guessing, which the ranker treats as no
+   * evidence rather than as a negative.
+   */
+  radio?(ctx: SearchContext, seed: RadioSeed, limit: number): Promise<RankedList[]>;
 }
 
 /** Ordering used when choosing which source actually plays a song. */
