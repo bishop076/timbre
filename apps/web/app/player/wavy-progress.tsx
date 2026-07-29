@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 /**
  * A progress slider whose played portion is a travelling wave.
  *
@@ -112,5 +114,105 @@ export function WavyHandle({ percent }: { percent: number }) {
       className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--ink)] bg-current"
       style={{ left: `${clamped}%` }}
     />
+  );
+}
+
+/**
+ * A position that advances every frame instead of twice a second.
+ *
+ * Neither embedded player pushes progress events, so the only way to know where
+ * a track is, is to ask — and `youtube-player.tsx` asks on a 500ms timer. Wired
+ * straight to the bar that produced two visible steps a second: the wave and
+ * handle lurched rather than travelled.
+ *
+ * So the reported position becomes an *anchor* — a value and the moment it
+ * arrived — and rendering extrapolates from it with a clock. Playback runs at
+ * exactly one second per second, so the estimate between polls is not a guess;
+ * each poll simply re-anchors it, and any correction is the few milliseconds
+ * the timer drifted.
+ *
+ * Paused, it reports the anchor unchanged, so nothing creeps forward while the
+ * track is stopped. A seek moves the anchor, which lands immediately — a jump
+ * there is the correct reading, not a glitch.
+ */
+function useSmoothPosition(position: number, duration: number, playing: boolean): number {
+  const [estimated, setEstimated] = useState(position);
+  const anchor = useRef({ position, at: 0 });
+
+  // Re-anchor whenever the player reports a new position, including a seek.
+  // Derived during render rather than in an effect so the first frame after a
+  // report already extrapolates from it instead of from the previous anchor.
+  if (anchor.current.position !== position) {
+    anchor.current = { position, at: performance.now() };
+  }
+
+  useEffect(() => {
+    if (!playing) return;
+
+    let frame = requestAnimationFrame(function tick() {
+      const elapsed = (performance.now() - anchor.current.at) / 1000;
+      const next = anchor.current.position + elapsed;
+      setEstimated(duration > 0 ? Math.min(duration, next) : next);
+      frame = requestAnimationFrame(tick);
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [playing, duration]);
+
+  // Paused, the reported value is the truth and nothing should creep forward.
+  return playing ? estimated : position;
+}
+
+/**
+ * The seek control.
+ *
+ * A component rather than a fragment of the player bar specifically so the
+ * per-frame smoothing above re-renders *this* and nothing else. Left inline,
+ * every control in the bar would re-render sixty times a second to animate one
+ * line.
+ */
+export function Scrub({
+  position,
+  duration,
+  playing,
+  onSeek,
+  height = "h-6",
+}: {
+  position: number;
+  duration: number;
+  playing: boolean;
+  onSeek: (seconds: number) => void;
+  height?: string;
+}) {
+  const smooth = useSmoothPosition(position, duration, playing);
+  const percent = duration > 0 ? (smooth / duration) * 100 : 0;
+
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label="Seek"
+      aria-valuemin={0}
+      aria-valuemax={Math.round(duration)}
+      // Announced from the reported position, not the interpolated one: a
+      // screen reader should hear where the track is, not a per-frame estimate.
+      aria-valuenow={Math.round(position)}
+      onClick={(event) => {
+        if (duration <= 0) return;
+        const box = event.currentTarget.getBoundingClientRect();
+        onSeek(((event.clientX - box.left) / box.width) * duration);
+      }}
+      onKeyDown={(event) => {
+        if (duration <= 0) return;
+        if (event.key === "ArrowRight") onSeek(Math.min(duration, position + 5));
+        if (event.key === "ArrowLeft") onSeek(Math.max(0, position - 5));
+      }}
+      // The hit area is deliberately taller than the visible line: a 4px target
+      // is unusable with a mouse and impossible with a thumb.
+      className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
+    >
+      <WavyProgress percent={percent} playing={playing} className={height} />
+      <WavyHandle percent={percent} />
+    </div>
   );
 }

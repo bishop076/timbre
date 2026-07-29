@@ -18,7 +18,7 @@ import {
 import { usePlayer } from "../player/player-context";
 import { useArtworkAccent } from "../player/use-artwork-accent";
 import { Volume } from "../player/volume";
-import { WavyHandle, WavyProgress } from "../player/wavy-progress";
+import { Scrub } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 
 function clock(seconds: number): string {
@@ -76,7 +76,6 @@ export function PlayerBar() {
   // Next is live whenever anything *can* follow: the rest of the queue, a
   // repeat that will wrap, or a blend waiting to be stepped into.
   const hasNext = index + 1 < queue.length || repeat !== "off" || radio.length > 0;
-  const progress = duration > 0 ? (position / duration) * 100 : 0;
   const source = sourceStyle(activeSource ?? "ytmusic");
 
   /**
@@ -152,33 +151,6 @@ export function PlayerBar() {
         }`}
       />
     </button>
-  );
-
-  const scrubBar = (height: string, waveHeight: string) => (
-    <div
-      role="slider"
-      tabIndex={0}
-      aria-label="Seek"
-      aria-valuemin={0}
-      aria-valuemax={Math.round(duration)}
-      aria-valuenow={Math.round(position)}
-      onClick={(event) => {
-        if (duration <= 0) return;
-        const box = event.currentTarget.getBoundingClientRect();
-        seek(((event.clientX - box.left) / box.width) * duration);
-      }}
-      onKeyDown={(event) => {
-        if (duration <= 0) return;
-        if (event.key === "ArrowRight") seek(Math.min(duration, position + 5));
-        if (event.key === "ArrowLeft") seek(Math.max(0, position - 5));
-      }}
-      // The hit area is deliberately taller than the visible line: a 4px
-      // target is unusable with a mouse and impossible with a thumb.
-      className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
-    >
-      <WavyProgress percent={progress} playing={playing} className={waveHeight} />
-      <WavyHandle percent={progress} />
-    </div>
   );
 
   const artwork = (size: string) => (
@@ -268,7 +240,7 @@ export function PlayerBar() {
           {panelButton}
           {playButton("size-10", "size-5")}
         </div>
-        {scrubBar("h-6", "h-6")}
+        <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
       </footer>
 
       {/* ── Desktop: three zones ───────────────────────────────────────────── */}
@@ -284,7 +256,7 @@ export function PlayerBar() {
       <footer className="relative hidden shrink-0 items-center gap-6 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-4 py-2 lg:flex">
         {/* Straddles the top border, so the seek line *is* the divider. */}
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
-          {scrubBar("h-4", "h-4")}
+          <Scrub position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
         </div>
 
         {/* Left — what is playing */}
