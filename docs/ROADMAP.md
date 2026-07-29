@@ -22,10 +22,13 @@ Every task from here to launch. **Nothing on this list requires paying for anyth
 search across three sources, click a song, and hear it. What remains in B is queue
 ergonomics — shuffle, repeat, reorder — not the mechanism.
 
-**Two companion documents:**
+**Three companion documents:**
 [BUGS.md](BUGS.md) — defects found and fixed, and the verified non-bugs worth not
 re-investigating. [BLOCKED.md](BLOCKED.md) — what other people's gates prevent, and
 why SoundCloud is built but not shipped.
+[RECOMMENDATIONS.md](RECOMMENDATIONS.md) — how "play something similar" works,
+why it is a ranking rule rather than a trained model, and what would have to
+change for that to be the wrong call.
 
 ---
 
@@ -249,6 +252,7 @@ re-litigated here.
 | **Spotify embed panel** | Needs a track id that is no longer obtainable free | Cross-service discovery returning |
 | **Cross-service discovery** | Odesli shut down 31 Jul 2026 (`410 Gone`) | A free ISRC → service-URL resolver existing again |
 | **Library sync** | Requires user accounts; Spotify's 5-user cap makes it unshippable | Not viable at any realistic scale |
+| **Personalised recommendations (trained)** | No candidate set Timbre can enumerate, no item features, no users | Nothing realistic — see [RECOMMENDATIONS.md](RECOMMENDATIONS.md). Blended service lists ship instead |
 
 Phase 0's `connections` schema, token encryption and BYO wizard survive in git
 history if library sync ever becomes possible.

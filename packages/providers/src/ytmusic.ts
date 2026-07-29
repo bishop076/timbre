@@ -20,6 +20,11 @@ interface SidecarTrack {
   thumbnail_url: string | null;
   is_explicit: boolean;
   result_type: string;
+  /**
+   * The upload's kind. The sidecar has always sent it; this interface simply
+   * never named it, so nothing could read it. The recommendation ranker does.
+   */
+  video_type: string | null;
 }
 
 export interface YtMusicConfig {
@@ -42,6 +47,7 @@ function toSourceTrack(raw: SidecarTrack): SourceTrack {
     artworkUrl: raw.thumbnail_url,
     playback: "queue",
     isExplicit: raw.is_explicit,
+    videoType: raw.video_type ?? null,
   };
 }
 
@@ -99,6 +105,31 @@ export function createYtMusicProvider(config: YtMusicConfig): SearchProvider {
     async resolve(ctx, url) {
       const data = await call<{ track: SidecarTrack | null }>(ctx, "/resolve", { url });
       return data.track ? toSourceTrack(data.track) : null;
+    },
+
+    /**
+     * Two lists from one request.
+     *
+     * The sidecar fetches YouTube's sequential watch queue and its "you might
+     * also like" panel together, because the second needs an id that only the
+     * first returns. They are kept apart here because they are built
+     * differently and genuinely disagree — and disagreement between lists is
+     * what the ranker measures.
+     */
+    async radio(ctx, seed, limit) {
+      // Needs this service's own id for the seed. A song Timbre found on
+      // Deezer alone has none until it is resolved, which is the caller's job.
+      if (!seed.sourceId) return [];
+
+      const data = await call<{ radio: SidecarTrack[]; related: SidecarTrack[] }>(ctx, "/radio", {
+        video_id: seed.sourceId,
+        limit,
+      });
+
+      return [
+        { list: "ytmusic:radio", tracks: data.radio.map(toSourceTrack) },
+        { list: "ytmusic:related", tracks: data.related.map(toSourceTrack) },
+      ];
     },
   };
 }
