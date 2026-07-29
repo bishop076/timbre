@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -12,6 +13,7 @@ import {
 } from "react";
 
 import type { Song, SongsResponse } from "../types";
+import { recordPlay } from "./history-store";
 import {
   getVolumeServerSnapshot,
   getVolumeSnapshot,
@@ -100,11 +102,25 @@ interface PlayerState {
    */
   volume: number;
   muted: boolean;
+  /**
+   * What to play after the queue, drawn from every source that will answer and
+   * ranked by agreement between them — not a passthrough of any one service's
+   * radio. See `recommend.ts`.
+   *
+   * Fetched on **every track change**, not when the queue nears its end. That
+   * is the remedy docs/BUGS.md B-5 prescribes for the fall-through stall,
+   * applied here: by the time the last song finishes this is already in memory,
+   * so continuing costs no network round trip. It also means one fetch serves
+   * both the autoplay and the "similar songs" panel.
+   */
+  radio: Song[];
 }
 
 interface PlayerControls extends PlayerState {
   /** Plays a song, optionally queueing the list it came from behind it. */
   play: (song: Song, rest?: Song[]) => void;
+  /** Appends to the queue without disturbing what is playing. */
+  enqueue: (songs: Song[]) => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
@@ -161,6 +177,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
+  const [radio, setRadio] = useState<Song[]>([]);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const { volume, muted } = useSyncExternalStore(
@@ -291,6 +308,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const next = useCallback(() => goTo(index + 1), [goTo, index]);
   const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
 
+  const enqueue = useCallback((songs: Song[]) => {
+    setQueue((current) => {
+      const known = new Set(current.map((song) => song.id));
+      return [...current, ...songs.filter((song) => !known.has(song.id))];
+    });
+  }, []);
+
+  /*
+   * Recommendations for whatever is playing.
+   *
+   * Seeded from the video id **actually loaded** rather than from the song's
+   * declared source, so it stays correct after a fall-through picked a
+   * different upload, and works for a chart song whose YouTube copy was found
+   * by search rather than shipped with it.
+   */
+  useEffect(() => {
+    const seed = activeSource === "ytmusic" ? videoId : null;
+    const song = queue[index];
+    if (!seed || !song) return;
+
+    const params = new URLSearchParams({ id: seed, title: song.title, limit: "25" });
+    const artist = song.artists[0];
+    if (artist) params.set("artist", artist);
+
+    const aborter = new AbortController();
+    fetch(`/api/radio?${params}`, { signal: aborter.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
+      .then((data) => setRadio(data?.songs ?? []))
+      .catch(() => {
+        // No recommendations is not an error worth showing anyone: the queue
+        // still plays and the panel simply hides its shelf.
+      });
+
+    return () => aborter.abort();
+    // Deliberately keyed on the loaded upload alone. Depending on the song
+    // object would refetch whenever the queue array is rebuilt, and depending
+    // on `queue`/`index` would refetch on every append.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSource, videoId]);
+
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
 
@@ -316,6 +373,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPosition(next);
     setDuration(total);
   }, []);
+
+  /**
+   * Records a play the first time a song actually starts.
+   *
+   * On "playing" rather than on `load`, which would record songs that never
+   * played because every copy refused to embed — and rather than on
+   * `handleEnded`, which would miss the songs you skipped but nonetheless
+   * chose. The ref stops a pause/resume from recording the same song twice.
+   */
+  const recorded = useRef<string | null>(null);
+  const handleStateChange = useCallback(
+    (next: PlayState) => {
+      setState(next);
+      if (next !== "playing") return;
+
+      const song = queue[index];
+      if (!song || recorded.current === song.id) return;
+      recorded.current = song.id;
+
+      recordPlay({
+        id: song.id,
+        title: song.title,
+        artists: song.artists,
+        artworkUrl: song.artworkUrl,
+        // The upload that played, not the one the song shipped with — that is
+        // what can seed a radio later.
+        videoId,
+        playedAt: Date.now(),
+      });
+    },
+    [queue, index, videoId],
+  );
 
   /**
    * A copy refused to play. Blocked embedding belongs to one upload, not to
@@ -364,10 +453,37 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [attempt, attemptSoundCloud, findCandidates],
   );
 
+  /**
+   * A song finished.
+   *
+   * When the queue runs out, it continues into the recommendations rather than
+   * stopping — which is what every music app does, and what the dead `idle`
+   * branch here used to prevent. The list is already in memory (see the fetch
+   * effect), so this costs no round trip and the gap is just the player load.
+   *
+   * `goTo` reads the queue inside a `setQueue` updater, and React runs queued
+   * updaters in order, so it observes the appended songs rather than the stale
+   * array this closure captured.
+   */
   const handleEnded = useCallback(() => {
-    if (index + 1 < queue.length) goTo(index + 1);
-    else setState("idle");
-  }, [goTo, index, queue.length]);
+    if (index + 1 < queue.length) {
+      goTo(index + 1);
+      return;
+    }
+
+    const known = new Set(queue.map((song) => song.id));
+    const fresh = radio.filter((song) => !known.has(song.id));
+    if (fresh.length === 0) {
+      setState("idle");
+      return;
+    }
+
+    setQueue((current) => [...current, ...fresh]);
+    // Consumed. The next track changes the seed, which refills this — so the
+    // radio is effectively endless, with the id filter as the only loop guard.
+    setRadio([]);
+    goTo(index + 1);
+  }, [goTo, index, queue, radio]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
@@ -393,12 +509,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       duration,
       volume,
       muted,
+      radio,
       play,
+      enqueue,
       toggle,
       next,
       previous,
       handleEnded,
-      handleStateChange: setState,
+      handleStateChange,
       handleProgress,
       handleError,
       seek,
@@ -424,11 +542,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       duration,
       volume,
       muted,
+      radio,
       play,
+      enqueue,
       toggle,
       next,
       previous,
       handleEnded,
+      handleStateChange,
       handleProgress,
       handleError,
       seek,

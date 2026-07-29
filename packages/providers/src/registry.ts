@@ -6,7 +6,18 @@
  * whole point is that there is more than one.
  */
 
-import { SOURCE_IDS, type ArtistInfo, type SearchContext, type SearchProvider, type SourceId, type SourceTrack } from "./types.ts";
+import { recommend, type SongIdentity } from "./recommend.ts";
+import {
+  SOURCE_IDS,
+  type ArtistInfo,
+  type RadioSeed,
+  type RankedList,
+  type SearchContext,
+  type SearchProvider,
+  type Song,
+  type SourceId,
+  type SourceTrack,
+} from "./types.ts";
 
 const registry = new Map<SourceId, SearchProvider>();
 
@@ -126,6 +137,50 @@ export async function lookupArtist(ctx: SearchContext, name: string): Promise<Ar
     }
   }
   return null;
+}
+
+/**
+ * What to play next, drawn from every source that will answer.
+ *
+ * Each source contributes one or more *ranked lists*, which are then fused
+ * rather than concatenated — a song several independent lists reach outranks
+ * any single list's favourite. That comparison is only possible because Timbre
+ * asks more than one service, and it is the reason this is not simply YouTube
+ * Music's watch queue passed through.
+ *
+ * A source that fails, abstains, or has no `radio` contributes nothing and is
+ * not an error: recommendations are a garnish, and the caller has a queue to
+ * keep playing either way.
+ */
+export async function recommendFrom(
+  ctx: SearchContext,
+  seed: RadioSeed,
+  limit: number,
+  exclude?: Iterable<SongIdentity>,
+): Promise<Song[]> {
+  const providers = listProviders().filter((provider) => provider.radio !== undefined);
+
+  const settled = await Promise.allSettled(
+    // Each source is asked for a full list of its own; fusion needs deep lists
+    // to disagree over, and truncating before ranking would throw away exactly
+    // the overlap being measured.
+    providers.map((provider) => provider.radio!(ctx, seed, limit)),
+  );
+
+  const lists: RankedList[] = [];
+  settled.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      lists.push(...result.value);
+    } else {
+      const provider = providers[index]!;
+      // Deliberately not surfaced to the user, unlike a failed *search*: a
+      // missing recommendation is invisible, while a missing search result is
+      // the thing they asked for.
+      console.warn(`[timbre] ${provider.id} radio failed:`, result.reason);
+    }
+  });
+
+  return recommend(lists, { limit, exclude });
 }
 
 /**

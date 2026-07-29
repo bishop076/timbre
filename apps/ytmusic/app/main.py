@@ -18,7 +18,7 @@ Design rules the routes keep to:
 from fastapi import Depends, FastAPI
 
 from .config import PORT
-from .routes import search
+from .routes import radio, search
 from .security import require_shared_secret
 
 app = FastAPI(
@@ -43,6 +43,14 @@ def health() -> dict[str, object]:
 
 app.include_router(
     search.router,
+    dependencies=[Depends(require_shared_secret)],
+)
+
+# Every router carries the shared-secret dependency. Omitting it on one would
+# ship an unauthenticated endpoint on an otherwise-guarded service, which is
+# the kind of thing nothing else would catch.
+app.include_router(
+    radio.router,
     dependencies=[Depends(require_shared_secret)],
 )
 

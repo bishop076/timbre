@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
+import { useHistory } from "./player/history-store";
 import { usePlayer } from "./player/player-context";
 import { SongCard } from "./song-card";
 import { sourceStyle } from "./sources";
@@ -163,6 +164,7 @@ export function SearchResults() {
 
         {!hasQuery && <Home charts={charts} />}
 
+
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
         {hasQuery && !loading && songs.length === 0 && !error && (
@@ -230,11 +232,94 @@ function Shelf({
 /** One tile's worth of width, shared by the real card and its skeleton. */
 const TILE = "w-[9.5rem] shrink-0 sm:w-[10.5rem]";
 
+/**
+ * Shelves built from what you have listened to.
+ *
+ * Both render nothing on a first visit, so a cold home page is exactly what it
+ * was before this existed. History lives in localStorage and never leaves the
+ * browser — see `history-store.ts`.
+ */
+function ForYou() {
+  const history = useHistory();
+  const [radio, setRadio] = useState<Song[]>([]);
+
+  // The most recent play that can seed a radio. A song whose every copy
+  // refused to embed has no upload id and cannot start one.
+  const seed = history.find((entry) => entry.videoId);
+
+  useEffect(() => {
+    if (!seed?.videoId) return;
+
+    const params = new URLSearchParams({ id: seed.videoId, title: seed.title, limit: "12" });
+    const artist = seed.artists[0];
+    if (artist) params.set("artist", artist);
+
+    const aborter = new AbortController();
+    fetch(`/api/radio?${params}`, { signal: aborter.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
+      .then((data) => setRadio(data?.songs ?? []))
+      .catch(() => {
+        // A missing shelf is not worth an error message.
+      });
+
+    return () => aborter.abort();
+  }, [seed?.videoId, seed?.title, seed?.artists]);
+
+  if (history.length === 0) return null;
+
+  // Recently-played entries are stored flat rather than as whole songs, so
+  // they are given the minimum a card needs. Playing one re-resolves it, the
+  // same path a Deezer chart entry already takes.
+  const recent: Song[] = history.slice(0, 12).map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    artists: entry.artists,
+    album: null,
+    durationMs: null,
+    isrc: null,
+    artworkUrl: entry.artworkUrl,
+    sources: entry.videoId
+      ? [
+          {
+            source: "ytmusic",
+            sourceId: entry.videoId,
+            url: `https://music.youtube.com/watch?v=${entry.videoId}`,
+            playback: "queue" as const,
+          },
+        ]
+      : [],
+  }));
+
+  return (
+    <>
+      <Shelf title="Recently played" caption="Only on this device">
+        {recent.map((song) => (
+          <div key={song.id} className={TILE}>
+            <SongCard song={song} queue={recent} />
+          </div>
+        ))}
+      </Shelf>
+
+      {radio.length > 0 && seed && (
+        <Shelf title={`Because you played ${seed.title}`} caption="Blended across sources">
+          {radio.map((song) => (
+            <div key={song.id} className={TILE}>
+              <SongCard song={song} queue={radio} />
+            </div>
+          ))}
+        </Shelf>
+      )}
+    </>
+  );
+}
+
 function Home({ charts }: { charts: SongsResponse | null }) {
   const songs = charts?.songs ?? [];
 
   return (
     <div className="rise pt-2">
+      <ForYou />
+
       <Shelf title="Trending now" caption="Deezer · Apple Music">
         {charts === null
           ? Array.from({ length: 8 }, (_, index) => (

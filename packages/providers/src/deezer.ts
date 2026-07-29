@@ -13,7 +13,13 @@
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
-import type { ArtistInfo, SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import type {
+  ArtistInfo,
+  RankedList,
+  SearchContext,
+  SearchProvider,
+  SourceTrack,
+} from "./types.ts";
 
 const API = "https://api.deezer.com";
 
@@ -29,6 +35,7 @@ interface DeezerTrack {
 }
 
 interface DeezerArtist {
+  id?: number;
   name: string;
   link?: string;
   picture_medium?: string;
@@ -37,6 +44,17 @@ interface DeezerArtist {
   /** Deezer calls followers "fans". */
   nb_fan?: number;
 }
+
+/**
+ * How far the similar-artist leg reaches.
+ *
+ * Three artists at five tracks each is fifteen candidates for three requests.
+ * Going wider buys diminishing variety — Deezer orders similar artists by
+ * confidence, and the tail is noticeably less similar — while every extra
+ * artist is another round trip on the critical path of a track change.
+ */
+const SIMILAR_ARTISTS = 3;
+const TOP_PER_ARTIST = 5;
 
 function toSourceTrack(raw: DeezerTrack): SourceTrack {
   return {
@@ -80,6 +98,25 @@ export function createDeezerProvider(): SearchProvider {
     return body;
   }
 
+  /**
+   * Finds an artist by exact name.
+   *
+   * Deezer's artist search is fuzzy and will happily return a tribute act or a
+   * similarly-named producer, so only an exact case-insensitive name match is
+   * accepted. Shared by the artist card and the radio, which both start from
+   * nothing but a name — YouTube Music carries no Deezer ids.
+   */
+  async function findArtist(ctx: SearchContext, name: string): Promise<DeezerArtist | null> {
+    const wanted = name.trim().toLowerCase();
+    if (!wanted) return null;
+
+    const data = await get<{ data?: DeezerArtist[] }>(
+      ctx,
+      `/search/artist?q=${encodeURIComponent(name)}&limit=5`,
+    );
+    return (data.data ?? []).find((entry) => entry.name?.toLowerCase() === wanted) ?? null;
+  }
+
   return {
     id: "deezer",
     displayName: "Deezer",
@@ -109,14 +146,7 @@ export function createDeezerProvider(): SearchProvider {
      * showing a photo of whoever Deezer thought was closest.
      */
     async artist(ctx, name): Promise<ArtistInfo | null> {
-      const wanted = name.trim().toLowerCase();
-      if (!wanted) return null;
-
-      const data = await get<{ data?: DeezerArtist[] }>(
-        ctx,
-        `/search/artist?q=${encodeURIComponent(name)}&limit=5`,
-      );
-      const match = (data.data ?? []).find((entry) => entry.name?.toLowerCase() === wanted);
+      const match = await findArtist(ctx, name);
       if (!match) return null;
 
       return {
@@ -126,6 +156,74 @@ export function createDeezerProvider(): SearchProvider {
         source: "deezer",
         url: match.link ?? null,
       };
+    },
+
+    /**
+     * Deezer's second opinion.
+     *
+     * Deezer can only start from an **artist**: `/track/{id}/related` is not a
+     * route on its API (it answers InvalidQueryException 600), so there is no
+     * track-level continuation to ask for. Two lists come out of that:
+     *
+     *   - the seed artist's top tracks, which is what overlaps with what other
+     *     services push and therefore where agreement can be measured
+     *   - the top tracks of artists Deezer considers similar, which is the only
+     *     list here that reaches *away* from the seed's own catalogue
+     *
+     * `/artist/{id}/top` rather than `/artist/{id}/radio`, and that choice was
+     * measured. Seeded on *As It Was*, Deezer's artist radio shared **zero**
+     * tracks with YouTube Music's two lists — it is a deep-cuts feed, returning
+     * things like "Taste Back" and "Are You Listening Yet" that no other source
+     * surfaces. Its top tracks shared six. A list nothing else ever agrees with
+     * cannot contribute to a consensus score; it only adds noise for the artist
+     * spacing pass to sort out.
+     *
+     * Neither can be played by Timbre directly — Deezer tracks are `link` — so
+     * these earn their place by *agreeing* with YouTube Music's lists and
+     * lifting shared songs, and by widening the pool when they do not. A Deezer
+     * song that survives ranking is resolved to a playable copy at play time by
+     * the player's existing search fall-back.
+     */
+    async radio(ctx, seed, limit): Promise<RankedList[]> {
+      if (!seed.artist) return [];
+
+      const match = await findArtist(ctx, seed.artist);
+      if (!match?.id) return [];
+
+      // Both legs are independent, and either failing is survivable: a missing
+      // list is an abstention, and the ranker treats it as no evidence rather
+      // than as evidence against.
+      const [top, similar] = await Promise.allSettled([
+        get<{ data?: DeezerTrack[] }>(ctx, `/artist/${match.id}/top?limit=${limit}`),
+        get<{ data?: DeezerArtist[] }>(ctx, `/artist/${match.id}/related?limit=${SIMILAR_ARTISTS}`),
+      ]);
+
+      const lists: RankedList[] = [];
+
+      if (top.status === "fulfilled") {
+        lists.push({
+          list: "deezer:artist-top",
+          tracks: (top.value.data ?? []).map(toSourceTrack),
+        });
+      }
+
+      if (similar.status === "fulfilled") {
+        const artists = (similar.value.data ?? []).filter((entry) => entry.id).slice(0, SIMILAR_ARTISTS);
+        // A few small requests in parallel rather than one large sequential
+        // walk. Deezer's bucket is capacity 20 at 8/s, so this fits inside one
+        // burst; the limiter serialises them if it does not.
+        const tops = await Promise.allSettled(
+          artists.map((entry) =>
+            get<{ data?: DeezerTrack[] }>(ctx, `/artist/${entry.id}/top?limit=${TOP_PER_ARTIST}`),
+          ),
+        );
+        const tracks = tops.flatMap((result) =>
+          result.status === "fulfilled" ? (result.value.data ?? []).map(toSourceTrack) : [],
+        );
+        if (tracks.length > 0) lists.push({ list: "deezer:similar-artists", tracks });
+      }
+
+      return lists;
     },
   };
 }

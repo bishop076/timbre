@@ -139,3 +139,41 @@ Each of these cost time to establish.
 - **A VPN changes YouTube's behaviour.** Invidious' documentation states YouTube
   blocks datacenter and VPN IP ranges. If playback goes flaky, check whether a VPN
   is active before assuming a code bug.
+
+---
+
+## Apple Music similar/related tracks `BLOCKED`
+
+*Checked 2026-08-15.*
+
+**Blocked by:** the endpoint does not exist. The public iTunes Search API and the
+Marketing Tools RSS feeds offer search, lookup and charts — there is no related,
+similar, radio or continuation endpoint at any tier. The Apple Music API proper
+has them, and needs a paid Apple Developer membership plus a signed JWT.
+
+**Consequence:** Apple contributes nothing to recommendations. It abstains rather
+than guessing, and the ranker treats a missing list as no evidence rather than as
+evidence against. Apple still contributes charts, artwork and availability.
+
+**Unblocked by:** paying for a developer membership, which is a standing non-goal.
+
+---
+
+## Deezer track-level related tracks `BLOCKED`
+
+*Checked 2026-08-15.*
+
+**Blocked by:** `GET /track/{id}/related` is not a route on Deezer's API. It
+answers `InvalidQueryException` code 600, not 404 — worth knowing, because it
+reads like a malformed request rather than a missing feature.
+
+**Not blocked:** `/artist/{id}/related` (similar artists), `/artist/{id}/top` and
+`/artist/{id}/radio` all work keylessly. So Deezer can only start a radio from an
+**artist**, never from a track, which is why `RadioSeed` carries both a source id
+and an artist name.
+
+**Also worth not rediscovering:** `/artist/{id}/radio` is a deep-cuts feed. Seeded
+on *As It Was* it shared **zero** tracks with YouTube Music's lists, while
+`/artist/{id}/top` shared six. Timbre uses `/top`, because a list nothing else
+agrees with cannot contribute to a consensus score. See
+[RECOMMENDATIONS.md](RECOMMENDATIONS.md).

@@ -5,6 +5,7 @@ import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
 import { usePlayer } from "./player-context";
+import { SimilarSongs } from "./similar-songs";
 import { SoundCloudPlayer } from "./soundcloud-player";
 import { YouTubePlayer } from "./youtube-player";
 
@@ -26,8 +27,8 @@ function Credit({ label, value, mono }: { label: string; value: string | null; m
   );
 }
 
-/** A queued song, in the two places one is listed. */
-function QueueRow({ song, onPlay }: { song: Song; onPlay: () => void }) {
+/** A queued song, wherever one is listed. Shared with `similar-songs.tsx`. */
+export function QueueRow({ song, onPlay }: { song: Song; onPlay: () => void }) {
   return (
     <button
       type="button"
@@ -319,6 +320,8 @@ export function NowPlayingPanel() {
                     </dl>
                   </section>
                 )}
+
+                <SimilarSongs />
               </div>
 
               {/* The queue, reduced to the one thing worth knowing: what plays
