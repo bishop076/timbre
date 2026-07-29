@@ -61,7 +61,10 @@ export function WavyProgress({
     <svg
       viewBox={`0 0 100 ${HEIGHT}`}
       preserveAspectRatio="none"
-      className={`h-6 w-full ${className}`}
+      // Height is overridable, and the fallback is only used when nothing is
+      // passed — two competing Tailwind height classes would otherwise resolve
+      // by stylesheet order rather than by intent.
+      className={`w-full ${className || "h-6"}`}
       aria-hidden
     >
       {/* Remaining — a flat rule at low opacity. */}
