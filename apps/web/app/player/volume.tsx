@@ -36,7 +36,7 @@ export function Volume() {
         onClick={toggleMute}
         aria-label={muted ? "Unmute" : "Mute"}
         aria-pressed={muted}
-        className="slab-sm press flex size-9 items-center justify-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg)]"
+        className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg)]"
       >
         {muted ? <VolumeMuteIcon className="size-[18px]" /> : <VolumeIcon className="size-[18px]" />}
       </button>
@@ -74,7 +74,7 @@ export function Volume() {
         }}
         // The hit area is taller than the visible bar, because a 10px target is
         // unusable with a mouse.
-        className="group flex h-9 w-16 cursor-pointer touch-none items-center xl:w-24"
+        className="group flex h-8 w-16 cursor-pointer touch-none items-center xl:w-24"
       >
         <div className="slab-sm relative h-2.5 w-full overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
           <div
