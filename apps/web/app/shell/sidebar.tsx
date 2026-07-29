@@ -55,7 +55,7 @@ const PLAYS = ["ytmusic"] as const;
 const FILTERS = ["Queue", "Playlists"] as const;
 
 export function Sidebar() {
-  const { queue, current, play } = usePlayer();
+  const { queue, current, play, exitTheater } = usePlayer();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
   const { playlists, signedIn } = usePlaylists();
   const pathname = usePathname();
@@ -87,6 +87,7 @@ export function Sidebar() {
             <Link
               key={item.id}
               href={item.href}
+              onClick={exitTheater}
               aria-current={active ? "page" : undefined}
               className={`press flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-semibold ${
                 active
@@ -295,6 +296,7 @@ function PlaylistRows({
  */
 export function BottomNav() {
   const pathname = usePathname();
+  const { exitTheater } = usePlayer();
 
   return (
     <nav className="flex h-[var(--nav-h)] shrink-0 items-stretch border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] lg:hidden">
@@ -304,6 +306,7 @@ export function BottomNav() {
           <Link
             key={item.id}
             href={item.href}
+            onClick={exitTheater}
             aria-current={active ? "page" : undefined}
             className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-bold ${
               active ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
