@@ -176,7 +176,7 @@ export function SearchResults() {
         {hasQuery && songs.length > 0 && (
           <ul className="rise divide-y divide-[var(--line)]">
             {songs.map((song) => (
-              <SongRow key={song.id} song={song} queue={songs} />
+              <SongRow key={song.id} song={song} />
             ))}
           </ul>
         )}
@@ -354,7 +354,7 @@ function Home({ charts }: { charts: SongsResponse | null }) {
   );
 }
 
-function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
+function SongRow({ song }: { song: Song }) {
   const { play, current, state } = usePlayer();
   const isCurrent = current?.id === song.id;
 
@@ -364,11 +364,23 @@ function SongRow({ song, queue }: { song: Song; queue: Song[] }) {
         isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
       }`}
     >
-      {/* The row itself plays. Opening the source is a deliberate secondary
-          action on the badges, not what a click does by default. */}
+      {/*
+        The row itself plays. Opening the source is a deliberate secondary
+        action on the badges, not what a click does by default.
+
+        **It plays this song alone, and does not queue the other results.**
+        Searching a song title returns that song over and over — the official
+        upload, lyric videos, karaoke, covers, mashups, KIDZ BOP — because that
+        is what the catalogue holds, and they are genuinely different uploads so
+        the merger is right not to collapse them. Queueing all of them meant
+        hearing the same song twenty times and never reaching the end of the
+        queue, which is also where recommendations begin. Playing one song and
+        continuing into the blend is both what you wanted and what Spotify and
+        YouTube Music do with a search result.
+      */}
       <button
         type="button"
-        onClick={() => play(song, queue)}
+        onClick={() => play(song)}
         className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left focus:outline-none sm:gap-4"
         aria-label={`Play ${song.title}`}
       >
