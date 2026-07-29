@@ -99,13 +99,26 @@ export function NowPlayingPanel() {
     toggleTheater,
     queue,
     index,
+    radio,
     play,
   } = usePlayer();
 
   const active = current !== null;
   const open = active && panelOpen;
   const expanded = open && theater;
-  const upcoming = queue.slice(index + 1);
+
+  /*
+   * What is actually coming, in order: the rest of the queue, then the blend
+   * the player will step into when the queue runs out.
+   *
+   * Showing only the queue made the panel say "nothing after this one" while
+   * five recommendations sat one track away, ready and already fetched — a
+   * panel that contradicts what the player is about to do.
+   */
+  const queued = queue.slice(index + 1);
+  const known = new Set(queue.map((song) => song.id));
+  const suggested = radio.filter((song) => !known.has(song.id));
+  const upcoming = [...queued, ...suggested];
   const source = sourceStyle(activeSource ?? "ytmusic");
 
   const youtubeUrl =
@@ -268,7 +281,15 @@ export function NowPlayingPanel() {
                   <ul className="flex flex-col gap-0.5">
                     {upcoming.map((song, position) => (
                       <li key={`${song.id}-${position}`}>
-                        <QueueRow song={song} onPlay={() => play(song, queue)} />
+                        {/* Where the queue ends and the blend begins. Labelled
+                            rather than blended in, so "queued" and "suggested"
+                            never look like the same promise. */}
+                        {position === queued.length && queued.length > 0 && (
+                          <p className="px-1.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--fg-faint)]">
+                            Then, from your blend
+                          </p>
+                        )}
+                        <QueueRow song={song} onPlay={() => play(song, upcoming)} />
                       </li>
                     ))}
                   </ul>
@@ -338,7 +359,7 @@ export function NowPlayingPanel() {
                   </p>
                   <QueueRow
                     song={upcoming[0]}
-                    onPlay={() => play(upcoming[0]!, queue)}
+                    onPlay={() => play(upcoming[0]!, upcoming)}
                   />
                 </div>
               )}

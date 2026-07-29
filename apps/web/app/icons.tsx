@@ -125,6 +125,38 @@ export function VolumeMuteIcon({ className }: IconProps) {
   );
 }
 
+export function ShuffleIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path d="M4 6h3.5c1.2 0 2.3.6 3 1.6l4 6c.7 1 1.8 1.6 3 1.6H21" strokeLinecap="round" />
+      <path d="M4 18h3.5c1.2 0 2.3-.6 3-1.6l.6-1M14 8l.4-.6c.7-1 1.8-1.4 3-1.4H21" strokeLinecap="round" />
+      <path d="m18.5 3 2.5 3-2.5 3M18.5 12l2.5 3-2.5 3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Repeat the queue. {@link RepeatOneIcon} is the same loop with a 1 in it. */
+export function RepeatIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path d="M7 7h10a3 3 0 0 1 3 3v1" strokeLinecap="round" />
+      <path d="M17 17H7a3 3 0 0 1-3-3v-1" strokeLinecap="round" />
+      <path d="m9 4-3 3 3 3M15 20l3-3-3-3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function RepeatOneIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
+      <path d="M7 7h10a3 3 0 0 1 3 3v1" strokeLinecap="round" />
+      <path d="M17 17H7a3 3 0 0 1-3-3v-1" strokeLinecap="round" />
+      <path d="m9 4-3 3 3 3M15 20l3-3-3-3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11.6 10.8 13 10v4.5" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+    </svg>
+  );
+}
+
 /** Expands the video to fill the content area. */
 export function ExpandIcon({ className }: IconProps) {
   return (

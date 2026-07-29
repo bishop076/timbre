@@ -45,6 +45,13 @@ import {
 
 export type PlayState = "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
 
+/**
+ * `off` continues into the recommendations when the queue ends, which is the
+ * default because a queue that simply stops is the thing this app most wanted
+ * to fix. `all` loops the queue instead, and `one` repeats a single track.
+ */
+export type RepeatMode = "off" | "all" | "one";
+
 interface PlayerState {
   queue: Song[];
   index: number;
@@ -114,6 +121,8 @@ interface PlayerState {
    * both the autoplay and the "similar songs" panel.
    */
   radio: Song[];
+  shuffle: boolean;
+  repeat: RepeatMode;
 }
 
 interface PlayerControls extends PlayerState {
@@ -142,6 +151,15 @@ interface PlayerControls extends PlayerState {
   togglePanel: () => void;
   /** Expands the video to fill the content area, or puts it back in the panel. */
   toggleTheater: () => void;
+  /**
+   * Puts the video back without toggling. Navigation needs this: the expanded
+   * video *replaces* the content area, so going to Search or Library while it
+   * is open would change a page nobody can see.
+   */
+  exitTheater: () => void;
+  toggleShuffle: () => void;
+  /** Steps off → all → one → off. One button, three states, like every player. */
+  cycleRepeat: () => void;
   registerToggle: (fn: (() => void) | null) => void;
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
 }
@@ -178,6 +196,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
   const [radio, setRadio] = useState<Song[]>([]);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<RepeatMode>("off");
+  /**
+   * Songs already played in this shuffle pass, by id.
+   *
+   * Without it, "random next" replays tracks while others go unheard — the
+   * complaint everyone has about naive shuffle. A pass ends when every song has
+   * been played, and only then does it start over.
+   */
+  const shuffled = useRef<Set<string>>(new Set());
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const { volume, muted } = useSyncExternalStore(
@@ -305,8 +333,67 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [load],
   );
 
-  const next = useCallback(() => goTo(index + 1), [goTo, index]);
+  /**
+   * Which song follows this one, or null when the queue is spent.
+   *
+   * Null is meaningful rather than an error: it is what hands over to the
+   * recommendations. Repeat and shuffle both resolve here so that the manual
+   * skip button and auto-advance can never disagree about what "next" means.
+   */
+  const nextIndex = useCallback((): number | null => {
+    if (queue.length === 0) return null;
+
+    if (shuffle) {
+      const unplayed = queue
+        .map((song, position) => ({ song, position }))
+        .filter(({ song, position }) => position !== index && !shuffled.current.has(song.id));
+
+      if (unplayed.length > 0) {
+        return unplayed[Math.floor(Math.random() * unplayed.length)]!.position;
+      }
+      // Every song has had a turn. Only a repeating queue starts a new pass;
+      // otherwise this is genuinely the end and the radio takes over.
+      if (repeat === "all") {
+        shuffled.current = new Set();
+        return queue.length > 1 ? (index + 1) % queue.length : index;
+      }
+      return null;
+    }
+
+    if (index + 1 < queue.length) return index + 1;
+    return repeat === "all" ? 0 : null;
+  }, [queue, index, shuffle, repeat]);
+
+  const next = useCallback(() => {
+    const target = nextIndex();
+    // A manual skip at the end of a non-repeating queue steps into the
+    // recommendations rather than doing nothing.
+    if (target === null) {
+      const known = new Set(queue.map((song) => song.id));
+      const fresh = radio.filter((song) => !known.has(song.id));
+      if (fresh.length === 0) return;
+      setQueue((current) => [...current, ...fresh]);
+      setRadio([]);
+      goTo(index + 1);
+      return;
+    }
+    goTo(target);
+  }, [goTo, index, nextIndex, queue, radio]);
+
   const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
+
+  const toggleShuffle = useCallback(() => {
+    setShuffle((on) => {
+      // A fresh pass each time it is switched on, so turning it off and back on
+      // does not leave half the queue unreachable.
+      shuffled.current = new Set();
+      return !on;
+    });
+  }, []);
+
+  const cycleRepeat = useCallback(() => {
+    setRepeat((mode) => (mode === "off" ? "all" : mode === "all" ? "one" : "off"));
+  }, []);
 
   const enqueue = useCallback((songs: Song[]) => {
     setQueue((current) => {
@@ -368,6 +455,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPanelOpen(true);
     setTheater((expanded) => !expanded);
   }, [current]);
+
+  const exitTheater = useCallback(() => setTheater(false), []);
 
   const handleProgress = useCallback((next: number, total: number) => {
     setPosition(next);
@@ -466,8 +555,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * array this closure captured.
    */
   const handleEnded = useCallback(() => {
-    if (index + 1 < queue.length) {
-      goTo(index + 1);
+    // Repeat-one is checked before anything else: it is the one mode that means
+    // "ignore the queue entirely".
+    if (repeat === "one") {
+      goTo(index);
+      return;
+    }
+
+    const current = queue[index];
+    if (current) shuffled.current.add(current.id);
+
+    const target = nextIndex();
+    if (target !== null) {
+      goTo(target);
       return;
     }
 
@@ -483,7 +583,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // radio is effectively endless, with the id filter as the only loop guard.
     setRadio([]);
     goTo(index + 1);
-  }, [goTo, index, queue, radio]);
+  }, [goTo, index, nextIndex, queue, radio, repeat]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
@@ -510,6 +610,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       muted,
       radio,
+      shuffle,
+      repeat,
       play,
       enqueue,
       toggle,
@@ -524,6 +626,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       togglePanel,
       toggleTheater,
+      exitTheater,
+      toggleShuffle,
+      cycleRepeat,
       registerToggle,
       registerSeek,
     }),
@@ -543,6 +648,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       volume,
       muted,
       radio,
+      shuffle,
+      repeat,
       play,
       enqueue,
       toggle,
@@ -557,6 +664,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       toggleMute,
       togglePanel,
       toggleTheater,
+      exitTheater,
+      toggleShuffle,
+      cycleRepeat,
       registerToggle,
       registerSeek,
     ],
