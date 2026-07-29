@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
+import { CloseIcon, ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
 import { useHistory } from "./player/history-store";
 import { usePlayer } from "./player/player-context";
 import { SongCard } from "./song-card";
@@ -136,8 +136,26 @@ export function SearchResults() {
             aria-label="Search for a song"
             className="slab w-full rounded-[var(--r-lg)] bg-[var(--surface-2)] py-3.5 pl-12 pr-14 text-base font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:shadow-[var(--drop-lg)]"
           />
+          {/*
+            Three states in one slot, in priority order: searching, something to
+            clear, or the shortcut hint. The clear button is ours rather than
+            the browser's — `input[type="search"]` draws a blue ✕ in its own
+            colours that cannot be themed, only removed, which globals.css does.
+          */}
           {loading ? (
             <SpinnerIcon className="absolute right-4 top-1/2 size-5 -translate-y-1/2 animate-spin text-[var(--accent)]" />
+          ) : hasQuery ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                inputRef.current?.focus();
+              }}
+              aria-label="Clear search"
+              className="press absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-[var(--r-sm)] text-[var(--fg-dim)] hover:bg-[var(--surface-3)] hover:text-[var(--fg)]"
+            >
+              <CloseIcon className="size-4" />
+            </button>
           ) : (
             <kbd className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--line)] px-1.5 py-0.5 font-mono text-xs text-[var(--fg-dim)] sm:block">
               /
