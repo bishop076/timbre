@@ -1,6 +1,7 @@
 "use client";
 
-import { CollapseIcon, ExpandIcon, ExternalIcon, NoteIcon } from "../icons";
+import { Artwork } from "../artwork";
+import { CollapseIcon, ExpandIcon, ExternalIcon } from "../icons";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
@@ -35,16 +36,11 @@ export function QueueRow({ song, onPlay }: { song: Song; onPlay: () => void }) {
       onClick={onPlay}
       className="flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left hover:bg-[var(--surface-2)]"
     >
-      <span className="slab-sm size-10 shrink-0 overflow-hidden rounded-[var(--r-sm)] bg-[var(--surface-2)]">
-        {song.artworkUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-          <img src={song.artworkUrl} alt="" loading="lazy" className="size-full object-cover" />
-        ) : (
-          <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
-            <NoteIcon className="size-4" />
-          </span>
-        )}
-      </span>
+      <Artwork
+        src={song.artworkUrl}
+        className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+        iconClassName="size-4"
+      />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold">{song.title}</span>
         <span className="block truncate text-[11px] text-[var(--fg-dim)]">
