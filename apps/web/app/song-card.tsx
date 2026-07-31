@@ -1,8 +1,8 @@
 "use client";
 
-import { NoteIcon, PlayIcon } from "./icons";
+import { Artwork } from "./artwork";
+import { PlayIcon } from "./icons";
 import { usePlayer } from "./player/player-context";
-import { sourceStyle } from "./sources";
 import type { Song } from "./types";
 
 /**
@@ -30,19 +30,11 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
       title={`Play ${song.title}`}
     >
       <div className="slab press relative aspect-square overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-2)]">
-        {song.artworkUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-          <img
-            src={song.artworkUrl}
-            alt=""
-            loading="lazy"
-            className="size-full object-cover transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
-          />
-        ) : (
-          <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
-            <NoteIcon className="size-7" />
-          </span>
-        )}
+        <Artwork
+          src={song.artworkUrl}
+          className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
+          iconClassName="size-7"
+        />
 
         {/* A soft foot to the image so source dots and the button keep contrast
             against pale artwork without dimming the whole cover. */}
@@ -67,17 +59,6 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
           )}
         </span>
 
-        <span className="absolute left-2 top-2 flex gap-1">
-          {song.sources.map((source) => (
-            <span
-              key={source.source}
-              title={sourceStyle(source.source).label}
-              aria-label={sourceStyle(source.source).label}
-              style={{ backgroundColor: sourceStyle(source.source).color }}
-              className="size-2 rounded-full border-2 border-[var(--ink)] opacity-0 transition group-hover:opacity-100"
-            />
-          ))}
-        </span>
       </div>
 
       <p
