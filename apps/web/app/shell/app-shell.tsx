@@ -1,10 +1,11 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayer } from "../player/player-context";
 import { PlayerBar } from "./player-bar";
+import { ScrollThumb } from "./scroll-thumb";
 import { BottomNav, Sidebar } from "./sidebar";
 
 /**
@@ -36,18 +37,26 @@ import { BottomNav, Sidebar } from "./sidebar";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { theater } = usePlayer();
+  const content = useRef<HTMLElement>(null);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main
-          className={`ambient scroller relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
-            theater ? "hidden" : ""
-          }`}
-        >
-          {children}
-        </main>
+        {/*
+          The content panel, with Timbre's own scrollbar overlaid.
+          `scroll-fade` softens the bottom edge so a row of tiles is never
+          sliced through the middle of its caption.
+        */}
+        <div className={`relative flex min-h-0 flex-1 ${theater ? "hidden" : ""}`}>
+          <main
+            ref={content}
+            className="ambient scroll-fade scroller-quiet relative min-h-0 w-full overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)]"
+          >
+            {children}
+          </main>
+          <ScrollThumb target={content} />
+        </div>
         <NowPlayingPanel />
       </div>
       <PlayerBar />

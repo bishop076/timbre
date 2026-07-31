@@ -1,10 +1,10 @@
 "use client";
 
+import { Artwork } from "../artwork";
 import {
   CollapseIcon,
   ExpandIcon,
   NextIcon,
-  NoteIcon,
   PauseIcon,
   PlayIcon,
   PrevIcon,
@@ -154,18 +154,11 @@ export function PlayerBar() {
   );
 
   const artwork = (size: string) => (
-    <div
-      className={`slab-sm ${size} shrink-0 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg-faint)]`}
-    >
-      {current?.artworkUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-        <img src={current.artworkUrl} alt="" className="size-full object-cover" />
-      ) : (
-        <span className="flex size-full items-center justify-center">
-          <NoteIcon className="size-5" />
-        </span>
-      )}
-    </div>
+    <Artwork
+      src={current?.artworkUrl}
+      eager
+      className={`slab-sm ${size} shrink-0 rounded-[var(--r-md)]`}
+    />
   );
 
   const meta = (

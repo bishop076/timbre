@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { Artwork } from "../artwork";
 import { LibraryIcon, NoteIcon, SearchIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
@@ -38,7 +39,7 @@ export function Sidebar() {
   const { queue, current, play, exitTheater } = usePlayer();
   const user = useSessionUser();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
-  const { playlists, signedIn } = usePlaylists();
+  const { playlists, signedIn, settled } = usePlaylists();
   const pathname = usePathname();
 
   // Loaded once for the rail, and shared with every "add to playlist" menu, so
@@ -144,7 +145,7 @@ export function Sidebar() {
 
         <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {filter === "Playlists" ? (
-            <PlaylistRows playlists={playlists} signedIn={signedIn} />
+            <PlaylistRows playlists={playlists} signedIn={signedIn} settled={settled} />
           ) : rows.length === 0 ? (
             <p className="px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]">
               Nothing queued. Play something and it shows up here.
@@ -163,21 +164,11 @@ export function Sidebar() {
                       }`}
                       style={isCurrent ? { background: "var(--accent-wash)" } : undefined}
                     >
-                      <span className="slab-sm size-10 shrink-0 overflow-hidden rounded-[var(--r-sm)] bg-[var(--surface-2)]">
-                        {song.artworkUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-                          <img
-                            src={song.artworkUrl}
-                            alt=""
-                            loading="lazy"
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
-                            <NoteIcon className="size-4" />
-                          </span>
-                        )}
-                      </span>
+                      <Artwork
+                        src={song.artworkUrl}
+                        className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+                        iconClassName="size-4"
+                      />
                       <span className="min-w-0 flex-1">
                         <span
                           className={`block truncate text-[13px] font-semibold ${
@@ -212,10 +203,19 @@ export function Sidebar() {
 function PlaylistRows({
   playlists,
   signedIn,
+  settled,
 }: {
   playlists: PlaylistSummary[] | null;
   signedIn: boolean;
+  /** False until the first fetch answers — see the store. */
+  settled: boolean;
 }) {
+  // Until the store has actually asked, "not signed in" is a guess, and acting
+  // on it tells a signed-in reader to sign in.
+  if (!settled) {
+    return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
+  }
+
   if (!signedIn) {
     return (
       <div className="px-2 py-5">
