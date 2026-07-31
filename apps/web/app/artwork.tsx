@@ -5,9 +5,27 @@ import { useState } from "react";
 import { NoteIcon } from "./icons";
 
 /**
+ * Rewrites artwork through Timbre's own origin.
+ *
+ * Content blockers filter by hostname, and `i.ytimg.com` is on enough lists
+ * that artwork silently disappeared for anyone running one — confirmed by
+ * switching a blocker off and watching the pictures return. The urls are
+ * valid and answer 200 from a server; the request never leaves the browser.
+ *
+ * Going through `/api/art` makes it a first-party request, which no blocklist
+ * matches. The proxy allowlists hosts, so an unrecognised url is left alone
+ * rather than handed to an endpoint that would refuse it anyway.
+ */
+function viaProxy(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (!url.startsWith("https://")) return url;
+  return `/api/art?u=${encodeURIComponent(url)}`;
+}
+
+/**
  * The unsigned, permanent thumbnail for a YouTube video id, or null when the
  * url is not one of YouTube's. `hqdefault.jpg` exists for every video and
- * carries no signature to expire.
+ * carries no signature to expire, which is the one failure a retry can fix.
  */
 function plainThumbnail(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -60,8 +78,11 @@ export function Artwork({
    * unreachable — a blocker, or an offline machine — the retry fails too and
    * the placeholder appears, which is the correct end state either way.
    */
-  const attempted = failedSrc === src ? plainThumbnail(src) : src;
-  const showImage = Boolean(attempted) && failedSrc !== attempted;
+  const chosen = failedSrc === src ? plainThumbnail(src) : src;
+  // Everything goes through Timbre's origin, so a blocker has no hostname to
+  // match. The retry above still applies underneath it.
+  const attempted = viaProxy(chosen);
+  const showImage = Boolean(attempted) && failedSrc !== chosen;
 
   return (
     <span className={`block overflow-hidden bg-[var(--surface-2)] ${className}`}>
@@ -72,7 +93,7 @@ export function Artwork({
           src={attempted ?? undefined}
           alt=""
           loading={eager ? "eager" : "lazy"}
-          onError={() => setFailedSrc(attempted ?? null)}
+          onError={() => setFailedSrc(chosen ?? null)}
           className="size-full object-cover"
         />
       ) : (
