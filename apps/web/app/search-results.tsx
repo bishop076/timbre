@@ -156,7 +156,7 @@ export function SearchResults() {
             // used to be, which made it the brightest thing on the page. Both
             // are translucent so the cover wash carries through, and blurred so
             // it never competes with the text.
-            className="slab w-full rounded-[var(--r-lg)] bg-[color-mix(in_oklab,var(--surface-1)_78%,transparent)] py-2.5 pl-11 pr-12 text-[15px] font-medium outline-none backdrop-blur-md transition-colors placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)] focus:shadow-[var(--drop-lg)]"
+            className="slab slab-soft w-full rounded-[var(--r-lg)] bg-[color-mix(in_oklab,var(--surface-1)_78%,transparent)] py-2.5 pl-11 pr-12 text-[15px] font-medium outline-none backdrop-blur-md transition-colors placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)] focus:shadow-[var(--drop-lg)]"
           />
           {/*
             Three states in one slot, in priority order: searching, something to
@@ -340,18 +340,19 @@ function Shelf({
           )}
         </div>
       </div>
-      {/* Negative margin lets the row bleed to the panel edge, so the last tile
-          is visibly cut rather than stopping short — the cue that says "this
-          scrolls". The arrows above make it operable without a trackpad. */}
+      {/* The row used to bleed past the page margin so the last tile was cut
+          against the panel edge — the cue that said "this scrolls". The arrows
+          above say it now, and say it better, so the row lines up with the
+          heading instead and a cut tile lands on the same margin as everything
+          else rather than against the window. */}
       {/*
-        `scroll-pl-*` must match `px-*`. Without it the browser snaps the first
-        tile to the raw scroll origin, which sits inside the padding — the row
-        silently starts scrolled by exactly the padding width and the first
-        cover is clipped against the edge on load.
+        `scroll-pl-*` must still match `px-*`, or the browser snaps the first
+        tile to the raw scroll origin inside the padding — the row silently
+        starts scrolled by the padding width and clips the first cover on load.
       */}
       <div
         ref={row}
-        className="shelf -mx-5 flex gap-4 overflow-x-auto px-5 pb-1 scroll-pl-5 sm:-mx-7 sm:px-7 sm:scroll-pl-7"
+        className="shelf flex gap-4 overflow-x-auto px-1 pb-1 scroll-pl-1"
       >
         {children}
       </div>
