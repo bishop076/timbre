@@ -228,8 +228,8 @@ input[type="search"]::-webkit-search-results-decoration {
   content: "";
   position: absolute;
   inset-inline: -10%;
-  top: -15%;
-  height: 70%;
+  top: 10%;
+  height: 80%;
   background-image: var(--artwork-img, none);
   background-position: 50% 45%;
   background-size: cover;
@@ -237,7 +237,7 @@ input[type="search"]::-webkit-search-results-decoration {
   filter: blur(64px) saturate(1.9) brightness(0.6);
   opacity: 0.55;
   transform: scale(1.25);
-  mask-image: linear-gradient(to bottom, #000 10%, transparent 88%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 32%, #000 62%, transparent 100%);
   pointer-events: none;
   transition:
     opacity 0.8s var(--ease),
