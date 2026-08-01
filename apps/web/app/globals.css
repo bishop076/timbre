@@ -99,6 +99,23 @@
   box-shadow: var(--drop-sm);
 }
 
+/**
+ * A slab whose edge is drawn in the line tone rather than the ink.
+ *
+ * The ink is near-black by design — that is what makes the hard edge read on a
+ * pale surface. On the darkest surfaces it has nothing to contrast against and
+ * the border vanishes, so a control there looks like it has a *thinner* edge
+ * than everything else when it is the same 2px. This keeps the geometry and
+ * swaps only the colour.
+ *
+ * Declared after `.slab` on purpose: both are single-class selectors, so order
+ * decides, and `.slab` sets the `border` shorthand which would otherwise
+ * overwrite a utility's border-color.
+ */
+.slab-soft {
+  border-color: var(--line);
+}
+
 /* Pressable things sink into their own shadow rather than scaling — the
    physical read that matches a hard edge. */
 .press {
