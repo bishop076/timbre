@@ -123,9 +123,9 @@ export function SearchResults() {
           px-5 / sm:px-7. When they disagree the sticky backdrop renders as a
           second, slightly-offset box around the input instead of a clean band
           across the panel. */}
-      <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-1 bg-[var(--surface-1)] px-5 pb-4 pt-5 sm:-mx-7 sm:px-7">
+      <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-1 bg-[var(--surface-1)] px-5 pb-3 pt-4 sm:-mx-7 sm:px-7">
         <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[var(--fg-dim)]" />
+          <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
           <input
             ref={inputRef}
             type="search"
@@ -134,7 +134,7 @@ export function SearchResults() {
             placeholder="Search for a song, artist or mix — or paste a link…"
             autoFocus
             aria-label="Search for a song"
-            className="slab w-full rounded-[var(--r-lg)] bg-[var(--surface-2)] py-3.5 pl-12 pr-14 text-base font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:shadow-[var(--drop-lg)]"
+            className="slab w-full rounded-[var(--r-lg)] bg-[var(--surface-2)] py-2.5 pl-11 pr-12 text-[15px] font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:shadow-[var(--drop-lg)]"
           />
           {/*
             Three states in one slot, in priority order: searching, something to
@@ -143,7 +143,7 @@ export function SearchResults() {
             colours that cannot be themed, only removed, which globals.css does.
           */}
           {loading ? (
-            <SpinnerIcon className="absolute right-4 top-1/2 size-5 -translate-y-1/2 animate-spin text-[var(--accent)]" />
+            <SpinnerIcon className="absolute right-3.5 top-1/2 size-[18px] -translate-y-1/2 animate-spin text-[var(--accent)]" />
           ) : hasQuery ? (
             <button
               type="button"
