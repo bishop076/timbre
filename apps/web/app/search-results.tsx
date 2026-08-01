@@ -123,7 +123,7 @@ export function SearchResults() {
           px-5 / sm:px-7. When they disagree the sticky backdrop renders as a
           second, slightly-offset box around the input instead of a clean band
           across the panel. */}
-      <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-1 bg-[var(--surface-1)] px-5 pb-3 pt-4 sm:-mx-7 sm:px-7">
+      <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-1 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] px-5 pb-3 pt-4 backdrop-blur-md sm:-mx-7 sm:px-7">
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
           <input
@@ -134,7 +134,16 @@ export function SearchResults() {
             placeholder="Search for a song, artist or mix — or paste a link…"
             autoFocus
             aria-label="Search for a song"
-            className="slab w-full rounded-[var(--r-lg)] bg-[var(--surface-2)] py-2.5 pl-11 pr-12 text-[15px] font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:shadow-[var(--drop-lg)]"
+            // Dark glass: one flat tone, no gradient.
+            //
+            // The *band* behind this takes the darkest step on the ramp, so
+            // the header reads as its own dark shelf rather than as more panel.
+            // The field then sits one step above it — enough to read as
+            // something you type into, still far below the `--surface-2` it
+            // used to be, which made it the brightest thing on the page. Both
+            // are translucent so the cover wash carries through, and blurred so
+            // it never competes with the text.
+            className="slab w-full rounded-[var(--r-lg)] bg-[color-mix(in_oklab,var(--surface-1)_78%,transparent)] py-2.5 pl-11 pr-12 text-[15px] font-medium outline-none backdrop-blur-md transition-colors placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)] focus:shadow-[var(--drop-lg)]"
           />
           {/*
             Three states in one slot, in priority order: searching, something to
