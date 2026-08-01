@@ -229,15 +229,15 @@ input[type="search"]::-webkit-search-results-decoration {
   position: absolute;
   inset-inline: -10%;
   top: -15%;
-  height: 100%;
+  height: 70%;
   background-image: var(--artwork-img, none);
   background-position: 50% 45%;
   background-size: cover;
   background-repeat: no-repeat;
-  filter: blur(64px) saturate(2.2) brightness(0.85);
-  opacity: 0.85;
+  filter: blur(64px) saturate(1.9) brightness(0.6);
+  opacity: 0.55;
   transform: scale(1.25);
-  mask-image: linear-gradient(to bottom, #000 25%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 10%, transparent 88%);
   pointer-events: none;
   transition:
     opacity 0.8s var(--ease),
@@ -248,8 +248,8 @@ input[type="search"]::-webkit-search-results-decoration {
 /* Light needs the opposite exposure, or the wash reads as a bruise. */
 @media (prefers-color-scheme: light) {
   .ambient::after {
-    filter: blur(64px) saturate(1.9) brightness(1.35);
-    opacity: 0.7;
+    filter: blur(64px) saturate(1.7) brightness(1.3);
+    opacity: 0.45;
   }
 }
 

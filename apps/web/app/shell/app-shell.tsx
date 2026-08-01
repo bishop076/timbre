@@ -59,7 +59,18 @@ export function AppShell({ children }: { children: ReactNode }) {
             theater ? "hidden" : ""
           }`}
         >
-          {children}
+          {/*
+            Content sits above both ambient layers.
+
+            Load-bearing: `.ambient`'s washes are *positioned* pseudo-elements,
+            and a positioned element at `z-index: 0` paints **above**
+            non-positioned in-flow content. While the wash was a barely-there
+            tint that went unnoticed; the moment it carried the cover it became
+            a film over every tile and heading. Giving the content its own
+            stacking position is what puts the wash behind it, where a backdrop
+            belongs.
+          */}
+          <div className="relative z-10">{children}</div>
         </main>
         <NowPlayingPanel />
       </div>
