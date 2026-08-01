@@ -1,11 +1,10 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayer } from "../player/player-context";
 import { PlayerBar } from "./player-bar";
-import { ScrollThumb } from "./scroll-thumb";
 import { BottomNav, Sidebar } from "./sidebar";
 
 /**
@@ -37,26 +36,31 @@ import { BottomNav, Sidebar } from "./sidebar";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { theater } = usePlayer();
-  const content = useRef<HTMLElement>(null);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         {/*
-          The content panel, with Timbre's own scrollbar overlaid.
-          `scroll-fade` softens the bottom edge so a row of tiles is never
-          sliced through the middle of its caption.
+          No scrollbar of any kind, native or drawn.
+
+          Four attempts at one — restyled, then rebuilt from scratch — and each
+          was more distracting than the thing it was meant to help with. The
+          panel is one continuous surface and a bar down its edge fights that,
+          so `scroll-fade` carries the whole job instead: content dissolves at
+          the bottom edge, which says "there is more" without drawing a rail
+          over the artwork to say it.
+
+          Scrolling is untouched — wheel, trackpad, touch, keyboard, drag-select
+          and Page Up/Down all behave exactly as before.
         */}
-        <div className={`relative flex min-h-0 flex-1 ${theater ? "hidden" : ""}`}>
-          <main
-            ref={content}
-            className="ambient scroll-fade scroller-quiet relative min-h-0 w-full overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)]"
-          >
-            {children}
-          </main>
-          <ScrollThumb target={content} />
-        </div>
+        <main
+          className={`ambient scroll-fade scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
+            theater ? "hidden" : ""
+          }`}
+        >
+          {children}
+        </main>
         <NowPlayingPanel />
       </div>
       <PlayerBar />

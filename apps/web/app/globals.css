@@ -207,6 +207,58 @@ input[type="search"]::-webkit-search-results-decoration {
   z-index: 0;
 }
 
+/**
+ * The cover itself, blurred into a gradient.
+ *
+ * The accent wash above is one colour sampled from the artwork; this is *all*
+ * of them. A large blur is an averaging function, so blurring the cover to
+ * 80px yields its whole palette laid out roughly where those colours sit in
+ * the image — a gradient nothing had to compute. It is why a pink-and-gold
+ * sleeve gives a pink-and-gold backdrop rather than one averaged mud colour.
+ *
+ * `scale(1.25)` hides the transparent edge a blur of this radius drags inward.
+ * The mask fades it out downward so it stays a wash behind the first screenful
+ * and never sits over the tiles far down the page.
+ *
+ * Independently arrived at, but the same trick BetterLyrics uses on YouTube
+ * Music — noted because the resemblance is real and the technique is theirs to
+ * have popularised, not to own.
+ */
+.ambient::after {
+  content: "";
+  position: absolute;
+  inset-inline: -10%;
+  top: -15%;
+  height: 100%;
+  background-image: var(--artwork-img, none);
+  background-position: 50% 45%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: blur(64px) saturate(2.2) brightness(0.85);
+  opacity: 0.85;
+  transform: scale(1.25);
+  mask-image: linear-gradient(to bottom, #000 25%, transparent 100%);
+  pointer-events: none;
+  transition:
+    opacity 0.8s var(--ease),
+    background-image 0.8s var(--ease);
+  z-index: 0;
+}
+
+/* Light needs the opposite exposure, or the wash reads as a bruise. */
+@media (prefers-color-scheme: light) {
+  .ambient::after {
+    filter: blur(64px) saturate(1.9) brightness(1.35);
+    opacity: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient::after {
+    transition: none;
+  }
+}
+
 /* Horizontal shelves scroll without a visible scrollbar; the row is snapped so
    cards never come to rest half-cut. */
 .shelf {

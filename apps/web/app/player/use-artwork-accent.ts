@@ -159,11 +159,24 @@ export function useArtworkAccent(artworkUrl: string | null | undefined): void {
   useEffect(() => {
     if (!artworkUrl) {
       lastUrl.current = null;
+      document.documentElement.style.setProperty("--artwork-img", "none");
       apply(null);
       return;
     }
     if (lastUrl.current === artworkUrl) return;
     lastUrl.current = artworkUrl;
+
+    /*
+     * The cover itself, for the wash behind the content panel.
+     *
+     * Through `/api/art` for the same reason every other image is: a content
+     * blocker filtering `i.ytimg.com` would otherwise leave the backdrop empty
+     * on exactly the machines that need it most.
+     */
+    document.documentElement.style.setProperty(
+      "--artwork-img",
+      `url("/api/art?u=${encodeURIComponent(artworkUrl)}")`,
+    );
 
     let cancelled = false;
     const image = new Image();
