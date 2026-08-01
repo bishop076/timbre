@@ -119,11 +119,24 @@ export function SearchResults() {
 
   return (
     <>
-      {/* The bleed must match the page's own padding exactly — `page.tsx` uses
-          px-5 / sm:px-7. When they disagree the sticky backdrop renders as a
-          second, slightly-offset box around the input instead of a clean band
-          across the panel. */}
-      <div className="sticky top-0 z-20 -mx-5 -mt-5 mb-1 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] px-5 pb-3 pt-4 backdrop-blur-md sm:-mx-7 sm:px-7">
+      {/*
+        The band bleeds to the *panel* edge, not the container's.
+
+        `-mx-5` only reaches the edges of the max-width column this sits in, so
+        on a wide screen the band stopped short of the panel on both sides. That
+        was invisible while it was painted `--surface-1` — the same colour as
+        the panel behind it — and became an obviously misaligned floating box
+        the moment it took a darker tone.
+
+        A full-viewport-width backdrop, centred and clipped by the panel's own
+        `overflow-x: hidden`, lands exactly on the panel edges at any width
+        without knowing what the column is doing.
+      */}
+      <div className="sticky top-0 z-20 -mt-5 mb-1 px-5 pb-3 pt-4 sm:px-7">
+        <div
+          aria-hidden
+          className="absolute inset-y-0 left-1/2 -z-10 w-screen -translate-x-1/2 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] backdrop-blur-md"
+        />
         <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
           <input
