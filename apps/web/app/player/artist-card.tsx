@@ -1,8 +1,11 @@
 "use client";
 
+import { toArtistSlug } from "../artist-slug";
 import { useEffect, useState } from "react";
 
-import { ExternalIcon } from "../icons";
+import Link from "next/link";
+
+import { ChevronIcon } from "../icons";
 
 interface ArtistInfo {
   name: string;
@@ -51,7 +54,17 @@ export function ArtistCard({ name }: { name: string | null }) {
   if (!artist) return null;
 
   return (
-    <section className="slab-sm overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)]">
+    /*
+     * The whole card is a link to Timbre's own artist page.
+     *
+     * It used to offer only "Open", which left for Deezer — so the one place
+     * the app names an artist sent you *out* of it, while Timbre's own artist
+     * page, with the discography on it, had nothing anywhere pointing at it.
+     */
+    <Link
+      href={`/artist/${toArtistSlug(artist.name)}`}
+      className="slab-sm press block overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] transition hover:bg-[var(--surface-3)]"
+    >
       <div className="relative h-28">
         {artist.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
@@ -75,20 +88,12 @@ export function ArtistCard({ name }: { name: string | null }) {
             </p>
           )}
         </div>
-        {artist.url && (
-          <a
-            href={artist.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="slab-sm press shrink-0 rounded-[var(--r-full)] bg-[var(--surface-1)] px-2.5 py-1 text-[11px] font-bold"
-          >
-            <span className="flex items-center gap-1">
-              Open
-              <ExternalIcon className="size-2.5" />
-            </span>
-          </a>
-        )}
+        {/* An arrow rather than "Open": the destination is inside Timbre now,
+            so a label promising to leave would be wrong. */}
+        <span className="slab-sm shrink-0 rounded-[var(--r-full)] bg-[var(--surface-1)] px-2 py-1 text-[11px] font-bold text-[var(--fg-dim)]">
+          <ChevronIcon className="size-3 -rotate-90" />
+        </span>
       </div>
-    </section>
+    </Link>
   );
 }
