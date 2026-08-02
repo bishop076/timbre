@@ -2,6 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
+import { buildPalette, type Swatch } from "../theme/palette";
+import { isLightTheme, useTheme, type ThemeState } from "../theme/theme-store";
+
 /**
  * Recolours the app from the current track's artwork.
  *
@@ -93,78 +96,66 @@ function dominantHue(data: Uint8ClampedArray): { h: number; s: number; l: number
 }
 
 /**
- * Paints the **whole interface** in one hue, not just an accent.
+ * Writes a palette onto the document.
  *
- * This is the Material You idea PixelPlayer is built on: every surface, line
- * and label is a step on a single tonal ramp derived from the cover, so the app
- * reads as one tinted material rather than a grey chrome with a coloured button
- * in it. Neutral greys are deliberately absent — a "grey" here is the same hue
- * at very low saturation, which is what keeps the tint from looking bolted on.
+ * The ramp itself lives in `theme/palette.ts` and is unit-tested; this only
+ * puts it on the element. `data-theme` goes on too, so CSS that cannot be
+ * expressed as a custom property — the ambient wash's exposure, which needs a
+ * different filter on a light ground — can key off the same decision rather
+ * than asking `prefers-color-scheme` and disagreeing with the palette.
  */
-function apply(color: { h: number; s: number; l: number } | null): void {
+function apply(swatch: Swatch | null, theme: ThemeState): void {
   const root = document.documentElement;
-  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const palette = buildPalette(swatch, theme);
 
-  const hue = color ? Math.round(color.h * 360) : dark ? 258 : 262;
-  // Saturation drives how strongly the hue reads. Surfaces stay well below the
-  // accent so artwork remains the most colourful thing on screen.
-  const sat = color ? Math.min(0.7, Math.max(0.3, color.s)) : 0.5;
-
-  const tone = (l: number, s = sat) =>
-    `hsl(${hue} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
-
-  if (dark) {
-    // Saturation stays high on every surface. A timid tint reads as "grey app
-    // with a coloured button"; the whole point is that the app is *made of* the
-    // album's colour, so even the darkest plane is unmistakably that hue.
-    root.style.setProperty("--bg", tone(0.1, sat * 0.9));
-    root.style.setProperty("--surface-1", tone(0.16, sat * 0.85));
-    root.style.setProperty("--surface-2", tone(0.23, sat * 0.8));
-    root.style.setProperty("--surface-3", tone(0.31, sat * 0.75));
-    root.style.setProperty("--fg", tone(0.95, sat * 0.45));
-    root.style.setProperty("--fg-dim", tone(0.76, sat * 0.4));
-    root.style.setProperty("--fg-faint", tone(0.6, sat * 0.4));
-    // The hard edge has to be *lighter* than the plane it outlines on a dark
-    // ground. Black-on-black is the whole brutalist look made invisible.
-    root.style.setProperty("--ink", tone(0.05, sat * 0.9));
-    root.style.setProperty("--line", tone(0.4, sat * 0.5));
-    root.style.setProperty("--accent", tone(0.72, Math.min(0.9, Math.max(0.6, sat))));
-    root.style.setProperty("--accent-fg", tone(0.1, sat * 0.9));
-  } else {
-    root.style.setProperty("--bg", tone(0.9, sat * 0.85));
-    root.style.setProperty("--surface-1", tone(0.86, sat * 0.9));
-    root.style.setProperty("--surface-2", tone(0.8, sat * 0.95));
-    root.style.setProperty("--surface-3", tone(0.72, sat));
-    root.style.setProperty("--fg", tone(0.12, sat * 0.7));
-    root.style.setProperty("--fg-dim", tone(0.34, sat * 0.5));
-    root.style.setProperty("--fg-faint", tone(0.48, sat * 0.45));
-    root.style.setProperty("--ink", tone(0.09, sat * 0.8));
-    root.style.setProperty("--line", tone(0.09, sat * 0.8));
-    root.style.setProperty("--accent", tone(0.62, Math.min(0.95, Math.max(0.7, sat))));
-    root.style.setProperty("--accent-fg", tone(0.1, sat * 0.8));
+  for (const [token, value] of Object.entries(palette)) {
+    root.style.setProperty(token, value);
   }
-
-  const ink = dark ? "0 0% 0%" : `${hue} ${Math.round(sat * 80)}% 9%`;
-  root.style.setProperty("--drop", `3px 3px 0 hsl(${ink} / ${dark ? 0.85 : 1})`);
-  root.style.setProperty("--drop-sm", `2px 2px 0 hsl(${ink} / ${dark ? 0.85 : 1})`);
-  root.style.setProperty("--drop-lg", `5px 5px 0 hsl(${ink} / ${dark ? 0.85 : 1})`);
-  root.style.setProperty("--accent-wash", `hsl(${hue} ${Math.round(sat * 100)}% 55% / 0.2)`);
+  root.dataset.theme = isLightTheme(theme) ? "light" : "dark";
+  // The mode as well as the ground: pastel needs a quieter backdrop than a
+  // custom light theme does, and "light" alone cannot express that.
+  root.dataset.mode = theme.mode;
+  // Neutral suppresses the blurred-cover backdrop entirely — see globals.css.
+  root.dataset.neutral = String(theme.mode === "custom" && theme.customNeutral);
 }
 
 export function useArtworkAccent(artworkUrl: string | null | undefined): void {
+  const theme = useTheme();
+
   // Avoids re-reading the same image when the component re-renders for an
   // unrelated reason — position ticks twice a second.
   const lastUrl = useRef<string | null>(null);
 
   useEffect(() => {
+    /*
+     * A fixed theme never looks at the artwork.
+     *
+     * Returning before the image is even fetched is the point of the mode: the
+     * reader asked for one colour, so there is nothing to sample and no reason
+     * to decode a cover to arrive at a value already known. The backdrop image
+     * is still set, since that is the cover itself rather than a colour derived
+     * from it.
+     */
+    if (theme.mode === "custom") {
+      lastUrl.current = null;
+      document.documentElement.style.setProperty(
+        "--artwork-img",
+        artworkUrl ? `url("/api/art?u=${encodeURIComponent(artworkUrl)}")` : "none",
+      );
+      apply(null, theme);
+      return;
+    }
+
     if (!artworkUrl) {
       lastUrl.current = null;
       document.documentElement.style.setProperty("--artwork-img", "none");
-      apply(null);
+      apply(null, theme);
       return;
     }
-    if (lastUrl.current === artworkUrl) return;
-    lastUrl.current = artworkUrl;
+    // The guard is keyed on the theme as well as the URL: switching mode while
+    // a song plays has to repaint, and the URL will not have changed.
+    if (lastUrl.current === `${theme.mode}:${artworkUrl}`) return;
+    lastUrl.current = `${theme.mode}:${artworkUrl}`;
 
     /*
      * The cover itself, for the wash behind the content panel.
@@ -197,15 +188,17 @@ export function useArtworkAccent(artworkUrl: string | null | undefined): void {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) return;
         ctx.drawImage(image, 0, 0, size, size);
-        apply(dominantHue(ctx.getImageData(0, 0, size, size).data));
+        const found = dominantHue(ctx.getImageData(0, 0, size, size).data);
+        // `dominantHue` works in 0–1; the palette takes degrees.
+        apply(found && { hue: found.h * 360, sat: found.s }, theme);
       } catch {
         // Tainted canvas — this CDN does not allow reading its pixels.
-        apply(null);
+        apply(null, theme);
       }
     };
 
     image.onerror = () => {
-      if (!cancelled) apply(null);
+      if (!cancelled) apply(null, theme);
     };
 
     image.src = artworkUrl;
@@ -213,5 +206,5 @@ export function useArtworkAccent(artworkUrl: string | null | undefined): void {
     return () => {
       cancelled = true;
     };
-  }, [artworkUrl]);
+  }, [artworkUrl, theme]);
 }
