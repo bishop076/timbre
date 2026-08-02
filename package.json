@@ -2,7 +2,7 @@
   "name": "timbre",
   "version": "0.0.0",
   "private": true,
-  "description": "One library across Spotify, YouTube Music, and SoundCloud.",
+  "description": "One search across free music. Nothing stored, nothing hosted.",
   "scripts": {
     "dev": "pnpm --filter @timbre/web dev",
     "dev:ytmusic": "dotenv -e .env -- apps/ytmusic/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
@@ -11,10 +11,7 @@
     "start": "pnpm --filter @timbre/web start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
-    "db:generate": "pnpm --filter @timbre/db generate",
-    "db:migrate": "pnpm --filter @timbre/db migrate",
-    "db:studio": "pnpm --filter @timbre/db studio"
+    "test": "pnpm -r test"
   },
   "engines": {
     "node": ">=22"

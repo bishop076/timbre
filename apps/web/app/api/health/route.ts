@@ -1,27 +1,16 @@
-import { getDatabase } from "@timbre/db";
-import { sql } from "drizzle-orm";
-
-import { getEnv, hasEmailAuth, hasSoundCloud } from "@/lib/env";
+import { getEnv, hasSoundCloud } from "@/lib/env";
 
 /**
- * Aggregate liveness check for both deployables.
+ * Liveness check.
  *
- * Reports which optional integrations are configured, so a half-set-up
- * environment is visible immediately rather than surfacing later as a confusing
- * failure mid-OAuth. It never reports secret values, only whether they exist.
+ * There is exactly one dependency left to report on. Timbre stores nothing
+ * about anyone — playlists, profile and history all live in the reader's
+ * browser — so there is no database to be up or down, and the only way this
+ * endpoint can be unhealthy is the YouTube Music sidecar being unreachable.
  */
 export const dynamic = "force-dynamic";
 
 type Check = { status: "ok" | "error"; detail?: string };
-
-async function checkDatabase(): Promise<Check> {
-  try {
-    await getDatabase().execute(sql`select 1`);
-    return { status: "ok" };
-  } catch (error) {
-    return { status: "error", detail: error instanceof Error ? error.message : String(error) };
-  }
-}
 
 async function checkYtMusic(url: string): Promise<Check> {
   try {
@@ -42,21 +31,16 @@ async function checkYtMusic(url: string): Promise<Check> {
 
 export async function GET() {
   const env = getEnv();
-  const [database, ytmusic] = await Promise.all([
-    checkDatabase(),
-    checkYtMusic(env.YTMUSIC_SERVICE_URL),
-  ]);
-
-  const healthy = database.status === "ok" && ytmusic.status === "ok";
+  const ytmusic = await checkYtMusic(env.YTMUSIC_SERVICE_URL);
+  const healthy = ytmusic.status === "ok";
 
   return Response.json(
     {
       status: healthy ? "ok" : "degraded",
-      services: { database, ytmusic },
-      configured: {
-        emailAuth: hasEmailAuth(env),
-        soundcloud: hasSoundCloud(env),
-      },
+      services: { ytmusic },
+      // Never secret values, only whether they exist, so a half-configured
+      // environment is visible immediately rather than failing confusingly.
+      configured: { soundcloud: hasSoundCloud(env) },
     },
     { status: healthy ? 200 : 503 },
   );
