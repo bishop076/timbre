@@ -5,22 +5,16 @@ import { z } from "zod";
 /**
  * Server environment, validated once at first use.
  *
- * Timbre stores third-party OAuth tokens, so a missing encryption key or a
- * half-configured deployment must fail at boot with a readable message rather
- * than at 2am inside a sync job.
+ * **Almost empty, and that is the point.** Timbre stores nothing about anyone:
+ * playlists, profile and history live in the reader's browser, so there is no
+ * database URL, no session secret, no encryption key and no mail server. What
+ * is left is the address of the YouTube Music sidecar and the secret shared
+ * with it.
+ *
+ * That is what makes free hosting possible — the app is a stateless front end
+ * over public catalogues, with one small service behind it.
  */
 const schema = z.object({
-  DATABASE_URL: z.url({ error: "DATABASE_URL must be a postgres:// connection string." }),
-
-  /** base64, 32 bytes. Generate with `openssl rand -base64 32`. */
-  TIMBRE_ENCRYPTION_KEY: z
-    .string()
-    .min(1, "TIMBRE_ENCRYPTION_KEY is required to encrypt provider tokens."),
-
-  /** Auth.js session signing key. `npx auth secret` generates one. */
-  AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required."),
-  AUTH_URL: z.url().optional(),
-
   /** The Python sidecar. Loopback by default; never expose it publicly. */
   YTMUSIC_SERVICE_URL: z.url().default("http://127.0.0.1:8787"),
   YTMUSIC_SHARED_SECRET: z
@@ -28,19 +22,12 @@ const schema = z.object({
     .min(1, "YTMUSIC_SHARED_SECRET must match the sidecar's own value."),
 
   /**
-   * SoundCloud is the one provider Timbre keys centrally, because self-service
-   * registration reopened in May 2026. Optional so the app still boots with
-   * SoundCloud simply unavailable.
+   * SoundCloud stays optional and unset. Its player needs no credentials at
+   * all; only its catalogue search does, and that is gated — see
+   * docs/BLOCKED.md.
    */
   SOUNDCLOUD_CLIENT_ID: z.string().optional(),
   SOUNDCLOUD_CLIENT_SECRET: z.string().optional(),
-
-  /**
-   * Magic-link sign-in. Optional so local development can run without SMTP;
-   * when absent, Timbre has no usable sign-in method and says so explicitly.
-   */
-  EMAIL_SERVER: z.string().optional(),
-  EMAIL_FROM: z.email().optional(),
 
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
@@ -64,11 +51,6 @@ export function getEnv(): Env {
 
   cached = parsed.data;
   return cached;
-}
-
-/** Whether magic-link sign-in is configured. */
-export function hasEmailAuth(env: Env): boolean {
-  return Boolean(env.EMAIL_SERVER && env.EMAIL_FROM);
 }
 
 /** Whether the centrally-keyed SoundCloud integration is configured. */
