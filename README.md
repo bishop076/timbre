@@ -19,7 +19,7 @@ The full reasoning — including why the original "connect all three accounts" i
 - **Search** one box → results from YouTube Music, merged with availability on Deezer and Apple
 - **Play** one continuous queue mixing YouTube Music and SoundCloud
 - **Spotify panel** — the official embed plays **full tracks for free Spotify accounts** when signed in
-- **Playlists** of your own, referencing source tracks
+- **Playlists** of your own, saved in your browser — no account, no sign-up
 
 ## What it deliberately doesn't do
 
@@ -30,6 +30,7 @@ These aren't missing features — they're rules Timbre respects.
 - **No downloading or caching audio.** Ever.
 - **No blending Spotify into the queue.** Spotify's Developer Terms §IV.2 forbid integrating their streams with another service's. The embed is a separate, clearly attributed panel.
 - **No gapless cross-source playback.** Handing off between two iframe players always has a small gap. Continuous, not gapless.
+- **No accounts, and no data.** Timbre asks for no email and keeps no user record. Playlists, your profile and your history live in your browser and nowhere else. Nothing to breach, nothing to subpoena, nothing to pay for — and the honest cost is that clearing site data loses them, so **Export** exists on the library page.
 
 ## Status
 
@@ -40,22 +41,16 @@ These aren't missing features — they're rules Timbre respects.
 - Node.js 22+ (developed on 26)
 - pnpm 11+
 - Python 3.11+
-- Docker (local Postgres and a mail catcher)
 
-No API keys, no developer accounts, no subscriptions.
+No database, no API keys, no developer accounts, no subscriptions.
 
 ## Setup
 
 ```bash
 pnpm install
-docker compose up -d          # Postgres :5432, Mailpit :8025
 
 cp .env.example .env
-# TIMBRE_ENCRYPTION_KEY: openssl rand -base64 32
-# AUTH_SECRET:           npx auth secret
 # YTMUSIC_SHARED_SECRET: openssl rand -hex 32
-
-pnpm db:migrate
 
 cd apps/ytmusic
 python -m venv .venv
@@ -63,7 +58,7 @@ python -m venv .venv
 cd ../..
 ```
 
-All environment variables live in **one root `.env`**. Next.js and drizzle-kit each load it via `dotenv-cli`, since neither looks outside its own directory in a monorepo.
+Both environment variables live in **one root `.env`**, loaded via `dotenv-cli` because Next does not look outside its own directory in a monorepo.
 
 ## Running
 
@@ -79,7 +74,7 @@ curl http://127.0.0.1:3000/api/health
 # {"status":"ok","services":{"database":{"status":"ok"},"ytmusic":{"status":"ok"}}, ...}
 ```
 
-Returns **503** naming the failing service if either is down. Sign-in emails land in Mailpit at http://localhost:8025.
+Returns **503** if the sidecar is down. It is the only dependency there is.
 
 ## Layout
 
@@ -90,8 +85,12 @@ apps/
 packages/
   core/       canonical models, matching, rate limiter, crypto
   providers/  SearchProvider interface + per-source adapters
-  db/         Drizzle schema and migrations
 ```
+
+There is no database package, and no database. Everything a person owns —
+playlists, display name, profile pictures, queue, history — lives in their
+browser's `localStorage`, so the web app is a stateless front end and the only
+thing behind it is the sidecar. That is what makes it free to host.
 
 The matching engine in `packages/core` is the heart of the product: showing one song across several sources *is* a matching problem.
 
