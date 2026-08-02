@@ -1,12 +1,17 @@
 "use client";
 
+import { ArtistLink } from "../artist-link";
+import type { ReactNode } from "react";
+
 import { Artwork } from "../artwork";
-import { CollapseIcon, ExpandIcon, ExternalIcon } from "../icons";
+import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon } from "../icons";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
+import { MobileTransport } from "./mobile-transport";
 import { usePlayer } from "./player-context";
 import { SimilarSongs } from "./similar-songs";
+import { PanelTabs } from "./panel-tabs";
 import { SoundCloudPlayer } from "./soundcloud-player";
 import { YouTubePlayer } from "./youtube-player";
 
@@ -28,26 +33,98 @@ function Credit({ label, value, mono }: { label: string; value: string | null; m
   );
 }
 
-/** A queued song, wherever one is listed. Shared with `similar-songs.tsx`. */
-export function QueueRow({ song, onPlay }: { song: Song; onPlay: () => void }) {
+/**
+ * A queued song, wherever one is listed. Shared with `similar-songs.tsx`.
+ *
+ * The row is a container with a button inside rather than one big button,
+ * because queue rows carry their own controls and a button cannot legally hold
+ * another one — browsers drop the inner control, and screen readers announce
+ * whatever survives as a single unlabelled target. `actions` is the slot for
+ * them; without it this renders exactly as it did before.
+ */
+export function QueueRow({
+  song,
+  onPlay,
+  actions,
+}: {
+  song: Song;
+  onPlay: () => void;
+  actions?: ReactNode;
+}) {
   return (
-    <button
-      type="button"
-      onClick={onPlay}
-      className="flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left hover:bg-[var(--surface-2)]"
-    >
-      <Artwork
-        src={song.artworkUrl}
-        className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
-        iconClassName="size-4"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-semibold">{song.title}</span>
-        <span className="block truncate text-[11px] text-[var(--fg-dim)]">
-          {song.artists.join(", ") || "Unknown artist"}
+    <div className="group/row flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]">
+      <button
+        type="button"
+        onClick={onPlay}
+        className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus:outline-none"
+      >
+        <Artwork
+          src={song.artworkUrl}
+          className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+          iconClassName="size-4"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold">{song.title}</span>
+          <span className="block truncate text-[11px] text-[var(--fg-dim)]">
+            <ArtistLink artists={song?.artists ?? []} />
+          </span>
         </span>
-      </span>
-    </button>
+      </button>
+      {actions}
+    </div>
+  );
+}
+
+/**
+ * Reorder and remove, for one queued row.
+ *
+ * Up/down rather than drag: dragging needs a pointer, and the queue is one of
+ * the few lists here that is genuinely edited on a phone. Buttons work with
+ * touch, keyboard and screen readers without a second implementation, and the
+ * queue is short enough that stepping is not tedious.
+ *
+ * Hidden until the row is hovered or something inside it takes focus — but
+ * `focus-within`, not `focus`, so tabbing to a control keeps its siblings
+ * visible instead of making each one vanish as you move between them.
+ */
+function QueueActions({
+  onUp,
+  onDown,
+  onRemove,
+  title,
+}: {
+  onUp: (() => void) | null;
+  onDown: (() => void) | null;
+  onRemove: () => void;
+  title: string;
+}) {
+  const button =
+    "flex size-6 items-center justify-center rounded-[var(--r-sm)] text-[var(--fg-dim)] transition hover:bg-[var(--surface-3)] hover:text-[var(--fg)] disabled:pointer-events-none disabled:opacity-25";
+
+  return (
+    <div className="flex shrink-0 items-center gap-0.5 pr-0.5 opacity-0 transition group-hover/row:opacity-100 group-focus-within/row:opacity-100">
+      <button
+        type="button"
+        onClick={onUp ?? undefined}
+        disabled={!onUp}
+        aria-label={`Move ${title} up`}
+        className={button}
+      >
+        <ChevronIcon className="size-3.5 rotate-180" />
+      </button>
+      <button
+        type="button"
+        onClick={onDown ?? undefined}
+        disabled={!onDown}
+        aria-label={`Move ${title} down`}
+        className={button}
+      >
+        <ChevronIcon className="size-3.5" />
+      </button>
+      <button type="button" onClick={onRemove} aria-label={`Remove ${title}`} className={button}>
+        <CloseIcon className="size-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -97,6 +174,9 @@ export function NowPlayingPanel() {
     index,
     radio,
     play,
+    move,
+    removeAt,
+    clearQueue,
   } = usePlayer();
 
   const active = current !== null;
@@ -158,15 +238,28 @@ export function NowPlayingPanel() {
    * video letterboxes itself inside a filled box, so this trades a shaped
    * border for a straight one.
    */
+  /*
+   * `min-h-[200px]` is a compliance floor, not a taste decision.
+   *
+   * YouTube's IFrame API refuses to play below 200×200 and reports only a bare
+   * "Video unavailable" — the bug in docs/BUGS.md B-1. Expanded, this box is
+   * `aspect-video` at the full width of the column, so a 320px-wide phone would
+   * compute a 171px height and every track would fail on exactly the devices
+   * least able to explain why. The minimum wins over the aspect ratio; the
+   * player letterboxes inside it.
+   */
   const videoBox = expanded
-    ? "slab relative min-h-0 w-full shrink-0 overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video xl:aspect-auto xl:h-full xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
+    ? "slab relative min-h-[200px] w-full shrink-0 overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
     : "relative shrink-0 bg-black";
 
   const listBox = expanded
-    ? "slab flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-[21rem] xl:flex-none"
-    : // On a phone the floating card is the video and nothing else — there is no
-      // room for a panel beside a mini player, and the expanded view is one tap
-      // away for anyone who wants one.
+    ? // Below `xl` the queue is hidden and the transport takes the slot instead:
+      // on a phone, controls you can reach are worth more than a list you can
+      // scroll to anyway, and both together leave room for neither.
+      "slab hidden min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:flex xl:h-full xl:w-[21rem] xl:flex-none"
+    : // Docked on a phone the floating card is the video and nothing else —
+      // there is no room for a panel beside a mini player, and the expanded
+      // view is one tap away for anyone who wants one.
       "hidden min-h-0 flex-1 flex-col xl:flex";
 
   return (
@@ -248,7 +341,7 @@ export function NowPlayingPanel() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{current?.title ?? "Nothing playing"}</p>
                   <p className="truncate text-xs text-[var(--fg-dim)]">
-                    {current?.artists.join(", ") || "Unknown artist"}
+                    <ArtistLink artists={current?.artists ?? []} />
                   </p>
                 </div>
                 <span
@@ -259,38 +352,89 @@ export function NowPlayingPanel() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 px-4 pb-2 pt-3">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-                  Up next
-                </span>
-                <span className="text-[11px] tabular-nums text-[var(--fg-faint)]">
-                  {upcoming.length || ""}
-                </span>
-              </div>
+              {/*
+                Up next, Lyrics and Related — YouTube Music's arrangement.
+                The queue stays here rather than moving into <PanelTabs>,
+                because it is this component's own state and lifting it
+                would give two places an opinion about what plays next.
+              */}
+              <PanelTabs
+                queue={
+                  <>
+                  <div className="flex items-center gap-2 px-4 pb-2 pt-3">
+                    <span className="text-[11px] tabular-nums text-[var(--fg-faint)]">
+                      {upcoming.length || ""} coming up
+                    </span>
+                    {/* Clears the queued songs only. The suggestions below them are
+                        not in the queue — they are what plays if nothing is — so
+                        there is nothing there to clear. */}
+                    {queued.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearQueue}
+                        className="ml-auto rounded-[var(--r-sm)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--fg-dim)] transition hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
 
-              <div className="scroller-quiet min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-                {upcoming.length === 0 ? (
-                  <p className="px-2 py-4 text-xs leading-relaxed text-[var(--fg-faint)]">
-                    Nothing after this one. Playing a song from a shelf queues the rest of it.
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-0.5">
-                    {upcoming.map((song, position) => (
-                      <li key={`${song.id}-${position}`}>
-                        {/* Where the queue ends and the blend begins. Labelled
-                            rather than blended in, so "queued" and "suggested"
-                            never look like the same promise. */}
-                        {position === queued.length && queued.length > 0 && (
-                          <p className="px-1.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--fg-faint)]">
-                            Then, from your blend
-                          </p>
-                        )}
-                        <QueueRow song={song} onPlay={() => play(song, upcoming)} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                  <div className="scroller-quiet min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+                    {upcoming.length === 0 ? (
+                      <p className="px-2 py-4 text-xs leading-relaxed text-[var(--fg-faint)]">
+                        Nothing after this one. Playing a song from a shelf queues the rest of it.
+                      </p>
+                    ) : (
+                      <ul className="flex flex-col gap-0.5">
+                        {upcoming.map((song, position) => {
+                          /*
+                           * Only the queued half is editable. The suggestions after
+                           * it are a live recommendation that is refetched on every
+                           * track change, so "remove" there would delete something
+                           * that reappears a song later — a control that visibly
+                           * does not work. Playing one still queues it, which is
+                           * the way to act on a suggestion.
+                           */
+                          const queuedHere = position < queued.length;
+                          const at = index + 1 + position;
+                          const last = index + queued.length;
+
+                          return (
+                            <li key={`${song.id}-${position}`}>
+                              {/* Where the queue ends and the blend begins. Labelled
+                                  rather than blended in, so "queued" and "suggested"
+                                  never look like the same promise. */}
+                              {position === queued.length && queued.length > 0 && (
+                                <p className="px-1.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--fg-faint)]">
+                                  Then, from your blend
+                                </p>
+                              )}
+                              <QueueRow
+                                song={song}
+                                onPlay={() => play(song, upcoming)}
+                                actions={
+                                  queuedHere ? (
+                                    <QueueActions
+                                      title={song.title}
+                                      // Never above the playing song: the queue
+                                      // behind `index` is history, and promoting a
+                                      // track into it would silently drop it.
+                                      onUp={at > index + 1 ? () => move(at, at - 1) : null}
+                                      onDown={at < last ? () => move(at, at + 1) : null}
+                                      onRemove={() => removeAt(at)}
+                                    />
+                                  ) : undefined
+                                }
+                              />
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  </>
+                }
+              />
             </>
           ) : (
             <>
@@ -301,7 +445,7 @@ export function NowPlayingPanel() {
                       {current?.title ?? "Nothing playing"}
                     </p>
                     <p className="truncate text-xs text-[var(--fg-dim)]">
-                      {current?.artists.join(", ") || "Unknown artist"}
+                      <ArtistLink artists={current?.artists ?? []} />
                     </p>
                   </div>
                   {/* Attribution names the source actually playing. Every
@@ -368,6 +512,21 @@ export function NowPlayingPanel() {
             </>
           )}
         </div>
+
+        {/*
+          The phone's controls, under the player.
+
+          A sibling of the video rather than a wrapper around it: the iframe
+          must keep its place in the tree, because a re-parented iframe reloads
+          and playback stops. `xl:hidden` because from that width up the queue
+          panel is beside the video and the desktop bar already carries the
+          transport.
+        */}
+        {expanded && (
+          <div className="xl:hidden">
+            <MobileTransport />
+          </div>
+        )}
       </div>
     </aside>
   );

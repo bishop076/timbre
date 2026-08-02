@@ -14,6 +14,7 @@ import {
 
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
+import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
 import {
   getVolumeServerSnapshot,
   getVolumeSnapshot,
@@ -130,6 +131,12 @@ interface PlayerControls extends PlayerState {
   play: (song: Song, rest?: Song[]) => void;
   /** Appends to the queue without disturbing what is playing. */
   enqueue: (songs: Song[]) => void;
+  /** Drops one entry by queue position, including the one playing. */
+  removeAt: (position: number) => void;
+  /** Moves an entry to another position, carrying playback with it. */
+  move: (from: number, to: number) => void;
+  /** Drops everything after the current song, keeping it playing. */
+  clearQueue: () => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
@@ -395,12 +402,90 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setRepeat((mode) => (mode === "off" ? "all" : mode === "all" ? "one" : "off"));
   }, []);
 
-  const enqueue = useCallback((songs: Song[]) => {
-    setQueue((current) => {
-      const known = new Set(current.map((song) => song.id));
-      return [...current, ...songs.filter((song) => !known.has(song.id))];
-    });
+  /**
+   * Songs from `additions` that are not already queued.
+   *
+   * The queue is deduplicated by song id because every entry point can supply
+   * overlapping lists — a shelf, a playlist and the radio routinely contain the
+   * same track — and a queue that lists the same song twice makes shuffle's
+   * "played everything once" bookkeeping wrong as well as looking careless.
+   */
+  const unqueued = useCallback(
+    (additions: Song[]) => {
+      const known = new Set(queue.map((song) => song.id));
+      return additions.filter((song) => !known.has(song.id));
+    },
+    [queue],
+  );
+
+  /** Tears down the players and returns to rest. Used when the queue empties. */
+  const stop = useCallback(() => {
+    resolving.current?.abort();
+    songRef.current = null;
+    setVideoId(null);
+    setSoundcloudUrl(null);
+    setActiveSource(null);
+    setState("idle");
+    setProblem(null);
+    setPosition(0);
+    setDuration(0);
   }, []);
+
+  const enqueue = useCallback(
+    (songs: Song[]) => {
+      const fresh = unqueued(songs);
+      if (fresh.length === 0) return;
+
+      // Adding to an empty queue has to start playback. Without this the first
+      // song becomes `current` — the bar and panel show it — while no player
+      // was ever asked to load it, so it sits there looking playable and never
+      // plays.
+      if (queue.length === 0) {
+        setQueue(fresh);
+        setIndex(0);
+        void load(fresh[0]!);
+        return;
+      }
+
+      setQueue([...queue, ...fresh]);
+    },
+    [load, queue, unqueued],
+  );
+
+  /** Applies an edit from `queue-ops`, which owns the index arithmetic. */
+  const applyEdit = useCallback(
+    (edit: QueueEdit | null) => {
+      if (!edit) return;
+      setQueue(edit.queue);
+      setIndex(edit.index);
+      if (edit.stopped) stop();
+      else if (edit.play) void load(edit.play);
+    },
+    [load, stop],
+  );
+
+  const removeAt = useCallback(
+    (position: number) => {
+      const song = queue[position];
+      if (!song) return;
+      // Otherwise a re-added song counts as already played for the rest of the
+      // shuffle pass and gets skipped.
+      shuffled.current.delete(song.id);
+      applyEdit(removeFromQueue(queue, index, position));
+    },
+    [applyEdit, index, queue],
+  );
+
+  const move = useCallback(
+    (from: number, to: number) => applyEdit(moveWithin(queue, index, from, to)),
+    [applyEdit, index, queue],
+  );
+
+  const clearQueue = useCallback(() => {
+    // Keeps the current song. Clearing what you are listening to would be a
+    // stop button wearing the wrong label.
+    setQueue((current) => current.slice(0, index + 1));
+  }, [index]);
 
   /*
    * Recommendations for whatever is playing.
@@ -614,6 +699,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       repeat,
       play,
       enqueue,
+      removeAt,
+      move,
+      clearQueue,
       toggle,
       next,
       previous,
@@ -652,6 +740,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       repeat,
       play,
       enqueue,
+      removeAt,
+      move,
+      clearQueue,
       toggle,
       next,
       previous,
