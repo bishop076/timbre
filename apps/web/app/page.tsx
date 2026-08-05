@@ -1,4 +1,4 @@
-import { SearchResults } from "./search-results";
+import { HomeView } from "./home-view";
 
 export default function Home() {
   return (
@@ -7,7 +7,7 @@ export default function Home() {
     // consistently overestimate the space available and the grid ends up
     // cramped at exactly the widths where it should relax.
     <div className="@container mx-auto w-full max-w-6xl px-5 pb-10 pt-5 sm:px-7">
-      <SearchResults />
+      <HomeView />
     </div>
   );
 }
