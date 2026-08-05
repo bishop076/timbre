@@ -1,0 +1,81 @@
+# Typecheck, test and build on every push.
+#
+# Two jobs rather than one, because Timbre is two runtimes that fail
+# independently: `ytmusicapi` is unofficial and tracks YouTube's private web
+# API, so the sidecar can break on a day nothing in the web app changed. Kept
+# separate, a red tick names which half is wrong before anyone opens a log.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A new push makes the previous run's answer irrelevant. Cancelling it keeps a
+# branch from queueing behind its own stale builds.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Web (typecheck, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads packageManager from package.json, so the version is pinned in one
+      # place rather than drifting between here and local machines.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      # `pnpm build` runs next through `dotenv -e ../../.env`, which exits
+      # non-zero when the file is absent — so CI has to have one. Writing it
+      # here rather than calling next directly keeps CI on the same command
+      # path as a developer's machine, which is the point of running it at all.
+      #
+      # Placeholders only. The build must never need real credentials: a run
+      # that can only pass with secrets cannot run on a fork's pull request.
+      # The env schema is validated at first use rather than at import, so
+      # nothing here reaches a real service.
+      - name: Write a placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          YTMUSIC_SERVICE_URL=http://127.0.0.1:8787
+          YTMUSIC_SHARED_SECRET=ci-placeholder
+          EOF
+
+      # The build type-checks again and catches what `tsc --noEmit` cannot:
+      # prerender-time failures in route and page modules.
+      - run: pnpm build
+
+  ytmusic:
+    name: Sidecar (lint, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/ytmusic
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # The floor from pyproject.toml. Testing the oldest supported version
+          # is what stops a newer-syntax dependency slipping in unnoticed.
+          python-version: "3.11"
+
+      - run: pip install -e ".[dev]"
+
+      - run: ruff check .
+      - run: pytest -q
