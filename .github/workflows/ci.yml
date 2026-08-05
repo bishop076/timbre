@@ -36,6 +36,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # `typecheck` runs `next typegen` first, because layout.tsx uses
+      # `LayoutProps<"/">` — a global Next generates into .next/types. A machine
+      # that has built before already has it and passes; a clean checkout does
+      # not, which is exactly the difference between a laptop and CI. The fix
+      # lives in the package script rather than here, so a fresh clone behaves
+      # the same way.
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
