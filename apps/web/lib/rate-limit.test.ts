@@ -1,0 +1,98 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { clientKey, createRateLimiter } from "./rate-limit.ts";
+
+function clock(start = 0) {
+  let at = start;
+  return { now: () => at, advance: (ms: number) => (at += ms) };
+}
+
+test("requests inside the limit are allowed and count down", () => {
+  const limiter = createRateLimiter({ limit: 3, windowMs: 1000, now: clock().now });
+
+  assert.deepEqual(limiter.check("a"), { ok: true, remaining: 2, retryAfterSeconds: 0 });
+  assert.deepEqual(limiter.check("a"), { ok: true, remaining: 1, retryAfterSeconds: 0 });
+  assert.deepEqual(limiter.check("a"), { ok: true, remaining: 0, retryAfterSeconds: 0 });
+});
+
+test("the request past the limit is refused with a retry hint", () => {
+  const time = clock();
+  const limiter = createRateLimiter({ limit: 2, windowMs: 5000, now: time.now });
+
+  limiter.check("a");
+  limiter.check("a");
+  time.advance(1000);
+
+  const verdict = limiter.check("a");
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.retryAfterSeconds, 4, "what is left of the window, rounded up");
+});
+
+test("a refusal never reports zero seconds", () => {
+  const time = clock();
+  const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: time.now });
+
+  limiter.check("a");
+  time.advance(999);
+  // Retry-After: 0 invites an immediate retry that is certain to fail again.
+  assert.equal(limiter.check("a").retryAfterSeconds, 1);
+});
+
+test("the allowance returns when the window lapses", () => {
+  const time = clock();
+  const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: time.now });
+
+  assert.equal(limiter.check("a").ok, true);
+  assert.equal(limiter.check("a").ok, false);
+  time.advance(1001);
+  assert.equal(limiter.check("a").ok, true);
+});
+
+test("one client being throttled does not affect another", () => {
+  const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: clock().now });
+
+  assert.equal(limiter.check("noisy").ok, true);
+  assert.equal(limiter.check("noisy").ok, false);
+  assert.equal(limiter.check("quiet").ok, true, "throttling must be per client, not global");
+});
+
+test("lapsed clients are swept rather than evicting live ones", () => {
+  const time = clock();
+  const limiter = createRateLimiter({ limit: 5, windowMs: 1000, max: 3, now: time.now });
+
+  limiter.check("a");
+  limiter.check("b");
+  limiter.check("c");
+  assert.equal(limiter.size, 3);
+
+  // Everything above has lapsed, so a new client reclaims the map instead of
+  // pushing out someone still inside their window.
+  time.advance(1001);
+  limiter.check("d");
+  assert.equal(limiter.size, 1);
+});
+
+test("the tracked-client count stays under the cap", () => {
+  const limiter = createRateLimiter({ limit: 5, windowMs: 10_000, max: 3, now: clock().now });
+
+  for (const key of ["a", "b", "c", "d", "e", "f"]) limiter.check(key);
+  assert.ok(limiter.size <= 3, `expected at most 3 tracked clients, got ${limiter.size}`);
+});
+
+test("the client is the first x-forwarded-for entry, not the proxy", () => {
+  const request = new Request("https://timbre.example/api/search", {
+    headers: { "x-forwarded-for": "203.0.113.7, 70.41.3.18, 150.172.238.178" },
+  });
+  // The last entry is the nearest proxy — keying on it buckets every visitor
+  // behind that hop together.
+  assert.equal(clientKey(request), "203.0.113.7");
+});
+
+test("x-real-ip is the fallback, then a constant", () => {
+  const withReal = new Request("https://timbre.example/api/search", {
+    headers: { "x-real-ip": "203.0.113.9" },
+  });
+  assert.equal(clientKey(withReal), "203.0.113.9");
+  assert.equal(clientKey(new Request("https://timbre.example/api/search")), "unknown");
+});
