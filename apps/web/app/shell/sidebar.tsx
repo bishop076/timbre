@@ -5,10 +5,14 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Artwork } from "../artwork";
-import { LibraryIcon, NoteIcon, SearchIcon } from "../icons";
+import { HomeIcon, LibraryIcon, SearchIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
+import { PlaylistCover } from "../playlists/playlist-cover";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
-import { useSessionUser } from "./use-session-user";
+import { Avatar } from "../profile/avatar";
+import { useLocalImages } from "../profile/local-images";
+import { useLocalProfile } from "../profile/local-profile";
+import { SiteLinks } from "./site-links";
 
 /**
  * Primary navigation and library.
@@ -25,8 +29,16 @@ import { useSessionUser } from "./use-session-user";
  * a phone spends the scarce axis and puts targets out of thumb reach.
  */
 
+/*
+ * Home, Search, Library — the three tabs every music app has settled on.
+ *
+ * `/` used to be both home and search, with the field pinned above the shelves.
+ * Splitting them is what lets Home open with something to play rather than with
+ * a question, and it puts Search where a thumb expects to find it.
+ */
 const NAV = [
-  { id: "search", label: "Search", icon: SearchIcon, href: "/" },
+  { id: "home", label: "Home", icon: HomeIcon, href: "/" },
+  { id: "search", label: "Search", icon: SearchIcon, href: "/search" },
   { id: "library", label: "Library", icon: LibraryIcon, href: "/library" },
 ];
 
@@ -37,9 +49,10 @@ const FILTERS = ["Queue", "Playlists"] as const;
 
 export function Sidebar() {
   const { queue, current, play, exitTheater } = usePlayer();
-  const user = useSessionUser();
+  const profile = useLocalProfile();
+  const pictures = useLocalImages();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
-  const { playlists, signedIn, settled } = usePlaylists();
+  const { playlists, settled } = usePlaylists();
   const pathname = usePathname();
 
   // Loaded once for the rail, and shared with every "add to playlist" menu, so
@@ -55,39 +68,28 @@ export function Sidebar() {
       {/*
         Whose app this is.
 
-        Signed in, the block wears the account's own picture and carries their
-        name. A guest gets the mark alone and **no name at all** — putting the
-        product's name where a person's belongs is the kind of label you stop
-        reading by the second visit, and Timbre is meant to be usable without
-        an account, so "no name" is the ordinary case rather than an error.
+        There is no account, so this is not a session indicator — it is the way
+        into your own profile, wearing whatever name and picture you set on this
+        device. A blank one is the ordinary first-run state rather than a
+        signed-out state, so it links either way.
       */}
-      <div className="relative mb-1 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-3">
-        {user?.image && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element -- avatars come from arbitrary identity providers */}
-            <img src={user.image} alt="" className="absolute inset-0 size-full object-cover" />
-            {/* Enough scrim to keep a name legible over any photograph. */}
-            <span className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/65 to-black/25" />
-          </>
-        )}
-
-        <span
-          className="slab-sm tint relative flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)]"
-          style={{ background: "var(--accent)" }}
-        >
-          <NoteIcon className="size-4.5" />
+      <Link
+        href="/profile"
+        onClick={exitTheater}
+        className="press relative mb-1 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-3 hover:bg-[var(--surface-1)]"
+      >
+        <Avatar
+          id={profile.id || "local"}
+          name={profile.name}
+          email={profile.name ?? "Profile"}
+          image={pictures.avatar}
+          className="size-8 shrink-0"
+          textClassName="text-sm"
+        />
+        <span className="truncate text-[17px] font-extrabold tracking-tight">
+          {profile.name?.trim() || "Profile"}
         </span>
-
-        {user?.name && (
-          <span
-            className={`relative truncate text-[17px] font-extrabold tracking-tight ${
-              user.image ? "text-white" : ""
-            }`}
-          >
-            {user.name}
-          </span>
-        )}
-      </div>
+      </Link>
 
       <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
         {NAV.map((item) => {
@@ -145,7 +147,7 @@ export function Sidebar() {
 
         <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {filter === "Playlists" ? (
-            <PlaylistRows playlists={playlists} signedIn={signedIn} settled={settled} />
+            <PlaylistRows playlists={playlists} settled={settled} />
           ) : rows.length === 0 ? (
             <p className="px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]">
               Nothing queued. Play something and it shows up here.
@@ -189,6 +191,10 @@ export function Sidebar() {
           )}
         </div>
       </div>
+
+      {/* This rail is `lg:flex`, so it cannot be the only route to these — the
+          library page carries the same links for phones. See `site-links.tsx`. */}
+      <SiteLinks className="px-2 pt-0.5" />
     </aside>
   );
 }
@@ -202,38 +208,15 @@ export function Sidebar() {
  */
 function PlaylistRows({
   playlists,
-  signedIn,
   settled,
 }: {
   playlists: PlaylistSummary[] | null;
-  signedIn: boolean;
-  /** False until the first fetch answers — see the store. */
+  /** False until storage has been read — see the store. */
   settled: boolean;
 }) {
-  // Until the store has actually asked, "not signed in" is a guess, and acting
-  // on it tells a signed-in reader to sign in.
-  if (!settled) {
-    return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
-  }
-
-  if (!signedIn) {
-    return (
-      <div className="px-2 py-5">
-        <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
-          Sign in to keep playlists. Listening never needs an account.
-        </p>
-        <Link
-          href="/signin?callbackUrl=/library"
-          className="slab-sm press mt-2.5 inline-block rounded-[var(--r-sm)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--accent-fg)]"
-          style={{ background: "var(--accent)" }}
-        >
-          Sign in
-        </Link>
-      </div>
-    );
-  }
-
-  if (playlists === null) {
+  // Playlists need no account: they live in this browser. What is left to wait
+  // for is only the first read of storage, which cannot happen during render.
+  if (!settled || playlists === null) {
     return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
   }
 
@@ -253,21 +236,11 @@ function PlaylistRows({
             href={`/playlist/${playlist.id}`}
             className="flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left hover:bg-[var(--surface-2)]"
           >
-            <span className="slab-sm size-10 shrink-0 overflow-hidden rounded-[var(--r-sm)] bg-[var(--surface-2)]">
-              {playlist.covers[0] ? (
-                // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-                <img
-                  src={playlist.covers[0]}
-                  alt=""
-                  loading="lazy"
-                  className="size-full object-cover"
-                />
-              ) : (
-                <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
-                  <NoteIcon className="size-4" />
-                </span>
-              )}
-            </span>
+            <PlaylistCover
+              covers={playlist.covers}
+              className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+              iconClassName="size-4"
+            />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13px] font-semibold">{playlist.name}</span>
               <span className="block truncate text-[11px] text-[var(--fg-dim)]">
@@ -313,3 +286,40 @@ export function BottomNav() {
     </nav>
   );
 }
+
+/**
+ * The way into your profile on a phone.
+ *
+ * Not a fourth tab. The bottom bar is for *places you go to listen*, and a
+ * settings screen sitting alongside them competes for a thumb position it does
+ * not deserve — which is why phone music apps put it in the corner of the home
+ * header instead. Rendered by the home and search screens.
+ *
+ * It has to exist somewhere, though: the rail carrying the desktop profile link
+ * is `lg:flex`, so without this `/profile` — and the theme picker on it — is
+ * unreachable below that width.
+ */
+export function ProfileButton({ className }: { className?: string }) {
+  const { exitTheater } = usePlayer();
+  const profile = useLocalProfile();
+  const pictures = useLocalImages();
+
+  return (
+    <Link
+      href="/profile"
+      onClick={exitTheater}
+      aria-label="Your profile and settings"
+      className={`press flex shrink-0 items-center lg:hidden ${className ?? ""}`}
+    >
+      <Avatar
+        id={profile.id || "local"}
+        name={profile.name}
+        email={profile.name ?? "Profile"}
+        image={pictures.avatar}
+        className="slab-sm size-9"
+        textClassName="text-xs"
+      />
+    </Link>
+  );
+}
+
