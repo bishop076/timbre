@@ -2,6 +2,7 @@ import { mergeTracks, resolveUrl } from "@timbre/providers";
 import { z } from "zod";
 
 import { getProviderRuntime } from "@/lib/providers";
+import { guard } from "@/lib/api";
 
 /**
  * Turns a pasted URL into a song.
@@ -20,6 +21,9 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const refusal = guard(request);
+  if (refusal) return refusal;
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({ url: url.searchParams.get("url") });
 

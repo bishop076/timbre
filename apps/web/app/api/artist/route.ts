@@ -1,28 +1,44 @@
 import { lookupArtist } from "@timbre/providers";
 import { z } from "zod";
 
+import { guard } from "@/lib/api";
+import { fetchDiscography } from "@/lib/discography";
 import { getProviderRuntime } from "@/lib/providers";
 
 /**
- * Who an artist is, for the now-playing panel.
+ * Who an artist is, and what they have released.
  *
- * Deezer is the only free source that publishes a picture and a follower count
- * without a key. There is no biography here because no keyless source gives
- * one — an "about the artist" card that made up prose about a real person would
- * be worse than no card.
+ * **There is no way to embed somebody else's artist profile.** Spotify does
+ * publish an artist embed, but reaching it needs a track or artist id from an
+ * API that now requires a paid developer account — and the free service that
+ * used to map a song onto its Spotify equivalent shut down in July 2026. YouTube
+ * Music has no artist embed at all. So a real discography cannot be borrowed; it
+ * has to be assembled.
  *
- * Cached for a day: an artist's picture does not change between songs, and this
- * is called on every track change.
+ * Deezer turns out to publish the whole thing keyless: releases tagged by kind,
+ * top tracks, and neighbouring artists. That is enough to build an artist page
+ * with albums, EPs and singles on it — Timbre's own page, from somebody else's
+ * catalogue, which is the same trade the rest of the app makes.
+ *
+ * `?full=1` asks for the discography. The now-playing card does not need it and
+ * is called on every track change, so it stays a cheap single lookup by default.
  */
 export const revalidate = 86_400;
 
 const querySchema = z.object({
   name: z.string().min(1).max(200),
+  full: z.coerce.boolean().optional(),
 });
 
 export async function GET(request: Request) {
+  const refusal = guard(request);
+  if (refusal) return refusal;
+
   const url = new URL(request.url);
-  const parsed = querySchema.safeParse({ name: url.searchParams.get("name") });
+  const parsed = querySchema.safeParse({
+    name: url.searchParams.get("name"),
+    full: url.searchParams.get("full") ?? undefined,
+  });
 
   if (!parsed.success) {
     return Response.json({ error: "An artist name is required." }, { status: 400 });
@@ -35,8 +51,22 @@ export async function GET(request: Request) {
   // no catalogue carries. The panel simply omits the card.
   if (!artist) return Response.json({ artist: null }, { status: 200 });
 
+  const headers = {
+    "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800",
+  };
+
+  if (!parsed.data.full) {
+    return Response.json({ artist, releases: [], related: [] }, { headers });
+  }
+
+  const { releases, related } = await fetchDiscography(artist.url);
+
   return Response.json(
-    { artist },
-    { headers: { "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800" } },
+    {
+      artist,
+      releases,
+      related,
+    },
+    { headers },
   );
 }

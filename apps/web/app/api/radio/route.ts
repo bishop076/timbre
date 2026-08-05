@@ -2,6 +2,7 @@ import { isSourceId, recommendFrom } from "@timbre/providers";
 import { z } from "zod";
 
 import { getProviderRuntime } from "@/lib/providers";
+import { guard } from "@/lib/api";
 
 /**
  * What to play next.
@@ -32,6 +33,9 @@ const querySchema = z.object({
 });
 
 export async function GET(request: Request) {
+  const refusal = guard(request);
+  if (refusal) return refusal;
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     id: url.searchParams.get("id") ?? undefined,

@@ -1,0 +1,104 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { createCache } from "./cache.ts";
+
+/** A clock the test drives, so nothing here waits on real time. */
+function clock(start = 0) {
+  let at = start;
+  return { now: () => at, advance: (ms: number) => (at += ms) };
+}
+
+test("a repeat within the TTL is served without calling upstream", async () => {
+  const time = clock();
+  const cache = createCache<string>({ ttlMs: 1000, max: 10, now: time.now });
+  let calls = 0;
+
+  const produce = async () => {
+    calls += 1;
+    return "levitating";
+  };
+
+  assert.equal(await cache.take("q", produce), "levitating");
+  assert.equal(await cache.take("q", produce), "levitating");
+  assert.equal(calls, 1);
+});
+
+test("an expired entry is fetched again", async () => {
+  const time = clock();
+  const cache = createCache<number>({ ttlMs: 1000, max: 10, now: time.now });
+  let calls = 0;
+  const produce = async () => ++calls;
+
+  await cache.take("q", produce);
+  time.advance(1001);
+  await cache.take("q", produce);
+
+  assert.equal(calls, 2);
+});
+
+test("concurrent misses of the same key share one upstream call", async () => {
+  const time = clock();
+  const cache = createCache<string>({ ttlMs: 1000, max: 10, now: time.now });
+  let calls = 0;
+
+  let release: (value: string) => void = () => {};
+  const gate = new Promise<string>((resolve) => (release = resolve));
+  const produce = () => {
+    calls += 1;
+    return gate;
+  };
+
+  // Ten simultaneous searches for the same song, none resolved yet.
+  const all = Promise.all(Array.from({ length: 10 }, () => cache.take("q", produce)));
+  release("one call");
+  const results = await all;
+
+  assert.equal(calls, 1, "this is the case the cache exists for");
+  assert.deepEqual(new Set(results), new Set(["one call"]));
+});
+
+test("different keys do not share a call", async () => {
+  const cache = createCache<string>({ ttlMs: 1000, max: 10, now: clock().now });
+  let calls = 0;
+  const produce = async () => `result ${++calls}`;
+
+  await Promise.all([cache.take("a", produce), cache.take("b", produce)]);
+  assert.equal(calls, 2);
+});
+
+test("a rejection is not cached, and the next attempt retries", async () => {
+  const cache = createCache<string>({ ttlMs: 1000, max: 10, now: clock().now });
+  let calls = 0;
+
+  await assert.rejects(
+    cache.take("q", async () => {
+      calls += 1;
+      throw new Error("deezer is down");
+    }),
+  );
+
+  assert.equal(cache.size, 0, "a failed source must not be remembered as an answer");
+  assert.equal(await cache.take("q", async () => "recovered"), "recovered");
+  assert.equal(calls, 1);
+});
+
+test("a rejection releases the in-flight slot for later callers", async () => {
+  const cache = createCache<string>({ ttlMs: 1000, max: 10, now: clock().now });
+
+  await assert.rejects(cache.take("q", async () => Promise.reject(new Error("boom"))));
+  // Would hang or re-throw the old error if the pending promise were left behind.
+  assert.equal(await cache.take("q", async () => "fine"), "fine");
+});
+
+test("the entry count stays under the cap", async () => {
+  const cache = createCache<string>({ ttlMs: 10_000, max: 3, now: clock().now });
+
+  for (const key of ["a", "b", "c", "d", "e"]) {
+    await cache.take(key, async () => key);
+  }
+
+  assert.equal(cache.size, 3);
+  // FIFO: the oldest go first, the newest survive.
+  assert.equal(await cache.take("e", async () => "refetched"), "e");
+});
