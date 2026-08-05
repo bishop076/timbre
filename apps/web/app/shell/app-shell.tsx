@@ -1,9 +1,11 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayer } from "../player/player-context";
+import { useTransportKeys } from "../player/use-transport-keys";
 import { PlayerBar } from "./player-bar";
 import { BottomNav, Sidebar } from "./sidebar";
 
@@ -36,6 +38,25 @@ import { BottomNav, Sidebar } from "./sidebar";
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { theater } = usePlayer();
+  const pathname = usePathname();
+
+  /*
+   * The album wash belongs where music is being browsed, not everywhere.
+   *
+   * `.ambient` lays a blurred copy of the current cover under the content. On a
+   * shelf of artwork that reads as light coming off what is playing; on the
+   * profile page — which has its own header wash taken from the reader's
+   * picture — it is a second, unrelated colour field bleeding in underneath,
+   * and the two fight. Settings pages are for reading, so they get a plain
+   * ground.
+   */
+  const washed = !pathname.startsWith("/profile");
+
+  // Mounted here rather than in the player bar because these keys have to work
+  // on every page, and the bar is the one component guaranteed to be present —
+  // but it is also collapsed to a mini bar on phones, where its subtree is a
+  // poor place to hang a global listener.
+  useTransportKeys();
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -55,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           and Page Up/Down all behave exactly as before.
         */}
         <main
-          className={`ambient scroll-fade scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
+          className={`${washed ? "ambient" : ""} scroll-fade scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
             theater ? "hidden" : ""
           }`}
         >
@@ -74,8 +95,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         </main>
         <NowPlayingPanel />
       </div>
-      <PlayerBar />
-      <BottomNav />
+      {/*
+        Expanded on a phone, the player carries its own transport — so the mini
+        bar and the nav below it would be a second set of the same controls
+        competing for the same thumb. `contents` rather than a wrapper element,
+        so when they *are* shown these stay direct flex children of the column
+        and keep measuring their own height, which `--bar-h` depends on.
+      */}
+      <div className={theater ? "hidden lg:contents" : "contents"}>
+        <PlayerBar />
+        <BottomNav />
+      </div>
     </div>
   );
 }

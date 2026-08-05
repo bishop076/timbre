@@ -1,5 +1,6 @@
 "use client";
 
+import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import {
   CollapseIcon,
@@ -176,7 +177,7 @@ export function PlayerBar() {
             <span className="truncate">{current.title}</span>
           </p>
           <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
-            <span className="truncate">{current.artists.join(", ") || "Unknown artist"}</span>
+            <ArtistLink artists={current.artists} className="truncate" />
             {state === "unplayable" ? (
               <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
             ) : (
