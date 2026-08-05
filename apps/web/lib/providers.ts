@@ -59,8 +59,9 @@ function registerAll(): void {
 }
 
 export function getProviderRuntime(): { limiter: RateLimiter } {
-  // In-memory for now: search runs in a single web process. Swap to
-  // PgBucketStore from @timbre/db once a separate worker also calls upstream.
+  // In-memory, and permanently so: Timbre runs no database. Pacing is
+  // per-instance, which is the correct scope when each instance has its own
+  // outbound IP and the limits being respected are per-IP.
   globalForProviders.__timbreLimiter ??= new RateLimiter(new MemoryBucketStore());
 
   if (listProviders().length === 0) registerAll();

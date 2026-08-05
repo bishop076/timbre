@@ -1,6 +1,7 @@
 import { chartAll, mergeTracks } from "@timbre/providers";
 
 import { getProviderRuntime } from "@/lib/providers";
+import { guard } from "@/lib/api";
 
 /**
  * What's popular right now, for the home page.
@@ -12,11 +13,14 @@ import { getProviderRuntime } from "@/lib/providers";
 export const revalidate = 3600;
 
 export async function GET(request: Request) {
+  const refusal = guard(request);
+  if (refusal) return refusal;
+
   const { limiter } = getProviderRuntime();
-  const { tracks, failures } = await chartAll({ limiter, signal: request.signal }, 24);
+  const { tracks, failures, attempted } = await chartAll({ limiter, signal: request.signal }, 24);
 
   return Response.json(
-    { songs: mergeTracks(tracks), failures },
+    { songs: mergeTracks(tracks), failures, attempted },
     {
       headers: {
         "cache-control": "public, s-maxage=3600, stale-while-revalidate=86400",
