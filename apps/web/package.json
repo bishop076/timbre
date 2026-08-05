@@ -9,7 +9,8 @@
     "start": "dotenv -e ../../.env -- next start",
     "lint": "eslint",
     "test": "node --test \"app/**/*.test.ts\" \"lib/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "_comment_typecheck": "next typegen first: layout.tsx uses LayoutProps<\"/\">, a global Next generates into .next/types. On a machine that has built before, the folder is already there and tsc passes; on a fresh clone or in CI it is not, and tsc fails with 'Cannot find name LayoutProps'. Generating it here keeps one command correct everywhere.",
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@timbre/core": "workspace:*",
