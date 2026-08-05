@@ -54,7 +54,7 @@ def search(request: SearchRequest) -> SearchResponse:
             filter="songs",
             limit=request.limit,
         )
-    except Exception as error:  # noqa: BLE001 — any upstream failure is a 502
+    except Exception as error:  # any upstream failure is a 502
         raise upstream_error("search", error) from error
 
     tracks = to_tracks(results)
@@ -141,7 +141,7 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
 
     try:
         song = get_client().get_song(video_id)
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:  # any upstream failure is a 502
         raise upstream_error("lookup", error) from error
 
     details = song.get("videoDetails") if isinstance(song, dict) else None
