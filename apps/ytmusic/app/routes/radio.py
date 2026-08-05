@@ -58,7 +58,7 @@ def radio(request: RadioRequest) -> RadioResponse:
             # One more than asked for, since the seed itself occupies a slot.
             limit=request.limit + 1,
         )
-    except Exception as error:  # noqa: BLE001 — any upstream failure is a 502
+    except Exception as error:  # any upstream failure is a 502
         raise upstream_error("radio", error) from error
 
     if not isinstance(watch, dict):
