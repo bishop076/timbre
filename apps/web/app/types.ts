@@ -27,4 +27,13 @@ export interface Song {
 export interface SongsResponse {
   songs: Song[];
   failures: { source: string; message: string }[];
+  /**
+   * How many sources were asked.
+   *
+   * Optional because `/api/resolve` answers with a single song and has no
+   * fan-out to report. Where it is present, `failures.length === attempted`
+   * means nothing was reachable — which needs a different message from "no
+   * results", not a louder version of the same one.
+   */
+  attempted?: number;
 }

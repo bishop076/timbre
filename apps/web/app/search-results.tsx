@@ -1,10 +1,13 @@
 "use client";
 
+import { ArtistLink } from "./artist-link";
 import { useEffect, useRef, useState } from "react";
 
 import { ChevronIcon, CloseIcon, ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
+import { AddToQueue } from "./player/add-to-queue";
 import { useHistory } from "./player/history-store";
 import { usePlayer } from "./player/player-context";
+import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongCard } from "./song-card";
 import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
@@ -24,7 +27,7 @@ function formatDuration(ms: number | null): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
-export function SearchResults() {
+export function SearchResults({ showShelves = true }: { showShelves?: boolean } = {}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SongsResponse | null>(null);
   const [charts, setCharts] = useState<SongsResponse | null>(null);
@@ -117,6 +120,16 @@ export function SearchResults() {
   const hasQuery = query.trim().length > 0;
   const songs = results?.songs ?? [];
 
+  /*
+   * Every source Timbre asked refused.
+   *
+   * Guarded on `attempted > 0` because the count is optional — /api/resolve
+   * answers with one song and no fan-out — and `0 === 0` would otherwise
+   * declare a total outage on a response that never contacted anything.
+   */
+  const attempted = results?.attempted ?? 0;
+  const allSourcesDown = attempted > 0 && results?.failures.length === attempted;
+
   return (
     <>
       {/*
@@ -193,21 +206,43 @@ export function SearchResults() {
           </p>
         )}
 
-        {results?.failures.map((failure) => (
-          <p
-            key={failure.source}
-            className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500"
+        {/*
+          Partial and total outages are different events and must not share a
+          message. With every source down, the old rendering stacked three
+          "showing everything else" banners above "Nothing found for …" — which
+          promised results that did not exist and then blamed the query for
+          their absence. Someone reading that goes looking for a different
+          spelling of a song that was there the whole time.
+        */}
+        {allSourcesDown ? (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400"
           >
-            {sourceStyle(failure.source).label} is unavailable — showing everything else.
-          </p>
-        ))}
+            <p className="font-semibold">Couldn&rsquo;t reach any music service.</p>
+            <p className="mt-1 text-red-400/80">
+              This is on our side, not yours — your search is fine. Try again in a moment.
+            </p>
+          </div>
+        ) : (
+          results?.failures.map((failure) => (
+            <p
+              key={failure.source}
+              className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500"
+            >
+              {sourceStyle(failure.source).label} is unavailable — showing everything else.
+            </p>
+          ))
+        )}
 
-        {!hasQuery && <Home charts={charts} />}
+        {!hasQuery && showShelves && <HomeShelves charts={charts} />}
 
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
-        {hasQuery && !loading && songs.length === 0 && !error && (
+        {/* `!allSourcesDown`: "nothing found" is a statement about the
+            catalogue, and it is only true if something actually looked. */}
+        {hasQuery && !loading && songs.length === 0 && !error && !allSourcesDown && (
           <p className="py-16 text-center text-[var(--fg-dim)]">
             Nothing found for “{query.trim()}”.
           </p>
@@ -444,8 +479,18 @@ function ForYou() {
   );
 }
 
-function Home({ charts }: { charts: SongsResponse | null }) {
+export function HomeShelves({ charts }: { charts: SongsResponse | null }) {
   const songs = charts?.songs ?? [];
+
+  /*
+   * Charts arrived, and there are none.
+   *
+   * Left alone this rendered an empty shelf under a "Trending now" heading —
+   * a page that looks like it finished loading and simply has nothing to say,
+   * which is indistinguishable from the app being broken. Skeletons are not the
+   * answer either: they promise something is still coming when nothing is.
+   */
+  const chartsFailed = charts !== null && songs.length === 0;
 
   return (
     <div className="rise pt-2">
@@ -466,6 +511,15 @@ function Home({ charts }: { charts: SongsResponse | null }) {
               </div>
             ))}
       </Shelf>
+
+      {/* Search still works when the charts do not, so this says so rather than
+          implying the whole app is down. */}
+      {chartsFailed && (
+        <p className="-mt-2 px-1 text-sm leading-relaxed text-[var(--fg-dim)]">
+          Charts aren&rsquo;t available right now. Search still works — try a song or artist
+          above.
+        </p>
+      )}
 
       {songs.length > 12 && (
         <Shelf title="More to hear" caption="Further down the charts">
@@ -549,7 +603,7 @@ function SongRow({ song }: { song: Song }) {
             {song.title}
           </span>
           <span className="block truncate text-sm text-[var(--fg-dim)]">
-            {song.artists.join(", ") || "Unknown artist"}
+            <ArtistLink artists={song?.artists ?? []} />
             {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
           </span>
         </span>
@@ -578,6 +632,16 @@ function SongRow({ song }: { song: Song }) {
       <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
         {formatDuration(song.durationMs)}
       </span>
+
+      <AddToQueue
+        song={song}
+        className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+      />
+
+      <AddToPlaylist
+        song={song}
+        className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+      />
     </li>
   );
 }
