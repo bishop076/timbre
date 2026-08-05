@@ -139,6 +139,24 @@ Each of these cost time to establish.
 - **A VPN changes YouTube's behaviour.** Invidious' documentation states YouTube
   blocks datacenter and VPN IP ranges. If playback goes flaky, check whether a VPN
   is active before assuming a code bug.
+- **That blocking hits video *delivery*, not search — which is why Timbre can be
+  hosted on a datacenter IP at all.** Worth stating precisely, because the line
+  above reads as a blanket ban and was nearly taken as one. Invidious'
+  [error documentation](https://docs.invidious.io/youtube-errors-explained/)
+  separates the two: a blacklisted IP produces `403`s on `googlevideo.com`
+  videoplayback URLs, while "other functions such as viewing channels pages may
+  still work". Invidious suffers badly because it **proxies video through its own
+  server**. Timbre never does: the sidecar only ever fetches metadata, and
+  playback runs in the visitor's browser on *their* residential IP via the IFrame
+  player. The ToS rule that Timbre hosts nothing puts it on the surviving side of
+  this line — a structural accident worth not undoing.
+  Corroborating: `ytmusicapi`'s tracker has no cluster of "search broke on my
+  VPS" reports, and its environment-dependent issues are all *authenticated*
+  ones (cookies going `logged_in: 0` on headless servers). Timbre calls
+  `YTMusic()` with no credentials, so there is no cookie to invalidate. The real
+  guest-session limit is volume — yt-dlp's wiki puts it near 300 items/hour.
+  **Still verify empirically before launch**; this is an argument that the risk
+  is small, not evidence that it is zero.
 
 ---
 

@@ -13,14 +13,22 @@ Every task from here to launch. **Nothing on this list requires paying for anyth
 | :--- | :--- | :--- | :--- |
 | [0 — Foundation](#phase-0--foundation) | The app runs, empty | 33/33 | ✅ complete |
 | [A — Search](#phase-a--search) | Type a song, see it across sources | 24/24 | ✅ complete |
-| [B — Playback](#phase-b--playback) | **The product works.** One queue, real audio | 22/31 | 🔨 **in progress** |
-| [C — Accounts and playlists](#phase-c--accounts-and-playlists) | Your own lists, saved | 0/16 | ⬜ **next** |
-| [D — Polish and launch](#phase-d--polish-and-launch) | Other people can use it | 0/23 | ⬜ |
+| [B — Playback](#phase-b--playback) | **The product works.** One queue, real audio | 28/33 | 🔨 **in progress** |
+| [C — Playlists, in the browser](#phase-c--playlists-in-the-browser) | Your own lists, saved locally | 12/13 | ✅ complete |
+| [D — Polish and launch](#phase-d--polish-and-launch) | Other people can use it | 12/20 | 🔨 **in progress** |
 | [Blocked](#blocked) | Gated by other people | — | 🎲 see [BLOCKED.md](BLOCKED.md) |
 
-**Phase B was the milestone that mattered, and the core of it works.** You can
-search across three sources, click a song, and hear it. What remains in B is queue
-ergonomics — shuffle, repeat, reorder — not the mechanism.
+**The product works.** You can search across three sources, click a song, hear it,
+build and reorder a queue, and save lists that survive a refresh. What is left in
+B is the handoff gap; what is left overall is **Phase D — making it fit for
+someone other than the person who built it.**
+
+Two of D's correctness items were promoted out of "polish" and are done, because
+they are what stops a public link failing on contact: search results are cached
+and every public route is rate-limited. Apple allows ~20 requests/minute *per IP*
+and every visitor shares the deployment's one address, so without both, a handful
+of simultaneous readers exhaust the minute's budget and search goes quiet for
+everyone.
 
 **Three companion documents:**
 [BUGS.md](BUGS.md) — defects found and fixed, and the verified non-bugs worth not
@@ -119,10 +127,11 @@ Full reasoning, and what would unblock each: **[BLOCKED.md](BLOCKED.md)**.
 
 ## Phase B — Playback
 
-*The milestone. One queue, real audio.* — 22/31 🔨
+*The milestone. One queue, real audio.* — 28/33 🔨
 
-**The mechanism works.** Search a song, click it, hear it. What is left is queue
-ergonomics, not plumbing.
+**The mechanism works, and the queue is now editable.** Search a song, click it,
+hear it; add more, reorder them, drop the ones you did not want. What is left is
+the handoff gap and the two items other people gate.
 
 ### B.1 YouTube player ✅
 - [x] IFrame Player API mounted — `apps/web/app/player/youtube-player.tsx`
@@ -142,7 +151,7 @@ ergonomics, not plumbing.
 - [ ] **Not registered.** Its catalogue is not searchable, so there is no way in.
       See [BLOCKED.md](BLOCKED.md).
 
-### B.3 Queue and controller — 6/11
+### B.3 Queue and controller — 11/13
 - [x] Queue holds **songs with a set of sources**, not source-tracks
 - [x] Controller routes transport to whichever player owns the current song
 - [x] **Exactly one player audible** — enforced by mounting only the active player,
@@ -150,10 +159,21 @@ ergonomics, not plumbing.
 - [x] Best controllable source picked automatically
 - [x] Auto-advance on track end; next / previous
 - [x] A failing source falls through, then explains itself
+- [x] **Shuffle and repeat** — one pass per shuffle, so nothing replays while
+      another song goes unheard; repeat cycles off → all → one
+- [x] **Add to queue** — on song tiles and on both list rows, beside "add to
+      playlist". Queued songs show a tick rather than hiding the control, since
+      the queue dedupes by id and a silent no-op reads as a broken button
+- [x] **Clear** the queued songs, keeping what is playing
+- [x] **Reorder and remove**, from the expanded queue. Up/down buttons rather
+      than drag: the queue is the one list genuinely edited on a phone, and
+      buttons serve touch, keyboard and screen readers with one implementation
+- [x] Index arithmetic extracted to `app/player/queue-ops.ts` and unit-tested —
+      playback is tracked by *position*, so every edit has to carry the playhead
+      with it or the highlighted row drifts from the audible song
+- [ ] **Play next** — insert after the current song. Needs a UI decision first:
+      a second button on every row, or a menu holding both queue actions
 - [ ] Pre-mount the next song's player to shorten the handoff gap
-- [ ] Add to queue / play next / clear
-- [ ] Reorder and remove
-- [ ] Shuffle and repeat
 - [ ] Spotify-only songs pause the queue with a "tap to play" prompt
 
 ### B.4 Player UI ✅
@@ -178,63 +198,168 @@ ergonomics, not plumbing.
 
 ---
 
-## Phase C — Accounts and playlists
+## Phase C — Playlists, in the browser
 
-*Your own lists, saved.* — 0/16
+*Your own lists, saved — on your machine.* — 12/13 ✅ effectively complete
 
-- [ ] New migration: drop `connections`, `sync_runs`, `library_items`; repurpose `tracks` as a resolved-track cache
-- [ ] `playlists` / `playlist_tracks` become **Timbre's own** lists
-- [ ] `/signin` page — magic link, already wired
-- [ ] Honest message when no sign-in method is configured
-- [ ] Create, rename, delete playlists
-- [ ] Add to playlist from search results and from now-playing
-- [ ] Reorder tracks
-- [ ] Play a playlist straight into the queue
-- [ ] Cache resolved tracks so a saved song survives a source going away
+> **The accounts half of this phase was deleted, not finished.** Postgres, Auth.js,
+> the magic-link flow and every server-side playlist route are gone. The reason is
+> hosting: server-side lists need an always-on database, an account system to own
+> them, and an SMTP provider to deliver sign-in links — and the free tiers for that
+> last one either cap at your own address or need a domain you have to buy. Local
+> playlists need none of it, which is what makes [DEPLOY.md](DEPLOY.md) two
+> services and no credit card.
+>
+> The trade is stated wherever lists appear: they do not follow you to another
+> device, and clearing site data loses them. **Export is the mitigation**, which is
+> why it is a first-class feature rather than a nicety.
+
+- [x] Playlists live in `localStorage` — `app/playlists/store.ts`. A list stores
+      **whole songs**, not references: the normalised tables it replaced existed
+      so one match could be shared between users, and with one browser and one
+      person there is nobody to share with
+- [x] Create, rename and delete, all from the UI
+- [x] Add to a playlist from search results and from an artist page
+- [x] Play a playlist straight into the queue, in order
+- [x] Remove and reorder tracks within a list
+- [x] `/library` route, because the rail is desktop-only and a phone would
+      otherwise have no way back to a saved playlist
+- [x] **Export and import as JSON** — the escape hatch that makes local storage
+      an acceptable trade rather than a data-loss bug
+- [x] Anonymous by construction: there is no account to be without
 - [ ] Re-resolve a track if its source link dies
-- [ ] Anonymous local queue that survives without an account
-- [ ] Offer to migrate a local queue into an account on sign-up
-- [ ] Account settings
-- [ ] Account deletion that actually deletes
-- [ ] Export playlists as JSON and CSV
-- [ ] Import from pasted links
+- [ ] ~~Account settings, deletion, sign-up migration~~ — **moot.** No accounts
+      exist, and nothing is stored server-side to settle, migrate or delete
+- [ ] Export as CSV — JSON round-trips; CSV would only be for spreadsheets
+
+### Artist pages ✅
+
+*Timbre's own page, assembled from other people's catalogues.*
+
+- [x] `/artist/[name]` — Deezer supplies the picture and follower count, the
+      search merger supplies the playable songs. Neither could render it alone
+- [x] Keyed by **name, not a source's artist id**: an id would bind the route to
+      whichever service supplied it, and no single service owns this page
+- [x] Still no biography — no keyless source publishes one, and inventing prose
+      about a real musician is a fabrication rather than a design choice
+- [ ] Linked from song rows and the now-playing panel (the page exists; nothing
+      navigates to it yet)
+- [ ] Albums — deferred deliberately: the reachable sources disagree on album
+      membership, and stitching one together would invent a discography
 
 ---
 
 ## Phase D — Polish and launch
 
-*Other people can use it.* — 0/23
+*Other people can use it.* — 12/20 🔨
 
 ### Experience
 - [ ] Mobile layout
 - [ ] **Test mobile Safari specifically** — autoplay restrictions are worst there
-- [ ] Keyboard shortcuts (space, arrows, `/` to search)
+- [x] **Keyboard shortcuts** — `/` focuses search, Escape leaves it, Space
+      toggles, ←/→ skip tracks, ↑/↓ move volume. Not a convenience: media keys
+      reach the *iframe*, not Timbre's queue, so this was the only keyboard
+      route to next/previous. What must not be intercepted lives in
+      `app/player/transport-keys.ts` and is unit-tested — duck-typed rather
+      than `instanceof HTMLElement`, since an element inside one of the app's
+      iframes belongs to another realm and would wrongly pass
 - [ ] Accessible player controls, focus management, screen-reader labels
-- [ ] Dark and light themes
+- [x] **Themes** — three, chosen on `/profile` and stored per browser:
+      **Album** (dark, ramp built from the current cover), **Pastel** (light and
+      soft), and **One colour** (a fixed hue artwork never moves, on either
+      ground — including **white** and **dark** neutrals with no hue at all).
+      The ramp is a pure function in `app/theme/palette.ts` with 16 tests,
+      including that no label ever lands within 40% lightness of the surface
+      behind it — the failure that otherwise only shows up when the wrong album
+      happens to play. A blocking inline script in `layout.tsx` stamps the
+      ground before first paint, so there is no flash; the palette stays in CSS
+      so nothing is duplicated between the two
+- [x] **Toned the album ramp down.** Surfaces took ~85% of the cover's
+      saturation, so a strong sleeve turned the ground, the panels *and* the
+      labels the same loud colour — nowhere for the eye to rest, and the artwork
+      competing with its own backdrop. Surfaces now take `SURFACE_TINT` (0.34),
+      labels are near-neutral, the ground is darker (10% → 7% lightness) and the
+      blurred-cover wash dropped from `saturate(2.1)`/0.55 to
+      `saturate(1.35)`/0.36. The **accent keeps full saturation** — that is
+      where the colour is meant to arrive, and holding it there is what lets
+      everything else recede
+- [x] **Softened the edge on light grounds.** The near-black 2px border plus a
+      solid offset shadow reads as depth over near-black, where there is no
+      contrast to spend; over a pale surface the identical values read as a
+      heavy outline drawn around every panel. Light grounds now use a mid-grey
+      ink (~44% lightness) and a **translucent** shadow, since a solid one sits
+      directly behind the border and doubles the apparent weight of the edge.
+      Dark keeps its hard edge — tested both ways so neither drifts
+- [x] **`/profile` reachable on a phone.** It held the theme picker and nothing
+      below `lg` linked to it — the rail that carries it is `lg:flex`, so the
+      page existed and could not be opened. The bottom nav now has a third
+      entry wearing the reader's own avatar
 - [ ] Loading skeletons over spinners
 - [ ] Clear messaging when a track can't play, and why
 
 ### Correctness
-- [ ] Handle every source failing at once
+- [x] **Cache search results** — `lib/cache.ts`. Two-minute TTL, and concurrent
+      identical misses share **one** upstream call, which is the case that
+      matters: without it, ten people searching the same song at once produce
+      ten requests that all write the same answer. Measured 3.5s cold → 0.08s
+      warm
+- [x] **Rate-limit Timbre's own endpoints** — `lib/rate-limit.ts`, 60/min per
+      client on every public route, with `Retry-After` on refusal. Both this and
+      the cache are per instance, since there is no shared store; they are
+      back-pressure against accidents, not access control
+- [x] **CI** — `.github/workflows/ci.yml`. Two jobs, because the sidecar rides
+      an unofficial API and can break on a day nothing in the web app changed;
+      separate jobs name which half is wrong before anyone opens a log
+- [x] **Handle every source failing at once.** `searchAll`/`chartAll` now report
+      `attempted` alongside `failures`, because without it "every source is
+      down" and "every source answered, none had this song" are the same
+      observation — no tracks and some failures — and they need opposite
+      messages. Previously a total outage stacked three *"X is unavailable —
+      showing everything else"* banners above *"Nothing found for …"*: a promise
+      of results that did not exist, followed by blaming the query for their
+      absence. Now it is one alert saying the fault is ours. The home page says
+      the same for charts instead of rendering an empty shelf under a heading,
+      which reads as a finished page with nothing to say
 - [ ] Offline behaviour
-- [ ] Rate-limit Timbre's own endpoints
-- [ ] Cache search results to cut repeat calls
 - [ ] Error tracking and structured logging
-- [ ] CI: typecheck, tests, build on every push
 
 ### Honesty
-- [ ] Landing page stating plainly what Timbre is and is not
-- [ ] **State the mobile background-play limit up front** — desktop plays in a background tab like any music site; locking a phone stops it
-- [ ] "Not affiliated with any of these services" notice
-- [ ] Attribution and links back to each source
-- [ ] Privacy policy — what is stored, where, how long
-- [ ] Terms of service
+- [x] **`/about`** — what Timbre is, what it deliberately does not do, and why
+- [x] **The mobile background-play limit, stated up front** and near the top of
+      `/about` rather than buried. A reader who meets it mid-song concludes the
+      app is broken; one told first knows it is the shape of the thing
+- [x] **"Not affiliated"** — naming four companies invites the assumption that
+      one of them endorsed this, so it says otherwise plainly
+- [x] **Attribution and links back to each source**, with what each one actually
+      contributes. A term of use for every service embedded here, not a courtesy
+- [x] **Privacy policy** at `/privacy` — **required** by YouTube's API Services
+      Terms for any client embedding their player, so this is a condition of
+      using the player at all. Short, because the truthful version is short; the
+      care went into saying that the *embedded services* can see the reader and
+      that Timbre cannot speak for them. "We collect nothing" alone would be
+      true and misleading
+- [x] Both reachable on **every** viewport — `shell/site-links.tsx` renders in
+      the rail on desktop and at the foot of the library on phones, since the
+      rail is `lg:flex` and a policy nothing links to discharges nothing
+- [ ] Terms of service — **left open deliberately.** Unlike the privacy policy,
+      which describes what the code does, this is a legal document making
+      commitments; it wants a human author before any public launch
 
 ### Launch
-- [ ] Hosting: Vercel hobby + Neon or Supabase free Postgres
-- [ ] Deploy the Python sidecar (Fly.io free tier or similar)
+- [ ] **Spike first: deploy the sidecar alone and curl `/search` from it.** Ten
+      minutes, and it gates every other hosting decision — see [DEPLOY.md](DEPLOY.md).
+      Record the result in [BLOCKED.md](BLOCKED.md) either way
+- [ ] Hosting: Vercel hobby + **Neon** free Postgres. Not Render's free Postgres —
+      it is deleted 30 days after creation
+- [ ] Deploy the Python sidecar to **Render free** (~1 min cold start after 15 min
+      idle; 750 instance-hrs/month covers one always-warm service, a month being
+      730 hours). *Not* Fly.io — its free tier ended in 2024
+- [ ] Rate-limit and cache before inviting anyone: Apple allows ~20 req/min **per
+      IP**, and every visitor shares the deployment's one egress IP
 - [ ] Re-read every provider's ToS immediately before launch
-- [ ] Decide hosted vs. self-host given `ytmusicapi` is unofficial
+- [ ] Decide hosted vs. self-host given `ytmusicapi` is unofficial. Note self-host
+      also buys a residential IP, which is the safer side of YouTube's datacenter
+      blocking — though search is not the part that gets blocked (see BLOCKED.md)
 
 ---
 
