@@ -53,6 +53,16 @@ export interface SearchAllResult {
   tracks: SourceTrack[];
   /** Sources that failed, so the UI can say "Deezer is down" rather than lie. */
   failures: { source: SourceId; message: string }[];
+  /**
+   * How many providers were asked.
+   *
+   * Without this, "every source is down" and "every source answered, none had
+   * this song" are the same observation — no tracks and some failures — and
+   * they need opposite messages. Telling someone their search found nothing
+   * when in fact nothing was reachable sends them looking for a different
+   * spelling of a song that was there all along.
+   */
+  attempted: number;
 }
 
 /**
@@ -88,7 +98,7 @@ export async function searchAll(
     }
   });
 
-  return { tracks, failures };
+  return { tracks, failures, attempted: providers.length };
 }
 
 /**
@@ -212,5 +222,5 @@ export async function chartAll(ctx: SearchContext, limit: number): Promise<Searc
     }
   });
 
-  return { tracks, failures };
+  return { tracks, failures, attempted: providers.length };
 }
