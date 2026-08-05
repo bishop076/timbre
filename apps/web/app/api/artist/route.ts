@@ -1,9 +1,7 @@
-import { lookupArtist } from "@timbre/providers";
 import { z } from "zod";
 
 import { guard } from "@/lib/api";
-import { fetchDiscography } from "@/lib/discography";
-import { getProviderRuntime } from "@/lib/providers";
+import { fetchDiscography, findArtist } from "@/lib/discography";
 
 /**
  * Who an artist is, and what they have released.
@@ -44,8 +42,7 @@ export async function GET(request: Request) {
     return Response.json({ error: "An artist name is required." }, { status: 400 });
   }
 
-  const { limiter } = getProviderRuntime();
-  const artist = await lookupArtist({ limiter, signal: request.signal }, parsed.data.name);
+  const artist = await findArtist(parsed.data.name);
 
   // Not found is a normal answer, not an error: plenty of uploads name someone
   // no catalogue carries. The panel simply omits the card.

@@ -1,10 +1,10 @@
 import { normalizeLoose } from "@timbre/core";
-import { lookupArtist, mergeTracks, searchAll } from "@timbre/providers";
+import { mergeTracks, searchAll } from "@timbre/providers";
 import type { Metadata } from "next";
 
 import { fromArtistSlug, titleCase } from "@/app/artist-slug";
 import { getProviderRuntime } from "@/lib/providers";
-import { fetchDiscography } from "@/lib/discography";
+import { fetchDiscography, findArtist } from "@/lib/discography";
 
 import { ArtistView } from "../artist-view";
 
@@ -49,7 +49,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ name: s
   // Both at once: they are independent lookups against different services, and
   // running them in series would make the page wait for the slower one twice.
   const [artist, results] = await Promise.all([
-    lookupArtist(ctx, name).catch(() => null),
+    findArtist(name).catch(() => null),
     searchAll(ctx, name, 40).catch(() => ({ tracks: [], failures: [] })),
   ]);
 

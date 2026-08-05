@@ -1,5 +1,7 @@
 import "server-only";
 
+import { normalizeLoose } from "@timbre/core";
+
 /**
  * An artist's releases, from Deezer.
  *
@@ -204,5 +206,126 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
         },
       ],
     })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Which artist did they mean
+// ---------------------------------------------------------------------------
+
+export interface ResolvedArtist {
+  name: string;
+  imageUrl: string | null;
+  followers: number | null;
+  source: "deezer";
+  url: string | null;
+}
+
+interface DeezerArtist {
+  name: string;
+  picture_medium?: string;
+  picture_xl?: string;
+  nb_fan?: number;
+  link?: string;
+}
+
+/**
+ * How closely a candidate's name matches what was asked for, 0 to 1.
+ *
+ * Three tiers, cheapest first, all computed from the strings themselves — there
+ * is no list of special cases anywhere in this file, and adding one would only
+ * fix the artist somebody happened to complain about.
+ *
+ * - **Identical** once normalised. Case, punctuation and accents cannot
+ *   separate "KATSEYE" from "katseye".
+ * - **One contains the other**, scaled by how much of the longer string the
+ *   shorter accounts for. Catalogues routinely append a native-script name or
+ *   a disambiguator, and "x (y)" is still the artist called "x".
+ * - **Shared words**, as a fraction of all distinct words across both. Catches
+ *   a missing "the" or a reordering without rewarding two names that merely
+ *   share a letter.
+ */
+function nameScore(query: string, candidate: string): number {
+  const a = normalizeLoose(query);
+  const b = normalizeLoose(candidate);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  if (longer.includes(shorter)) {
+    // A short query inside a long name is weak evidence — "so" is inside
+    // "sonic youth" — so the ratio does the discounting rather than a rule.
+    return 0.6 + 0.35 * (shorter.length / longer.length);
+  }
+
+  const wordsA = new Set(a.split(" "));
+  const wordsB = new Set(b.split(" "));
+  const shared = [...wordsA].filter((word) => wordsB.has(word)).length;
+  if (shared === 0) return 0;
+  return 0.55 * (shared / new Set([...wordsA, ...wordsB]).size);
+}
+
+/**
+ * Popularity, compressed to 0–1.
+ *
+ * Logarithmic because follower counts span six orders of magnitude: linearly,
+ * every artist below a million rounds to zero and the scale stops
+ * distinguishing anything.
+ */
+function reachScore(followers: number | undefined): number {
+  return Math.min(1, Math.log10(1 + (followers ?? 0)) / 7);
+}
+
+/**
+ * Finds the artist a name most likely refers to.
+ *
+ * Deezer's own ordering is not enough on its own. Searching `katseye` returns a
+ * three-follower act called "Katseye" **before** the 237,000-follower
+ * "KATSEYE", so taking the top hit produced a page with the wrong picture, no
+ * discography and a follower count of 3 — while the songs below it, which come
+ * from YouTube Music, were right. That reads as Timbre being broken rather than
+ * as a mismatch.
+ *
+ * So candidates are **scored**, not filtered: name similarity decides who is
+ * plausible, and reach only ever separates names that are already comparably
+ * close. Squaring the similarity is what enforces that — it widens the gap
+ * between a good and a mediocre name match far faster than reach can close it,
+ * so no amount of popularity promotes a wrong name. Katy Perry has forty times
+ * the following of KATSEYE and still loses the query `katseye`, because her
+ * name scores zero against it.
+ *
+ * Nothing here knows any artist. Give it a different catalogue or a different
+ * name and the same arithmetic applies.
+ */
+export async function findArtist(name: string): Promise<ResolvedArtist | null> {
+  const query = name.trim();
+  if (!query) return null;
+
+  const found = await deezer<{ data?: DeezerArtist[] }>(
+    `/search/artist?q=${encodeURIComponent(query)}&limit=25`,
+  );
+  const results = found?.data ?? [];
+  if (results.length === 0) return null;
+
+  let best = results[0]!;
+  let bestScore = -1;
+
+  for (const candidate of results) {
+    const similarity = nameScore(query, candidate.name);
+    if (similarity === 0) continue;
+    // Similarity dominates; reach adjusts by at most 40% within a tier.
+    const score = similarity * similarity * (0.6 + 0.4 * reachScore(candidate.nb_fan));
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+
+  return {
+    name: best.name,
+    imageUrl: best.picture_xl ?? best.picture_medium ?? null,
+    followers: best.nb_fan ?? null,
+    source: "deezer",
+    url: best.link ?? null,
   };
 }
