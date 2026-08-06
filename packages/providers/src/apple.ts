@@ -14,6 +14,7 @@
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import { cachePolicy } from "./cache-policy.ts";
 
 interface ITunesTrack {
   trackId?: number;
@@ -92,7 +93,7 @@ export function createAppleProvider(config: AppleConfig = {}): SearchProvider {
 
     let response: Response;
     try {
-      response = await fetch(url, { signal: ctx.signal, cache: "no-store" });
+      response = await fetch(url, { signal: ctx.signal, ...cachePolicy(ctx) });
     } catch (cause) {
       throw new ProviderError("apple", "transient", "Apple Music unreachable.", { cause });
     }
