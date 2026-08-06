@@ -74,11 +74,11 @@ export function PlaylistView({ id }: { id: string }) {
     .slice(0, 4);
 
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-5 pb-10 pt-6 sm:px-7">
-      <header className="mb-7 flex flex-col gap-5 @lg:flex-row @lg:items-end">
+    <div className="@container mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-7 sm:pb-10 sm:pt-6">
+      <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
         <PlaylistCover
           covers={covers}
-          className="slab size-40 shrink-0 rounded-[var(--r-lg)]"
+          className="slab size-28 shrink-0 rounded-[var(--r-lg)] sm:size-40"
           iconClassName="size-10"
           eager
         />
@@ -87,7 +87,7 @@ export function PlaylistView({ id }: { id: string }) {
           <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
             Playlist
           </p>
-          <h1 className="mt-1.5 text-3xl font-extrabold tracking-tight @lg:text-4xl">
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:mt-1.5 sm:text-3xl @lg:text-4xl">
             {playlist.name}
           </h1>
           <p className="mt-2 text-xs text-[var(--fg-faint)]">
@@ -135,10 +135,10 @@ export function PlaylistView({ id }: { id: string }) {
                 <button
                   type="button"
                   onClick={() => play(song, songs)}
-                  className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left focus:outline-none sm:gap-4"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left focus:outline-none sm:gap-4 sm:py-3"
                   aria-label={`Play ${song.title}`}
                 >
-                  <span className="relative size-12 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)]">
+                  <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)] sm:size-12">
                     {song.artworkUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
                       <img
