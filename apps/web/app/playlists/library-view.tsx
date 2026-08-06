@@ -75,9 +75,20 @@ export function LibraryView() {
   const isEmpty = settled && playlists?.length === 0;
 
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-5 pb-10 pt-6 sm:px-7">
+    <div /*
+        The column has to be taller than its content for `mt-auto` to have
+        anything to push against, and `min-h-full` was not doing it — a
+        percentage min-height needs a definite height on every ancestor, and the
+        scrolling content panel does not reliably offer one. A viewport unit
+        always resolves. `dvh` rather than `vh` so a phone's collapsing address
+        bar does not leave a strip of dead space.
+
+        `lg:min-h-0` switches it straight back off, so the desktop column is
+        exactly what it was — the footer is `lg:hidden` there anyway.
+      */
+      className="@container mx-auto flex min-h-[calc(100dvh-var(--nav-h))] w-full max-w-6xl flex-col px-4 pb-8 pt-9 sm:px-7 sm:pb-10 sm:pt-6 lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-extrabold tracking-tight">Your library</h1>
+        <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your library</h1>
 
         <div className="flex items-center gap-2">
           <input
@@ -108,7 +119,7 @@ export function LibraryView() {
       </div>
 
       <p className="mt-1.5 text-xs leading-relaxed text-[var(--fg-faint)]">
-        Saved in this browser only — Timbre keeps no copy. Export to move them somewhere else.
+        Saved in this browser only.
       </p>
 
       <form onSubmit={create} className="mt-5 flex max-w-md gap-2">
@@ -139,10 +150,10 @@ export function LibraryView() {
 
       {isEmpty ? (
         <p className="mt-8 text-sm leading-relaxed text-[var(--fg-dim)]">
-          No playlists yet. Name one above, or save a song from anywhere in Timbre.
+          No playlists yet.
         </p>
       ) : (
-        <ul className="mt-7 grid grid-cols-2 gap-4 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
+        <ul className="mt-6 grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
           {playlists?.map((playlist) => (
             <li key={playlist.id} className="group relative">
               {/* Outside the <Link>, not inside it: a button nested in an
@@ -155,7 +166,7 @@ export function LibraryView() {
               />
               <Link
                 href={`/playlist/${playlist.id}`}
-                className="block rounded-[var(--r-lg)] p-2.5 transition hover:bg-[var(--surface-2)]"
+                className="block rounded-[var(--r-lg)] p-1.5 transition hover:bg-[var(--surface-2)] sm:p-2.5"
               >
                 <PlaylistCover
                   covers={playlist.covers}
@@ -182,7 +193,14 @@ export function LibraryView() {
         on, it cannot be desktop-only. `lg:hidden` keeps it from appearing twice
         where the rail already has it.
       */}
-      <SiteLinks className="mt-10 justify-center lg:hidden" />
+      {/*
+        Pushed to the bottom of the scroll rather than sitting under the
+        content. `mt-auto` inside a column that fills the viewport puts these at
+        the end of the page wherever the content stops, so they stop reading as
+        part of the library and start reading as a footer — which is what they
+        are. Smaller too: they are the least important thing on the page.
+      */}
+      <SiteLinks className="mt-auto justify-center pt-16 lg:hidden" />
     </div>
   );
 }

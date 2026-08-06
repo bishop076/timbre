@@ -56,12 +56,12 @@ export function ThemePicker() {
 
   return (
     <section>
-      <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--fg-dim)]">Theme</h2>
+      <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)] sm:text-sm">Theme</h2>
       <p className="mt-1.5 text-xs leading-relaxed text-[var(--fg-faint)]">
         Saved in this browser, like everything else here.
       </p>
 
-      <div className="mt-4 grid gap-2.5 @md:grid-cols-3">
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:gap-2.5 @md:grid-cols-3">
         {MODES.map((mode) => {
           const active = theme.mode === mode.id;
           return (
@@ -70,13 +70,13 @@ export function ThemePicker() {
               type="button"
               onClick={() => setThemeMode(mode.id)}
               aria-pressed={active}
-              className={`slab press relative rounded-[var(--r-lg)] p-3.5 text-left transition ${
+              className={`slab press relative rounded-[var(--r-lg)] p-2 text-left transition sm:p-3.5 ${
                 active ? "bg-[var(--surface-2)]" : "bg-[var(--surface-1)]"
               }`}
             >
               {active && (
                 <span
-                  className="slab-sm absolute right-2.5 top-2.5 flex size-5 items-center justify-center rounded-[var(--r-full)] text-[var(--accent-fg)]"
+                  className="slab-sm absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-[var(--r-full)] text-[var(--accent-fg)] sm:right-2.5 sm:top-2.5 sm:size-5"
                   style={{ background: "var(--accent)" }}
                 >
                   <CheckIcon className="size-3" />
@@ -87,7 +87,7 @@ export function ThemePicker() {
                   ground and accent, so the choice is visible before it is made. */}
               <span
                 aria-hidden
-                className="slab-sm flex h-11 w-full items-end gap-1 overflow-hidden rounded-[var(--r-md)] p-1.5"
+                className="slab-sm flex h-8 w-full items-end gap-1 overflow-hidden rounded-[var(--r-md)] p-1 sm:h-11 sm:p-1.5"
                 style={{ background: previewGround({ ...theme, mode: mode.id }) }}
               >
                 {[0.55, 0.8, 1].map((scale) => (
@@ -103,8 +103,8 @@ export function ThemePicker() {
                 ))}
               </span>
 
-              <span className="mt-2.5 block text-sm font-bold">{mode.label}</span>
-              <span className="mt-0.5 block text-xs leading-relaxed text-[var(--fg-dim)]">
+              <span className="mt-1.5 block truncate text-xs font-bold sm:mt-2.5 sm:text-sm">{mode.label}</span>
+              <span className="mt-0.5 hidden text-xs leading-relaxed text-[var(--fg-dim)] sm:block">
                 {mode.blurb}
               </span>
             </button>
@@ -115,12 +115,12 @@ export function ThemePicker() {
       {/* Only shown for the mode it belongs to. Controls for an inactive mode
           would change something invisible, which reads as a broken button. */}
       {theme.mode === "custom" && (
-        <div className="slab mt-3 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-3.5">
+        <div className="slab mt-3 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2.5 sm:p-3.5">
           <p className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)]">
             Your colour
           </p>
 
-          <div className="mt-2.5 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-2.5 sm:gap-2">
             {/*
               White and dark first, because "no colour" is a choice about the
               whole app rather than one more hue — and putting them at the end
@@ -139,7 +139,7 @@ export function ThemePicker() {
                   aria-label={option.label}
                   aria-pressed={active}
                   title={option.label}
-                  className={`press size-8 rounded-[var(--r-full)] border-[length:var(--edge)] transition ${
+                  className={`press size-7 rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
                     active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
                   }`}
                   style={{ background: option.swatch }}
@@ -159,7 +159,7 @@ export function ThemePicker() {
                   onClick={() => setCustomHue(hue)}
                   aria-label={`Hue ${hue} degrees`}
                   aria-pressed={active}
-                  className={`press size-8 rounded-[var(--r-full)] border-[length:var(--edge)] transition ${
+                  className={`press size-7 rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
                     active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
                   }`}
                   style={{ background: `hsl(${hue} 62% ${theme.customLight ? 62 : 70}%)` }}
