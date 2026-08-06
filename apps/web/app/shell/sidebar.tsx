@@ -79,7 +79,7 @@ export function Sidebar() {
         className="press relative mb-1 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-3 hover:bg-[var(--surface-1)]"
       >
         <Avatar
-          id={profile.id || "local"}
+          id={profile.id}
           name={profile.name}
           email={profile.name ?? "Profile"}
           image={pictures.avatar}
@@ -91,8 +91,19 @@ export function Sidebar() {
         </span>
       </Link>
 
+      {/*
+        Library is deliberately absent here.
+
+        The panel directly below *is* the library — same playlists, same
+        content — so a nav button above it labelled "Library" put two controls
+        with the same name and the same destination within a centimetre of each
+        other. Spotify's rail has no Library entry for exactly this reason: the
+        rail is the library, and its own heading is the way into the full page.
+
+        <BottomNav> still shows it, because a phone has no rail to replace it.
+      */}
       <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
-        {NAV.map((item) => {
+        {NAV.filter((item) => item.id !== "library").map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <Link
@@ -115,13 +126,19 @@ export function Sidebar() {
       </nav>
 
       <div className="slab flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)]">
-        <div className="flex items-center gap-3 px-4 pb-3 pt-3.5">
-          <LibraryIcon className="size-[18px] shrink-0 text-[var(--fg-dim)]" />
-          <span className="text-sm font-bold text-[var(--fg-dim)]">Your library</span>
+        {/* The heading is the link to the full page, which is what lets the
+            nav entry above go away without losing the route. */}
+        <Link
+          href="/library"
+          onClick={exitTheater}
+          className="press flex items-center gap-3 px-4 pb-3 pt-3.5 text-[var(--fg-dim)] hover:text-[var(--fg)]"
+        >
+          <LibraryIcon className="size-[18px] shrink-0" />
+          <span className="text-sm font-bold">Your library</span>
           <span className="ml-auto text-xs font-semibold tabular-nums text-[var(--fg-faint)]">
             {(filter === "Queue" ? rows.length : (playlists?.length ?? 0)) || ""}
           </span>
-        </div>
+        </Link>
 
         {/* Filter chips, Spotify's affordance for slicing the library. */}
         <div className="flex gap-1.5 px-3 pb-3">
@@ -312,7 +329,7 @@ export function ProfileButton({ className }: { className?: string }) {
       className={`press flex shrink-0 items-center lg:hidden ${className ?? ""}`}
     >
       <Avatar
-        id={profile.id || "local"}
+        id={profile.id}
         name={profile.name}
         email={profile.name ?? "Profile"}
         image={pictures.avatar}
