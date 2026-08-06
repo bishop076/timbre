@@ -117,6 +117,22 @@ export interface RankedList {
 export interface SearchContext {
   limiter: RateLimiter;
   signal?: AbortSignal;
+  /**
+   * How long Next may cache the upstream responses, in seconds.
+   *
+   * **Omitted means `no-store`, and that is the right default for a route
+   * handler** — `/api/search` and friends are dynamic by declaration and keep
+   * their own two-minute cache in `lib/api.ts`, so a second, invisible layer
+   * underneath would put staleness on top of staleness nobody reasoned about.
+   *
+   * It is the wrong default for a **server component**, and that cost real time:
+   * a single `no-store` fetch anywhere in a render opts the whole route out of
+   * static generation, so `/explore` was marked dynamic despite declaring
+   * `revalidate = 3600` and re-ran fifteen upstream requests **on every single
+   * request** rather than once an hour. Passing a value here is what lets that
+   * page be prerendered and revalidated as it always claimed to be.
+   */
+  revalidate?: number;
 }
 
 export interface SearchProvider {
