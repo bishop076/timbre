@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { CheckIcon, PlaylistAddIcon, PlusIcon } from "../icons";
 import type { Song } from "../types";
@@ -24,9 +25,67 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
 
   const { playlists, error } = usePlaylists();
   const root = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+
+  /*
+   * The menu is rendered into `document.body`, not beside its button.
+   *
+   * Two things were breaking it in place. Shelves scroll horizontally, so their
+   * container is `overflow-x-auto` — and an absolutely positioned child of a
+   * scroll container is **clipped by it**, which cut the menu off mid-list. And
+   * anchoring to the button's right edge sent the menu off the left of the
+   * screen for the first tile in a row.
+   *
+   * A portal escapes every ancestor's overflow, and fixed coordinates measured
+   * from the trigger let it flip to whichever side actually has room.
+   */
+  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
     if (open) loadPlaylists();
+  }, [open]);
+
+  /*
+   * Measured before paint, so the menu never appears at the wrong place first.
+   * `useLayoutEffect` rather than `useEffect` for exactly that reason.
+   */
+  useLayoutEffect(() => {
+    // Nothing to place while closed, and nothing to clear either: the position
+    // is only ever read when `open` is true, so it can go stale harmlessly
+    // rather than being reset on the way out.
+    if (!open) return;
+
+    const place = () => {
+      const trigger = root.current?.getBoundingClientRect();
+      if (!trigger) return;
+
+      const WIDTH = 240;
+      const MARGIN = 8;
+      // Prefer growing left from the button's right edge, which keeps the menu
+      // under the control. Flip when that would cross the viewport's left edge.
+      const wantLeft = trigger.right - WIDTH;
+      const left = Math.min(
+        Math.max(MARGIN, wantLeft < MARGIN ? trigger.left : wantLeft),
+        window.innerWidth - WIDTH - MARGIN,
+      );
+
+      // Open upward when there is more room above than below — the menu is tall
+      // and the button is often near the bottom of a shelf.
+      const below = window.innerHeight - trigger.bottom;
+      const top = below < 260 && trigger.top > below ? trigger.top - 8 - 260 : trigger.bottom + 6;
+
+      setAt({ left, top: Math.max(MARGIN, top) });
+    };
+
+    place();
+    // Anything that moves the trigger moves the menu with it, rather than
+    // leaving it stranded where the button used to be.
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
   }, [open]);
 
   // Dismiss on an outside click or Escape. Both, because a menu that only
@@ -35,7 +94,11 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     if (!open) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      // The menu lives in a portal, so it is not inside `root` any more and
+      // has to be checked separately or every click in it would close it.
+      if (root.current?.contains(target) || menu.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -84,11 +147,15 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
         <PlaylistAddIcon className="size-[18px]" />
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="slab absolute right-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
-        >
+      {open &&
+        at &&
+        createPortal(
+          <div
+            ref={menu}
+            role="menu"
+            style={{ left: at.left, top: at.top }}
+            className="slab fixed z-[100] w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
+          >
           <div className="scroller max-h-56 overflow-y-auto p-1.5">
             {playlists?.length === 0 && (
               <p className="px-2 py-2.5 text-xs leading-relaxed text-[var(--fg-faint)]">
@@ -138,13 +205,14 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
             </button>
           </form>
 
-          {error && (
-            <p role="alert" className="border-t-[length:var(--edge)] border-[var(--ink)] px-3 py-2 text-[11px] text-red-400">
-              {error}
-            </p>
-          )}
-        </div>
-      )}
+            {error && (
+              <p role="alert" className="border-t-[length:var(--edge)] border-[var(--ink)] px-3 py-2 text-[11px] text-red-400">
+                {error}
+              </p>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
