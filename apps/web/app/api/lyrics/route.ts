@@ -1,6 +1,8 @@
 import { parseTitle } from "@timbre/core";
 import { z } from "zod";
 
+import { guard } from "@/lib/api";
+
 /**
  * Lyrics, from LRCLIB.
  *
@@ -21,13 +23,36 @@ import { z } from "zod";
  */
 export const revalidate = 86_400;
 
+/** LRCLIB asks clients to identify themselves rather than spoof a browser. */
+const USER_AGENT = "Timbre (https://github.com/timbre)";
+
 const querySchema = z.object({
   title: z.string().min(1).max(300),
   artist: z.string().min(1).max(300),
   album: z.string().max(300).optional(),
   /** Seconds. Used to pick between several matches of the same name. */
   duration: z.coerce.number().int().positive().max(86_400).optional(),
+  /**
+   * A specific LRCLIB record, when the automatic match was wrong.
+   *
+   * The database is community-contributed and one song routinely has a dozen
+   * entries — different albums, different transcriptions, some off by a few
+   * seconds. Picking the best of them automatically is a guess, so the reader
+   * gets to overrule it.
+   */
+  id: z.coerce.number().int().positive().optional(),
+  /** Ask for the candidate list instead of the lyrics themselves. */
+  alternatives: z.coerce.boolean().optional(),
 });
+
+export interface LyricAlternative {
+  id: number;
+  trackName: string;
+  artistName: string;
+  albumName: string | null;
+  duration: number | null;
+  synced: boolean;
+}
 
 interface LrcLibTrack {
   trackName: string;
@@ -79,7 +104,7 @@ async function lookup(url: URL): Promise<LrcLibTrack | null> {
     headers: {
       // LRCLIB asks clients to identify themselves rather than send a browser
       // user-agent, so that abuse can be attributed to a project.
-      "user-agent": "Timbre (https://github.com/timbre)",
+      "user-agent": USER_AGENT,
     },
     signal: AbortSignal.timeout(6_000),
   });
@@ -90,19 +115,24 @@ async function lookup(url: URL): Promise<LrcLibTrack | null> {
 }
 
 export async function GET(request: Request) {
+  const refusal = guard(request);
+  if (refusal) return refusal;
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     title: url.searchParams.get("title"),
     artist: url.searchParams.get("artist"),
     album: url.searchParams.get("album") ?? undefined,
     duration: url.searchParams.get("duration") ?? undefined,
+    id: url.searchParams.get("id") ?? undefined,
+    alternatives: url.searchParams.get("alternatives") ?? undefined,
   });
 
   if (!parsed.success) {
     return Response.json({ error: "A title and artist are required." }, { status: 400 });
   }
 
-  const { title, artist, album, duration } = parsed.data;
+  const { title, artist, album, duration, id, alternatives } = parsed.data;
 
   /*
    * YouTube Music titles carry noise a lyrics database has never heard of —
@@ -113,6 +143,61 @@ export async function GET(request: Request) {
   const cleaned = parseTitle(title).base || title;
 
   try {
+    /*
+     * An explicit pick wins outright — no matching, no ranking. The reader has
+     * already seen the automatic answer and rejected it.
+     */
+    if (id) {
+      const chosen = await lookup(new URL(`https://lrclib.net/api/get/${id}`));
+      if (!chosen) return Response.json({ lyrics: null }, { status: 200 });
+      return Response.json({
+        lyrics: {
+          instrumental: chosen.instrumental,
+          synced: chosen.syncedLyrics ? parseLrc(chosen.syncedLyrics) : null,
+          plain: chosen.plainLyrics,
+          matchedTitle: chosen.trackName,
+          matchedArtist: chosen.artistName,
+          id,
+        },
+      });
+    }
+
+    /*
+     * The candidate list, for the picker. Returned instead of lyrics rather
+     * than alongside them: the panel only asks once the reader opens the
+     * chooser, so every ordinary track change stays a single request.
+     */
+    if (alternatives) {
+      const search = new URL("https://lrclib.net/api/search");
+      search.searchParams.set("track_name", cleaned);
+      search.searchParams.set("artist_name", artist);
+
+      const response = await fetch(search, {
+        headers: { "user-agent": USER_AGENT },
+        signal: AbortSignal.timeout(6_000),
+      });
+      if (!response.ok) return Response.json({ alternatives: [] }, { status: 200 });
+
+      const results = (await response.json()) as (LrcLibTrack & {
+        id: number;
+        albumName?: string;
+        duration?: number;
+      })[];
+
+      return Response.json({
+        alternatives: results.slice(0, 20).map(
+          (item): LyricAlternative => ({
+            id: item.id,
+            trackName: item.trackName,
+            artistName: item.artistName,
+            albumName: item.albumName ?? null,
+            duration: item.duration ?? null,
+            synced: Boolean(item.syncedLyrics),
+          }),
+        ),
+      });
+    }
+
     // Exact lookup first: it is the only call that can return synced lines
     // matched on duration, which is what keeps a cover from winning.
     const exact = new URL("https://lrclib.net/api/get");
@@ -131,7 +216,7 @@ export async function GET(request: Request) {
       search.searchParams.set("artist_name", artist);
 
       const response = await fetch(search, {
-        headers: { "user-agent": "Timbre (https://github.com/timbre)" },
+        headers: { "user-agent": USER_AGENT },
         signal: AbortSignal.timeout(6_000),
       });
       if (response.ok) {
