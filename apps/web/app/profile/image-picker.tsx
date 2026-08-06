@@ -71,23 +71,44 @@ export function ImagePicker({
       />
 
       {variant === "overlay" ? (
-        <button
-          type="button"
-          onClick={() => input.current?.click()}
-          disabled={busy}
-          aria-label={`Change ${label}`}
-          title={`Change ${label} — only on this device`}
-          /* Covers the avatar and appears on hover or keyboard focus. Opacity
-             rather than conditional rendering, so it fades instead of popping
-             and stays reachable by tab. */
-          className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55 text-white opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          {busy ? (
-            <SpinnerIcon className="size-6 animate-spin" />
-          ) : (
-            <CameraIcon className="size-6" />
+        /*
+          Both actions live on the picture itself.
+          Removing used to be a text link sitting in the stats row, which put a
+          destructive control in a line of figures and made someone read the
+          word "remove" every time they looked at their own follower count. A
+          control belongs on the thing it acts on.
+
+          A container of buttons rather than one full-cover button: a button may
+          not contain another, and the overlay needs two.
+        */
+        <div className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-full bg-black/55 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={() => input.current?.click()}
+            disabled={busy}
+            aria-label={`Change ${label}`}
+            title={`Change ${label} — kept only on this device`}
+            className="press flex size-8 items-center justify-center rounded-[var(--r-full)] text-white hover:bg-white/20"
+          >
+            {busy ? (
+              <SpinnerIcon className="size-5 animate-spin" />
+            ) : (
+              <CameraIcon className="size-5" />
+            )}
+          </button>
+
+          {hasImage && (
+            <button
+              type="button"
+              onClick={remove}
+              aria-label={`Remove ${label}`}
+              title={`Remove ${label}`}
+              className="press flex size-8 items-center justify-center rounded-[var(--r-full)] text-white hover:bg-white/20 hover:text-red-300"
+            >
+              <TrashIcon className="size-4" />
+            </button>
           )}
-        </button>
+        </div>
       ) : (
         <div className="flex items-center gap-1.5">
           <button
@@ -126,28 +147,5 @@ export function ImagePicker({
         </p>
       )}
     </>
-  );
-}
-
-/**
- * Removes a local avatar. Separate from the overlay because the overlay fills
- * the circle and has no room for a second control inside it.
- */
-export function RemoveAvatarButton({ onChanged }: { onChanged?: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        clearLocalImage("avatar");
-        onChanged?.();
-      }}
-      // Theme tones, not white. Unlike the other controls here this one has no
-      // dark pill behind it — it sits inline in the stats row, which since the
-      // header lost its colour wash is just the page. White was invisible on
-      // every light theme.
-      className="text-[11px] font-semibold text-[var(--fg-faint)] underline-offset-2 hover:text-[var(--fg)] hover:underline"
-    >
-      Remove picture
-    </button>
   );
 }
