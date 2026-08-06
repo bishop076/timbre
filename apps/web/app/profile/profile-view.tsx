@@ -9,7 +9,7 @@ import { loadPlaylists, usePlaylists } from "../playlists/store";
 import { ThemePicker } from "../theme/theme-picker";
 import { isLightTheme, useTheme } from "../theme/theme-store";
 import { Avatar, AVATAR_TONE, avatarHue } from "./avatar";
-import { ImagePicker, RemoveAvatarButton } from "./image-picker";
+import { ImagePicker } from "./image-picker";
 import { useDominantColor } from "./dominant-color";
 import { useLocalImages } from "./local-images";
 import { setDisplayName, useLocalProfile } from "./local-profile";
@@ -56,6 +56,24 @@ export function ProfileView() {
    * monogram *is* the picture, and its hue is already known without sampling.
    */
   const sampled = useDominantColor(local.avatar);
+
+  /*
+   * The wash waits until it can be right.
+   *
+   * Three things arrive at different times: the local id (localStorage, first
+   * paint), the pictures (IndexedDB, async) and the colour sampled from the
+   * avatar (an image decode after that). Painting on each meant the header
+   * flashed through up to three colours on the way in — starting with the hue
+   * derived from the placeholder id `"local"`, which is a yellow-green that
+   * belongs to nobody.
+   *
+   * So nothing coloured is painted until the answer is settled: no id yet, no
+   * pictures read yet, or a picture present whose colour is still being
+   * sampled. Until then the header is simply the page's own ground, which is
+   * already behind it — one surface, not a coloured layer over another.
+   */
+  const awaitingSample = Boolean(local.avatar) && !sampled;
+  const ready = Boolean(profile.id) && local.loaded && !awaitingSample;
   const hue = sampled ? Math.round(sampled.h * 360) : avatarHue(profile.id || "local");
   const saturation = Math.min(0.58, Math.max(0.26, sampled?.s ?? AVATAR_TONE.saturation));
 
@@ -103,8 +121,9 @@ export function ProfileView() {
       {/* Header — Spotify's arrangement                                    */}
       {/* ---------------------------------------------------------------- */}
       <div
-        className="group/banner relative isolate flex min-h-[19rem] w-full items-end @lg:min-h-[21rem]"
-        style={local.banner ? undefined : { backgroundImage: wash }}
+        className="group/banner relative isolate flex min-h-[14rem] w-full items-end transition-[background-image] duration-300 sm:min-h-[19rem] @lg:min-h-[21rem]"
+        // Only once the colour is the real one — see `ready` above.
+        style={local.banner || !ready ? undefined : { backgroundImage: wash }}
       >
         {local.banner && (
           <>
@@ -127,21 +146,37 @@ export function ProfileView() {
           />
         </div>
 
-        <div className="mx-auto w-full max-w-6xl px-5 pb-7 pt-20 sm:px-7">
-          <div className="flex flex-col gap-5 @lg:flex-row @lg:items-end @lg:gap-6">
+        <div className="mx-auto w-full max-w-6xl px-4 pb-5 pt-12 sm:px-7 sm:pb-7 sm:pt-20">
+          <div className="flex flex-col gap-3 sm:gap-5 @lg:flex-row @lg:items-end @lg:gap-6">
             {/*
               Big, and round. Spotify's profile avatar is far larger than a
               nameplate needs — it is the anchor the header is arranged around,
               and shrinking it makes a header look like a settings row.
             */}
-            <div className="group slab relative shrink-0 overflow-hidden rounded-full">
+            {/*
+              `self-start` is load-bearing. A flex item stretches across the
+              cross axis by default, and this column *is* the cross axis until
+              `@lg` turns the header into a row — so the circle stretched into a
+              full-width pill with the picture stranded at one end and the
+              border drawn around the pill. `shrink-0` stops it shrinking and
+              says nothing about growing.
+            */}
+            {/*
+              A ring, not a `slab`. That class pairs a border with a hard offset
+              drop shadow, which is the app's language and is built for
+              rectangles — on a circle the offset reads as a dark crescent
+              bleeding off one side, like a misregistered print. A ring hugs the
+              curve, and a soft shadow lifts it off the banner without implying
+              an edge that is not there.
+            */}
+            <div className="group relative shrink-0 self-start overflow-hidden rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.4)] ring-2 ring-white/20">
               <Avatar
-                id={profile.id || "local"}
+                id={profile.id}
                 name={profile.name}
                 email={displayName}
                 image={local.avatar}
-                className="size-32 @lg:size-48"
-                textClassName="text-5xl @lg:text-7xl"
+                className="size-20 sm:size-32 @lg:size-48"
+                textClassName="text-3xl sm:text-5xl @lg:text-7xl"
               />
               <ImagePicker
                 kind="avatar"
@@ -196,10 +231,10 @@ export function ProfileView() {
                   <h1
                     className={`min-w-0 break-words font-extrabold leading-[1.05] tracking-tight ${onDark ? "text-white" : "text-[var(--fg)]"} ${
                       displayName.length > 22
-                        ? "text-3xl @lg:text-4xl"
+                        ? "text-2xl sm:text-3xl @lg:text-4xl"
                         : displayName.length > 12
-                          ? "text-4xl @lg:text-6xl"
-                          : "text-5xl @lg:text-7xl"
+                          ? "text-3xl sm:text-4xl @lg:text-6xl"
+                          : "text-4xl sm:text-5xl @lg:text-7xl"
                     }`}
                   >
                     {displayName}
@@ -223,10 +258,6 @@ export function ProfileView() {
                   <Stat value={playlists?.length ?? 0} label="playlist" onDark={onDark} />
                   <Dot onDark={onDark} />
                   <Stat value={songCount} label="song" onDark={onDark} />
-                  <Dot onDark={onDark} />
-                  {/* The one fact worth repeating everywhere it applies. */}
-                  <span className={onDark ? "text-white/55" : "text-[var(--fg-faint)]"}>only on this device</span>
-                  {local.avatar && <RemoveAvatarButton />}
                 </div>
               )}
             </div>
@@ -244,15 +275,15 @@ export function ProfileView() {
       {/* ---------------------------------------------------------------- */}
       {/* Their playlists                                                   */}
       {/* ---------------------------------------------------------------- */}
-      <div className="mx-auto w-full max-w-6xl px-5 sm:px-7">
-        <h2 className="mb-4 mt-8 text-xl font-extrabold tracking-tight">Playlists</h2>
+      <div className="mx-auto w-full max-w-6xl px-4 sm:px-7">
+        <h2 className="mb-3 mt-6 text-lg font-extrabold tracking-tight sm:mb-4 sm:mt-8 sm:text-xl">Playlists</h2>
 
         {settled && playlists?.length === 0 ? (
           <p className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
             Nothing saved yet.
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-4 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
+          <ul className="grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
             {playlists?.map((playlist) => (
               <li key={playlist.id}>
                 <Link

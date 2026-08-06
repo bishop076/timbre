@@ -76,21 +76,32 @@ export function Avatar({
     return <Artwork src={image} className={`${className} rounded-full`} eager />;
   }
 
-  const hue = avatarHue(id);
+  /*
+   * No id yet means the local profile has not been read out of storage. Deriving
+   * a hue from a placeholder produced a yellow-green circle for a moment on
+   * every visit — a colour belonging to nobody, replaced a frame later by the
+   * real one. A neutral surface says "not yet" instead of guessing.
+   */
+  const hue = id ? avatarHue(id) : null;
   const { saturation, lightness } = AVATAR_TONE;
 
   return (
     <span
       aria-hidden
       className={`flex shrink-0 items-center justify-center rounded-full font-extrabold text-white ${className} ${textClassName}`}
-      style={{
-        // Two stops of the same hue rather than a flat fill: a plain circle of
-        // colour reads as a missing image, while a gradient reads as chosen.
-        backgroundImage:
-          `linear-gradient(140deg,` +
-          ` hsl(${hue} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%),` +
-          ` hsl(${(hue + 38) % 360} 58% 38%))`,
-      }}
+      style={
+        hue === null
+          ? { background: "var(--surface-2)" }
+          : {
+              // Two stops of the same hue rather than a flat fill: a plain
+              // circle of colour reads as a missing image, a gradient reads as
+              // chosen.
+              backgroundImage:
+                `linear-gradient(140deg,` +
+                ` hsl(${hue} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%),` +
+                ` hsl(${(hue + 38) % 360} 58% 38%))`,
+            }
+      }
     >
       {initialOf(name, email)}
     </span>
