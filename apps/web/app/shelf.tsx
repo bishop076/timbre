@@ -68,9 +68,9 @@ export function Shelf({
   }
 
   return (
-    <section className="mb-9">
-      <div className="mb-3.5 flex items-center justify-between gap-4 px-1">
-        <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
+    <section className="mb-6 sm:mb-9">
+      <div className="mb-2.5 flex items-center justify-between gap-4 px-1 sm:mb-3.5">
+        <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{title}</h2>
 
         <div className="flex shrink-0 items-center gap-2">
           {caption && (
@@ -106,7 +106,7 @@ export function Shelf({
       {/* `scroll-pl-1` matches `px-1` above: without it the browser snaps the
           first tile to the raw scroll origin inside the padding, and the row
           starts silently offset by exactly the padding width. */}
-      <div className="shelf flex snap-x snap-proximity gap-4 overflow-x-auto scroll-pl-1 px-1 pb-1">
+      <div className="shelf flex snap-x snap-proximity gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4">
         {children}
       </div>
     </section>
