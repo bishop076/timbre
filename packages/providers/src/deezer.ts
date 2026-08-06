@@ -20,6 +20,7 @@ import type {
   SearchProvider,
   SourceTrack,
 } from "./types.ts";
+import { cachePolicy } from "./cache-policy.ts";
 
 const API = "https://api.deezer.com";
 
@@ -78,7 +79,7 @@ export function createDeezerProvider(): SearchProvider {
 
     let response: Response;
     try {
-      response = await fetch(`${API}${path}`, { signal: ctx.signal, cache: "no-store" });
+      response = await fetch(`${API}${path}`, { signal: ctx.signal, ...cachePolicy(ctx) });
     } catch (cause) {
       throw new ProviderError("deezer", "transient", "Deezer unreachable.", { cause });
     }
