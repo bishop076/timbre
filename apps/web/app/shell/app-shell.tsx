@@ -37,7 +37,7 @@ import { BottomNav, Sidebar } from "./sidebar";
  * `children` stays a server component; it is passed through untouched.
  */
 export function AppShell({ children }: { children: ReactNode }) {
-  const { theater } = usePlayer();
+  const { theater, current } = usePlayer();
   const pathname = usePathname();
 
   /*
@@ -102,8 +102,21 @@ export function AppShell({ children }: { children: ReactNode }) {
         so when they *are* shown these stay direct flex children of the column
         and keep measuring their own height, which `--bar-h` depends on.
       */}
+      {/*
+        The bar appears once there is something to control, and never leaves.
+
+        `current` is null only before the first play of a session — a paused
+        song, a finished one and a failed one all keep it set — so this hides
+        the empty "Nothing playing" bar on a first visit without ever pulling
+        the controls out from under a song someone paused. Hiding on *paused*
+        would be the obvious reading of the same idea and exactly wrong: the
+        moment you most need a play button is right after you press pause.
+
+        The nav is not conditional. It is navigation, and a bottom bar that
+        appears only after you play something is a bottom bar people never find.
+      */}
       <div className={theater ? "hidden lg:contents" : "contents"}>
-        <PlayerBar />
+        {current && <PlayerBar />}
         <BottomNav />
       </div>
     </div>
