@@ -2,25 +2,8 @@
 
 import { useState } from "react";
 
+import { proxied as viaProxy } from "./artwork-url";
 import { NoteIcon } from "./icons";
-
-/**
- * Rewrites artwork through Timbre's own origin.
- *
- * Content blockers filter by hostname, and `i.ytimg.com` is on enough lists
- * that artwork silently disappeared for anyone running one — confirmed by
- * switching a blocker off and watching the pictures return. The urls are
- * valid and answer 200 from a server; the request never leaves the browser.
- *
- * Going through `/api/art` makes it a first-party request, which no blocklist
- * matches. The proxy allowlists hosts, so an unrecognised url is left alone
- * rather than handed to an endpoint that would refuse it anyway.
- */
-function viaProxy(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (!url.startsWith("https://")) return url;
-  return `/api/art?u=${encodeURIComponent(url)}`;
-}
 
 /**
  * The unsigned, permanent thumbnail for a YouTube video id, or null when the
@@ -93,6 +76,23 @@ export function Artwork({
           src={attempted ?? undefined}
           alt=""
           loading={eager ? "eager" : "lazy"}
+          /*
+           * Async for the shelves, **sync for anything asked for eagerly**.
+           *
+           * Explore puts fifty-odd covers on one page, most of them 250px
+           * squares shown in boxes a fraction of that. Decoding those on the
+           * main thread as they paint lands as one long block of work on the
+           * thread that also answers scrolling, so `async` is a real win there.
+           *
+           * It is exactly wrong for an `eager` image. `async` does not only
+           * move the decode — it lets the browser *defer the paint* until the
+           * decode finishes, so the element renders empty first and fills in
+           * afterwards. On the profile avatar that turned one paint into two:
+           * the grey placeholder behind this element, and then the picture.
+           * `eager` already means "this one is wanted now", so it is the exact
+           * set of images that must not be deferred.
+           */
+          decoding={eager ? "sync" : "async"}
           onError={() => setFailedSrc(chosen ?? null)}
           className="size-full object-cover"
         />
