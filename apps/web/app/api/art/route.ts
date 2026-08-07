@@ -45,6 +45,31 @@ const ALLOWED_HOSTS = new Set([
 /** Artwork is small. Anything larger is not artwork. */
 const MAX_BYTES = 8 * 1024 * 1024;
 
+/**
+ * Passes a body through, abandoning it if it exceeds `limit`.
+ *
+ * Only used when the upstream declared no length. Cancelling the source rather
+ * than merely stopping the copy matters: an abandoned stream that is still being
+ * read holds a socket open for as long as the far end keeps sending.
+ */
+function capped(body: ReadableStream<Uint8Array> | null, limit: number): ReadableStream<Uint8Array> | null {
+  if (!body) return null;
+
+  let seen = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > limit) {
+          controller.error(new Error("Artwork exceeded the size limit."));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
 export async function GET(request: Request) {
   const raw = new URL(request.url).searchParams.get("u");
   if (!raw) return new Response("Missing url.", { status: 400 });
@@ -80,10 +105,24 @@ export async function GET(request: Request) {
     return new Response("Not an image.", { status: 404 });
   }
 
-  const length = Number(upstream.headers.get("content-length") ?? 0);
-  if (length > MAX_BYTES) return new Response("Too large.", { status: 413 });
+  /*
+   * The cap has to survive a missing `content-length`.
+   *
+   * It read `Number(header ?? 0)`, so an upstream that answered with a chunked
+   * response — no length at all — measured as zero bytes and was streamed
+   * straight through unbounded. The header is still trusted when present, because
+   * refusing early is cheaper than counting; when it is absent the body is
+   * metered as it passes and cut off if it runs over.
+   */
+  const declared = Number(upstream.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BYTES) {
+    return new Response("Too large.", { status: 413 });
+  }
 
-  return new Response(upstream.body, {
+  const body =
+    Number.isFinite(declared) && declared > 0 ? upstream.body : capped(upstream.body, MAX_BYTES);
+
+  return new Response(body, {
     headers: {
       "content-type": type,
       // Artwork for a given url never changes, so let the browser keep it and
