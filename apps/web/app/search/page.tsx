@@ -3,17 +3,16 @@ import { SearchResults } from "../search-results";
 export const metadata = { title: "Search — Timbre" };
 
 /**
- * Search, on its own route.
+ * Results, and nothing else.
  *
- * `showShelves={false}` because the shelves belong to Home now. Left on, an
- * empty query here would render the whole home page underneath the field, and
- * the two tabs would be the same screen with the search box in a different
- * place.
+ * The field is in the app shell, so this page does not draw one — it reads what
+ * was typed and answers it. Arriving here with an empty box is not a dead end
+ * either: the suggestions take that state, while browsing lives on Explore.
  */
 export default function SearchPage() {
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-5 pb-10 pt-5 sm:px-7">
-      <SearchResults showShelves={false} />
+    <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4">
+      <SearchResults />
     </div>
   );
 }
