@@ -1,16 +1,18 @@
 "use client";
 
 import { ArtistLink } from "./artist-link";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { ChevronIcon, CloseIcon, ExternalIcon, NoteIcon, PlayIcon, SearchIcon, SpinnerIcon } from "./icons";
+import { ChevronIcon, ExternalIcon, NoteIcon, PlayIcon } from "./icons";
 import { AddToQueue } from "./player/add-to-queue";
 import { useHistory } from "./player/history-store";
 import { usePlayer } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
+import { useSearchQuery } from "./search-store";
 import { SongCard } from "./song-card";
-import { SUGGESTED_SEARCHES, sourceStyle } from "./sources";
+import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
+import { cover as coverSrc } from "./artwork-url";
 
 /** Whether what was typed is a link to resolve rather than words to search. */
 function isUrl(value: string): boolean {
@@ -27,29 +29,21 @@ function formatDuration(ms: number | null): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
-export function SearchResults({ showShelves = true }: { showShelves?: boolean } = {}) {
-  const [query, setQuery] = useState("");
+/**
+ * Search results.
+ *
+ * **The field is not here.** It lives in the app shell, above the router, so it
+ * survives the navigation from Home to this page — see `top-bar.tsx` for why
+ * that has to be true for typing to work. This component reads what was typed
+ * and answers it; it owns no input and draws no chrome.
+ */
+export function SearchResults() {
+  const query = useSearchQuery();
   const [results, setResults] = useState<SongsResponse | null>(null);
-  const [charts, setCharts] = useState<SongsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const controller = useRef<AbortController | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Charts load once and stay: they are the home page, so returning to it
-  // after a search should be instant rather than refetching.
-  useEffect(() => {
-    const aborter = new AbortController();
-    fetch("/api/charts", { signal: aborter.signal })
-      .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
-      .then((data) => data && setCharts(data))
-      .catch(() => {
-        // A missing chart is not worth an error message — the search box
-        // still works, which is the point of the page.
-      });
-    return () => aborter.abort();
-  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -100,33 +94,15 @@ export function SearchResults({ showShelves = true }: { showShelves?: boolean } 
         });
     }, 300);
 
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
-      if (event.key === "/" && !typing) {
-        event.preventDefault();
-        inputRef.current?.focus();
-      }
-      if (event.key === "Escape" && typing) inputRef.current?.blur();
+    return () => {
+      clearTimeout(timer);
+      // The request goes too, not just the pending debounce. Leaving `/search`
+      // mid-flight left a search running to completion and then calling
+      // `setResults` on a component nobody was looking at — a wasted round trip
+      // against a metered upstream, on the one route people leave fastest.
+      controller.current?.abort();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  /*
-   * The placeholder is chosen for the width, not shortened by CSS.
-   *
-   * "Search for a song, artist or mix — or paste a link…" is forty-eight
-   * characters and a phone shows about half of it, so the sentence was cut
-   * mid-word — it read as broken rather than as truncated. Text cannot be
-   * responsive in CSS, so the string itself changes.
-   */
-  const narrow = useNarrow();
-  const placeholder = narrow ? "Songs, artists, or a link…" : "Search for a song, artist or mix — or paste a link…";
+  }, [query]);
 
   const hasQuery = query.trim().length > 0;
   const songs = results?.songs ?? [];
@@ -143,73 +119,6 @@ export function SearchResults({ showShelves = true }: { showShelves?: boolean } 
 
   return (
     <>
-      {/*
-        The band bleeds to the *panel* edge, not the container's.
-
-        `-mx-5` only reaches the edges of the max-width column this sits in, so
-        on a wide screen the band stopped short of the panel on both sides. That
-        was invisible while it was painted `--surface-1` — the same colour as
-        the panel behind it — and became an obviously misaligned floating box
-        the moment it took a darker tone.
-
-        A full-viewport-width backdrop, centred and clipped by the panel's own
-        `overflow-x: hidden`, lands exactly on the panel edges at any width
-        without knowing what the column is doing.
-      */}
-      <div className="sticky top-0 z-20 -mt-5 mb-1 px-5 pb-3 pt-4 sm:px-7">
-        <div
-          aria-hidden
-          className="absolute inset-y-0 left-1/2 -z-10 w-screen -translate-x-1/2 bg-[color-mix(in_oklab,var(--bg)_88%,transparent)] backdrop-blur-md"
-        />
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={placeholder}
-            autoFocus
-            aria-label="Search for a song"
-            // Dark glass: one flat tone, no gradient.
-            //
-            // The *band* behind this takes the darkest step on the ramp, so
-            // the header reads as its own dark shelf rather than as more panel.
-            // The field then sits one step above it — enough to read as
-            // something you type into, still far below the `--surface-2` it
-            // used to be, which made it the brightest thing on the page. Both
-            // are translucent so the cover wash carries through, and blurred so
-            // it never competes with the text.
-            className="slab slab-soft w-full rounded-[var(--r-lg)] bg-[color-mix(in_oklab,var(--surface-1)_78%,transparent)] py-2.5 pl-11 pr-12 text-[13px] font-medium sm:text-[15px] outline-none backdrop-blur-md transition-colors placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)] focus:shadow-[var(--drop-lg)]"
-          />
-          {/*
-            Three states in one slot, in priority order: searching, something to
-            clear, or the shortcut hint. The clear button is ours rather than
-            the browser's — `input[type="search"]` draws a blue ✕ in its own
-            colours that cannot be themed, only removed, which globals.css does.
-          */}
-          {loading ? (
-            <SpinnerIcon className="absolute right-3.5 top-1/2 size-[18px] -translate-y-1/2 animate-spin text-[var(--accent)]" />
-          ) : hasQuery ? (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                inputRef.current?.focus();
-              }}
-              aria-label="Clear search"
-              className="press absolute right-3 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-[var(--r-sm)] text-[var(--fg-dim)] hover:bg-[var(--surface-3)] hover:text-[var(--fg)]"
-            >
-              <CloseIcon className="size-4" />
-            </button>
-          ) : (
-            <kbd className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--line)] px-1.5 py-0.5 font-mono text-xs text-[var(--fg-dim)] sm:block">
-              /
-            </kbd>
-          )}
-        </div>
-      </div>
-
       <div aria-live="polite">
         {error && (
           <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -246,17 +155,21 @@ export function SearchResults({ showShelves = true }: { showShelves?: boolean } 
           ))
         )}
 
-        {!hasQuery && showShelves && <HomeShelves charts={charts} />}
-
         {/*
-          The search tab with nothing typed used to render *nothing* — a field
-          at the top and a screen of void under it. Shelves belong to Home, so
-          the answer is not to put them back; it is to give the empty state
-          something to do. These are the suggestions the app already shipped a
-          list of and never showed anywhere.
-        */}
-        {!hasQuery && !showShelves && <Suggestions onPick={setQuery} />}
+          Nothing typed.
 
+          **No suggestions here.** They belong to the field, which now shows them
+          in a panel the moment it is focused — and since clearing the box leaves
+          it focused, rendering them here as well put the same four chips on
+          screen twice, one set directly above the other. A line of text is the
+          whole empty state; the chips are one click away and already visible
+          when anyone is actually about to type.
+        */}
+        {!hasQuery && (
+          <p className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
+            Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
+          </p>
+        )}
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
@@ -459,7 +372,25 @@ function ForYou() {
     return () => aborter.abort();
   }, [seed?.videoId, seed?.title, seed?.artists]);
 
-  if (history.length === 0) return null;
+  /*
+   * Nothing played — or nothing *read yet*, which is not the same thing and was
+   * being treated as though it were.
+   *
+   * `useHistory` returns empty from `getServerSnapshot`, because the server has
+   * no storage to read. So on every load this returned `null`, the page rendered
+   * the arrangement a **first-time visitor** should see — "Trending now" at the
+   * top and no personalised shelves — and then hydration inserted two shelves
+   * above it and shoved the whole page down. A returning listener saw the guest
+   * layout first, every single time.
+   *
+   * The placeholder reserves what is coming. Which of the two cases this is
+   * cannot be known here — the markup is identical for both — but it *can* be
+   * known before the first paint: the boot script sets `data-listener` on
+   * `<html>` when this browser has a history, and `globals.css` shows this only
+   * then. A genuine guest has no such attribute and sees nothing, which is
+   * correct for them.
+   */
+  if (history.length === 0) return <ForYouPending />;
 
   // Recently-played entries are stored flat rather than as whole songs, so
   // they are given the minimum a card needs. Playing one re-resolves it, the
@@ -504,6 +435,35 @@ function ForYou() {
         </Shelf>
       )}
     </>
+  );
+}
+
+/**
+ * The space "Recently played" will occupy, held open until it can be filled.
+ *
+ * Shown only when `<html>` carries `data-listener` — see the `.for-you-pending`
+ * rule in `globals.css`. That attribute is the one thing about a listener's
+ * history the first paint can know, so it is what decides whether there is
+ * anything to reserve.
+ *
+ * One shelf, not two. "Recently played" is certain for anyone with a history;
+ * "Because you played X" depends on a request that may return nothing, and
+ * reserving room for a shelf that never arrives would leave a hole instead of
+ * closing one.
+ */
+function ForYouPending() {
+  return (
+    <div className="for-you-pending" aria-hidden>
+      <Shelf title="Recently played" caption="Only on this device">
+        {Array.from({ length: 8 }, (_, index) => (
+          <div key={index} className={TILE}>
+            <div className="aspect-square animate-pulse rounded-[var(--r-lg)] bg-[var(--surface-2)]" />
+            <div className="mt-2.5 h-3 w-3/4 animate-pulse rounded bg-[var(--surface-2)]" />
+            <div className="mt-1.5 h-2.5 w-1/2 animate-pulse rounded bg-[var(--surface-2)]" />
+          </div>
+        ))}
+      </Shelf>
+    </div>
   );
 }
 
@@ -601,7 +561,7 @@ function SongRow({ song }: { song: Song }) {
           {song.artworkUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
             <img
-              src={song.artworkUrl}
+              src={coverSrc(song.artworkUrl, 112) ?? undefined}
               alt=""
               width={56}
               height={56}
@@ -674,135 +634,6 @@ function SongRow({ song }: { song: Song }) {
   );
 }
 
-/**
- * A seed the client draws once, and the server never does.
- *
- * Two constraints collide here. `Math.random()` during render is impure —
- * React may render twice and get two orders, reshuffling the chips under a
- * thumb already moving toward one. But a module-level draw is worse: it is
- * evaluated once per *server process*, so every visitor would receive that
- * process's order in their HTML and then see the client's own order replace it
- * — a hydration mismatch on every load.
- *
- * `useSyncExternalStore` is the shape for exactly this: the server snapshot is
- * a fixed 0, the client's is drawn on first read, and React knows to expect the
- * two to differ. Same idiom as `volume-store` and `history-store`.
- */
-let clientSeed = 0;
-
-function subscribeSeed(): () => void {
-  // Never changes after the first read, so there is nothing to notify about.
-  return () => {};
-}
-
-function getSeed(): number {
-  if (clientSeed === 0) clientSeed = Math.floor(Math.random() * 2 ** 31) || 1;
-  return clientSeed;
-}
-
-function getServerSeed(): number {
-  return 0;
-}
-
-/** mulberry32 — small, fast, and good enough to order six chips. */
-function seeded(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Under 480px, where the long placeholder stops fitting. */
-function useNarrow(): boolean {
-  const [narrow, setNarrow] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 480px)");
-    const update = () => setNarrow(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  return narrow;
-}
-
-/**
- * What to type, when nothing is typed.
- *
- * **Half of it is yours.** Artists you have actually played come first, because
- * the most likely next search is something adjacent to the last thing you
- * listened to — and a suggestion list that never changes stops being read after
- * the second visit.
- *
- * The rest is a rotating sample of the built-in list, which is chosen to show
- * the catalogue off rather than to be popular: a DJ set, a lo-fi mix and an
- * artist whose name is punctuation are all things Timbre finds and a
- * subscription service would not.
- *
- * Sampled once per mount rather than on every render, so the row does not
- * reshuffle under the reader's thumb while they are looking at it.
- *
- * Picking one fills the field rather than searching immediately, so the choice
- * stays editable — half the value is seeing what a query can look like.
- */
-function Suggestions({ onPick }: { onPick: (value: string) => void }) {
-  const history = useHistory();
-  const seed = useSyncExternalStore(subscribeSeed, getSeed, getServerSeed);
-
-  const suggestions = useMemo(() => {
-    // Most recent first, deduplicated: a favourite artist should appear once,
-    // not once per play.
-    const played: string[] = [];
-    for (const song of history) {
-      const artist = song.artists?.[0];
-      if (artist && !played.some((seen) => seen.toLowerCase() === artist.toLowerCase())) {
-        played.push(artist);
-      }
-      if (played.length === 4) break;
-    }
-
-    const pool = SUGGESTED_SEARCHES.filter(
-      (seed) => !played.some((artist) => artist.toLowerCase() === seed.toLowerCase()),
-    );
-    // Fisher–Yates on a copy, from the module's seed. `sort(() => random - 0.5)`
-    // is the usual shortcut and is measurably biased — some orders never appear.
-    const next = seeded(seed);
-    const shuffled = [...pool];
-    for (let i = shuffled.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(next() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
-    }
-
-    return [...played, ...shuffled].slice(0, 6);
-    // Keyed on the seed alone. Not on `history`: re-sampling every time a song
-    // starts would rearrange the chips under a thumb already moving.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seed]);
-
-  return (
-    <div className="rise pt-6">
-      <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-        Try
-      </p>
-      <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2">
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => onPick(suggestion)}
-            className="slab-sm press max-w-full truncate rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[12px] font-semibold text-[var(--fg-dim)] transition hover:text-[var(--fg)] sm:px-3.5 sm:py-2 sm:text-[13px]"
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function Skeletons() {
   return (
