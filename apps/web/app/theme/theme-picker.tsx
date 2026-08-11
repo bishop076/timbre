@@ -23,21 +23,34 @@ import {
  * only.
  */
 
+/**
+ * Named for the ground first, and the trick second.
+ *
+ * They were called Album, Pastel and One colour — names for *how each palette
+ * is built*, which is the author's view of them and not the reader's. Somebody
+ * opening this wants the dark one or the light one, and had to read three
+ * sentences to find out which was which.
+ *
+ * So the label is the answer to the question actually being asked, and the
+ * blurb carries what makes each one Timbre's rather than anyone else's. The
+ * ids are untouched: they are what is written to storage, so renaming them
+ * would silently reset the theme of everyone who had already chosen one.
+ */
 const MODES: { id: ThemeMode; label: string; blurb: string }[] = [
   {
     id: "album",
-    label: "Album",
-    blurb: "Dark, and coloured by whatever is playing.",
+    label: "Dark",
+    blurb: "Coloured by whatever is playing.",
   },
   {
     id: "pastel",
-    label: "Pastel",
-    blurb: "Light and soft, still tinted by the cover.",
+    label: "Light",
+    blurb: "Soft, and still tinted by the cover.",
   },
   {
     id: "custom",
-    label: "One colour",
-    blurb: "Pick a colour and it never changes.",
+    label: "Monochrome",
+    blurb: "One colour you choose, that never changes.",
   },
 ];
 
@@ -56,8 +69,14 @@ export function ThemePicker() {
 
   return (
     <section>
-      <h2 className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)] sm:text-sm">Theme</h2>
-      <p className="mt-1.5 text-xs leading-relaxed text-[var(--fg-faint)]">
+      {/*
+        No heading of its own any more. This is rendered inside a settings
+        section that is already titled "Themes" by both the rail and the pane —
+        a third "Theme" under those two was a label for a label. The sentence
+        stays, because where the choice is kept is a real question and nothing
+        else on screen answers it.
+      */}
+      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
         Saved in this browser, like everything else here.
       </p>
 
