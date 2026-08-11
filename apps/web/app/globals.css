@@ -191,6 +191,19 @@
   --drop: 3px 3px 0 hsl(0 0% 0% / 0.75);
   --drop-sm: 2px 2px 0 hsl(0 0% 0% / 0.75);
   --drop-lg: 5px 5px 0 hsl(0 0% 0% / 0.75);
+
+  /*
+   * How far up the profile banner fades into the page behind it.
+   *
+   * A long fade over a dark ground: near-black meeting near-black has no edge
+   * to give away, so the picture can dissolve slowly and reads as lit from
+   * below. See the light block for why that number cannot be shared.
+   *
+   * Lives here rather than in `theme/palette.ts` because it is a distance, not
+   * a colour — it does not move with the hue or the artwork, only with which
+   * ground is underneath.
+   */
+  --banner-fade: 45%;
 }
 
 /*
@@ -220,6 +233,18 @@
   --drop: 1px 1px 0 hsl(228 14% 52% / 0.16);
   --drop-sm: 1px 1px 0 hsl(228 14% 52% / 0.16);
   --drop-lg: 2px 2px 0 hsl(228 14% 52% / 0.16);
+
+  /*
+   * Much shorter on a light ground, and this is the asymmetry that matters.
+   *
+   * The dark ramp's long fade works because there is barely any distance
+   * between the picture's shadows and the page. Over a pale surface the same
+   * 45% drags a wide band of near-white up across the middle of the photograph
+   * — it stops reading as a fade and starts reading as the image being washed
+   * out. Ending it early keeps the blend to the last quarter, where it is doing
+   * the job of meeting the page rather than covering the picture.
+   */
+  --banner-fade: 26%;
 }
 
 /* Pastel's ground, so even the first frame is soft rather than stark white. */
@@ -257,6 +282,18 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * The ground is on <html> as well as <body>.
+ *
+ * Body's background propagates to the canvas on its own, so this is belt and
+ * braces — but it is the cheap kind: it guarantees the page colour is the app's
+ * own from the very first paint, whatever else is or is not ready, rather than
+ * relying on propagation from an element further down the tree.
+ */
+html {
+  background: var(--bg);
+}
+
 body {
   background: var(--bg);
   color: var(--fg);
@@ -264,6 +301,47 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior: none;
+}
+
+
+/**
+ * The one arrival gesture in the app: the routed content fades in.
+ *
+ * **Only the content, never the shell.** The sidebar, the search bar and the
+ * player bar do not go anywhere when the page changes, so animating them says
+ * something untrue about what just happened — and animating the whole document,
+ * which this replaced, meant hiding a page that was often already complete and
+ * waiting on hydration to decide when to show it. That was steadier to look at and
+ * strictly slower, and on a server-rendered page it delayed markup that had
+ * arrived in the first byte.
+ *
+ * Identical on a fresh load and on a client-side navigation, which is the point:
+ * the rule is in the server markup, so it plays as soon as the content is parsed,
+ * and nothing has to be hidden or timed for that to happen. Reloading a page and
+ * navigating to it are the same act to the reader and now look the same.
+ *
+ * Opacity only. Animating a transform would move the panel the shell has already
+ * positioned; on a page as tall as the viewport that also risks a scrollbar for
+ * the length of the animation.
+ *
+ * Keyed on the pathname in `app-shell.tsx`: an animation runs when its element
+ * is created, so without a new element per route React reuses the node and
+ * nothing plays.
+ */
+.page-in {
+  animation: page-in 0.22s var(--ease) both;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-in {
+    animation: none;
+  }
 }
 
 /*
@@ -426,6 +504,78 @@ input[type="search"]::-webkit-search-results-decoration {
   }
 }
 
+/**
+ * The profile, drawn before React exists.
+ *
+ * Everything about a Timbre profile lives in this browser's storage, which the
+ * server cannot read and React cannot read until it has hydrated — so the name,
+ * the picture and the counts all arrived one frame *after* the page, every
+ * single load, and the rail visibly jumped as they landed. The boot script in
+ * `layout.tsx` reads them before the first paint and hands them to CSS.
+ *
+ * **The bar this has to clear is "the reload is invisible", not "the reload is
+ * quick".** That means each stand-in must be pixel-identical to what React
+ * renders a moment later — same words in the same element with the same weight
+ * and colour — because anything merely *approximate* is still a change, and a
+ * change is the thing being removed. The counts line failed this on its first
+ * attempt: one recorded sentence in one flat tone, replaced by the same sentence
+ * with bold white digits. Nothing was late; it still visibly moved.
+ *
+ * So the unit is the **individual text node**, not the line. Every slot carries
+ * its own styling in the markup and names its recorded value with `--replay`,
+ * which is why one rule serves all of them.
+ *
+ * `:empty` makes the handover clean: React leaves a slot empty until it can be
+ * right, CSS fills it meanwhile, and the rule stops applying by itself the
+ * instant real text lands. Nothing has to be told to stand down, so the two can
+ * never both be showing — and a slot with nothing recorded renders nothing,
+ * which is the honest answer for a browser that has never had a profile.
+ */
+.replay:empty::after {
+  content: var(--replay, "");
+}
+
+/**
+ * Home's personalised shelves, held open before React can read the history.
+ *
+ * `data-listener` is set by the boot script when this browser has played
+ * something — see `layout.tsx`. Without it this is a genuine first visit and
+ * there is nothing to reserve, so the placeholder stays hidden and Home renders
+ * exactly as it should for somebody new.
+ *
+ * With it, the space is held from the first paint, so the personalised shelves
+ * arrive *into* their own row instead of appearing above the charts and pushing
+ * the whole page down — which is what a returning listener saw on every load.
+ */
+.for-you-pending {
+  display: none;
+}
+
+:root[data-listener="true"] .for-you-pending {
+  display: block;
+}
+
+/**
+ * The profile's playlist section, before storage has answered.
+ *
+ * Both possible answers sit in the markup and `data-saved` — set by the boot
+ * script from the recorded counts — picks the one this browser had last time.
+ * Neither shows without it, which is right for a first visit: there is nothing
+ * to predict and so nothing is reserved.
+ */
+.saved-none,
+.saved-some {
+  display: none;
+}
+
+:root[data-saved="none"] .saved-none {
+  display: block;
+}
+
+:root[data-saved="some"] .saved-some {
+  display: grid;
+}
+
 /* Horizontal shelves scroll without a visible scrollbar; the row is snapped so
    cards never come to rest half-cut. */
 .shelf {
@@ -553,5 +703,23 @@ input[type="search"]::-webkit-search-results-decoration {
  * it look broken as content passed beneath it.
  */
 .scroll-fade {
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent 100%);
+  /*
+   * 32px, and the length is doing real work.
+   *
+   * This dissolves the bottom edge of the content panel. Two failures sit on
+   * either side of the right value, and both have been shipped:
+   *
+   * - Too *short* and a row caught at the fold is sliced clean through —
+   *   half a pill, half a line of type, with a hard edge across it. Shortening
+   *   this to 12px to stop the fade eating text produced exactly that.
+   * - Too *long* and it eats the final line of a page that has scrolled to its
+   *   end, which is what 20px was doing before every page reserved room below
+   *   its content.
+   *
+   * The second failure is now handled where it belongs: `pb-16`/`pb-20` on each
+   * page means the last line finishes far clear of this band. That frees the
+   * mask to be long enough to actually soften a mid-scroll cut, which is the
+   * only job it has.
+   */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent 100%);
 }
