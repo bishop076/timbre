@@ -89,22 +89,41 @@ function dominant(data: Uint8ClampedArray): Hsl | null {
   };
 }
 
+export interface Sample {
+  /** The colour, or null for an image that has none — greyscale, or unreadable. */
+  color: Hsl | null;
+  /**
+   * Whether the question has been answered for *this* source.
+   *
+   * **The reason this exists.** The hook used to return `Hsl | null` and
+   * nothing else, so "still decoding" and "decoded, and there is no dominant
+   * hue in it" were the same value. The profile header waits for a colour
+   * before painting, so a black-and-white picture — or one that failed to load
+   * — left it waiting forever and the header never got its wash at all. One
+   * boolean is the whole difference between "not yet" and "never".
+   */
+  settled: boolean;
+}
+
 /**
- * Reads the dominant colour of an image, or null while it is unknown.
+ * Reads the dominant colour of an image.
  *
- * Only ever pointed at a local data URL or Timbre's own `/api/art` proxy, both
- * of which are same-origin — a cross-origin CDN would taint the canvas and make
- * `getImageData` throw. That failure is silent and total: no colour rather than
- * a half-applied one.
+ * Only ever pointed at a local blob or data URL, or Timbre's own `/api/art`
+ * proxy — all same-origin, since a cross-origin CDN would taint the canvas and
+ * make `getImageData` throw. That failure is silent and total: no colour rather
+ * than a half-applied one.
  */
-export function useDominantColor(src: string | null): Hsl | null {
+export function useDominantColor(src: string | null): Sample {
   /*
    * The result is stored *with the source it came from*, and matched at render.
    *
    * Clearing it in the effect when `src` changes would be a second render pass
-   * to undo the first, and would briefly show the previous picture's colour
-   * behind the new one. Comparing instead means a stale result is simply not
-   * returned.
+   * to undo the first. Comparing instead means a stale result is simply marked
+   * unsettled — while its colour is still handed back, which matters more than
+   * it sounds: the profile avatar arrives as a thumbnail and is then replaced
+   * by the full-resolution copy of *the same picture*, so dropping the colour
+   * in between made the header lose its wash and repaint it a moment later,
+   * every single load.
    */
   const [found, setFound] = useState<{ src: string; color: Hsl | null } | null>(null);
 
@@ -113,7 +132,15 @@ export function useDominantColor(src: string | null): Hsl | null {
 
     let cancelled = false;
     const image = new Image();
-    image.crossOrigin = "anonymous";
+    /*
+     * Only for a real network source.
+     *
+     * A `blob:` or `data:` URL is already this document's own, and asking for
+     * CORS on one buys nothing while adding a way for the load to fail — and a
+     * failure here is invisible, because its only symptom is a header that
+     * never takes its colour.
+     */
+    if (/^https?:/.test(src)) image.crossOrigin = "anonymous";
 
     image.onload = () => {
       if (cancelled) return;
@@ -144,6 +171,10 @@ export function useDominantColor(src: string | null): Hsl | null {
     };
   }, [src]);
 
-  return found && found.src === src ? found.color : null;
+  // No source is a settled answer in itself: there is nothing to sample, and a
+  // caller waiting for one would wait for ever.
+  if (!src) return { color: null, settled: true };
+
+  return { color: found?.color ?? null, settled: found?.src === src };
 }
 
