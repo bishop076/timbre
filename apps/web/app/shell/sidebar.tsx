@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Artwork } from "../artwork";
-import { HomeIcon, LibraryIcon, SearchIcon } from "../icons";
+import { useHydrated } from "../hydrated";
+import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { PlaylistCover } from "../playlists/playlist-cover";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
@@ -30,15 +31,17 @@ import { SiteLinks } from "./site-links";
  */
 
 /*
- * Home, Search, Library — the three tabs every music app has settled on.
+ * Home, Explore, Library.
  *
- * `/` used to be both home and search, with the field pinned above the shelves.
- * Splitting them is what lets Home open with something to play rather than with
- * a question, and it puts Search where a thumb expects to find it.
+ * **Search is not a tab any more.** The field moved into the shell, so it is on
+ * every page already and a nav entry leading to it would be a button that takes
+ * you to a box you are currently looking at. What the third tab was actually
+ * for — somewhere to go when you do not know what to type — is now its own
+ * thing: charts, genres and releases, under its own name.
  */
 const NAV = [
   { id: "home", label: "Home", icon: HomeIcon, href: "/" },
-  { id: "search", label: "Search", icon: SearchIcon, href: "/search" },
+  { id: "explore", label: "Explore", icon: CompassIcon, href: "/explore" },
   { id: "library", label: "Library", icon: LibraryIcon, href: "/library" },
 ];
 
@@ -51,6 +54,7 @@ export function Sidebar() {
   const { queue, current, play, exitTheater } = usePlayer();
   const profile = useLocalProfile();
   const pictures = useLocalImages();
+  const hydrated = useHydrated();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
   const { playlists, settled } = usePlaylists();
   const pathname = usePathname();
@@ -63,8 +67,18 @@ export function Sidebar() {
 
   const rows = filter === "Queue" ? queue : [];
 
+  /*
+   * A few pixels trimmed above, so the library panel gets them.
+   *
+   * The panel is `flex-1` — it cannot be made taller directly, only handed
+   * space by what sits above it. The last row was landing half-cut against the
+   * edge, which is the difference between a list that scrolls and one that
+   * looks cramped, and that difference is about a dozen pixels. They come from
+   * the gaps and the profile row's padding rather than from any one place, so
+   * nothing above visibly shrinks.
+   */
   return (
-    <aside className="hidden w-64 shrink-0 flex-col gap-2 p-2 lg:flex">
+    <aside className="hidden w-64 shrink-0 flex-col gap-1.5 p-2 pb-1.5 lg:flex">
       {/*
         Whose app this is.
 
@@ -76,8 +90,23 @@ export function Sidebar() {
       <Link
         href="/profile"
         onClick={exitTheater}
-        className="press relative mb-1 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-3 hover:bg-[var(--surface-1)]"
+        className="press relative mb-0.5 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-2.5 hover:bg-[var(--surface-1)]"
       >
+        {/*
+          Drawn on the first paint, not after hydration.
+
+          This row used to render nothing at all until storage could be read,
+          and the claim that it "keeps its height" was simply false: with no
+          children it collapsed to its own padding, so **every load dropped the
+          whole rail 32px down the page and then snapped it back**. That jump is
+          the most visible thing about starting Timbre up.
+
+          Both pieces can be correct this early without the server knowing
+          anything. The avatar paints from `--avatar-thumb` / `--avatar-fill`,
+          and the name from `--profile-name`, all three stamped onto `<html>` by
+          the boot script in `layout.tsx` before the first pixel — see
+          `profile/avatar.tsx` and the `.profile-name` rule in `globals.css`.
+        */}
         <Avatar
           id={profile.id}
           name={profile.name}
@@ -86,19 +115,34 @@ export function Sidebar() {
           className="size-8 shrink-0"
           textClassName="text-sm"
         />
-        <span className="truncate text-[17px] font-extrabold tracking-tight">
-          {profile.name?.trim() || "Profile"}
+        {/*
+          Empty until hydration, and filled from CSS while it is — which is what
+          keeps the wrong name off the screen without leaving a hole where the
+          right one goes. `:empty` stops applying the moment React puts text in.
+        */}
+        <span
+          className="replay truncate text-[17px] font-extrabold tracking-tight"
+          style={{ "--replay": 'var(--profile-name, "Profile")' } as React.CSSProperties}
+        >
+          {hydrated ? profile.name?.trim() || "Profile" : null}
         </span>
       </Link>
 
       {/*
-        Library is deliberately absent here.
+        Library is absent here, and the reasoning went in a circle worth
+        recording so it does not go round again.
 
         The panel directly below *is* the library — same playlists, same
-        content — so a nav button above it labelled "Library" put two controls
-        with the same name and the same destination within a centimetre of each
-        other. Spotify's rail has no Library entry for exactly this reason: the
-        rail is the library, and its own heading is the way into the full page.
+        destination — so a nav button above it labelled "Library" puts two
+        controls with one name a centimetre apart. Spotify's rail omits it for
+        exactly this reason: the rail is the library, and the panel's own
+        heading is the way into the full page.
+
+        It was briefly restored because the panel is `flex-1` and dropping a nav
+        row hands that row's height to the list, which had grown twice over.
+        That was solving the wrong problem: the extra height is a *longer list*,
+        which is what was later asked for anyway. The duplicate label is the
+        real defect, so the row goes and the height stays gained.
 
         <BottomNav> still shows it, because a phone has no rail to replace it.
       */}
@@ -162,6 +206,15 @@ export function Sidebar() {
           })}
         </div>
 
+        {/*
+          A plain cut at the edge — no fade, and no extra padding.
+
+          Both were tried. Padding only moves where the cut lands; a mask over
+          the last 20px dissolves the final row, which turned out to read as the
+          list quietly running out rather than as a list that scrolls. A hard
+          edge against the panel is what says "this continues", and it is what
+          this rail did before either attempt.
+        */}
         <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {filter === "Playlists" ? (
             <PlaylistRows playlists={playlists} settled={settled} />
@@ -328,14 +381,19 @@ export function ProfileButton({ className }: { className?: string }) {
       aria-label="Your profile and settings"
       className={`press flex shrink-0 items-center lg:hidden ${className ?? ""}`}
     >
-      <Avatar
-        id={profile.id}
-        name={profile.name}
-        email={profile.name ?? "Profile"}
-        image={pictures.avatar}
-        className="slab-sm size-9"
-        textClassName="text-xs"
-      />
+      {/* As in the rail: drawn immediately, from CSS until React can read
+          storage. The wrapper keeps the box either way, so the search field
+          beside it never resizes. */}
+      <span className="block size-9">
+        <Avatar
+          id={profile.id}
+          name={profile.name}
+          email={profile.name ?? "Profile"}
+          image={pictures.avatar}
+          className="slab-sm size-9"
+          textClassName="text-xs"
+        />
+      </span>
     </Link>
   );
 }
