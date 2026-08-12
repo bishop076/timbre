@@ -32,7 +32,9 @@ export function Shelf({
 }) {
   const row = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
-  const [canRight, setCanRight] = useState(false);
+  // Assumed scrollable until measured otherwise: a shelf almost always is, and
+  // guessing the other way is what left the arrows missing on first paint.
+  const [canRight, setCanRight] = useState(true);
 
   useEffect(() => {
     const el = row.current;
@@ -48,10 +50,18 @@ export function Shelf({
 
     measure();
     el.addEventListener("scroll", measure, { passive: true });
-    // Covers late-loading covers changing the row's width, and the panel
-    // opening or closing beside it.
+
+    /*
+     * The children are observed too, not just the row.
+     *
+     * Watching only the row misses the case that matters: the row's own box
+     * never changes size, so nothing fires when its *contents* grow past it and
+     * the arrows stay hidden on a shelf that plainly scrolls. Observing each
+     * tile catches artwork arriving and any late reflow.
+     */
     const observer = new ResizeObserver(measure);
     observer.observe(el);
+    for (const child of el.children) observer.observe(child);
 
     return () => {
       el.removeEventListener("scroll", measure);
@@ -59,12 +69,41 @@ export function Shelf({
     };
   }, [children]);
 
-  /** Scrolls by most of a screenful, leaving one tile as a visual anchor. */
+  /**
+   * Scrolls to a tile edge, roughly a screenful away.
+   *
+   * **Aimed at a child, not at a distance.** `scrollBy` of an arbitrary number
+   * of pixels has to cooperate with `scroll-snap-type`, and the two disagree:
+   * the browser applies the delta, then snapping drags the row to the nearest
+   * tile start — which for a small delta is the tile it began on, so the row
+   * visibly returns to where it was and the arrow looks dead.
+   *
+   * Picking a real child and scrolling to *its* offset lands exactly where
+   * snapping already wants to be, so there is nothing to fight. It also aligns
+   * the row to a card rather than cutting one down the middle.
+   */
   function nudge(direction: 1 | -1) {
-    row.current?.scrollBy({
-      left: direction * (row.current.clientWidth * 0.8),
-      behavior: "smooth",
-    });
+    const el = row.current;
+    if (!el) return;
+
+    const tiles = [...el.children] as HTMLElement[];
+    if (tiles.length === 0) return;
+
+    // How far to travel before choosing a tile: most of a screenful, so the
+    // press moves a page rather than a single card.
+    const target = el.scrollLeft + direction * el.clientWidth * 0.8;
+
+    // The tile whose start is nearest that point, measured against the row's
+    // own scroll origin rather than the page.
+    const origin = tiles[0]!.offsetLeft;
+    let best = tiles[0]!;
+    for (const tile of tiles) {
+      if (Math.abs(tile.offsetLeft - origin - target) < Math.abs(best.offsetLeft - origin - target)) {
+        best = tile;
+      }
+    }
+
+    el.scrollTo({ left: best.offsetLeft - origin, behavior: "smooth" });
   }
 
   return (
@@ -78,8 +117,18 @@ export function Shelf({
               {caption}
             </p>
           )}
-          {(canLeft || canRight) && (
-            <div className="flex items-center gap-1">
+          {/*
+            Always drawn, each disabled at its end.
+
+            They used to appear only once a script had measured the row as
+            overflowing, which meant they were absent from the server's markup,
+            absent for a moment after every load, and absent entirely whenever
+            the measurement was taken before the artwork settled. A row of cards
+            that plainly scrolls and offers no visible way to scroll it reads as
+            broken — and a pair of arrows greyed out on the rare row that fits
+            is a far smaller cost than a pair nobody can find.
+          */}
+          <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => nudge(-1)}
@@ -98,15 +147,27 @@ export function Shelf({
               >
                 <ChevronIcon className="size-4 -rotate-90" />
               </button>
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* `scroll-pl-1` matches `px-1` above: without it the browser snaps the
-          first tile to the raw scroll origin inside the padding, and the row
-          starts silently offset by exactly the padding width. */}
-      <div className="shelf flex snap-x snap-proximity gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4">
+      {/*
+        `ref={row}` is the whole component.
+
+        It was missing, and everything downstream failed silently because of it:
+        `row.current` was always null, so `nudge()` returned on its first line
+        and the measuring effect returned before attaching a listener. The
+        arrows rendered, looked live, and did nothing — and no error was ever
+        raised, because every use of the ref was written to fail quietly.
+
+        `scroll-pl-1` matches `px-1`: without it the browser snaps the first tile
+        to the raw scroll origin inside the padding, and the row starts silently
+        offset by exactly the padding width.
+      */}
+      <div
+        ref={row}
+        className="shelf flex snap-x snap-proximity gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4"
+      >
         {children}
       </div>
     </section>
