@@ -1,24 +1,23 @@
 "use client";
 
-import { Artwork } from "../artwork";
+import { useHydrated } from "../hydrated";
 
 /**
- * A picture for an account that has none.
+ * A picture for a profile that has none.
  *
- * Magic-link sign-in supplies no avatar, and Timbre hosts no uploads, so the
- * alternative to a grey silhouette is one **derived from the account itself**:
- * an initial over a colour computed from the user id. It is stable for the
- * life of the account, identical on every device, needs no storage and no
- * request, and — unlike Gravatar — tells no third party who is signed in.
+ * Timbre hosts no uploads and asks for no email, so the alternative to a grey
+ * silhouette is one **derived from the profile itself**: an initial over a
+ * colour computed from the local id. It is stable for as long as the browser
+ * keeps its data, needs no storage and no request, and — unlike Gravatar —
+ * tells no third party anything.
  *
- * A real `image` still wins when there is one, so this costs nothing if OAuth
- * providers are ever added.
+ * A real `image` still wins when there is one.
  */
 
 /**
  * FNV-1a, 32-bit. A hash rather than a character code because ids are UUIDs:
  * the first character of a UUID only ever spans `0`–`f`, so using it directly
- * would crowd every account into sixteen hues.
+ * would crowd every profile into sixteen hues.
  */
 function hash(value: string): number {
   let result = 0x811c9dc5;
@@ -30,7 +29,7 @@ function hash(value: string): number {
 }
 
 /**
- * The account's colour, as an HSL hue.
+ * The profile's colour, as an HSL hue.
  *
  * Exported because the profile header is washed in it, and the two must agree:
  * a header that does not match the picture it sits behind looks like a
@@ -47,13 +46,38 @@ export function avatarHue(id: string): number {
  */
 export const AVATAR_TONE = { saturation: 0.62, lightness: 0.52 } as const;
 
-/** The letter to show: their name's first, else the email's, else nothing. */
-function initialOf(name: string | null, email: string): string {
-  const source = name?.trim() || email.trim();
+/** The letter to show: their name's first, else the fallback's, else nothing. */
+function initialOf(name: string | null, fallback: string): string {
+  const source = name?.trim() || fallback.trim();
   // `codePointAt` rather than `[0]` so an emoji or a non-BMP character is not
   // sliced in half into a replacement glyph.
   const first = source.codePointAt(0);
   return first === undefined ? "?" : String.fromCodePoint(first).toUpperCase();
+}
+
+/**
+ * How the monogram looks, as two plain strings.
+ *
+ * Split out of the component because **the first paint has to draw this before
+ * React exists**. The boot script in `layout.tsx` replays a recorded copy of
+ * these two values onto `<html>`, and recording the *output* rather than
+ * re-deriving it is the only version that cannot drift: a vanilla-JS copy of
+ * the hash and the gradient in an inline script would be a second definition
+ * of the profile's colour, wrong the first time either changed here.
+ *
+ * See `recordMonogram` in `local-profile.ts` for the writing side.
+ */
+export function monogram(id: string, name: string | null, fallback: string) {
+  const hue = avatarHue(id);
+  const { saturation, lightness } = AVATAR_TONE;
+
+  return {
+    initial: initialOf(name, fallback),
+    fill:
+      `linear-gradient(140deg,` +
+      ` hsl(${hue} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%),` +
+      ` hsl(${(hue + 38) % 360} 58% 38%))`,
+  };
 }
 
 export function Avatar({
@@ -72,38 +96,80 @@ export function Avatar({
   className?: string;
   textClassName?: string;
 }) {
-  if (image) {
-    return <Artwork src={image} className={`${className} rounded-full`} eager />;
-  }
+  /*
+   * Who decides what this looks like, and when.
+   *
+   * Before hydration the answer is CSS: the boot script has already put the
+   * cached thumbnail, the gradient and the initial on `<html>`, read straight
+   * from storage before the first pixel. Neither the server nor React can know
+   * any of it that early, so anything React renders here would be a guess —
+   * and a guess replaced a frame later is precisely the flicker this exists to
+   * remove.
+   *
+   * From the first render that can read storage, **React decides and the
+   * variables are ignored entirely**. That boundary is not a detail: while the
+   * component kept falling back to `--avatar-thumb`, removing a profile
+   * picture left the removed picture on screen until the page was reloaded,
+   * because nothing clears a custom property that the document is still
+   * wearing.
+   */
+  const hydrated = useHydrated();
+
+  // No id means the local profile has not been read out of storage yet.
+  const known = hydrated && Boolean(id);
+  const drawn = known && !image ? monogram(id, name, email) : null;
 
   /*
-   * No id yet means the local profile has not been read out of storage. Deriving
-   * a hue from a placeholder produced a yellow-green circle for a moment on
-   * every visit — a colour belonging to nobody, replaced a frame later by the
-   * real one. A neutral surface says "not yet" instead of guessing.
+   * **One element, whatever is showing.** This used to return an `<img>` (via
+   * `Artwork`) when there was a picture and a `<span>` when there was not, and
+   * the swap between them was a visible flicker in its own right — the picture
+   * arrives in two stages by design, a `localStorage` thumbnail first and the
+   * full copy from IndexedDB a moment later, and `Artwork` keys its `<img>` on
+   * the source. So the second stage *replaced the element*, and a brand-new
+   * `<img>` paints its container's grey before it has decoded. The avatar
+   * blinked grey on every load, right after everything else had settled.
+   *
+   * As a background image there is no element to replace and no decode gap: the
+   * same box simply changes which URL it draws, and both URLs are local. Nothing
+   * is lost by dropping `Artwork` here — its retry and its note-icon fallback
+   * exist for remote CDN artwork, and this is never remote. The monogram is
+   * already the fallback for "no picture".
    */
-  const hue = id ? avatarHue(id) : null;
-  const { saturation, lightness } = AVATAR_TONE;
+  const background = image
+    ? // Blob and data URLs contain no quote or backslash, so nothing here needs
+      // escaping — they are produced by `URL.createObjectURL` and `toDataURL`.
+      `url("${image}")`
+    : drawn
+      ? drawn.fill
+      : // Unset on a first-ever visit, which correctly leaves the plain surface
+        // underneath: nothing is known, so nothing is claimed.
+        "var(--avatar-thumb, var(--avatar-fill, none))";
 
   return (
     <span
       aria-hidden
-      className={`flex shrink-0 items-center justify-center rounded-full font-extrabold text-white ${className} ${textClassName}`}
-      style={
-        hue === null
-          ? { background: "var(--surface-2)" }
-          : {
-              // Two stops of the same hue rather than a flat fill: a plain
-              // circle of colour reads as a missing image, a gradient reads as
-              // chosen.
-              backgroundImage:
-                `linear-gradient(140deg,` +
-                ` hsl(${hue} ${Math.round(saturation * 100)}% ${Math.round(lightness * 100)}%),` +
-                ` hsl(${(hue + 38) % 360} 58% 38%))`,
-            }
-      }
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--surface-2)] bg-cover bg-center font-extrabold text-white ${className} ${textClassName}`}
+      style={{ backgroundImage: background }}
     >
-      {initialOf(name, email)}
+      {/*
+        Empty before hydration on purpose — the `.replay` rule in `globals.css`
+        fills it from `--avatar-initial`, and `--avatar-letter` hides it when a
+        cached photograph is showing through instead. Empty *permanently* when
+        there is a picture: the letter would sit on top of it.
+      */}
+      <span
+        className="replay"
+        style={
+          known
+            ? undefined
+            : ({
+                "--replay": 'var(--avatar-initial, "")',
+                opacity: "var(--avatar-letter, 1)",
+              } as React.CSSProperties)
+        }
+      >
+        {drawn?.initial}
+      </span>
     </span>
   );
 }
