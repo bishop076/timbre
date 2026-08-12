@@ -17,8 +17,8 @@ import {
   VideoOffIcon,
 } from "../icons";
 import { usePlayer } from "../player/player-context";
-import { useArtworkAccent } from "../player/use-artwork-accent";
 import { Volume } from "../player/volume";
+import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { Scrub } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 
@@ -70,8 +70,8 @@ export function PlayerBar() {
     cycleRepeat,
   } = usePlayer();
 
-  useArtworkAccent(current?.artworkUrl);
-
+  // The theme is applied in `AppShell`, not here — see the note there. This bar
+  // only mounts once something is playing, which is far too late for it.
   const busy = state === "resolving" || state === "loading";
   const playing = state === "playing";
   // Next is live whenever anything *can* follow: the rest of the queue, a
@@ -247,8 +247,18 @@ export function PlayerBar() {
         progress indicator, which is what YouTube Music does, and halves the
         height without dropping a single control.
       */}
-      <footer className="relative hidden shrink-0 items-center gap-6 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-4 py-2 lg:flex">
-        {/* Straddles the top border, so the seek line *is* the divider. */}
+      {/*
+        No top border: the scrub *is* the divider.
+
+        The comment below always claimed this, but the border was drawn as well —
+        so the bar carried two full-width lines two pixels apart. On a dark
+        ground they merged and nobody noticed; on a light one they read as a
+        doubled rule ruled across the window, which is the "line" that kept
+        coming back however much either one was softened. Removing one of them
+        is the fix; softening both was never going to be.
+      */}
+      <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 py-2 lg:flex">
+        {/* The seek line, which is also the divider — see above. */}
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
           <Scrub position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
         </div>
@@ -257,6 +267,21 @@ export function PlayerBar() {
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {artwork("size-11")}
           {meta}
+          {/*
+            Saving belongs next to the song, not in the transport.
+
+            Everything in the middle and right of this bar acts on *playback* —
+            skip, shuffle, volume, the video. This acts on the track, so it sits
+            with the title and the artist, which is also where Spotify and
+            YouTube Music put their equivalent and therefore where a hand
+            already goes looking.
+
+            `shrink-0` because `meta` is the flexible one: without it the button
+            is the thing that gets squeezed when a long title arrives, and a
+            control that changes width with the song is a control you cannot aim
+            at.
+          */}
+          {current && <AddToPlaylist song={current} className="shrink-0" />}
         </div>
 
         {/* Centre — transport, now the only thing in this zone. */}
