@@ -372,6 +372,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [queue, index, shuffle, repeat]);
 
   const next = useCallback(() => {
+    // A skipped song has had its turn. Without this it stays "unplayed" for the
+    // rest of the shuffle pass and can be drawn again a moment later, which is
+    // the one thing the bookkeeping exists to prevent — and `handleEnded`
+    // already marks the songs that finish, so the two disagreed about what
+    // "played" meant depending on whether you pressed the button.
+    const playing = queue[index];
+    if (playing) shuffled.current.add(playing.id);
+
     const target = nextIndex();
     // A manual skip at the end of a non-repeating queue steps into the
     // recommendations rather than doing nothing.
@@ -381,7 +389,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (fresh.length === 0) return;
       setQueue((current) => [...current, ...fresh]);
       setRadio([]);
-      goTo(index + 1);
+      // The first appended song, which is where the old queue ended — *not*
+      // `index + 1`. Those are the same thing only when the current song is the
+      // last one, which is true in order but not in shuffle: a spent pass
+      // returns null from any position, so `index + 1` walked into an
+      // already-played song and left the radio sitting unplayed behind it.
+      goTo(queue.length);
       return;
     }
     goTo(target);
@@ -488,6 +501,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [index]);
 
   /*
+   * The queue and position, readable without being depended on.
+   *
+   * The effect below must not re-run when either changes — it is keyed on the
+   * loaded upload alone, and adding them would refetch the blend on every
+   * append, which is the thing that append is trying to avoid. But its
+   * *callback* has to know where playback currently sits. A ref is the way to
+   * read a value without subscribing to it.
+   *
+   * Written in an effect rather than during render, so the value is only ever
+   * observed after React has committed the state it mirrors.
+   */
+  const queueRef = useRef<Song[]>(queue);
+  const indexRef = useRef(index);
+
+  useEffect(() => {
+    queueRef.current = queue;
+    indexRef.current = index;
+  }, [queue, index]);
+
+  /*
    * Recommendations for whatever is playing.
    *
    * Seeded from the video id **actually loaded** rather than from the song's
@@ -507,7 +540,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const aborter = new AbortController();
     fetch(`/api/radio?${params}`, { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
-      .then((data) => setRadio(data?.songs ?? []))
+      .then((data) => {
+        const songs = data?.songs ?? [];
+
+        /*
+         * Adopted straight into the queue when nothing follows the current
+         * track, instead of being held until the queue runs dry.
+         *
+         * Playing a search result queues that one song by design — see
+         * `search-results.tsx`. The blend was then parked in `radio` and only
+         * merged at the moment the song *ended*, so a fresh tab showed a queue
+         * of one, no "up next", and then twenty-six entries appearing at once
+         * when the track changed. Nothing was broken; the queue simply had no
+         * way to say what it already knew was coming.
+         *
+         * Only when the current track is the last one. Mid-queue the blend
+         * stays parked, which is what stops it appending twenty-five more
+         * songs on every track change — the seed moves with playback, so the
+         * eager path would otherwise grow the queue without bound.
+         */
+        const queued = queueRef.current;
+        if (indexRef.current < queued.length - 1) {
+          setRadio(songs);
+          return;
+        }
+
+        const known = new Set(queued.map((song) => song.id));
+        const fresh = songs.filter((song) => !known.has(song.id));
+        // Consumed, exactly as the end-of-queue paths consume it. The next
+        // track reseeds this, so the radio stays endless either way.
+        setRadio([]);
+        if (fresh.length > 0) setQueue((current) => [...current, ...fresh]);
+      })
       .catch(() => {
         // No recommendations is not an error worth showing anyone: the queue
         // still plays and the panel simply hides its shelf.
@@ -596,6 +660,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState("resolving");
       try {
         if (candidates.current.length === 0) {
+          // The previous one is cancelled first. Without this, a fall-through
+          // that happens while `load` is still resolving left that request
+          // running and its controller unreachable, so the response landed and
+          // overwrote `candidates` for a song that was no longer playing.
+          resolving.current?.abort();
           const aborter = new AbortController();
           resolving.current = aborter;
           candidates.current = await findCandidates(song, aborter.signal);
@@ -667,8 +736,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Consumed. The next track changes the seed, which refills this — so the
     // radio is effectively endless, with the id filter as the only loop guard.
     setRadio([]);
-    goTo(index + 1);
-  }, [goTo, index, nextIndex, queue, radio, repeat]);
+    // Where the old queue ended, which is where `fresh` now starts. See the note
+    // in `next` on why this is not `index + 1`.
+    goTo(queue.length);
+  }, [goTo, nextIndex, queue, radio, repeat, index]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
