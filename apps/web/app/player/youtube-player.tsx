@@ -32,6 +32,10 @@ import { usePlayer } from "./player-context";
 
 interface YTPlayer {
   loadVideoById(id: string): void;
+  /** All three undocumented but present on every shipped player, so optional. */
+  unloadModule?(name: string): void;
+  setOption?(name: string, option: string, value: unknown): void;
+  getOptions?(): string[];
   playVideo(): void;
   pauseVideo(): void;
   setVolume(level: number): void;
@@ -60,6 +64,69 @@ declare global {
     onYouTubeIframeAPIReady?: () => void;
   }
 }
+
+/**
+ * Turns YouTube's own captions off.
+ *
+ * **Two things had to be got right, and the first attempt got neither.**
+ *
+ * *Timing.* Captions are a module the player loads **after** the video, so
+ * unloading on ready — or straight after `loadVideoById` — runs before the
+ * module exists and silently does nothing. `onApiChange` is the documented
+ * signal that a module has loaded, and it is the hook that fires at the right
+ * moment. Playback start and a couple of short retries back it up, because the
+ * module can appear a beat after the picture does.
+ *
+ * *Naming.* The module is `captions` on some player builds and `cc` on others,
+ * and neither name is documented. Rather than guess, `getOptions()` is asked
+ * what is actually loaded and both known names are tried regardless.
+ *
+ * The measures stack, because each covers what the others miss:
+ *
+ * - `cc_load_policy: 0` asks for them off. It loses to a viewer whose YouTube
+ *   account has "always show captions" set — which is the usual reason they
+ *   appear here at all.
+ * - `setOption(…, "track", {})` clears the selected track, which is what
+ *   silences an auto-generated one.
+ * - `unloadModule` then removes the module, so nothing re-selects a track.
+ *
+ * Timbre's lyrics panel is the replacement: timed, scrollable, and it does not
+ * write `[Music]` across the picture for the length of an instrumental.
+ */
+function unloadCaptions(player: YTPlayer | null): void {
+  if (!player) return;
+
+  let loaded: string[] = [];
+  try {
+    loaded = player.getOptions?.() ?? [];
+  } catch {
+    // Older build without the call. The two known names below still apply.
+  }
+
+  // Named `name`, not `module` — Next reserves that identifier for its bundler
+  // and refuses to compile a file that binds it.
+  for (const name of new Set([...loaded, "captions", "cc"])) {
+    if (name !== "captions" && name !== "cc") continue;
+    try {
+      player.setOption?.(name, "track", {});
+    } catch {
+      // Module absent on this build.
+    }
+    try {
+      player.unloadModule?.(name);
+    } catch {
+      // Same.
+    }
+  }
+}
+
+/**
+ * The retry schedule, in milliseconds after playback starts.
+ *
+ * A caption module that loads late would otherwise slip past a single attempt.
+ * Three cheap calls cost nothing and cover the window in which it can appear.
+ */
+const CAPTION_RETRIES = [0, 500, 1500];
 
 const API_SRC = "https://www.youtube.com/iframe_api";
 
@@ -116,11 +183,25 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
   const playerRef = useRef<YTPlayer | null>(null);
   const readyRef = useRef(false);
   const pendingId = useRef<string | null>(null);
+  const captionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
     handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
   }, [handleEnded, handleStateChange, handleProgress, handleError]);
+
+  /*
+   * Which upload is loaded, readable from the player's own callbacks.
+   *
+   * Those callbacks are registered once, in the effect below, so they close over
+   * the first render's `videoId` for ever. Only the error log reads this, and a
+   * log naming the wrong video would be worse than one naming none — the whole
+   * point of it is telling two uploads apart.
+   */
+  const videoIdRef = useRef<string | null>(videoId);
+  useEffect(() => {
+    videoIdRef.current = videoId;
+  }, [videoId]);
 
   // Mute is a level of zero rather than YouTube's mute(), so one call covers
   // both and there is no way for the two to disagree about what is audible.
@@ -177,6 +258,22 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
           // stays visible and unobscured.
           controls: 0,
           disablekb: 1,
+          /*
+           * No captions.
+           *
+           * Timbre shows lyrics in its own panel, timed and scrollable, so
+           * YouTube's track is a second set of words over the video saying the
+           * same thing a moment out of step — and on music uploads it is
+           * usually the auto-generated one, which renders `[Music]` across the
+           * picture for the whole instrumental.
+           *
+           * `cc_load_policy: 0` asks for them to start off. It is only half the
+           * job: the flag is ignored when the viewer has "always show captions"
+           * set in their YouTube account, which is exactly the person most
+           * likely to end up with two sets of lyrics on screen. `unloadModule`
+           * on ready is what actually settles it — see `onReady`.
+           */
+          cc_load_policy: 0,
         },
         events: {
           onReady: () => {
@@ -184,13 +281,40 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             // A fresh player starts at full. Applying the stored level here is
             // what stops a source switch from undoing the volume you chose.
             playerRef.current?.setVolume(levelRef.current);
+            unloadCaptions(playerRef.current);
             if (pendingId.current) {
               playerRef.current?.loadVideoById(pendingId.current);
+              unloadCaptions(playerRef.current);
               pendingId.current = null;
             }
           },
+          /*
+           * Fired whenever the player loads or unloads a module — which is
+           * exactly when a caption track appears. This is the hook that makes
+           * the difference on videos carrying auto-captions.
+           */
+          onApiChange: () => {
+            unloadCaptions(playerRef.current);
+          },
           onStateChange: (event: { data: number }) => {
             const { ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
+            /*
+             * A backstop for players that never fire `onApiChange`, and for a
+             * caption module that arrives a beat after the picture.
+             *
+             * The pending set is cleared first. `PLAYING` fires on every resume
+             * as well as every track, so this pushed three more timers each time
+             * and never dropped one — an hour of listening left hundreds of dead
+             * handles in the array, and the cleanup below walked all of them. The
+             * retries are only ever about the video that just started, so any
+             * still waiting for the previous one have nothing left to do.
+             */
+            if (event.data === PLAYING) {
+              for (const timer of captionTimers.current) clearTimeout(timer);
+              captionTimers.current = CAPTION_RETRIES.map((delay) =>
+                setTimeout(() => unloadCaptions(playerRef.current), delay),
+              );
+            }
             if (event.data === ENDED) handlers.current.handleEnded();
             else if (event.data === PLAYING) handlers.current.handleStateChange("playing");
             else if (event.data === PAUSED) handlers.current.handleStateChange("paused");
@@ -201,6 +325,22 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             else if (event.data === CUED) handlers.current.handleStateChange("paused");
           },
           onError: (event: { data: number }) => {
+            /*
+             * The number, always, alongside whatever sentence it produces.
+             *
+             * This is docs/BUGS.md B-6, and it is the reason that investigation
+             * took as long as it did. The friendly text was the *only* artifact
+             * of a failure, and two unrelated faults — a player rendered below
+             * YouTube's 200×200 minimum (B-1) and an upload that bars embedding
+             * (B-2) — both surfaced as the same confident sentence about the
+             * owner disabling playback. The app asserted a cause it had never
+             * checked, and the search followed that assertion. One integer in
+             * the console separates them immediately.
+             */
+            console.warn(
+              `[timbre] YouTube IFrame error ${event.data} on video ${videoIdRef.current ?? "(none)"}`,
+            );
+
             // 101 and 150 are the same condition reported two ways: the rights
             // holder barred embedding on this upload. 100 means it is gone.
             // All three are properties of *this upload*, so another copy of the
@@ -232,6 +372,8 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
         // Nothing to clean up.
       }
       playerRef.current = null;
+      for (const timer of captionTimers.current) clearTimeout(timer);
+      captionTimers.current = [];
       readyRef.current = false;
       host.remove();
     };
@@ -239,7 +381,11 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
 
   useEffect(() => {
     if (!videoId) return;
-    if (readyRef.current && playerRef.current) playerRef.current.loadVideoById(videoId);
+    if (readyRef.current && playerRef.current) {
+      playerRef.current.loadVideoById(videoId);
+      // A new video brings its own caption module back with it.
+      unloadCaptions(playerRef.current);
+    }
     // The API may still be loading on a first click; remember what to play.
     else pendingId.current = videoId;
   }, [videoId]);
