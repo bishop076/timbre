@@ -6,7 +6,7 @@ export default function Home() {
     // the viewport. With a sidebar taking 64–224px, viewport breakpoints
     // consistently overestimate the space available and the grid ends up
     // cramped at exactly the widths where it should relax.
-    <div className="@container mx-auto w-full max-w-6xl px-5 pb-10 pt-5 sm:px-7">
+    <div className="@container mx-auto w-full max-w-6xl px-5 pb-16 pt-5 sm:px-7 sm:pb-20">
       <HomeView />
     </div>
   );
