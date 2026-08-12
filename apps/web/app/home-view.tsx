@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 
+import { rememberCharts, useCachedCharts } from "./charts-cache";
 import { MixHero } from "./mix-hero";
 import { useHistory } from "./player/history-store";
 import { HomeShelves } from "./search-results";
-import { ProfileButton } from "./shell/sidebar";
 import type { Song, SongsResponse } from "./types";
 
 /**
@@ -21,14 +21,43 @@ import type { Song, SongsResponse } from "./types";
  * So this is the mix and the shelves, and Search is a tab of its own.
  */
 export function HomeView() {
-  const [charts, setCharts] = useState<SongsResponse | null>(null);
+  /*
+   * The charts start as whatever this browser saw last, not as nothing.
+   *
+   * A reload used to open on a row of grey placeholder tiles, because the shelf
+   * had no data until `/api/charts` answered. It had data all along — an hour
+   * old, in `localStorage`, and an hour-old chart is still the chart. See
+   * `charts-cache.ts`.
+   */
+  const cached = useCachedCharts();
+  const [fetched, setFetched] = useState<SongsResponse | null>(null);
+  const charts = fetched ?? cached;
   const history = useHistory();
 
+  /*
+   * Fetched here rather than on the server, and that is deliberate.
+   *
+   * Moving it to the page looked like the obvious win — no waterfall, the
+   * charts in the first paint — and it made things worse. The providers behind
+   * this fetch with `cache: "no-store"`, which opts the whole route out of
+   * static rendering, so the page went from being served instantly to running
+   * two upstream services on every single request.
+   *
+   * As it stands the markup is static and `/api/charts` carries
+   * `s-maxage=3600, stale-while-revalidate=86400`, so the CDN answers this in
+   * milliseconds and the shell never waits for anyone.
+   */
   useEffect(() => {
     const aborter = new AbortController();
     fetch("/api/charts", { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
-      .then((data) => data && setCharts(data))
+      .then((data) => {
+        if (!data) return;
+        setFetched(data);
+        // Kept for the next load, so the shelf opens on real songs rather than
+        // on placeholders — see `charts-cache.ts`.
+        rememberCharts(data);
+      })
       .catch(() => {
         // A missing chart is not worth an error message — the rest of the page
         // still works, and the shelves handle their own empty state.
@@ -74,18 +103,11 @@ export function HomeView() {
   return (
     <>
       {/*
-        Outside <MixHero>, deliberately.
-
-        The hero renders nothing until there is something to play — before the
-        charts land, or if they fail entirely. With the button inside it, the
-        only route to /profile on a phone would disappear exactly when the
-        network is having a bad day, which is when someone is most likely to go
-        looking at settings.
+        The profile button used to sit here, because Home was the only page a
+        phone could reach it from. It lives in the shell's top bar now, beside
+        the search field, so it is on every page — including the ones somebody
+        lands on from a shelf and then wants to change a setting from.
       */}
-      <div className="mb-4 flex justify-end lg:hidden">
-        <ProfileButton />
-      </div>
-
       <MixHero songs={mix} personal={personal} />
       <HomeShelves charts={charts} />
     </>
