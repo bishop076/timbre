@@ -62,8 +62,20 @@ export function ImagePicker({
       <input
         ref={input}
         type="file"
-        // Nudges phones towards the photo library rather than a file browser.
-        accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+        /*
+          Nudges phones towards the photo library rather than a file browser,
+          and offers each picture only what it will take — GIF on the avatar,
+          stills on the banner. See `ACCEPTED` in `local-images.ts`.
+
+          A hint, never the check. `accept` filters the picker's default view
+          and nothing else: "all files" is one dropdown away, and a drag-and-drop
+          never consults it at all. The refusal that matters is in `redraw`.
+        */
+        accept={
+          kind === "avatar"
+            ? "image/png,image/jpeg,image/webp,image/gif"
+            : "image/png,image/jpeg,image/webp"
+        }
         onChange={(event) => void choose(event.target.files?.[0])}
         className="sr-only"
         aria-hidden
@@ -111,37 +123,60 @@ export function ImagePicker({
         </div>
       ) : (
         <div className="flex items-center gap-1.5">
+          {/*
+            A circle like the ones either side of it, not a labelled pill.
+
+            The word made this the widest object in a cluster of three, so a row
+            of small round controls had one long capsule wedged into the middle
+            of it. The camera says the same thing in a quarter of the width, and
+            the label survives where it is needed — `aria-label` for a screen
+            reader, `title` for anyone unsure on a pointer.
+          */}
           <button
             type="button"
             onClick={() => input.current?.click()}
             disabled={busy}
-            className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-full)] bg-black/45 px-3 py-1.5 text-[12px] font-semibold text-white backdrop-blur disabled:opacity-50"
+            aria-label={hasImage ? `Change ${label}` : `Add ${label}`}
+            title={hasImage ? `Change ${label}` : `Add ${label}`}
+            className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-full)] bg-black/45 text-white backdrop-blur disabled:opacity-50"
           >
             {busy ? (
-              <SpinnerIcon className="size-3.5 animate-spin" />
+              <SpinnerIcon className="size-4 animate-spin" />
             ) : (
-              <CameraIcon className="size-3.5" />
+              <CameraIcon className="size-4" />
             )}
-            {hasImage ? "Change banner" : "Add banner"}
           </button>
 
           {hasImage && (
             <button
               type="button"
               onClick={remove}
-              aria-label="Remove banner"
+              aria-label={`Remove ${label}`}
+              title={`Remove ${label}`}
               className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-full)] bg-black/45 text-white backdrop-blur hover:text-red-300"
             >
-              <TrashIcon className="size-3.5" />
+              <TrashIcon className="size-4" />
             </button>
           )}
         </div>
       )}
 
+      {/*
+        Anchored to whichever side the control sits on.
+
+        `left-0` is right under the avatar, which is in the middle of the header.
+        The banner's button is in the top-right corner, where the same rule ran a
+        224px-wide box off the edge of the page — so that one hangs from its right
+        edge instead. Both are positioned against the picker's own wrapper: see
+        the `relative` on the banner cluster in `profile-view.tsx`, and the note
+        there about why the avatar's outer box must not clip.
+      */}
       {error && (
         <p
           role="alert"
-          className="absolute left-0 top-full z-30 mt-2 w-56 rounded-[var(--r-sm)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] leading-relaxed text-red-400 shadow-[var(--drop-lg)]"
+          className={`absolute top-full z-30 mt-2 w-56 rounded-[var(--r-sm)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] leading-relaxed text-red-400 shadow-[var(--drop-lg)] ${
+            variant === "overlay" ? "left-0" : "right-0"
+          }`}
         >
           {error}
         </p>
