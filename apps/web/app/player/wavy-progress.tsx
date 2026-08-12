@@ -69,7 +69,14 @@ export function WavyProgress({
       className={`w-full ${className || "h-6"}`}
       aria-hidden
     >
-      {/* Remaining — a flat rule at low opacity. */}
+      {/*
+        Remaining — a flat rule, quieter on a light ground.
+
+        One opacity cannot serve both. At 0.28 the accent reads as a faint track
+        against a dark room and as a drawn pink line ruled across a pale one —
+        the same number, a different amount of contrast to spend. The palette
+        sets it per ground; the fallback is the dark value it always had.
+      */}
       <line
         x1={clamped}
         y1={MID}
@@ -78,7 +85,7 @@ export function WavyProgress({
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
-        opacity="0.28"
+        style={{ opacity: "var(--wave-rest, 0.28)" }}
         vectorEffect="non-scaling-stroke"
       />
 
