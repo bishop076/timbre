@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
+
 import {
-  CollapseIcon,
+  ChevronIcon,
   NextIcon,
   PauseIcon,
   PlayIcon,
@@ -12,6 +14,7 @@ import {
   SpinnerIcon,
 } from "../icons";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { LyricsPanel } from "./lyrics-panel";
 import { usePlayer } from "./player-context";
 import { Scrub } from "./wavy-progress";
 
@@ -57,6 +60,8 @@ export function MobileTransport() {
     toggleTheater,
   } = usePlayer();
 
+  const [showLyrics, setShowLyrics] = useState(false);
+
   const playing = state === "playing";
   const busy = state === "loading" || state === "resolving";
   const hasNext = index + 1 < queue.length || radio.length > 0;
@@ -76,28 +81,59 @@ export function MobileTransport() {
   );
 
   return (
-    <div className="flex shrink-0 flex-col gap-3 px-4 pb-3 pt-3">
-      {/* Title and artist, with the collapse affordance opposite. */}
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-extrabold leading-tight">
-            {current?.title ?? "Nothing playing"}
-          </p>
-          <p className="truncate text-sm text-[var(--fg-dim)]">
-            {current?.artists.join(", ") || "Unknown artist"}
-          </p>
-        </div>
+    <div className="flex min-h-0 shrink flex-col gap-3 px-4 pb-3 pt-3">
+      {/*
+        A bar across the top: collapse, where it is, and the lyrics toggle.
 
-        {current && <AddToPlaylist song={current} className="shrink-0" />}
-
+        Every phone player puts the way out at the top-left and its extras at
+        the top-right, so the thumb learns one place for each. Collapse used to
+        sit beside the song title, which put "leave this screen" a few pixels
+        from "add this to a playlist".
+      */}
+      <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={toggleTheater}
           aria-label="Collapse player"
-          className="press flex size-9 shrink-0 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)]"
+          className="slab-sm press flex size-9 shrink-0 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg-dim)]"
         >
-          <CollapseIcon className="size-[18px]" />
+          <ChevronIcon className="size-[18px]" />
         </button>
+
+        <p className="flex-1 text-center text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
+          Now playing
+        </p>
+
+        {/*
+          Lyrics open *below* the video rather than replacing it.
+
+          They cannot replace it: YouTube's terms require the player to stay
+          visible while its audio plays, so a lyrics-only screen is not
+          available here the way it is in an app that owns its audio. Under the
+          video is both compliant and what was asked for.
+        */}
+        <button
+          type="button"
+          onClick={() => setShowLyrics((open) => !open)}
+          aria-pressed={showLyrics}
+          aria-label={showLyrics ? "Hide lyrics" : "Show lyrics"}
+          className={`slab-sm press flex size-9 shrink-0 items-center justify-center rounded-[var(--r-full)] text-[11px] font-bold transition ${
+            showLyrics ? "tint text-[var(--accent)]" : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
+          }`}
+        >
+          Aa
+        </button>
+      </div>
+
+      {/* Title and artist, centred — the cover above is the subject, and a
+          left-aligned title beside nothing reads as a list row. */}
+      <div className="min-w-0 text-center">
+        <p className="truncate text-lg font-extrabold leading-tight">
+          {current?.title ?? "Nothing playing"}
+        </p>
+        <p className="truncate text-sm text-[var(--fg-dim)]">
+          {current?.artists.join(", ") || "Unknown artist"}
+        </p>
       </div>
 
       {/* Scrubber, with the times below it rather than beside — a phone has no
@@ -151,9 +187,14 @@ export function MobileTransport() {
         </button>
       </div>
 
-      {/* Modes, smaller and set apart — they change how the queue behaves
-          rather than acting on it now. */}
-      <div className="flex items-center justify-center gap-6">
+      {/*
+        Modes and save, gathered into one strip.
+
+        They belong together because none of them acts on the song *now* — they
+        change how the queue behaves next, or what happens after it. Saving used
+        to sit beside the title where it shared an edge with "collapse".
+      */}
+      <div className="slab-sm mx-auto flex items-center gap-2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2">
         {mode("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
         {mode(
           repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat queue" : "Repeat off",
@@ -165,7 +206,24 @@ export function MobileTransport() {
             <RepeatIcon className="size-[18px]" />
           ),
         )}
+        {current && (
+          <AddToPlaylist song={current} className="flex size-11 items-center justify-center" />
+        )}
       </div>
+
+      {/*
+        Lyrics, under everything, and scrolling on their own.
+
+        `min-h-0` is load-bearing on a flex child that scrolls: without it the
+        panel refuses to shrink below its content and pushes the transport off
+        the bottom of the screen — the controls would leave rather than the
+        lyrics scrolling.
+      */}
+      {showLyrics && (
+        <div className="min-h-0 flex-1 overflow-hidden border-t-[length:var(--edge)] border-[var(--ink)] pt-2">
+          <LyricsPanel />
+        </div>
+      )}
     </div>
   );
 }
