@@ -1,13 +1,29 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayer } from "../player/player-context";
+import { useArtworkAccent } from "../player/use-artwork-accent";
 import { useTransportKeys } from "../player/use-transport-keys";
+import { TopBar } from "../top-bar";
 import { PlayerBar } from "./player-bar";
 import { BottomNav, Sidebar } from "./sidebar";
+
+/**
+ * Whether this document has navigated at least once — see the note in `AppShell`.
+ *
+ * Module scope rather than a ref or state, and each of the alternatives is barred
+ * for a reason: reading a ref during render and calling `setState` inside an
+ * effect are both lint errors here, correctly, and this is neither React state nor
+ * a subscription — it is one fact about the lifetime of the page.
+ *
+ * **Safe despite the module being shared across requests on the server**, because
+ * it is only ever assigned from an effect, and effects do not run there. A server
+ * render also always has `pathname === openedAt`, so there is nothing to latch.
+ */
+let movedOnce = false;
 
 /**
  * The app shell.
@@ -39,6 +55,104 @@ import { BottomNav, Sidebar } from "./sidebar";
 export function AppShell({ children }: { children: ReactNode }) {
   const { theater, current } = usePlayer();
   const pathname = usePathname();
+
+  /*
+   * The page fades on a navigation and **not** on a first load.
+   *
+   * A CSS entry animation is only reliable for an element created while the page
+   * is already live. On a fresh document it begins when styles resolve, not when
+   * the browser first paints — so if the first paint lands after those 220ms have
+   * elapsed, which is ordinary on a cold load, the fade is already finished and
+   * the content simply appears at full opacity. That reads as a flash, and it is
+   * the animation *failing to be seen* rather than the animation being wrong.
+   *
+   * There is no timing to tune here: whether the paint beats the animation is a
+   * race with parsing, fonts and the bundle, and it is decided differently on
+   * every load. So the first document does not animate at all. It does not need
+   * to — every value that can be recorded is already correct in that frame; the
+   * fade was never carrying it.
+   *
+   * The path this document opened at is captured once — `useState` with no setter
+   * is the pure way to hold a value from the first render — and anything else is
+   * a navigation. That comparison alone would miss coming *back* to the opening
+   * path later, so `movedOnce` latches it; the `||` covers the first navigation
+   * itself, which the effect is too late for.
+   */
+  const [openedAt] = useState(pathname);
+  const navigated = movedOnce || pathname !== openedAt;
+
+  useEffect(() => {
+    if (pathname !== openedAt) movedOnce = true;
+  }, [pathname, openedAt]);
+
+  /*
+   * The theme is applied here, and here is load-bearing.
+   *
+   * This lived in `PlayerBar`, which only mounts once something is playing —
+   * so until the first play of a session, nothing wrote the palette onto the
+   * document at all. The blocking script in `layout.tsx` stamps the ground from
+   * storage at boot and then has no further say, which left two failures that
+   * looked like different bugs and were the same one:
+   *
+   * - The interface wore the static CSS fallback rather than the ramp built
+   *   from the reader's actual theme, so a first visit was never the app.
+   * - Choosing a theme did nothing visible. The picker updated — the check
+   *   moved, the previews repainted, since those read React state — while the
+   *   document kept the ground it booted with. Selecting "Album" on a page that
+   *   booted light left Album selected *and* the page light, which reads as an
+   *   outright broken control.
+   *
+   * The shell always mounts, so the document and the store can no longer
+   * disagree. Nothing about the artwork sampling changes: with no track it is
+   * passed `undefined` and applies the ramp with no swatch, which is the case
+   * the palette already handles for a cover it cannot read.
+   */
+  useArtworkAccent(current?.artworkUrl);
+
+  /*
+   * Whether the content panel has more below its edge.
+   *
+   * Watched rather than measured once: the answer changes when the window
+   * resizes, when a shelf finishes loading, and on every navigation. The
+   * observer covers the first two; `pathname` covers the third, since the
+   * panel element itself does not change size when its contents are swapped
+   * for a different page's.
+   */
+  const panel = useRef<HTMLElement>(null);
+  /*
+   * Assumed to scroll until measured otherwise, which is the opposite of what
+   * this started as and the reason it is written down.
+   *
+   * Starting at `false` meant every page painted once without the bottom fade
+   * and again with it, because the measurement can only happen after a layout
+   * exists. That is a visible change of state on a page that had not finished
+   * arriving — one more flicker on top of the ones already being chased.
+   *
+   * Most pages do overflow, so `true` is both the commoner answer and the safer
+   * guess: being wrong turns the fade *off* a frame later on a short page,
+   * which is far less noticeable than it appearing on a long one. Same
+   * reasoning as `canRight` in `shelf.tsx`.
+   */
+  const [overflowing, setOverflowing] = useState(true);
+
+  useEffect(() => {
+    const element = panel.current;
+    if (!element) return;
+
+    // A pixel of slack: sub-pixel layout leaves `scrollHeight` a hair above
+    // `clientHeight` on pages that do not scroll at all, and a fade that only
+    // appears on some of those is worse than one that never does.
+    const measure = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    // The panel's own box rarely changes; its contents are what grow when a
+    // chart or a shelf arrives, so the child is the one worth watching.
+    for (const child of element.children) observer.observe(child);
+
+    return () => observer.disconnect();
+  }, [pathname]);
 
   /*
    * The album wash belongs where music is being browsed, not everywhere.
@@ -75,8 +189,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           Scrolling is untouched — wheel, trackpad, touch, keyboard, drag-select
           and Page Up/Down all behave exactly as before.
         */}
+        {/*
+          The fade is drawn only when the panel actually scrolls.
+
+          Its one job is to soften a row sliced through by the bottom edge. A
+          page whose content ends before that edge has nothing to slice, so the
+          fade had nothing to do but dim the last thing on screen — on the
+          library that is the About and Privacy links, greyed out for no reason
+          anybody could see.
+
+          Measured rather than listed by route. A list would be wrong the moment
+          a page's content changed length, which is most of them: the library
+          overflows once you have a dozen playlists, and should get its fade
+          back at exactly that point without anyone remembering to say so.
+        */}
         <main
-          className={`${washed ? "ambient" : ""} scroll-fade scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
+          ref={panel}
+          className={`${washed ? "ambient" : ""} ${overflowing ? "scroll-fade" : ""} scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
             theater ? "hidden" : ""
           }`}
         >
@@ -91,7 +220,34 @@ export function AppShell({ children }: { children: ReactNode }) {
             stacking position is what puts the wash behind it, where a backdrop
             belongs.
           */}
-          <div className="relative z-10">{children}</div>
+          {/*
+            The search field sits above the routed page, not inside it.
+
+            That is what lets typing on Home carry you to the results without
+            the input being unmounted by the navigation it triggers — the caret
+            and the next keystroke survive because the element does. See
+            `top-bar.tsx`.
+          */}
+          <div className="relative z-10">
+            <TopBar />
+            {/*
+              The routed page fades in on a navigation, and the bar above it does
+              not — it does not go anywhere when the page changes.
+
+              `key` is what makes the animation play: it runs when its element is
+              created, so reusing the node across routes would fire it once and
+              never again. Keying the *inner* wrapper rather than this one is
+              load-bearing — `<TopBar>` has to survive the navigation that typing
+              in it triggers, and a key here would recreate the input mid-word.
+
+              A plain block inside a plain block, so it adds nothing to the
+              layout: the pages below set their own height and padding exactly as
+              they did.
+            */}
+            <div key={pathname} className={navigated ? "page-in" : undefined}>
+              {children}
+            </div>
+          </div>
         </main>
         <NowPlayingPanel />
       </div>
