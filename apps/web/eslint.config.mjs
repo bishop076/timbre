@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Where a production build goes when it must not disturb the dev server's
+    // `.next` — see `distDir` in `next.config.ts`. Without this, linting the
+    // repo lints Turbopack's own output and reports hundreds of errors in
+    // generated chunks nobody wrote.
+    ".next-prod/**",
   ]),
 ]);
 
