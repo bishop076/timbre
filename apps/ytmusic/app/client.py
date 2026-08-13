@@ -14,27 +14,40 @@ import threading
 
 from ytmusicapi import YTMusic
 
-_client: YTMusic | None = None
+_clients: dict[str, YTMusic] = {}
 _lock = threading.Lock()
 
 
-def get_client() -> YTMusic:
-    """Returns the shared client, constructing it on first use.
+def get_client(slot: str = "default") -> YTMusic:
+    """Returns a cached client, constructing it on first use.
 
     Double-checked locking: FastAPI runs sync endpoints in a threadpool, so
     several requests can race here on a cold start.
+
+    **What `slot` is for.** A `YTMusic` holds one `requests.Session`, and
+    `/search` now issues its two upstream searches at the same time rather than
+    one after the other. Concurrent requests through a single `Session` are
+    usually fine and are not *guaranteed* to be — the cookie jar is shared
+    mutable state — and the failure that would produce is intermittent, wrong
+    results rather than an error, which is the worst kind to go looking for
+    later. A client per concurrent caller costs one extra config fetch, once,
+    and removes the question.
+
+    Callers doing sequential work should leave the default; only genuinely
+    parallel paths need a slot of their own.
     """
-    global _client
-    if _client is None:
+    client = _clients.get(slot)
+    if client is None:
         with _lock:
-            if _client is None:
-                _client = YTMusic()
-    return _client
+            client = _clients.get(slot)
+            if client is None:
+                client = YTMusic()
+                _clients[slot] = client
+    return client
 
 
 def reset_client() -> None:
-    """Drops the cached client. For tests, and for recovering from a client
+    """Drops every cached client. For tests, and for recovering from a client
     whose cached YouTube config has gone stale."""
-    global _client
     with _lock:
-        _client = None
+        _clients.clear()
