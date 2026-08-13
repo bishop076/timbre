@@ -14,6 +14,7 @@ import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import type { Release, RelatedArtist } from "@/lib/discography";
+import { cover as coverSrc } from "../artwork-url";
 
 /**
  * The artist page's surface.
@@ -81,12 +82,12 @@ export function ArtistView({
   const visible = showAll ? songs : songs.slice(0, SONG_LIMIT);
 
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-7 sm:pb-10 sm:pt-6">
+    <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6">
       <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
         <div className="slab size-24 shrink-0 overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)] sm:size-40">
           {imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-            <img src={imageUrl} alt="" className="size-full object-cover" />
+            <img src={coverSrc(imageUrl, 640) ?? undefined} alt="" className="size-full object-cover" />
           ) : (
             <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
               <NoteIcon className="size-10" />
@@ -175,9 +176,10 @@ export function ArtistView({
                       {song.artworkUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
                         <img
-                          src={song.artworkUrl}
+                          src={coverSrc(song.artworkUrl, 112) ?? undefined}
                           alt=""
                           loading="lazy"
+                          decoding="async"
                           className="size-full object-cover"
                         />
                       ) : (
