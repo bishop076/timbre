@@ -24,7 +24,7 @@ import { guard } from "@/lib/api";
 export const revalidate = 86_400;
 
 /** LRCLIB asks clients to identify themselves rather than spoof a browser. */
-const USER_AGENT = "Timbre (https://github.com/timbre)";
+const USER_AGENT = "Timbre (https://github.com/bishop076/timbre)";
 
 const querySchema = z.object({
   title: z.string().min(1).max(300),
