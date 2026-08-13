@@ -54,8 +54,18 @@ export function LibraryView() {
     link.href = url;
     // Dated, because the point of an export is having more than one.
     link.download = `timbre-playlists-${new Date().toISOString().slice(0, 10)}.json`;
+    /*
+     * In the document, and revoked on the next turn.
+     *
+     * A detached anchor is ignored outright by Firefox, and revoking the URL on
+     * the same tick as the click races the browser's own read of it — so the
+     * only way this reliably failed was silently, on the one feature that exists
+     * because a browser is the only copy of these playlists.
+     */
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   async function upload(file: File | undefined) {
@@ -86,7 +96,7 @@ export function LibraryView() {
         `lg:min-h-0` switches it straight back off, so the desktop column is
         exactly what it was — the footer is `lg:hidden` there anyway.
       */
-      className="@container mx-auto flex min-h-[calc(100dvh-var(--nav-h))] w-full max-w-6xl flex-col px-4 pb-8 pt-9 sm:px-7 sm:pb-10 sm:pt-6 lg:min-h-0">
+      className="@container mx-auto flex min-h-[calc(100dvh-var(--nav-h))] w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6 lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your library</h1>
 
