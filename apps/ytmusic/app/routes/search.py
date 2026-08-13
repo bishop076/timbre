@@ -10,6 +10,7 @@ Endpoints are declared with `def` rather than `async def` on purpose:
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, HTTPException, status
@@ -46,19 +47,22 @@ def _embed_rank(track: Track) -> int:
     return _EMBED_RANK.get(track.video_type or "", _EMBED_RANK_UNKNOWN)
 
 
+def _search_videos(query: str, limit: int) -> list | None:
+    """The video-filter half of a search, or None if it failed.
+
+    Failure is logged and swallowed rather than raised: songs-only is a
+    degraded but perfectly usable answer, and it is what this endpoint returned
+    before the video search existed at all.
+    """
+    try:
+        return get_client("videos").search(query, filter="videos", limit=limit)
+    except Exception as error:  # noqa: BLE001
+        logger.info("video search failed, returning songs only: %s", error)
+        return None
+
+
 @router.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest) -> SearchResponse:
-    try:
-        results = get_client().search(
-            request.query,
-            filter="songs",
-            limit=request.limit,
-        )
-    except Exception as error:  # any upstream failure is a 502
-        raise upstream_error("search", error) from error
-
-    tracks = to_tracks(results)
-
     # **Always** search videos as well, never conditionally.
     #
     # `filter="songs"` returns art tracks (MUSIC_VIDEO_TYPE_ATV) essentially
@@ -70,11 +74,43 @@ def search(request: SearchRequest) -> SearchResponse:
     # This used to run only when the songs filter came back thin — but it
     # almost never does, so in practice every candidate handed to the client
     # was an art track and the client's fall-through had nothing better to try.
-    try:
-        videos = get_client().search(request.query, filter="videos", limit=request.limit)
-    except Exception as error:  # noqa: BLE001
-        logger.info("video search failed, returning songs only: %s", error)
-    else:
+    #
+    # **At the same time as the songs search, not after it.** Measured warm,
+    # each of these is about 1.4s against YouTube, and they were sequential —
+    # so making the video search unconditional (correctly) also made every
+    # search take the *sum* of two round trips, about 2.8s, for two requests
+    # that share no data and neither of which depends on the other's result.
+    # Run together the endpoint costs the slower of the two instead. Each gets
+    # its own client, because they would otherwise share one `requests.Session`
+    # — see `get_client`.
+    #
+    # One extra thread, not two: the songs search runs on the request's own
+    # thread, which is already in FastAPI's threadpool and would otherwise be
+    # sitting idle waiting for the other one.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending_videos = pool.submit(_search_videos, request.query, request.limit)
+
+        try:
+            results = get_client().search(
+                request.query,
+                filter="songs",
+                limit=request.limit,
+            )
+        except Exception as error:  # any upstream failure is a 502
+            # Leaving the block waits for the video search to finish before this
+            # propagates, which costs a failed search up to one extra round trip.
+            # Deliberately not worked around: cancelling a future that has
+            # already started does nothing, and racing `cancel()` against a
+            # submit that has *not* started yet is how `result()` below ends up
+            # raising CancelledError on the success path instead. A slower error
+            # is worth more than a subtle one.
+            raise upstream_error("search", error) from error
+
+        tracks = to_tracks(results)
+        # Never raises: `_search_videos` turns its own failures into None.
+        videos = pending_videos.result()
+
+    if videos is not None:
         seen = {track.video_id for track in tracks}
         for track in to_tracks(videos):
             if track.video_id not in seen:
