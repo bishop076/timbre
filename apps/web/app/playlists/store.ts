@@ -142,6 +142,35 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getSnapshot(): PlaylistsState {
+  /*
+   * Storage is read here, on the first client read, rather than from an effect.
+   *
+   * `loadPlaylists()` is synchronous — it is a `localStorage.getItem` and a
+   * `JSON.parse` — but every caller ran it from `useEffect`, which is *after*
+   * the first paint. So the library rendered its header, an empty grid and a
+   * footer pushed to the middle of an empty column, and then filled in. The
+   * data was on disk the whole time; only the schedule was wrong.
+   *
+   * Reading lazily here is the same shape `theme/theme-store.ts` uses, and it
+   * satisfies `useSyncExternalStore`'s contract: the read happens once and
+   * every later call returns the identical object, so the snapshot is stable.
+   * It cannot run on the server — `getServerSnapshot` is a separate function —
+   * which is exactly why the first *client* read is the right place for it.
+   *
+   * No `publish()` here: that notifies listeners, and notifying React while it
+   * is asking for a snapshot is a render-phase side effect. Assigning the
+   * snapshot is enough, because this runs during the render that will use it.
+   */
+  if (!snapshot.settled) {
+    all = readStorage();
+    snapshot = {
+      playlists: [...all]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map(summarise),
+      settled: true,
+      error: null,
+    };
+  }
   return snapshot;
 }
 
