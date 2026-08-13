@@ -33,7 +33,7 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
   const songs = album.songs as unknown as Song[];
 
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-7 sm:pb-10 sm:pt-6">
+    <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6">
       <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
         <Artwork
           src={album.coverUrl}
