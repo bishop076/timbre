@@ -3,7 +3,13 @@ node_modules/
 .pnpm-store/
 
 # next
+#
+# The glob rather than a list: `distDir` is overridable so a production build can
+# be measured while the dev server keeps `.next` (see apps/web/next.config.ts),
+# and every such directory is build output. Naming them one at a time meant the
+# next `TIMBRE_DIST_DIR=.next-ci` showed up as 400 untracked files.
 .next/
+.next-*/
 out/
 next-env.d.ts
 
