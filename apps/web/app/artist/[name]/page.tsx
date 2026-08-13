@@ -1,6 +1,7 @@
 import { normalizeLoose } from "@timbre/core";
 import { mergeTracks, searchAll } from "@timbre/providers";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
 import { fromArtistSlug, titleCase } from "@/app/artist-slug";
 import { getProviderRuntime } from "@/lib/providers";
@@ -43,6 +44,18 @@ export default async function ArtistPage({ params }: { params: Promise<{ name: s
   // The slug is a search term, not a name — the catalogue supplies the real
   // spelling, and `titleCase` only covers the moment before it answers.
   const name = fromArtistSlug((await params).name);
+
+  /*
+   * A slug that decodes to nothing is not an artist.
+   *
+   * `/artist/%20` reached this with an empty name and rendered a complete page
+   * for it: a blank heading, no picture, no discography, and a search for the
+   * empty string that correctly returned nothing. Every part behaved, and the
+   * result was a page that looked broken. A name is the one thing this route
+   * cannot do without, so its absence is a 404 rather than an empty success.
+   */
+  if (!name.trim()) notFound();
+
   const { limiter } = getProviderRuntime();
   const ctx = { limiter };
 
