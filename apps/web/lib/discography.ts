@@ -2,6 +2,8 @@ import "server-only";
 
 import { normalizeLoose } from "@timbre/core";
 
+import { deezer } from "./deezer";
+
 /**
  * An artist's releases, from Deezer.
  *
@@ -48,25 +50,6 @@ interface DeezerAlbum {
 export function deezerIdFrom(url: string | null | undefined): string | null {
   const match = url ? /deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/.exec(url) : null;
   return match ? match[1]! : null;
-}
-
-async function deezer<T>(path: string): Promise<T | null> {
-  try {
-    const response = await fetch(`https://api.deezer.com${path}`, {
-      signal: AbortSignal.timeout(6_000),
-      // Deezer's answers are stable for a long time and an artist page is the
-      // kind of thing several people open at once.
-      next: { revalidate: 86_400 },
-    });
-    if (!response.ok) return null;
-    const body = (await response.json()) as T & { error?: unknown };
-    // Deezer answers 200 with an `error` object rather than a status code.
-    return body && "error" in body && body.error ? null : body;
-  } catch {
-    // Unreachable or slow. A missing discography is not worth failing a page
-    // whose songs are already on screen.
-    return null;
-  }
 }
 
 export async function fetchDiscography(
