@@ -2,14 +2,15 @@
 
 import { ArtistLink } from "../artist-link";
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-import { ChevronIcon, NoteIcon, PlayIcon, TrashIcon } from "../icons";
+import { ChevronIcon, CloseIcon, NoteIcon, PlayIcon, SearchIcon, TrashIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { sourceStyle } from "../sources";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
+import { cover as coverSrc } from "../artwork-url";
 
 /**
  * One playlist, in full.
@@ -30,6 +31,19 @@ function formatDuration(ms: number | null): string {
 }
 
 export function PlaylistView({ id }: { id: string }) {
+  /*
+   * Finding a song in this playlist, which is not the same question as search.
+   *
+   * The shell's field asks the catalogue; this asks the forty rows in front of
+   * you. They used to be one box — the shell's — sitting above every page, and
+   * typing in it here threw you out to a global result set, which reads as the
+   * field ignoring the page it is on. See `top-bar.tsx`.
+   *
+   * Local state, not the search store, precisely so the two cannot bleed into
+   * one another: leaving and coming back should not restore a filter that hides
+   * most of the playlist with no obvious cause.
+   */
+  const [filter, setFilter] = useState("");
   const { play, current, state } = usePlayer();
   const { settled } = usePlaylists();
   const playlist = usePlaylist(id);
@@ -73,8 +87,27 @@ export function PlaylistView({ id }: { id: string }) {
     .filter((url): url is string => Boolean(url))
     .slice(0, 4);
 
+  /*
+   * Filtering carries each song's *real* index with it.
+   *
+   * Every row control here is index-based — `moveSong(id, from, to)` and
+   * `removeSongAt(id, position)` address the stored array, not the screen. Map
+   * first and filter second, and the position travels with the song, so a
+   * delete while filtered removes the row you clicked rather than whatever
+   * happens to sit at that offset in the shortened list.
+   */
+  const term = filter.trim().toLowerCase();
+  const visible = songs
+    .map((song, position) => ({ song, position }))
+    .filter(
+      ({ song }) =>
+        term === "" ||
+        song.title.toLowerCase().includes(term) ||
+        song.artists.some((artist) => artist.toLowerCase().includes(term)),
+    );
+
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-4 pb-8 pt-4 sm:px-7 sm:pb-10 sm:pt-6">
+    <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6">
       <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
         <PlaylistCover
           covers={covers}
@@ -91,7 +124,18 @@ export function PlaylistView({ id }: { id: string }) {
             {playlist.name}
           </h1>
           <p className="mt-2 text-xs text-[var(--fg-faint)]">
-            {songs.length} {songs.length === 1 ? "song" : "songs"} · only in this browser
+            {/*
+              Just the count. "Only in this browser" was appended to every
+              playlist, and a promise repeated on every page stops being a
+              promise and becomes furniture — it is the same sentence whatever
+              you are looking at, so it carries no information about *this*
+              playlist and pushes the one number that does out of the way.
+
+              It is still said, once, where it answers a question somebody is
+              actually asking: on the library page above the whole collection,
+              and in Settings beside the rest of what this browser is holding.
+            */}
+            {songs.length} {songs.length === 1 ? "song" : "songs"}
           </p>
 
           <div className="mt-4 flex items-center gap-2">
@@ -113,13 +157,56 @@ export function PlaylistView({ id }: { id: string }) {
         </div>
       </header>
 
+      {/*
+        Small, and only once there is enough to lose something in.
+
+        A filter over three rows is a control that costs more attention than the
+        looking it saves, so it appears at ten — the point where the list stops
+        fitting on a phone screen.
+      */}
+      {songs.length >= 10 && (
+        <div className="mb-3 flex items-center justify-end gap-3">
+          {term !== "" && (
+            <p className="text-xs tabular-nums text-[var(--fg-faint)]">
+              {visible.length} of {songs.length}
+            </p>
+          )}
+
+          <div className="relative w-full max-w-[210px]">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--fg-faint)]" />
+            <input
+              type="search"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Find in playlist"
+              aria-label={`Find a song in ${playlist.name}`}
+              className="slab-sm w-full rounded-[var(--r-full)] bg-[var(--surface-2)] py-1.5 pl-8 pr-8 text-[12px] font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)]"
+            />
+            {filter !== "" && (
+              <button
+                type="button"
+                onClick={() => setFilter("")}
+                aria-label="Clear filter"
+                className="press absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:text-[var(--fg)]"
+              >
+                <CloseIcon className="size-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {songs.length === 0 ? (
         <p className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
           Nothing here yet.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
+          Nothing in this playlist matches &ldquo;{filter.trim()}&rdquo;.
+        </p>
       ) : (
         <ul className="divide-y divide-[var(--line)]">
-          {songs.map((song, position) => {
+          {visible.map(({ song, position }) => {
             const isCurrent = current?.id === song.id;
             return (
               <li
@@ -142,9 +229,10 @@ export function PlaylistView({ id }: { id: string }) {
                     {song.artworkUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
                       <img
-                        src={song.artworkUrl}
+                        src={coverSrc(song.artworkUrl, 112) ?? undefined}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         className="size-full object-cover"
                       />
                     ) : (
@@ -203,24 +291,37 @@ export function PlaylistView({ id }: { id: string }) {
                   on a touch screen for free, and this list is short.
                 */}
                 <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => moveSong(playlist.id, position, position - 1)}
-                    disabled={position === 0}
-                    aria-label={`Move ${song.title} up`}
-                    className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
-                  >
-                    <ChevronIcon className="size-4 rotate-180" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveSong(playlist.id, position, position + 1)}
-                    disabled={position === songs.length - 1}
-                    aria-label={`Move ${song.title} down`}
-                    className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
-                  >
-                    <ChevronIcon className="size-4" />
-                  </button>
+                  {/*
+                    No reordering while a filter is on.
+
+                    The arrows move a song one place in the *stored* list, and
+                    while rows are hidden that neighbour is usually one of the
+                    hidden ones — so the press would be correct, change the
+                    playlist, and appear to do nothing at all. Removing is
+                    unambiguous either way and stays.
+                  */}
+                  {term === "" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => moveSong(playlist.id, position, position - 1)}
+                        disabled={position === 0}
+                        aria-label={`Move ${song.title} up`}
+                        className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
+                      >
+                        <ChevronIcon className="size-4 rotate-180" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveSong(playlist.id, position, position + 1)}
+                        disabled={position === songs.length - 1}
+                        aria-label={`Move ${song.title} down`}
+                        className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
+                      >
+                        <ChevronIcon className="size-4" />
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeSongAt(playlist.id, position)}
