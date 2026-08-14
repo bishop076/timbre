@@ -16,7 +16,11 @@ const eslintConfig = defineConfig([
     // `.next` — see `distDir` in `next.config.ts`. Without this, linting the
     // repo lints Turbopack's own output and reports hundreds of errors in
     // generated chunks nobody wrote.
-    ".next-prod/**",
+    //
+    // A glob, because `distDir` is whatever `TIMBRE_DIST_DIR` says. Naming
+    // `.next-prod` alone meant the next name anybody picked — `.next-ci` — got
+    // linted, and the run failed on Turbopack's `require()` calls.
+    ".next-*/**",
   ]),
 ]);
 
