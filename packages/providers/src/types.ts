@@ -70,23 +70,6 @@ export interface Song {
 }
 
 /**
- * Who made the recording.
- *
- * Deliberately thin, and every field is something a keyless source actually
- * publishes. There is no bio here because no free source gives one, and a
- * plausible-sounding paragraph about a real musician is not something to
- * invent.
- */
-export interface ArtistInfo {
-  name: string;
-  imageUrl: string | null;
-  /** Followers on the source that answered, and which source that was. */
-  followers: number | null;
-  source: SourceId;
-  url: string | null;
-}
-
-/**
  * Where to start a radio.
  *
  * Two fields because sources start from different things: YouTube Music
@@ -158,9 +141,6 @@ export interface SearchProvider {
    */
   chart?(ctx: SearchContext, limit: number): Promise<SourceTrack[]>;
 
-  /** Who the artist is. Optional; only Deezer publishes this without a key. */
-  artist?(ctx: SearchContext, name: string): Promise<ArtistInfo | null>;
-
   /**
    * What this source would play next, as one or more ranked lists.
    *
@@ -183,13 +163,4 @@ export const PLAYBACK_RANK: Record<Playback, number> = {
 /** Sorts sources so the most playable option comes first. */
 export function byPlayability(a: SourceTrack, b: SourceTrack): number {
   return PLAYBACK_RANK[a.playback] - PLAYBACK_RANK[b.playback];
-}
-
-/**
- * The source the queue controller should play, or null when a song has no
- * auto-playable copy — in which case the queue pauses and waits for the user
- * to click a `manual` source rather than silently skipping the song.
- */
-export function playableSource(song: Song): SourceTrack | null {
-  return song.sources.find((source) => source.playback === "queue") ?? null;
 }
