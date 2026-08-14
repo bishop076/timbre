@@ -1,10 +1,9 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { BarChart } from "./bar-chart";
-import { ChartGraph } from "./chart-graph";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { toArtistSlug } from "./artist-slug";
 import { NoteIcon, PlayIcon } from "./icons";
@@ -13,6 +12,21 @@ import { usePlayer } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { sourceStyle } from "./sources";
 import { StackedColumns } from "./stacked-columns";
+
+/**
+ * The graphs behind a tab, fetched when that tab is opened.
+ *
+ * `StackedColumns` stays a static import because it draws the *default* view —
+ * lazy-loading the thing that renders on arrival would only add a fetch to the
+ * critical path. `BarChart` (Artists, Agreement) and `ChartGraph` (Spread) are
+ * each one click away.
+ *
+ * The boundary has to be here rather than in `explore/page.tsx`: this Next
+ * version does not code-split a Client Component that a Server Component
+ * imports dynamically, and Explore's page is a server component.
+ */
+const BarChart = dynamic(() => import("./bar-chart").then((m) => m.BarChart));
+const ChartGraph = dynamic(() => import("./chart-graph").then((m) => m.ChartGraph));
 import type { ChartTrack } from "@/lib/discover";
 import { RANK_BANDS } from "@/lib/rank-bands";
 import type { GenreMix, Rankings } from "@/lib/rankings";
