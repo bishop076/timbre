@@ -638,7 +638,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // The upload that played, not the one the song shipped with — that is
         // what can seed a radio later.
         videoId,
-        playedAt: Date.now(),
       });
     },
     [queue, index, videoId],
