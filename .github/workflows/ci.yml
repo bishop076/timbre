@@ -22,8 +22,30 @@ jobs:
   web:
     name: Web (typecheck, test, build)
     runs-on: ubuntu-latest
+    # A hung install or a build waiting on a socket that will never answer would
+    # otherwise sit here until the six-hour default, holding the concurrency slot
+    # against every later push. The whole job takes about four minutes.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      # `pnpm build` runs next through `dotenv -e ../../.env`, which exits
+      # non-zero when the file is absent — so CI has to have one.
+      #
+      # Written before the checks rather than just before the build: the env
+      # schema is validated at first use, and the first use moves. Ordering the
+      # file after `typecheck` meant a check that started reading env would fail
+      # here and nowhere else, which is the least useful place to find out.
+      #
+      # Placeholders only. The build must never need real credentials: a run that
+      # can only pass with secrets cannot run on a fork's pull request. Nothing
+      # here reaches a real service — the build is verified against a dead port.
+      - name: Write a placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          YTMUSIC_SERVICE_URL=http://127.0.0.1:8787
+          YTMUSIC_SHARED_SECRET=ci-placeholder
+          EOF
 
       # Reads packageManager from package.json, so the version is pinned in one
       # place rather than drifting between here and local machines.
@@ -46,29 +68,21 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
 
-      # `pnpm build` runs next through `dotenv -e ../../.env`, which exits
-      # non-zero when the file is absent — so CI has to have one. Writing it
-      # here rather than calling next directly keeps CI on the same command
-      # path as a developer's machine, which is the point of running it at all.
-      #
-      # Placeholders only. The build must never need real credentials: a run
-      # that can only pass with secrets cannot run on a fork's pull request.
-      # The env schema is validated at first use rather than at import, so
-      # nothing here reaches a real service.
-      - name: Write a placeholder .env
-        run: |
-          cat > .env <<'EOF'
-          YTMUSIC_SERVICE_URL=http://127.0.0.1:8787
-          YTMUSIC_SHARED_SECRET=ci-placeholder
-          EOF
-
       # The build type-checks again and catches what `tsc --noEmit` cannot:
       # prerender-time failures in route and page modules.
+      #
+      # `/explore` is prerendered, so this step really does fetch Deezer and
+      # Apple from the runner. It is allowed to: every chart goes through
+      # `Promise.allSettled` and a list that does not answer lands in `failed`,
+      # so an upstream outage prerenders an empty chart rather than failing the
+      # build. Verified by building against a dead sidecar port.
       - run: pnpm build
 
   ytmusic:
     name: Sidecar (lint, tests)
     runs-on: ubuntu-latest
+    # Lint and 49 tests, no network and no build — a minute on a cold cache.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: apps/ytmusic
@@ -80,6 +94,11 @@ jobs:
           # The floor from pyproject.toml. Testing the oldest supported version
           # is what stops a newer-syntax dependency slipping in unnoticed.
           python-version: "3.11"
+          # The web job caches its dependencies and this one did not, which made
+          # the shorter job the slower one on a cold runner. Keyed on the file
+          # that actually pins them, so a dependency change invalidates it.
+          cache: pip
+          cache-dependency-path: apps/ytmusic/pyproject.toml
 
       - run: pip install -e ".[dev]"
 
