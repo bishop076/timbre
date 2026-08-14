@@ -33,7 +33,6 @@ export interface PlayedSong {
   artworkUrl: string | null;
   /** The upload that actually played, which is what seeds a radio. */
   videoId: string | null;
-  playedAt: number;
 }
 
 const HISTORY_KEY = "timbre:history";
@@ -117,6 +116,11 @@ export function getHistoryServerSnapshot(): PlayedSong[] {
   return EMPTY;
 }
 
+/** Subscribes a component to the history. Client-only, like the store. */
+export function useHistory(): PlayedSong[] {
+  return useSyncExternalStore(subscribeHistory, getHistorySnapshot, getHistoryServerSnapshot);
+}
+
 /**
  * Records a play, newest first, one entry per song.
  *
@@ -124,11 +128,6 @@ export function getHistoryServerSnapshot(): PlayedSong[] {
  * "recently played" is a set of songs in time order, not a log of events, and
  * a repeat on loop would otherwise fill the whole shelf with one track.
  */
-/** Subscribes a component to the history. Client-only, like the store. */
-export function useHistory(): PlayedSong[] {
-  return useSyncExternalStore(subscribeHistory, getHistorySnapshot, getHistoryServerSnapshot);
-}
-
 export function recordPlay(song: PlayedSong): void {
   const current = getHistorySnapshot();
   if (current[0]?.id === song.id) return;
