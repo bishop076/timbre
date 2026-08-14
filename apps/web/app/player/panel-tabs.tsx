@@ -1,9 +1,22 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, type ReactNode } from "react";
 
-import { LyricsPanel } from "./lyrics-panel";
-import { RelatedPanel } from "./related-panel";
+/**
+ * Both panes are fetched when their tab is first opened, not before.
+ *
+ * Only the selected pane is ever mounted, but a static import puts both in the
+ * bundle regardless — and this panel lives in the root shell, so that cost was
+ * on *every* route, including /about. Between them they are the largest pair of
+ * leaves in the player: lyrics carries an LRC parser and a synced scroller,
+ * related carries its own fetch and row list.
+ *
+ * The default tab is Up Next, which is `queue` and passed in from above, so the
+ * common case now downloads neither.
+ */
+const LyricsPanel = dynamic(() => import("./lyrics-panel").then((m) => m.LyricsPanel));
+const RelatedPanel = dynamic(() => import("./related-panel").then((m) => m.RelatedPanel));
 
 /**
  * The expanded player's right-hand column, as YouTube Music arranges it.
