@@ -112,9 +112,18 @@ fail → network round-trip → retry, which the listener hears as a stall mid-s
 
 ---
 
-## B-6 · Error text asserts a cause the app never verified `OPEN`
+## B-6 · Error text asserts a cause the app never verified `FIXED`
 
 **Severity:** low code impact, **high diagnostic cost**
+**Fixed by Agent B**, 2026-08-17 — see the crossing note in `WORKSTREAMS.md`.
+
+`onError` now logs `[timbre] YouTube IFrame error <code> on video <id>` before it
+maps anything to a sentence. The video id comes from a ref rather than the
+closure: the player's callbacks are registered once, so they held the first
+render's `videoId` for ever, and a log naming the wrong upload would be worse
+than one naming none.
+
+The remedy below is unchanged and is what was applied.
 
 `youtube-player.tsx` maps error codes `100/101/150` to
 *"The owner disabled playback on other sites."*
@@ -179,6 +188,41 @@ parameter of ours and retrying would loop.
 | `de15d86` | **B-1** — player sized to YouTube's 200×200 minimum |
 | `4c49037` | Fall-through on `100/101/150`; art-track demotion (inert until **B-3**) |
 | `e6f273c` | **B-2** + **B-3** — always search `filter="videos"`; add `video_type` and rank properly |
+| *unstaged* | **B-6** — log the numeric `onError` code; the two searches from **B-2** run concurrently |
+
+---
+
+## B-8 · Shuffle walked the queue in order once a pass was spent `FIXED`
+
+**Severity:** medium — shuffle silently stopped shuffling at the end of a pass
+
+`player-context.tsx` adopted the radio and then called `goTo(index + 1)`. Those
+are the same position only when the current song is the **last** one, which is
+true in order and not in shuffle: `nextIndex()` returns null from *any* position
+once every song has had a turn, so playback stepped to whatever sat at `index + 1`
+— a song already played — while the freshly appended recommendations sat unplayed
+behind it. Repeat the pattern and it walks the queue positionally, which is
+exactly what shuffle is for not doing.
+
+`goTo(queue.length)` is the first appended song, and is identical to `index + 1`
+on the ordered path, so the fix cannot regress it.
+
+**Also:** a *skipped* song was never added to the shuffle bookkeeping — only a
+song that ended was — so pressing next left it eligible to be drawn again a
+moment later. The two paths now agree on what "played" means.
+
+---
+
+## B-9 · Caption-suppression timers accumulated for the life of the tab `FIXED`
+
+**Severity:** low — a slow leak, no wrong behaviour
+
+`youtube-player.tsx` pushes three delayed `unloadCaptions` retries on every
+`PLAYING` event, and `PLAYING` fires on every resume as well as every track
+change. Nothing ever dropped the spent ones, so an hour of listening left
+hundreds of dead handles in the array — and the unmount cleanup walked all of
+them. The retries only ever concern the video that just started, so the pending
+set is cleared before the new one is scheduled.
 
 **B-1 and B-2 were separate faults presenting identically.** B-1 broke everything
 and was fixed first; B-2 broke ~7% and was masked underneath it. Fixing one
