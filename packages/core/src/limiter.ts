@@ -95,65 +95,6 @@ export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
   apple: { capacity: 5, refillPerSecond: 0.3 },
 };
 
-/**
- * YouTube Data API v3 unit costs. The default allowance is 10,000 units/day,
- * so a naive playlist transfer exhausts the budget after ~200 tracks.
- * @see https://developers.google.com/youtube/v3/determine_quota_cost
- */
-export const YOUTUBE_UNIT_COSTS = {
-  read: 1,
-  write: 50,
-  search: 100,
-  upload: 1600,
-} as const;
-
-export const YOUTUBE_DAILY_UNITS = 10_000;
-
-export type LimitOutcome =
-  | { kind: "rate"; retryAfterMs: number }
-  | { kind: "quota"; resetAt: Date | undefined }
-  | { kind: "none" };
-
-/**
- * Classifies a 429. Spotify's July 2026 update added a `reason` field
- * specifically so callers can tell a throttle from an exhausted quota; without
- * checking it, a client hot-retries all day against a budget that will not
- * refill until midnight.
- */
-export function classify429(
-  status: number,
-  headers: Headers,
-  body: unknown,
-  nowMs: number = Date.now(),
-): LimitOutcome {
-  if (status !== 429) return { kind: "none" };
-
-  const reason =
-    typeof body === "object" && body !== null
-      ? (body as { error?: { reason?: unknown } }).error?.reason
-      : undefined;
-
-  if (reason === "QUOTA_EXCEEDED") {
-    return { kind: "quota", resetAt: undefined };
-  }
-
-  const retryAfter = headers.get("retry-after");
-  // Retry-After is either delta-seconds or an HTTP date.
-  if (retryAfter) {
-    const seconds = Number(retryAfter);
-    if (Number.isFinite(seconds)) {
-      return { kind: "rate", retryAfterMs: Math.max(0, seconds * 1000) };
-    }
-    const asDate = Date.parse(retryAfter);
-    if (!Number.isNaN(asDate)) {
-      return { kind: "rate", retryAfterMs: Math.max(0, asDate - nowMs) };
-    }
-  }
-
-  // 429 with no usable hint. Back off a sane default rather than hammering.
-  return { kind: "rate", retryAfterMs: 5_000 };
-}
-
 /** Persistence for buckets, so pacing survives restarts and spans processes. */
 export interface BucketStore {
   load(key: string): Promise<BucketState | null>;
@@ -207,26 +148,4 @@ export class RateLimiter {
     }
   }
 
-  /**
-   * Applies a provider's own 429 to local state: drains the bucket so the next
-   * `acquire` waits, and converts an exhausted quota into a non-retryable error.
-   */
-  async penalize(
-    key: string,
-    provider: ProviderId,
-    outcome: LimitOutcome,
-  ): Promise<void> {
-    if (outcome.kind === "quota") {
-      throw new ProviderError(provider, "quota_exceeded", `${provider} quota exhausted.`, {
-        status: 429,
-        resetAt: outcome.resetAt,
-      });
-    }
-    if (outcome.kind === "rate") {
-      await this.#store.save(key, {
-        tokens: 0,
-        updatedAtMs: this.#now() + outcome.retryAfterMs,
-      });
-    }
-  }
 }
