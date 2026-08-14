@@ -75,7 +75,7 @@ apps/web/app/rankings/         rankings route
 apps/web/app/discover-view.tsx, collection-view.tsx, rankings-view.tsx
 apps/web/app/chart-graph.tsx, bar-chart.tsx, stacked-columns.tsx
 apps/web/app/collage.tsx, movement.tsx
-apps/web/app/chart-memory.ts, explore-lists.ts
+apps/web/app/chart-memory.ts, charts-cache.ts
 apps/web/app/top-bar.tsx, search-store.ts, search-suggestions.tsx
 apps/web/lib/deezer.ts, discover.ts, collection.ts, rankings.ts
 apps/web/lib/rank-bands.ts, discography.ts
