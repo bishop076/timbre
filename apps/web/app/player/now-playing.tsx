@@ -1,19 +1,38 @@
 "use client";
 
-import { ArtistLink } from "../artist-link";
+import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
+
+import { ArtistLink } from "../artist-link";
 
 import { Artwork } from "../artwork";
 import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon } from "../icons";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
-import { MobileTransport } from "./mobile-transport";
 import { usePlayer } from "./player-context";
 import { SimilarSongs } from "./similar-songs";
 import { PanelTabs } from "./panel-tabs";
-import { SoundCloudPlayer } from "./soundcloud-player";
 import { YouTubePlayer } from "./youtube-player";
+
+/**
+ * The two that are not always on screen, fetched when they first are.
+ *
+ * This panel is mounted by the root shell on every route, so anything imported
+ * here statically ships everywhere — including to /about, which has no player.
+ *
+ * SoundCloud's embed is only mounted when the playing source *is* SoundCloud,
+ * which for most listeners is never; YouTube stays static because it is the
+ * common case and must not wait on a fetch to start. Switching source already
+ * tears one player down and builds the other, so a chunk fetch joins a remount
+ * that was happening anyway.
+ *
+ * MobileTransport only renders expanded, and below the xl breakpoint.
+ */
+const SoundCloudPlayer = dynamic(() =>
+  import("./soundcloud-player").then((m) => m.SoundCloudPlayer),
+);
+const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
 
 /** Track length for the credits list. */
 function clock(ms: number | null): string | null {
