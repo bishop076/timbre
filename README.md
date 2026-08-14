@@ -30,7 +30,7 @@ These aren't missing features — they're rules Timbre respects.
 - **No downloading or caching audio.** Ever.
 - **No blending Spotify into the queue.** Spotify's Developer Terms §IV.2 forbid integrating their streams with another service's. The embed is a separate, clearly attributed panel.
 - **No gapless cross-source playback.** Handing off between two iframe players always has a small gap. Continuous, not gapless.
-- **No accounts, and no data.** Timbre asks for no email and keeps no user record. Playlists, your profile and your history live in your browser and nowhere else. Nothing to breach, nothing to subpoena, nothing to pay for — and the honest cost is that clearing site data loses them, so **Export** exists on the library page.
+- **No accounts, and no data.** Timbre asks for no email and keeps no user record. Playlists, your profile and your history live in your browser and nowhere else. Nothing to breach, nothing to subpoena, nothing to pay for — and the honest cost is that clearing site data loses them, so **Export** exists on the library page. It covers playlists; your profile and history are not in the file yet.
 
 ## Status
 
