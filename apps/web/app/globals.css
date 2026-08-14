@@ -38,7 +38,6 @@
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 18px;
-  --r-xl: 26px;
   --r-full: 999px;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -268,17 +267,17 @@
   --drop-lg: 2px 2px 0 hsl(268 22% 58% / 0.14);
 }
 
+/*
+ * Only what a utility actually consumes.
+ *
+ * The colour tokens used to be mirrored here as `--color-*` so Tailwind would
+ * generate `bg-surface-2`-style utilities. Nothing ever used them: the app
+ * styles with arbitrary values against the custom properties directly
+ * (`bg-[var(--surface-2)]`), which is what lets one palette swap recolour
+ * everything without a rebuild. `--font-sans` went the same way — the base
+ * font-family is declared outright below.
+ */
 @theme inline {
-  --color-bg: var(--bg);
-  --color-surface-1: var(--surface-1);
-  --color-surface-2: var(--surface-2);
-  --color-surface-3: var(--surface-3);
-  --color-fg: var(--fg);
-  --color-fg-dim: var(--fg-dim);
-  --color-fg-faint: var(--fg-faint);
-  --color-line: var(--line);
-  --color-accent: var(--accent);
-  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -602,12 +601,11 @@ input[type="search"]::-webkit-search-results-decoration {
 /**
  * Native scrollbars, hidden everywhere.
  *
- * Timbre draws its own — see `shell/scroll-thumb.tsx`. Three attempts at
- * styling the browser's proved it is not worth chasing: Chrome ignores every
- * `::-webkit-scrollbar` rule the moment `scrollbar-width` is set, the standard
- * properties offer a colour and a coarse width and nothing else, and each
- * platform renders the result differently. Hiding it and positioning an
- * element from `scrollTop` is the only way to get one appearance everywhere.
+ * Three attempts at styling the browser's proved it is not worth chasing:
+ * Chrome ignores every `::-webkit-scrollbar` rule the moment `scrollbar-width`
+ * is set, the standard properties offer a colour and a coarse width and nothing
+ * else, and each platform renders the result differently. So these scrollers
+ * simply have none, and the content's own edges say where it ends.
  *
  * Scrolling itself is untouched — wheel, trackpad, touch, keyboard and
  * drag-select all work exactly as before.
