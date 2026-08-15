@@ -12,35 +12,16 @@ import type { Collection } from "@/lib/collection";
 import { cover as coverSrc } from "./artwork-url";
 
 /**
- * One collection, one page.
- *
- * The same layout every other detail page in Timbre uses — artwork, title,
- * transport, then rows — so a genre chart, a Deezer playlist and a mood all
- * arrive looking like a record rather than like three different features. That
- * sameness is the point: a card on Explore promises "this is a thing you can
- * play", and three different destinations would break the promise three ways.
- *
- * Nothing here is stored. The page is assembled per request from Deezer and
- * thrown away; saving it means adding it to a playlist, which lives in your
- * browser.
+ * One collection, one page — the same layout as every other detail page. Nothing is
+ * stored; the page is assembled per request from Deezer and thrown away.
  */
 export function CollectionView({ collection }: { collection: Collection }) {
   const { play, current, state } = usePlayer();
   const { tracks } = collection;
 
-  /*
-   * Movement, but only for a chart.
-   *
-   * A chart has an order that means something, so climbing five places is news.
-   * A playlist's order is whatever its editor typed, so an arrow beside it
-   * would be measuring nothing.
-   *
-   * `null`, not a spare number. This passed `-1` and an empty track list, which
-   * stopped it *writing* a snapshot but not reading one — and `-1` is the key
-   * the fused ranking writes to. So opening a playlist after visiting Explore
-   * showed arrows comparing that playlist's running order to a chart position.
-   * See `chart-memory.ts`.
-   */
+  // Movement only for a chart — a playlist's order is whatever its editor typed. Pass
+  // `null`, never a spare number: `-1` stopped it *writing* a snapshot but not reading
+  // one, and `-1` is the fused ranking's key. See `chart-memory.ts`.
   const isChart = collection.kind === "genre";
   const snapshot = useChartSnapshot(isChart ? Number(collection.id) : null, tracks);
 
@@ -95,10 +76,7 @@ export function CollectionView({ collection }: { collection: Collection }) {
             </button>
           </div>
 
-          {/* Said once, here, rather than on every row. These come from a
-              catalogue Timbre cannot drive, so playing one goes looking for a
-              copy it can — occasionally that search comes back with a live
-              version or a different master. */}
+          {/* Said once here, not on every row. */}
           <p className="mt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
             Assembled from Deezer and kept nowhere. Playing a song searches for a copy Timbre can
             actually play, so an occasional match is a different upload of the same recording.
