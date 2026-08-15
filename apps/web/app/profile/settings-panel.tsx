@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -12,7 +13,16 @@ import {
   SettingsIcon,
   SparkleIcon,
 } from "../icons";
-import { ThemePicker } from "../theme/theme-picker";
+
+/**
+ * Fetched when the Appearance section is first opened.
+ *
+ * The picker carries every palette and its swatches, and it is the largest
+ * thing in this panel by some way. The panel itself only renders behind a
+ * button, and this is one section inside it — two clicks from the profile page
+ * loading, which is far enough in that nobody is waiting on it.
+ */
+const ThemePicker = dynamic(() => import("../theme/theme-picker").then((m) => m.ThemePicker));
 
 /** Where the source lives. */
 const REPO = "https://github.com/bishop076/timbre";
