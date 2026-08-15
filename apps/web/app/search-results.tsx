@@ -3,29 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ArtistLink } from "./artist-link";
-import { cover as coverSrc } from "./artwork-url";
-import { ExternalIcon, NoteIcon, PlayIcon } from "./icons";
+import { ExternalIcon } from "./icons";
 import { AddToQueue } from "./player/add-to-queue";
 import { usePlayer } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { useSearchQuery } from "./search-store";
+import { SongRow } from "./song-row";
 import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
+import { formatDuration } from "./duration";
 
 /** Whether what was typed is a link to resolve rather than words to search. */
 function isUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
-function formatDuration(ms: number | null): string {
-  if (ms === null) return "—";
-  const total = Math.round(ms / 1000);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = total % 60;
-  const pad = (value: number) => value.toString().padStart(2, "0");
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
-}
 
 /** Search results. The field lives in the app shell, above the router, so it survives navigation — see `top-bar.tsx`. */
 export function SearchResults() {
@@ -148,7 +140,7 @@ export function SearchResults() {
         {hasQuery && songs.length > 0 && (
           <ul className="rise divide-y divide-[var(--line)]">
             {songs.map((song) => (
-              <SongRow key={song.id} song={song} />
+              <ResultRow key={song.id} song={song} />
             ))}
           </ul>
         )}
@@ -157,99 +149,63 @@ export function SearchResults() {
   );
 }
 
-function SongRow({ song }: { song: Song }) {
+function ResultRow({ song }: { song: Song }) {
   const { play, current, state } = usePlayer();
-  const isCurrent = current?.id === song.id;
 
   return (
-    <li
-      className={`group flex items-center gap-3 rounded-lg px-2 transition sm:gap-4 ${
-        isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
-      }`}
-    >
-      {/* Plays this song alone and does *not* queue the other results: a title search
-          returns the same song many times over, so queueing them all never reaches the
-          end of the queue, which is where recommendations begin. */}
-      <button
-        type="button"
-        onClick={() => play(song)}
-        className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left focus:outline-none sm:gap-4"
-        aria-label={`Play ${song.title}`}
-      >
-        <span className="relative size-14 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)]">
-          {song.artworkUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-            <img
-              src={coverSrc(song.artworkUrl, 112) ?? undefined}
-              alt=""
-              width={56}
-              height={56}
-              loading="lazy"
-              className="size-full object-cover"
-            />
-          ) : (
-            <span className="flex size-full items-center justify-center text-[var(--fg-dim)]">
-              <NoteIcon className="size-5" />
-            </span>
-          )}
-          <span
-            className={`absolute inset-0 flex items-center justify-center bg-black/55 transition ${
-              isCurrent && state === "playing"
-                ? "opacity-100"
-                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-            }`}
-          >
-            <PlayIcon className="size-5 text-white" />
+    <SongRow
+      song={song}
+      // Plays this song alone and does *not* queue the other results: a title search
+      // returns the same song many times over, so queueing them all never reaches the
+      // end of the queue, which is where recommendations begin.
+      onPlay={() => play(song)}
+      isCurrent={current?.id === song.id}
+      isPlaying={state === "playing"}
+      size="lg"
+      subtitle={
+        <>
+          <ArtistLink artists={song?.artists ?? []} />
+          {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
+        </>
+      }
+      trailing={
+        <>
+          <div className="hidden shrink-0 items-center gap-1 @xl:flex">
+            {song.sources.map((source) => {
+              const style = sourceStyle(source.source);
+              return (
+                <a
+                  key={source.source}
+                  href={source.url ?? undefined}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={`Open on ${style.label}`}
+                  style={{ color: style.color, backgroundColor: style.tint }}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100"
+                >
+                  {style.short}
+                  <ExternalIcon className="size-2.5" />
+                </a>
+              );
+            })}
+          </div>
+
+          <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
+            {formatDuration(song.durationMs)}
           </span>
-        </span>
 
-        <span className="min-w-0 flex-1">
-          <span
-            className={`block truncate text-[15px] font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
-          >
-            {song.title}
-          </span>
-          <span className="block truncate text-sm text-[var(--fg-dim)]">
-            <ArtistLink artists={song?.artists ?? []} />
-            {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
-          </span>
-        </span>
-      </button>
+          <AddToQueue
+            song={song}
+            className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+          />
 
-      <div className="hidden shrink-0 items-center gap-1 @xl:flex">
-        {song.sources.map((source) => {
-          const style = sourceStyle(source.source);
-          return (
-            <a
-              key={source.source}
-              href={source.url ?? undefined}
-              target="_blank"
-              rel="noreferrer noopener"
-              title={`Open on ${style.label}`}
-              style={{ color: style.color, backgroundColor: style.tint }}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100"
-            >
-              {style.short}
-              <ExternalIcon className="size-2.5" />
-            </a>
-          );
-        })}
-      </div>
-
-      <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
-        {formatDuration(song.durationMs)}
-      </span>
-
-      <AddToQueue
-        song={song}
-        className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-      />
-
-      <AddToPlaylist
-        song={song}
-        className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-      />
-    </li>
+          <AddToPlaylist
+            song={song}
+            className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+          />
+        </>
+      }
+    />
   );
 }
 
