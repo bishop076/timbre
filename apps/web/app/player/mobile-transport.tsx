@@ -25,21 +25,10 @@ function clock(seconds: number): string {
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
-/**
- * The phone's full-screen transport, shown under the expanded player.
- *
- * Every phone music app has this screen: cover, title, a scrubber with times,
- * and controls big enough to hit with a thumb. Timbre had the expanded video
- * but none of the controls — they stayed in the mini bar at the bottom, which
- * meant the "full screen" view was a video you could not drive.
- *
- * **The picture above this is the video, not the cover art**, and that is not a
- * design choice. YouTube's terms require the player to stay visible whenever
- * its audio is playing, so the slot every other app fills with a static sleeve
- * is the player itself here. It also cannot be re-mounted into this component:
- * a re-parented iframe reloads, which stops playback dead. So this is the
- * controls only, rendered as a sibling beneath the player that already exists.
- */
+// The phone's full-screen transport, shown under the expanded player. The picture above it
+// is the video, not cover art — YouTube's terms require the player to stay visible while
+// its audio plays, and it cannot be re-mounted here because a re-parented iframe reloads.
+// So this is the controls only, rendered as a sibling.
 export function MobileTransport() {
   const {
     current,
@@ -82,14 +71,6 @@ export function MobileTransport() {
 
   return (
     <div className="flex min-h-0 shrink flex-col gap-3 px-4 pb-3 pt-3">
-      {/*
-        A bar across the top: collapse, where it is, and the lyrics toggle.
-
-        Every phone player puts the way out at the top-left and its extras at
-        the top-right, so the thumb learns one place for each. Collapse used to
-        sit beside the song title, which put "leave this screen" a few pixels
-        from "add this to a playlist".
-      */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -104,14 +85,6 @@ export function MobileTransport() {
           Now playing
         </p>
 
-        {/*
-          Lyrics open *below* the video rather than replacing it.
-
-          They cannot replace it: YouTube's terms require the player to stay
-          visible while its audio plays, so a lyrics-only screen is not
-          available here the way it is in an app that owns its audio. Under the
-          video is both compliant and what was asked for.
-        */}
         <button
           type="button"
           onClick={() => setShowLyrics((open) => !open)}
@@ -125,8 +98,6 @@ export function MobileTransport() {
         </button>
       </div>
 
-      {/* Title and artist, centred — the cover above is the subject, and a
-          left-aligned title beside nothing reads as a list row. */}
       <div className="min-w-0 text-center">
         <p className="truncate text-lg font-extrabold leading-tight">
           {current?.title ?? "Nothing playing"}
@@ -136,8 +107,6 @@ export function MobileTransport() {
         </p>
       </div>
 
-      {/* Scrubber, with the times below it rather than beside — a phone has no
-          width to spare either side of the bar. */}
       <div>
         <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
         <div className="mt-0.5 flex justify-between font-mono text-[11px] tabular-nums text-[var(--fg-faint)]">
@@ -146,8 +115,6 @@ export function MobileTransport() {
         </div>
       </div>
 
-      {/* Transport. Deliberately large: this is the one screen designed to be
-          used without looking closely at it. */}
       <div className="flex items-center justify-center gap-4">
         <button
           type="button"
@@ -187,13 +154,6 @@ export function MobileTransport() {
         </button>
       </div>
 
-      {/*
-        Modes and save, gathered into one strip.
-
-        They belong together because none of them acts on the song *now* — they
-        change how the queue behaves next, or what happens after it. Saving used
-        to sit beside the title where it shared an edge with "collapse".
-      */}
       <div className="slab-sm mx-auto flex items-center gap-2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2">
         {mode("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
         {mode(
@@ -211,14 +171,8 @@ export function MobileTransport() {
         )}
       </div>
 
-      {/*
-        Lyrics, under everything, and scrolling on their own.
-
-        `min-h-0` is load-bearing on a flex child that scrolls: without it the
-        panel refuses to shrink below its content and pushes the transport off
-        the bottom of the screen — the controls would leave rather than the
-        lyrics scrolling.
-      */}
+      {/* `min-h-0` is load-bearing on a flex child that scrolls: without it the panel
+          refuses to shrink and pushes the transport off the bottom of the screen. */}
       {showLyrics && (
         <div className="min-h-0 flex-1 overflow-hidden border-t-[length:var(--edge)] border-[var(--ink)] pt-2">
           <LyricsPanel />

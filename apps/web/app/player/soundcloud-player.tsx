@@ -4,23 +4,11 @@ import { useEffect, useRef } from "react";
 
 import { usePlayer } from "./player-context";
 
-/**
- * The SoundCloud HTML5 Widget player.
- *
- * SoundCloud's own player, embedded unmodified — their stream, their branding,
- * their play counts. The Widget API needs **no credentials**, which is why
- * SoundCloud can be a real queue member while its catalogue stays out of reach.
- *
- * Deliberately mirrors `youtube-player.tsx`, including the parts that look
- * paranoid, because they were each paid for:
- *
- * 1. The widget replaces the iframe it is given, so a plain node is created
- *    imperatively for it to consume rather than one React manages.
- * 2. A load timeout, because an ad blocker or DNS filter can stop the widget
- *    script arriving and the bar would otherwise sit on a black box forever.
- * 3. Progress is polled. The widget reports `PLAY_PROGRESS`, but only while
- *    playing, so a timer is still needed to keep the bar honest when paused.
- */
+// The SoundCloud HTML5 Widget player, embedded unmodified. Mirrors `youtube-player.tsx`,
+// including the parts that look paranoid: the widget *replaces* the iframe it is given, so
+// the node is created imperatively rather than managed by React; a load timeout, because
+// an ad blocker can stop the script arriving and leave the bar on a black box forever; and
+// polling, since `PLAY_PROGRESS` only fires while playing.
 
 interface SCWidget {
   bind(event: string, handler: (payload?: { currentPosition?: number }) => void): void;
@@ -66,8 +54,8 @@ function loadApi(): Promise<SCNamespace> {
       resolve(window.SC);
       return;
     }
-    // Unlike YouTube's API, this script offers no ready callback — it just
-    // defines window.SC — so the script's own load event is the handshake.
+    // No ready callback, unlike YouTube's API — it just defines window.SC, so the script's
+    // own load event is the handshake.
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${API_SRC}"]`);
     const script = existing ?? document.createElement("script");
     script.addEventListener("load", () => {
@@ -85,14 +73,9 @@ function loadApi(): Promise<SCNamespace> {
   return apiPromise;
 }
 
-/**
- * The widget takes the track's permalink, not an id.
- *
- * The track goes in the initial `src` rather than being pushed in later with
- * `load()`. Calling `load()` on a widget that already has this track resets it
- * and the `PLAY` event stops arriving — the track sits at 0:00 forever. So
- * `load()` is reserved for an actual track *change*.
- */
+// The widget takes the track's permalink, not an id, in the initial `src`. Calling
+// `load()` on a widget that already holds this track resets it and `PLAY` stops arriving —
+// the track sits at 0:00 forever — so `load()` is reserved for a track *change*.
 function widgetSrc(trackUrl: string): string {
   const params = new URLSearchParams({
     url: trackUrl,
@@ -133,7 +116,6 @@ export function SoundCloudPlayer({
     handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
   }, [handleEnded, handleStateChange, handleProgress, handleError]);
 
-  // Same 0–100 scale as the YouTube player, so one stored level drives both.
   const level = muted ? 0 : volume;
   const levelRef = useRef(level);
   useEffect(() => {
@@ -145,10 +127,6 @@ export function SoundCloudPlayer({
     const container = containerRef.current;
     if (!container || widgetRef.current) return;
 
-    // An iframe of our own for the widget to attach to, so React never touches
-    // the DOM the widget owns.
-    // Nothing to mount until there is a track — the component is only rendered
-    // when SoundCloud is the active source, so this is a transient state.
     if (!trackUrl) return;
 
     const host = document.createElement("iframe");
@@ -156,10 +134,8 @@ export function SoundCloudPlayer({
     host.height = "166";
     host.frameBorder = "no";
     host.scrolling = "no";
-    // Both permissions are required. SoundCloud's own oEmbed markup declares
-    // `autoplay; encrypted-media`, and without the latter the widget logs
-    // "Permissions policy violation: encrypted-media is not allowed" and
-    // refuses to start.
+    // Both required: without `encrypted-media` the widget logs a permissions policy
+    // violation and refuses to start.
     host.allow = "autoplay; encrypted-media";
     host.src = widgetSrc(trackUrl);
     loadedUrl.current = trackUrl;
@@ -186,17 +162,15 @@ export function SoundCloudPlayer({
           clearTimeout(blocked);
           readyRef.current = true;
           widget.setVolume(levelRef.current);
-          // The track is already in the iframe src, so nothing is loaded here.
-          // `play()` covers the case where the browser refused the autoplay in
-          // the URL; it is a no-op if playback already started.
+          // The track is already in the iframe src; `play()` covers a browser that refused
+          // the autoplay in the URL and is a no-op otherwise.
           widget.play();
         });
         widget.bind(SC.Widget.Events.PLAY, () => handlers.current.handleStateChange("playing"));
         widget.bind(SC.Widget.Events.PAUSE, () => handlers.current.handleStateChange("paused"));
         widget.bind(SC.Widget.Events.FINISH, () => handlers.current.handleEnded());
-        // The widget reports errors without a code, so there is nothing to
-        // distinguish a private track from a geo-blocked one. Not retryable:
-        // unlike YouTube there is no second upload to fall through to.
+        // Errors arrive without a code, so a private track cannot be told from a geo-blocked
+        // one. Not retryable — there is no second upload to fall through to.
         widget.bind(SC.Widget.Events.ERROR, () =>
           handlers.current.handleError("SoundCloud couldn't play this track.", false),
         );
@@ -214,15 +188,12 @@ export function SoundCloudPlayer({
       readyRef.current = false;
       host.remove();
     };
-    // `trackUrl` is deliberately not a dependency. It seeds the iframe's initial
-    // src and must not re-run this effect, because tearing the widget down and
-    // rebuilding it on every track change would restart the whole handshake.
-    // Track *changes* are handled by the effect below, which calls load().
+    // `trackUrl` is deliberately not a dependency: it only seeds the iframe's initial src,
+    // and re-running this would restart the handshake on every track change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Only an actual track *change* reloads the widget. Reloading the track it
-  // already holds resets it and stops PLAY events arriving.
+  // Only a track *change* reloads the widget — see `widgetSrc`.
   useEffect(() => {
     if (!trackUrl) return;
     if (loadedUrl.current === trackUrl) return;

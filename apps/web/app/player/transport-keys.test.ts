@@ -17,12 +17,7 @@ function press(
   });
 }
 
-/**
- * A stand-in for an event target.
- *
- * `isTypingTarget` is duck-typed precisely so this works — no DOM, and no
- * dependency on which realm a real element came from.
- */
+/** A stand-in for an event target — `isTypingTarget` is duck-typed so this works. */
 function element(tagName: string, attributes: Record<string, string> = {}) {
   return {
     tagName,
@@ -33,8 +28,7 @@ function element(tagName: string, attributes: Record<string, string> = {}) {
 
 test("space toggles playback, under either key name", () => {
   assert.equal(press(" "), "toggle");
-  // Older Firefox and Edge report this instead; dropping it would silently
-  // break the most-used shortcut on those browsers.
+  // Older Firefox and Edge report this instead.
   assert.equal(press("Spacebar"), "toggle");
 });
 
@@ -55,8 +49,7 @@ test("keys Timbre does not claim are left alone", () => {
 });
 
 test("modified chords belong to the browser, not to Timbre", () => {
-  // Cmd+← is "go back" and Ctrl+← is "previous word". Claiming either would
-  // break navigation to skip a track nobody asked to skip.
+  // Cmd+← is "go back" and Ctrl+← is "previous word".
   assert.equal(press("ArrowLeft", { metaKey: true }), null);
   assert.equal(press("ArrowLeft", { ctrlKey: true }), null);
   assert.equal(press("ArrowRight", { altKey: true }), null);
@@ -111,8 +104,8 @@ test("ordinary containers do not swallow the shortcut", () => {
 });
 
 test("a target from another realm is still classified correctly", () => {
-  // The whole reason this is duck-typed: an element inside one of the app's
-  // iframes fails `instanceof HTMLElement` against the parent's constructor.
+  // Why this is duck-typed: an element inside one of the app's iframes fails
+  // `instanceof HTMLElement` against the parent's constructor.
   const foreign = Object.create(null) as Record<string, unknown>;
   foreign.tagName = "INPUT";
   assert.equal(isTypingTarget(foreign), true);
