@@ -1,21 +1,14 @@
 import type { SearchContext } from "./types.ts";
 
 /**
- * The fetch options that decide whether Next may cache an upstream response.
- *
- * One definition, because the two chart providers must agree: if Deezer's
- * responses are cacheable and Apple's are not, a page rendering both is still
- * dynamic and neither gets prerendered. That failure is silent — the page works,
- * it is simply served from scratch every time — which is exactly why it went
- * unnoticed and why this is not written out twice.
- *
- * See `SearchContext.revalidate` for why the default is `no-store` and when a
- * caller should override it.
+ * The fetch options that decide whether Next may cache an upstream response. One
+ * definition, because the chart providers must agree: if one is cacheable and the other is
+ * not, a page rendering both stays dynamic and neither gets prerendered — a silent failure,
+ * since the page still works. Default is `no-store`; see `SearchContext.revalidate`.
  */
 export function cachePolicy(ctx: SearchContext): RequestInit {
   if (ctx.revalidate === undefined) return { cache: "no-store" };
 
-  // `next` is not in the DOM `RequestInit`, hence the cast: Next augments fetch
-  // with it, and typing around that would mean redeclaring the global.
+  // `next` is not in the DOM `RequestInit`, hence the cast.
   return { next: { revalidate: ctx.revalidate } } as RequestInit;
 }

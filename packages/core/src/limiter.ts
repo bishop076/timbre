@@ -1,28 +1,14 @@
-/**
- * Rate and quota accounting.
- *
- * This is a first-class component rather than a retry helper, because
- * Spotify's Feb 2026 changes removed batch endpoints: reading a 2,000-track
- * library is now ~2,000 individual requests. Ingest lives or dies on pacing.
- *
- * Two distinct budgets are modelled, and conflating them is the classic bug:
- *
- *   rate  — requests per unit time. Recoverable in seconds. Wait and continue.
- *   quota — a hard allowance (Spotify's per-developer-account pool, YouTube's
- *           10,000 units/day). Recoverable only at reset. Retrying is useless
- *           and burns the next day's budget.
- *
- * The bucket maths is pure so it can be unit-tested without a clock or a
- * database; persistence is injected via {@link BucketStore}.
+/*
+ * Rate and quota accounting. Two budgets, and conflating them is the classic bug: a *rate*
+ * recovers in seconds, so wait and continue, while a *quota* (YouTube's 10,000 units/day)
+ * recovers only at reset, so retrying burns the next day's budget.
  */
 
 import { ProviderError } from "./errors.ts";
 import type { ProviderId } from "./types.ts";
 
 export interface BucketPolicy {
-  /** Maximum burst. */
   capacity: number;
-  /** Steady-state replenishment. */
   refillPerSecond: number;
 }
 
@@ -45,11 +31,7 @@ export function refill(state: BucketState, policy: BucketPolicy, nowMs: number):
   };
 }
 
-/**
- * Attempts to spend `cost` tokens. On failure returns how long to wait for the
- * bucket to hold enough — callers should sleep exactly that long rather than
- * poll, which is what turns a throttle into a thundering herd.
- */
+/** Spends `cost` tokens, or returns how long to wait. Sleep exactly that long — polling turns a throttle into a herd. */
 export function tryConsume(
   state: BucketState,
   policy: BucketPolicy,
@@ -75,23 +57,16 @@ export function tryConsume(
   };
 }
 
-/**
- * Default pacing per provider. Deliberately conservative: none of these
- * services publish exact limits, and being throttled costs far more wall-clock
- * than running slightly under the ceiling.
- */
+/** Default pacing per provider. Conservative: none publish exact limits, and a throttle costs more than the headroom. */
 export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
-  // Unofficial endpoints. Slow and steady; the source most likely to notice
-  // and least likely to tell us why.
+  // Unofficial endpoints — most likely to notice, least likely to say why.
   ytmusic: { capacity: 10, refillPerSecond: 2 },
   soundcloud: { capacity: 30, refillPerSecond: 5 },
-  // Spotify's published limit is a rolling 30s window and is not a documented
-  // constant. ~8 req/s with room for a short burst has headroom under it.
+  // Spotify's limit is an undocumented rolling 30s window.
   spotify: { capacity: 40, refillPerSecond: 8 },
-  // Deezer's public catalogue is generous — roughly 50 requests per 5 seconds.
+  // Deezer's public catalogue allows roughly 50 requests per 5 seconds.
   deezer: { capacity: 20, refillPerSecond: 8 },
-  // Apple's iTunes Search API is the tightest of the lot: about 20 requests
-  // per minute per IP, and it answers with 403 rather than 429 when exceeded.
+  // Apple is tightest: ~20/minute/IP, answered with 403 rather than 429.
   apple: { capacity: 5, refillPerSecond: 0.3 },
 };
 
@@ -116,10 +91,7 @@ export class MemoryBucketStore implements BucketStore {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Paces calls for one connection. `key` is per-connection rather than per
- * provider, since with BYO credentials each user spends their own quota.
- */
+/** Paces calls for one connection — `key` is per-connection, since each user spends their own quota. */
 export class RateLimiter {
   readonly #store: BucketStore;
   readonly #now: () => number;
@@ -131,8 +103,7 @@ export class RateLimiter {
 
   /** Blocks until `cost` tokens are available, then spends them. */
   async acquire(key: string, policy: BucketPolicy, cost = 1): Promise<void> {
-    // Loop rather than sleep-once: another process sharing this key may consume
-    // the tokens we were waiting for.
+    // Loop rather than sleep-once: another process on this key may take the tokens.
     for (;;) {
       const stored = await this.#store.load(key);
       const state = stored ?? { tokens: policy.capacity, updatedAtMs: this.#now() };

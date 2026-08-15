@@ -31,8 +31,7 @@ function titles(songs: { title: string }[]): string[] {
 }
 
 test("a song two lists agree on beats a song only one list ranked first", () => {
-  // "Agreed" is second in both lists; "Solo" is first in one and absent from
-  // the other. The whole feature rests on this ordering.
+  // "Agreed" is second in both lists; "Solo" is first in one and absent from the other.
   const lists = [
     list("a", [track("Solo", "Alpha"), track("Agreed", "Beta")]),
     list("b", [track("Other", "Gamma"), track("Agreed", "Beta")]),
@@ -59,8 +58,6 @@ test("three lists agreeing beats two", () => {
 });
 
 test("cross-source agreement survives the merge into one song", () => {
-  // The same recording from two services must become one entry carrying both,
-  // not two entries splitting the evidence between them.
   const lists = [
     list("yt", [track("Shared", "Alpha", { source: "ytmusic" })]),
     list("dz", [track("Shared", "Alpha", { source: "deezer" })]),
@@ -87,15 +84,12 @@ test("an art track is demoted below an official video that ranked equally", () =
     ]),
   ];
 
-  // Both are first in one list and second in the other, so rank fusion alone
-  // would tie them. Measured embed failure is the tie-breaker.
+  // Both rank equally, so fusion alone ties them; measured embed failure breaks it.
   assert.equal(recommend(lists, { limit: 2 })[0]!.title, "Official");
 });
 
 test("one artist holding every top score does not take every top slot", () => {
-  // Every service ranks the seed artist's own catalogue highly, so without
-  // spacing a radio is just that artist's discography. Alpha holds ranks 1-3
-  // in both lists; the alternatives are ranked below all of them.
+  // Alpha holds ranks 1-3 in both lists; the alternatives are ranked below all of them.
   const ranking = [
     track("One", "Alpha"),
     track("Two", "Alpha"),
@@ -119,8 +113,7 @@ test("one artist holding every top score does not take every top slot", () => {
 });
 
 test("spacing yields when an artist genuinely owns everything left", () => {
-  // Three Alpha songs in four slots cannot avoid adjacency, so the window
-  // gives way rather than returning a short list.
+  // Three Alpha songs in four slots cannot avoid adjacency, so the window gives way.
   const ranking = [
     track("One", "Alpha"),
     track("Two", "Alpha"),
@@ -133,8 +126,6 @@ test("spacing yields when an artist genuinely owns everything left", () => {
 });
 
 test("spacing artists out reorders but never drops", () => {
-  // One artist owns everything. A short list would be worse than a repetitive
-  // one, so the window yields rather than truncating.
   const lists = [
     list("a", [track("One", "Alpha"), track("Two", "Alpha"), track("Three", "Alpha")]),
   ];
@@ -153,8 +144,8 @@ test("excluded songs are dropped however they were spelled", () => {
 });
 
 test("a music video and its audio track are one entry, not two", () => {
-  // The merger keeps these apart on purpose — 189s against 174s is outside its
-  // tolerance — but showing the same song twice in a radio is a defect.
+  // The merger keeps these apart on purpose — 189s against 174s is outside its tolerance
+  // — but the same song twice in a radio is a defect.
   const lists = [
     list("yt", [
       track("Watermelon Sugar (Official Video)", "Harry Styles", {

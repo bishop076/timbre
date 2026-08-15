@@ -1,14 +1,7 @@
-/**
- * Apple Music, via the public iTunes Search API and the Marketing Tools RSS
- * feeds.
- *
- * Needs **no API key of any kind** — not even a registration — which is rare.
- * The trade-off is the tightest rate limit of any source: roughly 20 requests
- * per minute per IP, answered with a 403 rather than a 429, so the limiter
- * policy for `apple` is deliberately miserly.
- *
- * No ISRC is exposed, so Apple contributes availability and artwork rather
- * than identity. Timbre cannot play Apple audio, so tracks are `link`.
+/*
+ * Apple Music, via the iTunes Search API and the Marketing Tools RSS feeds. No key, but
+ * the tightest rate limit of any source — ~20 requests/minute/IP, answered with 403 rather
+ * than 429. No ISRC is exposed, so Apple contributes artwork rather than identity.
  */
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
@@ -35,10 +28,7 @@ interface RssEntry {
   url?: string;
 }
 
-/**
- * Apple serves artwork at whatever size the URL asks for. The feeds hand back
- * 100×100, which is visibly soft on a modern display.
- */
+/** Apple serves artwork at whatever size the URL asks for; the feeds hand back a soft 100×100. */
 function upsizeArtwork(url: string | undefined, size = 400): string | null {
   if (!url) return null;
   return url.replace(/\/\d+x\d+bb\./, `/${size}x${size}bb.`);
@@ -69,8 +59,7 @@ function fromRss(raw: RssEntry): SourceTrack | null {
     title: raw.name,
     artists: raw.artistName ? [raw.artistName] : [],
     album: null,
-    // The RSS feeds carry no duration; the matcher tolerates a null rather
-    // than treating it as a mismatch.
+    // The RSS feeds carry no duration; the matcher tolerates null over a mismatch.
     durationMs: null,
     isrc: null,
     url: raw.url ?? null,
@@ -99,8 +88,7 @@ export function createAppleProvider(config: AppleConfig = {}): SearchProvider {
     }
 
     if (!response.ok) {
-      // Apple answers an exceeded rate limit with 403, so it is treated as a
-      // throttle rather than as a permission problem.
+      // 403 is Apple's exceeded rate limit, not a permission problem.
       throw new ProviderError(
         "apple",
         response.status === 403 ? "rate_limited" : "transient",

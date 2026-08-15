@@ -1,10 +1,5 @@
-/**
- * Provider registry.
- *
- * Sources are registered at startup and searched together. A source that fails
- * must never blank the page — one service being down is normal, and Timbre's
- * whole point is that there is more than one.
- */
+/** Provider registry. Sources register at startup; one that fails must never blank the
+ * page. */
 
 import { recommend, type SongIdentity } from "./recommend.ts";
 import {
@@ -20,6 +15,7 @@ import {
 
 const registry = new Map<SourceId, SearchProvider>();
 
+/** Adds a source to the registry. */
 export function registerProvider(provider: SearchProvider): void {
   registry.set(provider.id, provider);
 }
@@ -31,6 +27,7 @@ export function listProviders(): SearchProvider[] {
   );
 }
 
+/** Whether a string names a known source. */
 export function isSourceId(value: string): value is SourceId {
   return (SOURCE_IDS as readonly string[]).includes(value);
 }
@@ -39,25 +36,13 @@ export interface SearchAllResult {
   tracks: SourceTrack[];
   /** Sources that failed, so the UI can say "Deezer is down" rather than lie. */
   failures: { source: SourceId; message: string }[];
-  /**
-   * How many providers were asked.
-   *
-   * Without this, "every source is down" and "every source answered, none had
-   * this song" are the same observation — no tracks and some failures — and
-   * they need opposite messages. Telling someone their search found nothing
-   * when in fact nothing was reachable sends them looking for a different
-   * spelling of a song that was there all along.
-   */
+  /** How many providers were asked. Without it, "every source is down" and "none had
+   * this song" are the same observation and need opposite messages. */
   attempted: number;
 }
 
-/**
- * Searches every searchable provider concurrently.
- *
- * Results are concatenated in registry order — primary source first — because
- * {@link mergeTracks} preserves input order, and relevance from the source the
- * user will actually hear should drive the final ordering.
- */
+/** Searches every searchable provider concurrently, concatenating in registry order —
+ * {@link mergeTracks} preserves input order. */
 export async function searchAll(
   ctx: SearchContext,
   query: string,
@@ -87,19 +72,9 @@ export async function searchAll(
   return { tracks, failures, attempted: providers.length };
 }
 
-/**
- * Turns a pasted URL into a track, by asking each provider that can resolve.
- *
- * This is how SoundCloud gets in at all: its catalogue cannot be searched, so a
- * URL is the only entry point. Providers are tried in registry order and the
- * first match wins.
- *
- * **Failures are swallowed on purpose.** A provider handed a URL belonging to a
- * different service is expected to reject it — the YouTube Music sidecar answers
- * 400 for anything that is not a YouTube URL — and that is a non-answer, not an
- * error worth surfacing. Only a URL that no provider claims is a real failure,
- * and that is reported as `null`.
- */
+/** Turns a pasted URL into a track — the only entry point for SoundCloud, whose catalogue
+ * cannot be searched. Failures are swallowed: a provider handed another service's URL
+ * rejects it, which is a non-answer. Only a URL nobody claims is `null`. */
 export async function resolveUrl(ctx: SearchContext, url: string): Promise<SourceTrack | null> {
   for (const provider of listProviders()) {
     if (!provider.resolve) continue;
@@ -107,26 +82,15 @@ export async function resolveUrl(ctx: SearchContext, url: string): Promise<Sourc
       const track = await provider.resolve(ctx, url);
       if (track) return track;
     } catch {
-      // Wrong provider for this URL, or that service is briefly unavailable.
-      // Either way, try the next one.
+      // Wrong provider for this URL, or briefly unavailable. Try the next.
     }
   }
   return null;
 }
 
-/**
- * What to play next, drawn from every source that will answer.
- *
- * Each source contributes one or more *ranked lists*, which are then fused
- * rather than concatenated — a song several independent lists reach outranks
- * any single list's favourite. That comparison is only possible because Timbre
- * asks more than one service, and it is the reason this is not simply YouTube
- * Music's watch queue passed through.
- *
- * A source that fails, abstains, or has no `radio` contributes nothing and is
- * not an error: recommendations are a garnish, and the caller has a queue to
- * keep playing either way.
- */
+/** What to play next, drawn from every source that answers. Ranked lists are fused rather
+ * than concatenated, so a song several lists reach outranks any one list's favourite. A
+ * source that fails or abstains contributes nothing, and is not an error. */
 export async function recommendFrom(
   ctx: SearchContext,
   seed: RadioSeed,
@@ -136,9 +100,7 @@ export async function recommendFrom(
   const providers = listProviders().filter((provider) => provider.radio !== undefined);
 
   const settled = await Promise.allSettled(
-    // Each source is asked for a full list of its own; fusion needs deep lists
-    // to disagree over, and truncating before ranking would throw away exactly
-    // the overlap being measured.
+    // A full list from each: truncating before ranking discards the measured overlap.
     providers.map((provider) => provider.radio!(ctx, seed, limit)),
   );
 
@@ -148,9 +110,7 @@ export async function recommendFrom(
       lists.push(...result.value);
     } else {
       const provider = providers[index]!;
-      // Deliberately not surfaced to the user, unlike a failed *search*: a
-      // missing recommendation is invisible, while a missing search result is
-      // the thing they asked for.
+      // Not surfaced, unlike a failed search: a missing recommendation is invisible.
       console.warn(`[timbre] ${provider.id} radio failed:`, result.reason);
     }
   });
@@ -158,13 +118,8 @@ export async function recommendFrom(
   return recommend(lists, { limit, exclude });
 }
 
-/**
- * What's popular right now, for the home page.
- *
- * Only some sources publish a chart without credentials — YouTube Music does
- * not — so this draws from whichever can, and merging turns the overlap into
- * one entry per song.
- */
+/** What's popular right now. Only some sources publish a chart without credentials —
+ * YouTube Music does not — so this draws from whichever can. */
 export async function chartAll(ctx: SearchContext, limit: number): Promise<SearchAllResult> {
   const providers = listProviders().filter((provider) => provider.chart !== undefined);
 

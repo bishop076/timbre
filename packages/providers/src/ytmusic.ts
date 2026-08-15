@@ -1,16 +1,12 @@
-/**
- * YouTube Music, via the Python sidecar.
- *
- * Timbre's primary source: the only one that is free, keyless and complete in
- * both search and playback. Nobody logs in — `ytmusicapi` searches
- * unauthenticated — so there are no tokens here at all.
+/*
+ * YouTube Music, via the Python sidecar. The primary source: free, keyless and complete
+ * in search and playback. `ytmusicapi` searches unauthenticated, so there are no tokens.
  */
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 
-/** The sidecar's wire shape. Kept local; nothing outside this file sees it. */
 interface SidecarTrack {
   video_id: string;
   title: string;
@@ -20,10 +16,7 @@ interface SidecarTrack {
   thumbnail_url: string | null;
   is_explicit: boolean;
   result_type: string;
-  /**
-   * The upload's kind. The sidecar has always sent it; this interface simply
-   * never named it, so nothing could read it. The recommendation ranker does.
-   */
+  /** The upload's kind, read by the recommendation ranker. */
   video_type: string | null;
 }
 
@@ -40,8 +33,7 @@ function toSourceTrack(raw: SidecarTrack): SourceTrack {
     artists: raw.artists,
     album: raw.album,
     durationMs: raw.duration_seconds === null ? null : raw.duration_seconds * 1000,
-    // YouTube Music exposes no ISRC, which is why the metadata matcher in
-    // @timbre/core carries the weight of cross-source merging for this source.
+    // No ISRC is exposed, so @timbre/core's matcher carries merging for this source.
     isrc: null,
     url: `https://music.youtube.com/watch?v=${raw.video_id}`,
     artworkUrl: raw.thumbnail_url,
@@ -108,17 +100,12 @@ export function createYtMusicProvider(config: YtMusicConfig): SearchProvider {
     },
 
     /**
-     * Two lists from one request.
-     *
-     * The sidecar fetches YouTube's sequential watch queue and its "you might
-     * also like" panel together, because the second needs an id that only the
-     * first returns. They are kept apart here because they are built
-     * differently and genuinely disagree — and disagreement between lists is
-     * what the ranker measures.
+     * Two lists from one request: the watch queue and the "you might also like" panel, whose
+     * id only the first returns. Kept apart because they disagree, and that is what the
+     * ranker measures.
      */
     async radio(ctx, seed, limit) {
-      // Needs this service's own id for the seed. A song Timbre found on
-      // Deezer alone has none until it is resolved, which is the caller's job.
+      // Needs this service's own id — a Deezer-only song has none until resolved.
       if (!seed.sourceId) return [];
 
       const data = await call<{ radio: SidecarTrack[]; related: SidecarTrack[] }>(ctx, "/radio", {

@@ -1,8 +1,5 @@
-/**
- * A provider-neutral error taxonomy. Adapters translate each service's own
- * failure vocabulary into these, so ingest and the UI can react to a failure
- * without knowing which service produced it.
- */
+/** A provider-neutral error taxonomy. Adapters translate each service's own failure
+ * vocabulary into these, so callers react without knowing which service produced it. */
 
 import type { ProviderId } from "./types.ts";
 

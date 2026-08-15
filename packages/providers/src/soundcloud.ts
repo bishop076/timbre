@@ -1,23 +1,9 @@
-/**
- * SoundCloud.
- *
- * The one source besides YouTube Music that Timbre can actually **play**, and it
- * needs no credentials whatsoever to do it: the oEmbed endpoint and the HTML5
- * Widget API are both public. Timbre embeds SoundCloud's own player, unmodified
- * — their stream, their branding, their play counts.
- *
- * Two things are load-bearing and easy to get wrong:
- *
- * 1. **The host is `soundcloud.com/oembed`, not `api.soundcloud.com/oembed`.**
- *    Most documentation and every search result points at the `api.` host, which
- *    now answers **401**. The bare host answers 200 with no credentials at all.
- *    Verified 2026-08-15.
- *
- * 2. **`searchable` is false, and that is not a bug.** SoundCloud's catalogue
- *    search needs a `client_id`, which needs a paid Artist Pro account and a
- *    manual approval that may never come. Playback needs none of that. So this
- *    provider contributes through `resolve` only — see `docs/BLOCKED.md`.
- */
+// SoundCloud — the one source besides YouTube Music that Timbre can **play**, with no
+// credentials at all. Two traps: the host is `soundcloud.com/oembed`, *not*
+// `api.soundcloud.com/oembed`, which every search result points at and which answers 401
+// (verified 2026-08-15); and `searchable` is false deliberately, because catalogue search
+// needs a `client_id` gated behind paid approval while playback needs none. See
+// `docs/BLOCKED.md`.
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
@@ -42,26 +28,18 @@ export function isSoundCloudUrl(raw: string): boolean {
   }
 }
 
-/**
- * oEmbed does not return the track id as a field, but the player iframe it
- * builds carries one — `…/player/?url=…api.soundcloud.com%2Ftracks%2F293…`.
- * Worth digging out: a numeric id is stable across permalink renames, whereas
- * the URL is not.
- */
+/** Digs the numeric track id out of the player iframe oEmbed returns — not a field, and
+ * stable across permalink renames where the URL is not. */
 function trackIdFromHtml(html: string | undefined): string | null {
   if (!html) return null;
-  // Matched in both encoded and plain form rather than decoding the markup
-  // first: the iframe carries width="100%", and `%"` is not valid percent
-  // encoding, so decodeURIComponent throws on the whole string.
+  // Matched encoded *and* plain rather than decoding the markup first: the iframe
+  // carries width="100%", and `%"` makes decodeURIComponent throw on the whole string.
   const match = html.match(/api\.soundcloud\.com(?:%2F|\/)tracks(?:%2F|\/)(\d+)/i);
   return match?.[1] ?? null;
 }
 
-/**
- * oEmbed titles arrive as "Flickermood by Forss". The artist is already in
- * `author_name`, so the suffix is redundant and would poison title matching in
- * the merger.
- */
+/** oEmbed titles arrive as "Flickermood by Forss" — the artist is already in
+ * `author_name`, and the suffix would poison title matching in the merger. */
 function stripArtistSuffix(title: string, artist: string | undefined): string {
   if (!artist) return title;
   const suffix = ` by ${artist}`;
@@ -73,11 +51,9 @@ export function createSoundCloudProvider(): SearchProvider {
     id: "soundcloud",
     displayName: "SoundCloud",
     playback: "queue",
-    // See the file header. Playback is free; search is gated.
     searchable: false,
 
-    // Required by the interface, and genuinely empty. `searchable: false` tells
-    // callers not to bother, so this should never be reached.
+    // Required by the interface. `searchable: false` means this is never reached.
     async search() {
       return [];
     },
@@ -97,8 +73,7 @@ export function createSoundCloudProvider(): SearchProvider {
         throw new ProviderError("soundcloud", "transient", "SoundCloud unreachable.", { cause });
       }
 
-      // A private, deleted or geo-blocked track is a normal outcome, not a
-      // failure of the provider — the caller should carry on without it.
+      // A private, deleted or geo-blocked track is normal, not a provider failure.
       if (response.status === 403 || response.status === 404) return null;
 
       if (!response.ok) {
@@ -117,15 +92,11 @@ export function createSoundCloudProvider(): SearchProvider {
 
       return {
         source: "soundcloud",
-        // Prefer the numeric id; fall back to the permalink, which the Widget
-        // accepts just as happily.
         sourceId: trackIdFromHtml(body.html) ?? url,
         title: stripArtistSuffix(body.title.trim(), artist),
         artists: artist ? [artist] : [],
         album: null,
-        // oEmbed exposes neither duration nor ISRC. Both stay null rather than
-        // being guessed — the merger treats a missing duration as "unknown"
-        // and falls back to title and artist, which is the correct behaviour.
+        // oEmbed exposes neither; the merger falls back to title and artist.
         durationMs: null,
         isrc: null,
         url,

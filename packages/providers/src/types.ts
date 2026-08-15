@@ -1,11 +1,5 @@
-/**
- * The seam the whole app is built on.
- *
- * Timbre is a shell around other services' players. Each service differs in
- * what it can do — some can be searched, some can be played in-app, some only
- * linked to — and every one of those differences is absorbed by an adapter so
- * that nothing above this layer branches on which service a track came from.
- */
+/** The seam the whole app is built on: each service's differences are absorbed by an
+ * adapter, so nothing above this layer branches on which service a track came from. */
 
 import { PROVIDER_IDS, type CanonicalTrack, type ProviderId, type RateLimiter } from "@timbre/core";
 
@@ -13,17 +7,9 @@ import { PROVIDER_IDS, type CanonicalTrack, type ProviderId, type RateLimiter } 
 export const SOURCE_IDS = PROVIDER_IDS;
 export type SourceId = ProviderId;
 
-/**
- * How Timbre can play a source, which is dictated by that service's terms and
- * embed technology rather than by preference.
- *
- * - `queue`  Programmatically controllable, so it can sit in the queue and
- *            auto-advance. YouTube Music and SoundCloud.
- * - `manual` Embeddable but cannot be started by script, so the user must
- *            click it. Spotify — its embed exposes no play API, which also
- *            keeps it clear of Developer Terms §IV.2 on blending streams.
- * - `link`   Not embeddable at all; Timbre links out. Deezer, Apple.
- */
+/** How Timbre can play a source, dictated by terms and embed tech: `queue` auto-advances
+ * under script, `manual` embeds but cannot be started by one (Spotify's embed exposes no
+ * play API, which also keeps it clear of Developer Terms §IV.2), `link` cannot embed. */
 export type Playback = "queue" | "manual" | "link";
 
 /** One service's copy of a recording. */
@@ -31,31 +17,17 @@ export interface SourceTrack extends CanonicalTrack {
   source: SourceId;
   /** The service's own identifier. Opaque; format differs per source. */
   sourceId: string;
-  /** Public URL to open the track in that service. */
   url: string | null;
   artworkUrl: string | null;
   playback: Playback;
   isExplicit: boolean;
-  /**
-   * YouTube Music's upload kind — `MUSIC_VIDEO_TYPE_ATV` (auto-generated Topic
-   * art track), `_OMV` (official video), `_UGC` (user upload).
-   *
-   * Only YouTube Music reports one, and it is the only source Timbre can
-   * actually play, so it is the only place this is meaningful. Art tracks were
-   * measured barred from embedding ~7% of the time and official videos never
-   * were, which is why the recommendation ranker reads it.
-   */
+  /** YouTube Music's upload kind — `_ATV` (Topic art track), `_OMV`, `_UGC`. Art tracks
+   * measured barred from embedding ~7% of the time, official videos never, hence the ranker. */
   videoType?: string | null;
 }
 
-/**
- * A recording, with every source that has it.
- *
- * This is what the queue holds — a *song*, not a source-track. When it plays,
- * the controller picks the best `queue`-capable source. That indirection is
- * only possible because the matcher in @timbre/core can tell that two results
- * from different services are the same recording.
- */
+/** A recording with every source that has it — what the queue holds, so the controller can
+ * pick the best `queue`-capable source at play time. */
 export interface Song {
   /** Stable id derived from ISRC or the matcher's dedupe key. */
   id: string;
@@ -69,28 +41,13 @@ export interface Song {
   sources: SourceTrack[];
 }
 
-/**
- * Where to start a radio.
- *
- * Two fields because sources start from different things: YouTube Music
- * continues from a specific upload, while Deezer can only start from an
- * artist. A provider takes whichever it can use and ignores the rest.
- */
+/** Where to start a radio: YouTube Music continues from an upload, Deezer only from an artist. */
 export interface RadioSeed {
-  /** This source's own id for the seed track, when it has a copy of it. */
   sourceId?: string;
-  /** The seed's primary artist, for sources that cannot start from a track. */
   artist?: string;
 }
 
-/**
- * One source's suggestions, in the order that source ranked them.
- *
- * Lists are kept separate rather than concatenated because **agreement between
- * independent lists is the signal** — see `recommend.ts`. A source may return
- * several, as YouTube Music does: its sequential watch queue and its "you might
- * also like" panel are derived differently and genuinely disagree.
- */
+/** One source's suggestions, kept separate because agreement between lists is the signal. */
 export interface RankedList {
   /** Stable identifier for the list, e.g. "ytmusic:radio". Diagnostics only. */
   list: string;
@@ -100,21 +57,9 @@ export interface RankedList {
 export interface SearchContext {
   limiter: RateLimiter;
   signal?: AbortSignal;
-  /**
-   * How long Next may cache the upstream responses, in seconds.
-   *
-   * **Omitted means `no-store`, and that is the right default for a route
-   * handler** — `/api/search` and friends are dynamic by declaration and keep
-   * their own two-minute cache in `lib/api.ts`, so a second, invisible layer
-   * underneath would put staleness on top of staleness nobody reasoned about.
-   *
-   * It is the wrong default for a **server component**, and that cost real time:
-   * a single `no-store` fetch anywhere in a render opts the whole route out of
-   * static generation, so `/explore` was marked dynamic despite declaring
-   * `revalidate = 3600` and re-ran fifteen upstream requests **on every single
-   * request** rather than once an hour. Passing a value here is what lets that
-   * page be prerendered and revalidated as it always claimed to be.
-   */
+  /** How long Next may cache the upstream responses. Omitted means `no-store`, right for a
+   * route handler but wrong for a server component: one `no-store` fetch anywhere in a render
+   * opts the whole route out of static generation, as `/explore` found despite `revalidate`. */
   revalidate?: number;
 }
 
@@ -123,11 +68,8 @@ export interface SearchProvider {
   readonly displayName: string;
   /** How Timbre can play this source's tracks, if at all. */
   readonly playback: Playback;
-  /**
-   * False when the service's catalogue cannot be searched — SoundCloud, whose
-   * playback is free but whose search API is gated. Such a provider still
-   * contributes through `resolve`.
-   */
+  /** False when the catalogue cannot be searched — SoundCloud's is gated. Still contributes
+   * through `resolve`. */
   readonly searchable: boolean;
 
   search(ctx: SearchContext, query: string, limit: number): Promise<SourceTrack[]>;
@@ -135,21 +77,11 @@ export interface SearchProvider {
   /** Turns a pasted URL into a track. The only way to reach SoundCloud today. */
   resolve?(ctx: SearchContext, url: string): Promise<SourceTrack | null>;
 
-  /**
-   * What's popular right now, for the home page. Optional because not every
-   * source publishes a chart without credentials — YouTube Music does not.
-   */
+  /** What's popular right now. Optional: YouTube Music publishes no keyless chart. */
   chart?(ctx: SearchContext, limit: number): Promise<SourceTrack[]>;
 
-  /**
-   * What this source would play next, as one or more ranked lists.
-   *
-   * Optional because it needs a service that publishes a continuation without
-   * credentials. YouTube Music and Deezer both do; **Apple has no related or
-   * similar endpoint at all**, and SoundCloud's catalogue cannot be reached.
-   * Those two abstain rather than guessing, which the ranker treats as no
-   * evidence rather than as a negative.
-   */
+  /** What this source would play next. Optional: Apple has no related endpoint at all, and
+   * abstaining counts as no evidence rather than a negative. */
   radio?(ctx: SearchContext, seed: RadioSeed, limit: number): Promise<RankedList[]>;
 }
 
