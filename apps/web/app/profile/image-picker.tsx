@@ -65,7 +65,7 @@ export function ImagePicker({
         /*
           Nudges phones towards the photo library rather than a file browser,
           and offers each picture only what it will take — GIF on the avatar,
-          stills on the banner. See `ACCEPTED` in `local-images.ts`.
+          stills on the banner. See `ACCEPTED` in `image-resize.ts`.
 
           A hint, never the check. `accept` filters the picker's default view
           and nothing else: "all files" is one dropdown away, and a drag-and-drop
