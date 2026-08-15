@@ -4,12 +4,8 @@ import { z } from "zod";
 import { cached, guard } from "@/lib/api";
 import { getProviderRuntime } from "@/lib/providers";
 
-/**
- * Cross-source search.
- *
- * Public and unauthenticated by design — Timbre is meant to be usable from a
- * link, without an account.
- */
+/** Cross-source search. Public and unauthenticated by design — Timbre is meant to be
+ * usable from a link, without an account. */
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
@@ -34,36 +30,23 @@ export async function GET(request: Request) {
     );
   }
 
-  /*
-   * Cached across everyone, not per client.
-   *
-   * This is the busiest route and the one that spends the scarcest budget:
-   * every search fans out to YouTube Music, Deezer and Apple, and Apple allows
-   * about 20 requests a minute for the whole deployment. Search results are
-   * public catalogue data identical for every visitor, so there is nothing
-   * personal to leak by sharing them — and sharing is the entire saving, since
-   * the queries people type overlap almost completely.
-   *
-   * Case and surrounding space are folded into the key so "Levitating" and
-   * "levitating " are one entry rather than two.
-   */
+  /* Cached across everyone, not per client: every search fans out to three services and
+   * Apple allows ~20 requests a minute for the whole deployment. Results are public
+   * catalogue data, so there is nothing personal to leak. Case and space are folded in. */
   const key = `search:${parsed.data.limit}:${parsed.data.q.trim().toLowerCase()}`;
 
   const body = await cached(key, async () => {
     const { limiter } = getProviderRuntime();
     const { tracks, failures, attempted } = await searchAll(
-      // Deliberately not `request.signal`. A cached call is shared, so aborting
-      // it because *one* subscriber navigated away would cancel the answer
-      // everyone else is waiting on.
+      // Deliberately not `request.signal`: a cached call is shared, so aborting it because
+      // one subscriber navigated away would cancel the answer everyone else waits on.
       { limiter },
       parsed.data.q,
       parsed.data.limit,
     );
 
-    // Failures are reported alongside results rather than thrown: one source
-    // being down is normal, and Timbre's whole premise is that there is more
-    // than one. `attempted` travels with them so the client can tell a total
-    // outage from a search that simply matched nothing.
+    // Failures travel alongside results rather than thrown — one source being down is
+    // normal — and `attempted` lets the client tell an outage from a search that matched nothing.
     return { songs: mergeTracks(tracks), failures, attempted };
   });
 

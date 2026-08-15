@@ -3,23 +3,10 @@ import { z } from "zod";
 
 import { guard } from "@/lib/api";
 
-/**
- * Lyrics, from LRCLIB.
- *
- * Chosen because it is the only lyrics source that fits Timbre's rules: free,
- * **keyless**, no account, no quota worth worrying about, and community-owned.
- * Musixmatch and Genius both need a registered application, and Genius does not
- * license synced lines at all.
- *
- * Proxied rather than called from the browser for the same reasons as the
- * artwork proxy: it keeps the reader's IP and listening habits away from a
- * third party, it makes the response cacheable at the edge, and it survives a
- * content blocker that happens to filter the upstream host.
- *
- * **Synced lines are the point.** LRCLIB returns LRC timestamps when a track
- * has them, which is what makes a lyrics panel follow the music instead of
- * being a wall of text. Parsing happens here so the client receives something
- * it can render directly and every cache hit skips the work.
+/*
+ * Lyrics, from LRCLIB — the only keyless source licensing synced lines. Proxied rather
+ * than called from the browser: it keeps the reader's IP away from a third party, makes
+ * the response cacheable, and survives a blocker filtering the upstream host.
  */
 export const revalidate = 86_400;
 
@@ -32,16 +19,8 @@ const querySchema = z.object({
   album: z.string().max(300).optional(),
   /** Seconds. Used to pick between several matches of the same name. */
   duration: z.coerce.number().int().positive().max(86_400).optional(),
-  /**
-   * A specific LRCLIB record, when the automatic match was wrong.
-   *
-   * The database is community-contributed and one song routinely has a dozen
-   * entries — different albums, different transcriptions, some off by a few
-   * seconds. Picking the best of them automatically is a guess, so the reader
-   * gets to overrule it.
-   */
+  /** A specific LRCLIB record, when the automatic match was wrong — one song routinely has a dozen entries. */
   id: z.coerce.number().int().positive().optional(),
-  /** Ask for the candidate list instead of the lyrics themselves. */
   alternatives: z.coerce.boolean().optional(),
 });
 
@@ -63,19 +42,12 @@ interface LrcLibTrack {
 }
 
 export interface LyricLine {
-  /** Seconds from the start of the track. */
   at: number;
   text: string;
 }
 
-/**
- * Turns an LRC body into ordered lines.
- *
- * Blank entries are kept rather than dropped: an instrumental gap is part of
- * the timing, and removing it makes the highlight jump early. Malformed lines
- * are skipped silently — this is community-contributed data and one bad row
- * should not cost the whole song its lyrics.
- */
+// An LRC body as ordered lines. Blank entries are kept — an instrumental gap is part of
+// the timing, and dropping it makes the highlight jump early.
 function parseLrc(body: string): LyricLine[] {
   const lines: LyricLine[] = [];
 
@@ -102,8 +74,6 @@ function parseLrc(body: string): LyricLine[] {
 async function lookup(url: URL): Promise<LrcLibTrack | null> {
   const response = await fetch(url, {
     headers: {
-      // LRCLIB asks clients to identify themselves rather than send a browser
-      // user-agent, so that abuse can be attributed to a project.
       "user-agent": USER_AGENT,
     },
     signal: AbortSignal.timeout(6_000),
@@ -134,19 +104,12 @@ export async function GET(request: Request) {
 
   const { title, artist, album, duration, id, alternatives } = parsed.data;
 
-  /*
-   * YouTube Music titles carry noise a lyrics database has never heard of —
-   * "(Official Video)", "[4K Remaster]", "| Lyrics". Querying with that raw
-   * string misses almost everything, so the same parser the matcher uses
-   * strips it down to the base title first.
-   */
+  // YouTube Music titles carry noise — "(Official Video)", "[4K Remaster]" — that a
+  // lyrics database has never heard of, so the matcher's parser strips it first.
   const cleaned = parseTitle(title).base || title;
 
   try {
-    /*
-     * An explicit pick wins outright — no matching, no ranking. The reader has
-     * already seen the automatic answer and rejected it.
-     */
+    // An explicit pick wins outright: the reader already rejected the automatic one.
     if (id) {
       const chosen = await lookup(new URL(`https://lrclib.net/api/get/${id}`));
       if (!chosen) return Response.json({ lyrics: null }, { status: 200 });
@@ -162,11 +125,7 @@ export async function GET(request: Request) {
       });
     }
 
-    /*
-     * The candidate list, for the picker. Returned instead of lyrics rather
-     * than alongside them: the panel only asks once the reader opens the
-     * chooser, so every ordinary track change stays a single request.
-     */
+    // Instead of the lyrics, not alongside, so an ordinary track change is one request.
     if (alternatives) {
       const search = new URL("https://lrclib.net/api/search");
       search.searchParams.set("track_name", cleaned);
@@ -198,8 +157,7 @@ export async function GET(request: Request) {
       });
     }
 
-    // Exact lookup first: it is the only call that can return synced lines
-    // matched on duration, which is what keeps a cover from winning.
+    // Exact lookup first — the only call that matches on duration, so covers lose.
     const exact = new URL("https://lrclib.net/api/get");
     exact.searchParams.set("track_name", cleaned);
     exact.searchParams.set("artist_name", artist);
@@ -208,8 +166,7 @@ export async function GET(request: Request) {
 
     let track = await lookup(exact);
 
-    // Then a fuzzy search, which forgives a wrong album or a duration that is
-    // a few seconds out because the upload has an intro.
+    // Then a fuzzy search, forgiving a wrong album or an upload with an intro.
     if (!track) {
       const search = new URL("https://lrclib.net/api/search");
       search.searchParams.set("track_name", cleaned);
@@ -221,8 +178,7 @@ export async function GET(request: Request) {
       });
       if (response.ok) {
         const results = (await response.json()) as LrcLibTrack[];
-        // Prefer a result that actually has timings; a plain-text match is a
-        // consolation prize rather than an equal one.
+        // Prefer a result with timings; plain text is a consolation prize.
         track =
           results.find((item) => item.syncedLyrics) ?? results[0] ?? null;
       }
@@ -242,8 +198,7 @@ export async function GET(request: Request) {
       },
     });
   } catch {
-    // Upstream down or slow. A missing lyric sheet is not an error worth
-    // failing the panel over — it renders "no lyrics" either way.
+    // Upstream down or slow. The panel renders "no lyrics" either way.
     return Response.json({ lyrics: null }, { status: 200 });
   }
 }
