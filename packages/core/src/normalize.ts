@@ -1,18 +1,9 @@
 /**
- * Title and artist normalization.
- *
- * Used for deduplication now, and as the fallback matcher in Phase 2 when a
- * track has no ISRC. The whole design rests on one distinction:
- *
- *   noise    — decorations that do not change the recording.
- *              "(Remastered 2011)", "(Official Video)", "[HD]"
- *   variant  — markers that identify a *different* recording.
- *              "(Live)", "(Acoustic)", "- Kaytranada Remix"
- *
- * Stripping noise raises match rates. Stripping variants silently swaps a
- * user's studio track for a live cut, which is the single most damaging bug a
- * playlist transfer can have — so variants are extracted and compared, never
- * discarded.
+ * Title and artist normalization, and the fallback matcher when a track has no ISRC. One
+ * distinction does the work: noise ("(Remastered 2011)", "[HD]") does not change the
+ * recording, a variant ("(Live)", "- Remix") identifies a different one. Stripping noise
+ * raises match rates; stripping variants swaps a studio track for a live cut, so variants
+ * are extracted and compared, never discarded.
  */
 
 /** Decorations safe to remove: same recording either way. */
@@ -70,17 +61,14 @@ export function normalizeLoose(input: string): string {
     .replace(/\s+/g, " ");
 }
 
-/**
- * Splits a raw title into its comparable base, its variant tags, and any
- * featured artists. Handles the bracketed form "(Live)" and the trailing
- * dash form "- Live", both of which are common across all three services.
- */
+/** Splits a raw title into base, variant tags and featured artists. Handles both the
+ * "(Live)" and the trailing "- Live" forms. */
 export function parseTitle(raw: string): ParsedTitle {
   const variants = new Set<string>();
   const featured: string[] = [];
 
-  // Pull apart bracketed segments and any trailing " - suffix" clause, which
-  // is how Spotify encodes what YouTube usually puts in parentheses.
+  // Bracketed segments and any trailing " - suffix", which is how Spotify encodes what
+  // YouTube puts in parentheses.
   const segments: string[] = [];
   let main = raw.replace(/[([{]([^)\]}]*)[)\]}]/g, (_match, inner: string) => {
     segments.push(inner);
@@ -109,14 +97,10 @@ export function parseTitle(raw: string): ParsedTitle {
     }
     if (recognized) return;
 
-    // Unrecognized bracketed text is kept as a variant rather than discarded.
-    // Dropping it would make "Wonderwall (Unplugged)" identical to
-    // "Wonderwall" — the exact silent-substitution failure this module exists
-    // to prevent. The variant list can never be complete, so the safe default
-    // is that anything we do not understand distinguishes the recording.
-    //
-    // Noise is stripped first, so "(Remastered 2011)" reduces to nothing and
-    // is correctly ignored.
+    // Unrecognized bracketed text is kept as a variant: dropping it makes "Wonderwall
+    // (Unplugged)" identical to "Wonderwall". The list can never be complete, so anything not
+    // understood distinguishes the recording. Noise is stripped first, so "(Remastered 2011)"
+    // reduces to nothing and is correctly ignored.
     let residue = text;
     for (const pattern of NOISE_PATTERNS) residue = residue.replace(pattern, " ");
     const normalized = normalizeLoose(residue);
@@ -155,11 +139,8 @@ export function normalizeArtists(artists: string[]): string[] {
   return dedupe(artists.flatMap(splitArtists).map(normalizeLoose).filter(Boolean)).sort();
 }
 
-/**
- * Stable identity for local deduplication: same base title, same variants,
- * same primary artist. Not a substitute for ISRC — it is what we fall back to
- * when the provider gives us no ISRC at all, which is most of YouTube Music.
- */
+/** Stable identity for local deduplication: same base title, variants and primary artist.
+ * The fallback when a provider gives no ISRC, which is most of YouTube Music. */
 export function dedupeKey(title: string, artists: string[]): string {
   const parsed = parseTitle(title);
   const allArtists = normalizeArtists([...artists, ...parsed.featured]);
