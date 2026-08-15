@@ -4,22 +4,9 @@ import { useSyncExternalStore } from "react";
 
 import type { SongsResponse } from "./types";
 
-/**
- * The last charts this browser saw, so a reload has something true to show.
- *
- * Home's shelves come from `/api/charts`, which cannot be asked until the page
- * is running — so every reload showed a row of grey placeholder tiles for as
- * long as that took. Placeholders are the wrong answer here: the reader has
- * seen real charts before, they are a few kilobytes of JSON, and charts that
- * are an hour old are *still the charts*. Showing yesterday's copy while today's
- * arrives is how every app that feels instant does it.
- *
- * Written after each successful fetch and read synchronously on the first client
- * render, the same shape as `theme-store`, `local-profile` and
- * `playlists/store`. Nothing here decides *when* to refetch: the fetch happens
- * unconditionally on mount and simply overwrites this, so a stale copy can only
- * ever be on screen for as long as the request takes.
- */
+// The last charts this browser saw, so a reload opens on real songs rather than grey
+// placeholders while `/api/charts` answers. Nothing here decides when to refetch: the fetch
+// happens on mount regardless and overwrites this.
 
 const KEY = "timbre:charts";
 
@@ -37,8 +24,7 @@ function getSnapshot(): SongsResponse | null {
     try {
       const raw = window.localStorage.getItem(KEY);
       const parsed: unknown = raw ? JSON.parse(raw) : null;
-      // Shape-checked rather than trusted: this is user-editable storage, and a
-      // malformed entry would crash a shelf rather than skip it.
+      // Shape-checked: user-editable storage, and a malformed entry crashes a shelf.
       const songs = (parsed as SongsResponse | null)?.songs;
       if (Array.isArray(songs)) snapshot = { songs, failures: [] };
     } catch {
@@ -57,13 +43,8 @@ export function useCachedCharts(): SongsResponse | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-/**
- * Records the charts just fetched.
- *
- * Only the songs, and not the `failures` array: that describes *this* request,
- * so replaying it on the next load would report a source as down long after it
- * came back.
- */
+/** Records the charts just fetched — only the songs. The `failures` array describes *this*
+ * request, so replaying it reports a source down long after it came back. */
 export function rememberCharts(response: SongsResponse): void {
   snapshot = response;
   try {
