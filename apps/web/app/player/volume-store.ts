@@ -1,17 +1,6 @@
-/**
- * Output level, stored outside React.
- *
- * Volume has to survive a reload — an app that comes back at full blast every
- * time is a bad neighbour — which means localStorage, and localStorage is not
- * something React can render on the server. Reading it into state after mount
- * would work but is a cascading render by another name; this is what
- * `useSyncExternalStore` exists for. Hydration uses the server snapshot, then
- * React re-reads the real one, so the two never disagree.
- *
- * The level is 0–100 because that is what both the YouTube IFrame API and the
- * SoundCloud widget take. Converting at every call site would only create
- * places to get the scale wrong.
- */
+// Output level, stored outside React so it survives a reload without a cascading render
+// after mount. 0–100, because that is what both the YouTube IFrame API and the SoundCloud
+// widget take — converting per call site invites a scale bug.
 
 export interface VolumeState {
   volume: number;
@@ -31,9 +20,8 @@ const listeners = new Set<() => void>();
 
 function read(): VolumeState {
   try {
-    // `Number(null)` is 0, and 0 is a perfectly valid volume — so a missing key
-    // read this way silently mutes every first-time visitor. The null has to be
-    // ruled out before the number is parsed, not after.
+    // `Number(null)` is 0 and 0 is a valid volume, so a missing key read that way
+    // silently mutes every first-time visitor. Rule out null before parsing.
     const raw = window.localStorage.getItem(VOLUME_KEY);
     const stored = raw === null ? Number.NaN : Number(raw);
     return {
@@ -74,8 +62,8 @@ export function subscribeVolume(listener: () => void): () => void {
 }
 
 export function getVolumeSnapshot(): VolumeState {
-  // First read is lazy so the module stays importable on the server; every
-  // read after it is a cached object, as getSnapshot requires.
+  // Lazy so the module stays importable on the server; the same object thereafter,
+  // as getSnapshot requires.
   if (!loaded) {
     loaded = true;
     snapshot = read();

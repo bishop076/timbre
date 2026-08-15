@@ -3,26 +3,12 @@
 import { QueueRow } from "./now-playing";
 import { usePlayer } from "./player-context";
 
-/**
- * What Timbre thinks you should hear next.
- *
- * These are **not** one service's radio passed through. Every source that can
- * answer contributes a ranked list, and a song several of them reach
- * independently outranks any single list's favourite — the one recommendation
- * signal Timbre can produce that no individual service can produce for itself.
- *
- * The same list is what the queue continues into when it runs out, so what is
- * shown here is a genuine preview rather than a second, differently-computed
- * opinion.
- *
- * Renders nothing when there is nothing to say, as the artist card does. An
- * empty panel headed "Similar songs" is worse than the space it occupies.
- */
+/** What Timbre thinks you should hear next — the same fused list the queue continues into
+ * when it runs out, so this is a preview rather than a second opinion. */
 export function SimilarSongs({ limit = 5 }: { limit?: number }) {
   const { radio, queue, play } = usePlayer();
 
-  // Anything already queued is not a suggestion — it is a promise the player
-  // has already made.
+  // Anything already queued is a promise, not a suggestion.
   const queued = new Set(queue.map((song) => song.id));
   const suggestions = radio.filter((song) => !queued.has(song.id)).slice(0, limit);
 
@@ -36,8 +22,7 @@ export function SimilarSongs({ limit = 5 }: { limit?: number }) {
       <ul className="flex flex-col gap-0.5">
         {suggestions.map((song) => (
           <li key={song.id}>
-            {/* Playing one queues the rest behind it, so picking a suggestion
-                continues the radio rather than ending it. */}
+            {/* Playing one queues the rest, continuing the radio rather than ending it. */}
             <QueueRow song={song} onPlay={() => play(song, suggestions)} />
           </li>
         ))}

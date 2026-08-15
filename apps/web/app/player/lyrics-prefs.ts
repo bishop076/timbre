@@ -1,21 +1,8 @@
 "use client";
 
-/**
- * Per-song lyrics corrections, remembered in this browser.
- *
- * LRCLIB is community-contributed, and one song routinely has a dozen entries —
- * different albums, different transcriptions, some timed against a version with
- * a longer intro. Timbre picks one automatically and is sometimes wrong, so two
- * corrections are offered and both have to **stick**: fixing the same song on
- * every play would be worse than not offering the fix at all.
- *
- * - `id` — a specific LRCLIB record, chosen when the automatic match was wrong.
- * - `offset` — seconds to shift every timestamp. Positive means the words are
- *   arriving late and should be pulled earlier.
- *
- * Kept beside the other browser state rather than on a server, for the reason
- * everything else here is: Timbre stores nothing about anyone.
- */
+// Per-song lyrics corrections, remembered in this browser — LRCLIB has a dozen community
+// entries per song and Timbre's automatic pick is sometimes wrong, so a correction has to
+// stick across plays. `id` names a record; `offset` shifts timestamps, positive for late.
 
 import { useSyncExternalStore } from "react";
 
@@ -47,7 +34,6 @@ function read(): Record<string, LyricsPref> {
     const parsed: unknown = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? (parsed as Record<string, LyricsPref>) : {};
   } catch {
-    // Corrupt or blocked. A forgotten correction is a small loss.
     return {};
   }
 }
@@ -56,12 +42,11 @@ function persist(): void {
   try {
     const keys = Object.keys(all);
     if (keys.length > MAX_ENTRIES) {
-      // Oldest-inserted first, which for a plain object is insertion order.
       for (const key of keys.slice(0, keys.length - MAX_ENTRIES)) delete all[key];
     }
     window.localStorage.setItem(KEY, JSON.stringify(all));
   } catch {
-    // Out of quota. The correction still applies for this session.
+    // The correction still applies for this session.
   }
   for (const listener of listeners) listener();
 }
@@ -83,22 +68,24 @@ function getServerSnapshot(): Record<string, LyricsPref> {
   return EMPTY;
 }
 
+/** The stored correction for one song, or an empty one. */
 export function useLyricsPref(key: string): LyricsPref {
   const map = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   return map[key] ?? EMPTY_PREF;
 }
 
-/** Shared so an unset song returns a stable object rather than a new one. */
+/** Shared, so an unset song returns a stable object rather than a new one. */
 const EMPTY_PREF: LyricsPref = {};
 
+/** Pins a song to one LRCLIB record. */
 export function setLyricsId(key: string, id: number | undefined): void {
   const current = getSnapshot()[key] ?? {};
-  // A new record has its own timing, so a nudge tuned to the old one is wrong
-  // and is dropped rather than silently carried over.
+  // A new record has its own timing, so an old nudge is dropped, not carried over.
   all = { ...all, [key]: { ...current, id, offset: undefined } };
   persist();
 }
 
+/** Shifts a song's timings, to a tenth of a second. */
 export function setLyricsOffset(key: string, offset: number): void {
   const current = getSnapshot()[key] ?? {};
   const rounded = Math.round(offset * 10) / 10;
@@ -109,6 +96,7 @@ export function setLyricsOffset(key: string, offset: number): void {
   persist();
 }
 
+/** Forgets both corrections for a song. */
 export function clearLyricsPref(key: string): void {
   const next = { ...getSnapshot() };
   delete next[key];

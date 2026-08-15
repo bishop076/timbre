@@ -15,20 +15,8 @@ import { SimilarSongs } from "./similar-songs";
 import { PanelTabs } from "./panel-tabs";
 import { YouTubePlayer } from "./youtube-player";
 
-/**
- * The two that are not always on screen, fetched when they first are.
- *
- * This panel is mounted by the root shell on every route, so anything imported
- * here statically ships everywhere — including to /about, which has no player.
- *
- * SoundCloud's embed is only mounted when the playing source *is* SoundCloud,
- * which for most listeners is never; YouTube stays static because it is the
- * common case and must not wait on a fetch to start. Switching source already
- * tears one player down and builds the other, so a chunk fetch joins a remount
- * that was happening anyway.
- *
- * MobileTransport only renders expanded, and below the xl breakpoint.
- */
+// Fetched when first shown: this panel is in the root shell, so a static import
+// ships everywhere. YouTube stays static because it must not wait on a fetch.
 const SoundCloudPlayer = dynamic(() =>
   import("./soundcloud-player").then((m) => m.SoundCloudPlayer),
 );
@@ -52,15 +40,9 @@ function Credit({ label, value, mono }: { label: string; value: string | null; m
   );
 }
 
-/**
- * A queued song, wherever one is listed. Shared with `similar-songs.tsx`.
- *
- * The row is a container with a button inside rather than one big button,
- * because queue rows carry their own controls and a button cannot legally hold
- * another one — browsers drop the inner control, and screen readers announce
- * whatever survives as a single unlabelled target. `actions` is the slot for
- * them; without it this renders exactly as it did before.
- */
+/** A queued song. A container with a button inside rather than one big button: a button
+ * cannot legally hold another, so browsers drop the inner control and screen readers
+ * announce one unlabelled target. */
 export function QueueRow({
   song,
   onPlay,
@@ -94,18 +76,8 @@ export function QueueRow({
   );
 }
 
-/**
- * Reorder and remove, for one queued row.
- *
- * Up/down rather than drag: dragging needs a pointer, and the queue is one of
- * the few lists here that is genuinely edited on a phone. Buttons work with
- * touch, keyboard and screen readers without a second implementation, and the
- * queue is short enough that stepping is not tedious.
- *
- * Hidden until the row is hovered or something inside it takes focus — but
- * `focus-within`, not `focus`, so tabbing to a control keeps its siblings
- * visible instead of making each one vanish as you move between them.
- */
+// Reorder and remove, for one queued row. Hidden until hover or `focus-within` — not
+// `focus`, or tabbing between the controls would make each vanish as you reach the next.
 function QueueActions({
   onUp,
   onDown,
@@ -148,36 +120,10 @@ function QueueActions({
 }
 
 /**
- * The now-playing panel — the third column.
- *
- * Spotify's shell is three columns, not two: a library rail, the content, and a
- * panel on the right for what is playing right now. That third column is what
- * makes the layout read as a music app rather than a search page with a bar
- * stuck to the bottom, so this is it: the video, the current track, and what is
- * coming up.
- *
- * It has **three shapes and one element**:
- *
- * - phone → a floating card above the mini player, video only
- * - desktop → a real column beside the content
- * - theater → the column takes over the content area, video large with the
- *   queue beside it, the way YouTube Music expands a music video
- *
- * All three are the same DOM, restyled. That is not a shortcut — it is the
- * requirement. Rendering the player in a different place per shape would
- * re-parent its iframe, and browsers **reload** a re-parented iframe: the song
- * would stop and restart every time you expanded it.
- *
- * The video still has **no controls of its own**. Play, pause, seek, skip and
- * hiding this panel all live in the player bar, so there is exactly one place
- * that acts on playback whether or not the current track has pictures. The only
- * thing clicking the picture does is change its size.
- *
- * It cannot be a thumbnail either. YouTube's IFrame API requires at least
- * 200×200 and fails below it with a bare "Video unavailable" — see docs/BUGS.md
- * B-1, which is what actually broke this app once. So hiding clips the panel
- * away at full size rather than shrinking it, and the player keeps its
- * dimensions the whole time.
+ * The now-playing panel — the video, the current track, and what is coming up. Three
+ * shapes, **one element**: a floating card on a phone, a column on desktop, and theater,
+ * all the same DOM restyled. That is a requirement, not a shortcut — rendering the player
+ * elsewhere per shape re-parents its iframe, and a re-parented iframe reloads.
  */
 export function NowPlayingPanel() {
   const {
@@ -202,14 +148,8 @@ export function NowPlayingPanel() {
   const open = active && panelOpen;
   const expanded = open && theater;
 
-  /*
-   * What is actually coming, in order: the rest of the queue, then the blend
-   * the player will step into when the queue runs out.
-   *
-   * Showing only the queue made the panel say "nothing after this one" while
-   * five recommendations sat one track away, ready and already fetched — a
-   * panel that contradicts what the player is about to do.
-   */
+  // The queue, then the blend it steps into when that runs out — the queue alone said
+  // "nothing after this one" with recommendations already fetched a track away.
   const queued = queue.slice(index + 1);
   const known = new Set(queue.map((song) => song.id));
   const suggested = radio.filter((song) => !known.has(song.id));
@@ -224,19 +164,9 @@ export function NowPlayingPanel() {
         )}`
       : null);
 
-  /*
-   * Widths are explicit rather than `w-full` on purpose. Closing the column
-   * collapses the *outer* box to zero and clips, while the card inside keeps its
-   * real size — which is what keeps the player above 200×200 while hidden. A
-   * percentage width would collapse with the parent and take playback with it.
-   */
-  /*
-   * The column appears at `xl`, not `lg`. At 1024 a 256px rail plus a 368px
-   * column leaves the content under 400px — two tiles per shelf and a clipped
-   * search box. Between `lg` and `xl` the panel stays the floating card, which
-   * costs nothing but overlap; below `lg` it also has to clear the bottom nav,
-   * which is why the offset is breakpointed too.
-   */
+  // Widths are explicit, never `w-full`: closing collapses the *outer* box to zero and
+  // clips while the card keeps its real size, which is what holds the player above
+  // 200×200 while hidden. A percentage width would take playback with it.
   const shell = expanded
     ? "flex min-h-0 min-w-0 flex-1 p-2 lg:pl-0"
     : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+0.75rem)] right-3 z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] ${
@@ -249,47 +179,24 @@ export function NowPlayingPanel() {
     ? "flex min-h-0 w-full flex-1 flex-col gap-2 xl:flex-row"
     : "slab flex w-[19rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-[22.5rem] xl:max-w-none";
 
-  /*
-   * Expanded, the video box fills its half of the row rather than being sized
-   * to 16:9 and centred. Centring a 16:9 box left an empty band above and below
-   * it while the queue beside it ran full height — two columns of different
-   * heights, which is what made the expanded view look out of proportion. The
-   * video letterboxes itself inside a filled box, so this trades a shaped
-   * border for a straight one.
-   */
-  /*
-   * `min-h-[200px]` is a compliance floor, not a taste decision.
-   *
-   * YouTube's IFrame API refuses to play below 200×200 and reports only a bare
-   * "Video unavailable" — the bug in docs/BUGS.md B-1. Expanded, this box is
-   * `aspect-video` at the full width of the column, so a 320px-wide phone would
-   * compute a 171px height and every track would fail on exactly the devices
-   * least able to explain why. The minimum wins over the aspect ratio; the
-   * player letterboxes inside it.
-   */
+  // `min-h-[200px]` is a compliance floor: YouTube's IFrame API refuses to play below
+  // 200×200, reporting only "Video unavailable" (docs/BUGS.md B-1), and `aspect-video` on
+  // a 320px-wide phone computes 171px.
   const videoBox = expanded
     ? "slab relative min-h-[200px] w-full shrink-0 overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
     : "relative shrink-0 bg-black";
 
   const listBox = expanded
-    ? // Below `xl` the queue is hidden and the transport takes the slot instead:
-      // on a phone, controls you can reach are worth more than a list you can
-      // scroll to anyway, and both together leave room for neither.
+    ? // Below `xl` the queue is hidden and the transport takes the slot instead.
       "slab hidden min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:flex xl:h-full xl:w-[21rem] xl:flex-none"
-    : // Docked on a phone the floating card is the video and nothing else —
-      // there is no room for a panel beside a mini player, and the expanded
-      // view is one tap away for anyone who wants one.
+    : // Docked on a phone the floating card is the video and nothing else.
       "hidden min-h-0 flex-1 flex-col xl:flex";
 
   return (
     <aside className={shell} aria-hidden={!open} aria-label="Now playing">
       <div className={card}>
         <div className={videoBox}>
-          {/*
-            Some songs exist only as uploads that bar embedding everywhere. That
-            cannot be worked around — it is the rights holder's setting — so the
-            honest fallback is a link to the one place it will play.
-          */}
+          {/* Embedding barred by the rights holder cannot be worked around. */}
           {state === "unplayable" && youtubeUrl && (
             <a
               href={youtubeUrl}
@@ -302,13 +209,8 @@ export function NowPlayingPanel() {
             </a>
           )}
 
-          {/*
-            The picture's only affordance. It sits *over* the player rather than
-            on it, because the player deliberately takes no pointer input at all
-            — that is what stops YouTube painting its own hover overlay of title,
-            channel and share buttons across the video. Clicks land here instead
-            and never reach the iframe.
-          */}
+          {/* Sits *over* the player, which takes no pointer input at all — that is what
+              stops YouTube painting its own hover overlay across the video. */}
           <button
             type="button"
             onClick={toggleTheater}
@@ -325,13 +227,8 @@ export function NowPlayingPanel() {
             </span>
           </button>
 
-          {/*
-            Exactly one player is mounted at a time. Unmounting the other is what
-            makes "only one audible" true by construction rather than by careful
-            pausing — a torn-down player cannot be restarted by a stray event
-            during handoff. It costs a remount on every source switch, which is
-            the right trade for never having two songs at once.
-          */}
+          {/* One player mounted at a time: a torn-down one cannot be restarted by a
+              stray event during handoff. */}
           {activeSource === "soundcloud" ? (
             <SoundCloudPlayer
               trackUrl={soundcloudUrl}
@@ -342,17 +239,8 @@ export function NowPlayingPanel() {
           )}
         </div>
 
-        {/*
-          Two different panels, one slot. Docked it is Spotify's: what is
-          playing, who made it, what it is made of — with the queue reduced to
-          the single next track at the bottom, because a column that is mostly a
-          list of songs you have already queued tells you nothing you did not
-          just do. Expanded there is room for the whole queue, which is what
-          YouTube Music puts beside a video, so that is what goes there.
-
-          Only this subtree swaps. The video is a sibling and keeps its place in
-          the tree, so it never reloads.
-        */}
+        {/* Only this subtree swaps — the video is a sibling and keeps its place in the
+            tree, so it never reloads. */}
         <div className={listBox}>
           {expanded ? (
             <>
@@ -371,12 +259,8 @@ export function NowPlayingPanel() {
                 </span>
               </div>
 
-              {/*
-                Up next, Lyrics and Related — YouTube Music's arrangement.
-                The queue stays here rather than moving into <PanelTabs>,
-                because it is this component's own state and lifting it
-                would give two places an opinion about what plays next.
-              */}
+              {/* The queue stays here; in <PanelTabs> two places would have an opinion
+                  about what plays next. */}
               <PanelTabs
                 queue={
                   <>
@@ -384,9 +268,7 @@ export function NowPlayingPanel() {
                     <span className="text-[11px] tabular-nums text-[var(--fg-faint)]">
                       {upcoming.length || ""} coming up
                     </span>
-                    {/* Clears the queued songs only. The suggestions below them are
-                        not in the queue — they are what plays if nothing is — so
-                        there is nothing there to clear. */}
+                    {/* Queued songs only — suggestions are what plays if nothing is. */}
                     {queued.length > 0 && (
                       <button
                         type="button"
@@ -406,23 +288,14 @@ export function NowPlayingPanel() {
                     ) : (
                       <ul className="flex flex-col gap-0.5">
                         {upcoming.map((song, position) => {
-                          /*
-                           * Only the queued half is editable. The suggestions after
-                           * it are a live recommendation that is refetched on every
-                           * track change, so "remove" there would delete something
-                           * that reappears a song later — a control that visibly
-                           * does not work. Playing one still queues it, which is
-                           * the way to act on a suggestion.
-                           */
+                          // Only the queued half is editable: suggestions are refetched
+                          // per track change, so "remove" visibly would not work.
                           const queuedHere = position < queued.length;
                           const at = index + 1 + position;
                           const last = index + queued.length;
 
                           return (
                             <li key={`${song.id}-${position}`}>
-                              {/* Where the queue ends and the blend begins. Labelled
-                                  rather than blended in, so "queued" and "suggested"
-                                  never look like the same promise. */}
                               {position === queued.length && queued.length > 0 && (
                                 <p className="px-1.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--fg-faint)]">
                                   Then, from your blend
@@ -435,9 +308,9 @@ export function NowPlayingPanel() {
                                   queuedHere ? (
                                     <QueueActions
                                       title={song.title}
-                                      // Never above the playing song: the queue
-                                      // behind `index` is history, and promoting a
-                                      // track into it would silently drop it.
+                                      // Never above the playing song: the queue behind
+                                      // `index` is history, and a track promoted into
+                                      // it is silently dropped.
                                       onUp={at > index + 1 ? () => move(at, at - 1) : null}
                                       onDown={at < last ? () => move(at, at + 1) : null}
                                       onRemove={() => removeAt(at)}
@@ -467,9 +340,7 @@ export function NowPlayingPanel() {
                       <ArtistLink artists={current?.artists ?? []} />
                     </p>
                   </div>
-                  {/* Attribution names the source actually playing. Every
-                      service Timbre embeds requires it, and it is the only way
-                      to tell whose player you are hearing. */}
+                  {/* Attribution — every service Timbre embeds requires it. */}
                   <span
                     className="mt-0.5 shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold"
                     style={{ color: source.color, backgroundColor: source.tint }}
@@ -485,9 +356,7 @@ export function NowPlayingPanel() {
                     <h3 className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
                       Credits
                     </h3>
-                    {/* Only what the sources actually publish. No free
-                        catalogue exposes writers or producers, so those lines
-                        are absent rather than guessed at. */}
+                    {/* Only what the sources publish — no free catalogue has writers. */}
                     <dl className="space-y-1 text-[11px]">
                       <Credit label="Performed by" value={current.artists.join(", ") || null} />
                       <Credit label="Album" value={current.album} />
@@ -503,17 +372,8 @@ export function NowPlayingPanel() {
 
                 <SimilarSongs />
 
-                {/*
-                  The queue, reduced to the one thing worth knowing: what plays
-                  when this ends.
-
-                  **Inside the scroll area, not pinned below it.** Pinned, it ate
-                  a fixed slice of a column that is already narrow, and whatever
-                  sat above was clipped mid-row — the credits list was being cut
-                  through the middle of a line with nothing to indicate more
-                  existed. Scrolling with the rest costs its permanent visibility
-                  and buys a panel where nothing is ever severed.
-                */}
+                {/* Inside the scroll area, not pinned below it: pinned, it clipped the
+                    credits list mid-line with nothing to say more existed. */}
                 {upcoming[0] && (
                   <div className="border-t-[length:var(--edge)] border-[var(--ink)] pt-2.5">
                     <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
@@ -532,15 +392,7 @@ export function NowPlayingPanel() {
           )}
         </div>
 
-        {/*
-          The phone's controls, under the player.
-
-          A sibling of the video rather than a wrapper around it: the iframe
-          must keep its place in the tree, because a re-parented iframe reloads
-          and playback stops. `xl:hidden` because from that width up the queue
-          panel is beside the video and the desktop bar already carries the
-          transport.
-        */}
+        {/* A sibling of the video, never a wrapper: a re-parented iframe reloads. */}
         {expanded && (
           <div className="xl:hidden">
             <MobileTransport />

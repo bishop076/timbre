@@ -10,24 +10,15 @@ import type { Song, SongsResponse } from "../types";
 import { usePlayer } from "./player-context";
 
 /**
- * What else sounds like this.
- *
- * Distinct from Up Next on purpose, the way YouTube Music separates them: the
- * queue is what *will* play, this is what *could*. Nothing here is queued until
- * it is picked, so it can be browsed without disturbing the song.
- *
- * The list comes from `/api/radio`, which fuses ranked suggestions from every
- * source that will answer rather than passing one service's watch queue
- * through — see docs/RECOMMENDATIONS.md.
+ * What else sounds like this. Distinct from Up Next — the queue is what *will* play, this
+ * is what *could*, and nothing is queued until picked. See docs/RECOMMENDATIONS.md.
  */
 export function RelatedPanel() {
   const { current, play, queue } = usePlayer();
-  // Stored with the seed it came from, so "loading" is derived rather than a
-  // second piece of state set on the way into the effect.
+  // Stored with its seed, so "loading" is derived rather than a second state.
   const [found, setFound] = useState<{ seed: string; songs: Song[] } | null>(null);
 
-  // Keyed by the seed's own id so a re-render does not refetch, and switching
-  // tracks does.
+  // Keyed by the seed's own id, so a re-render does not refetch but a track change does.
   const seedId = current?.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null;
   const seedArtist = current?.artists[0] ?? null;
 
@@ -46,8 +37,8 @@ export function RelatedPanel() {
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
       .then((data) => setFound({ seed, songs: data?.songs ?? [] }))
       .catch((cause: unknown) => {
-        // Settle even on failure, or `loading` stays true for the rest of the
-        // song and the panel spins where it should say "nothing similar".
+        // Settle even on failure, or the panel spins for the rest of the song
+        // instead of saying "nothing similar".
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setFound({ seed, songs: [] });
       });
@@ -80,9 +71,8 @@ export function RelatedPanel() {
           >
             <button
               type="button"
-              // Plays it now and queues the rest of the suggestions behind it,
-              // so picking one turns the panel into a station rather than
-              // stranding a single song at the end of the queue.
+              // Queues the rest behind it, so picking one becomes a station rather
+              // than stranding a single song at the end of the queue.
               onClick={() => play(song, [...songs.filter((item) => item.id !== song.id), ...queue])}
               className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
               aria-label={`Play ${song.title}`}
