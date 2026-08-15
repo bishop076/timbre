@@ -12,22 +12,32 @@ import { ChevronIcon } from "./icons";
  * anything else. A shelf keeps each section to one band of the page and hands
  * the length to a sideways scroll instead.
  *
- * The arrows appear **only when the row actually overflows**, and each disables
- * at its end. A control that is always visible but usually does nothing teaches
- * people to ignore it.
+ * The arrows are always drawn and each disables at its end — see the note on
+ * them below for why that beat showing them only once a row measured as
+ * overflowing.
  *
- * There is a near-identical shelf inside `search-results.tsx`. It is private to
- * that file and that file is under active work by the other agent, so this is a
- * deliberate second copy rather than a refactor across a moving target — see
- * docs/WORKSTREAMS.md. Worth unifying once both settle.
+ * This is the only shelf. `search-results.tsx` had a private near-copy, kept
+ * deliberately while both files were moving; it carried the two bugs this one
+ * documents fixing (arrows absent on first paint, and a `scrollBy` that fought
+ * scroll-snap), so unifying was a fix rather than a tidy-up.
  */
 export function Shelf({
   title,
   caption,
+  resetKey,
   children,
 }: {
   title: string;
   caption?: string;
+  /**
+   * Changes when the row's *first* item changes, sending it back to the start.
+   *
+   * `overflow-anchor: none` on `.shelf` stops the browser fighting a prepend,
+   * but a row the reader had already scrolled would still be left mid-way with
+   * the newest item behind them. Only shelves whose head genuinely changes pass
+   * this — "Recently played" does, a chart does not.
+   */
+  resetKey?: string;
   children: React.ReactNode;
 }) {
   const row = useRef<HTMLDivElement>(null);
@@ -35,6 +45,11 @@ export function Shelf({
   // Assumed scrollable until measured otherwise: a shelf almost always is, and
   // guessing the other way is what left the arrows missing on first paint.
   const [canRight, setCanRight] = useState(true);
+
+  useEffect(() => {
+    if (resetKey === undefined) return;
+    row.current?.scrollTo({ left: 0, behavior: "smooth" });
+  }, [resetKey]);
 
   useEffect(() => {
     const el = row.current;
