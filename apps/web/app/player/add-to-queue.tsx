@@ -5,17 +5,9 @@ import type { Song } from "../types";
 import { usePlayer } from "./player-context";
 
 /**
- * Queue one song, from any list that shows songs.
- *
- * Sits beside `AddToPlaylist` on the same rows and is deliberately the smaller
- * commitment of the two: a playlist is kept, a queue is what happens next. Both
- * are one click with no dialog, which is why neither needs a menu.
- *
- * **Already-queued songs keep the control and show a tick** rather than hiding
- * it. The queue is deduplicated by song id, so clicking a second time does
- * nothing — and a button that silently no-ops is indistinguishable from one
- * that is broken. Saying "it is already in there" costs a state and removes the
- * only confusing outcome.
+ * Queue one song, from any list that shows songs. An already-queued song keeps the
+ * control and shows a tick: the queue dedupes by song id, so a second click does
+ * nothing, and a silently no-op button is indistinguishable from a broken one.
  */
 export function AddToQueue({ song, className }: { song: Song; className?: string }) {
   const { enqueue, queue } = usePlayer();

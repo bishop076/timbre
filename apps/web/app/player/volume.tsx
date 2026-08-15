@@ -8,15 +8,8 @@ import { VOLUME_STEP } from "./transport-keys";
 import { pixelDelta, wheelSteps } from "./wheel-step";
 
 /**
- * Output level.
- *
- * Desktop only, and that is not an omission: on a phone the hardware keys own
- * volume, and every phone music app leaves it to them rather than offering a
- * second control that fights the first.
- *
- * The button mutes, the track sets a level, and muting is drawn as a level of
- * zero rather than as a separate state — one reading, so the control can never
- * show a level you cannot hear.
+ * Output level — desktop only, since a phone's hardware keys own volume. Muting is drawn
+ * as a level of zero, so the control can never show a level you cannot hear.
  */
 export function Volume() {
   const { volume, muted, setVolume, toggleMute } = usePlayer();
@@ -29,49 +22,21 @@ export function Volume() {
   const applyFrom = (clientX: number) => {
     const box = trackRef.current?.getBoundingClientRect();
     if (!box || box.width <= 1) return;
-    /*
-     * Divided by `width - 1`, not `width`.
-     *
-     * A track is `width` pixels wide but its addressable positions run from 0
-     * to `width - 1`, so dividing by the full width means the furthest a
-     * pointer can land maps to 63/64 rather than 64/64. Dragging to the far
-     * right produced **98** on the narrow bar and 99 on the wide one — a fill
-     * that renders as visually full while the audio sits under maximum, which
-     * is exactly the kind of gap nobody thinks to check.
-     *
-     * Mapping the last pixel to 100 makes both ends reachable by the control's
-     * primary gesture. `setVolume` clamps, so overshoot from sub-pixel pointer
-     * coordinates is already handled.
-     */
+    // Divided by `width - 1`: addressable positions run 0 to `width - 1`, so the full
+    // width mapped the far right to 98 — a visually full fill sitting under maximum.
     setVolume(((clientX - box.left) / (box.width - 1)) * 100);
   };
 
-  /*
-   * The current level, for the wheel handler to read.
-   *
-   * `setVolume` takes an absolute value rather than an updater, so a handler
-   * closing over `level` would work from a stale number the moment two wheel
-   * events land in one frame — which is every trackpad flick. A ref is always
-   * the latest, and it keeps the listener out of the effect's dependencies so
-   * it is attached once rather than re-bound on every volume change.
-   */
+  // `setVolume` takes an absolute value, so a handler closing over `level` reads a stale
+  // number the moment two wheel events land in one frame — every trackpad flick.
   const levelRef = useRef(level);
   useEffect(() => {
     levelRef.current = level;
   }, [level]);
 
-  /*
-   * Scroll to change the volume.
-   *
-   * A **native** listener with `passive: false`, not React's `onWheel`. React
-   * registers wheel handlers at the root as passive, so `preventDefault` inside
-   * one is ignored — with a warning in development and silently in production.
-   * Without preventing the default, scrolling over the control adjusts the
-   * volume *and* scrolls the page behind it.
-   *
-   * Bound to the whole control, button included, so the target is the visible
-   * cluster rather than only the 10px bar.
-   */
+  // A native listener with `passive: false`, not React's `onWheel` — React registers
+  // wheel handlers at the root as passive, so `preventDefault` is ignored and the page
+  // scrolls behind the control.
   useEffect(() => {
     const node = rootRef.current;
     if (!node) return;
@@ -86,9 +51,7 @@ export function Volume() {
       carried = rest;
       if (steps === 0) return;
 
-      // Scrolling up is a negative delta and means louder, which is why this
-      // subtracts. `setVolume` clamps and unmutes, so a muted control comes
-      // back at the level being scrolled to rather than staying silent.
+      // Scrolling up is a negative delta and means louder, hence the subtraction.
       setVolume(levelRef.current - steps * VOLUME_STEP);
     };
 
@@ -113,17 +76,13 @@ export function Volume() {
         role="slider"
         tabIndex={0}
         aria-label="Volume"
-        // Scrolling has no visible affordance, so the tooltip is the only place
-        // it is discoverable by anyone who does not try it.
         title="Volume — drag, or scroll to adjust"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={level}
         aria-valuetext={muted ? "Muted" : `${level}%`}
-        // Pointer capture rather than window listeners: the pointer keeps
-        // reporting to this element once it is captured, so a drag that leaves
-        // the track — which is most drags on a control this small — keeps
-        // working instead of stopping at the edge.
+        // Pointer capture rather than window listeners, so a drag that leaves the
+        // track — most drags on a control this small — keeps working.
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           setDragging(true);
@@ -142,8 +101,7 @@ export function Volume() {
           if (event.key === "Home") setVolume(0);
           if (event.key === "End") setVolume(100);
         }}
-        // The hit area is taller than the visible bar, because a 10px target is
-        // unusable with a mouse.
+        // Taller than the visible bar — a 10px target is unusable.
         className="group flex h-8 w-16 cursor-pointer touch-none items-center xl:w-24"
       >
         <div className="slab-sm relative h-2.5 w-full overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">

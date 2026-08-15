@@ -1,27 +1,11 @@
 /**
- * What you have listened to, stored on this device and nowhere else.
+ * What you have listened to, on this device and nowhere else — Timbre has no accounts, so
+ * a server-side history has nothing to attach to. It powers "Recently played", "Because
+ * you played X" (the only way to seed the recommender on a cold load), and not suggesting
+ * what you just heard. Deliberately not a taste model — see docs/RECOMMENDATIONS.md.
  *
- * Timbre has no accounts — there is no sign-in page and no user row — so a
- * server-side play history is not merely unbuilt, it has nothing to attach to.
- * localStorage sidesteps identity entirely, and the privacy posture that falls
- * out is genuinely better than the alternative: **this never leaves the
- * browser.** Nothing is uploaded, and clearing site data is a complete delete.
- *
- * It powers three things, all recall rather than modelling:
- *
- *   - "Recently played" on the home page
- *   - "Because you played X", seeding the recommender with a real seed on a
- *     cold load, which is otherwise impossible — nothing is playing yet
- *   - not suggesting a song you just heard
- *
- * Deliberately **not** a taste model. With one listener, item-item
- * co-occurrence just re-derives the queues you already built and calls it
- * discovery; the services' own models are fit on millions of people and arrive
- * free in one request. See docs/RECOMMENDATIONS.md.
- *
- * Mirrors `volume-store.ts` exactly, including why: localStorage is an external
- * store, and reading it into React state after mount is a cascading render by
- * another name.
+ * Mirrors `volume-store.ts`: localStorage is an external store, and reading it into React
+ * state after mount is a cascading render by another name.
  */
 
 import { useSyncExternalStore } from "react";
@@ -37,13 +21,8 @@ export interface PlayedSong {
 
 const HISTORY_KEY = "timbre:history";
 
-/**
- * How much is kept.
- *
- * Fifty entries is a few weeks of casual listening at roughly 20KB — nothing
- * against a 5MB budget — and far more than any shelf shows. The cap exists so
- * the store cannot grow without bound on a machine nobody clears.
- */
+/** Fifty is a few weeks of casual listening at roughly 20KB against a 5MB budget, and the
+ * cap stops the store growing without bound. */
 const LIMIT = 50;
 
 /** Referentially stable, and what hydration renders against. */
@@ -66,14 +45,12 @@ function read(): PlayedSong[] {
     if (!raw) return EMPTY;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return EMPTY;
-    // Stored data outlives the code that wrote it, so every entry is checked
-    // rather than trusted. One bad row drops itself instead of throwing on
-    // render.
+    // Stored data outlives the code that wrote it, so a bad row drops itself rather than
+    // throwing on render.
     const entries = parsed.filter(isPlayed);
     return entries.length > 0 ? entries : EMPTY;
   } catch {
-    // Private browsing and blocked storage both throw rather than returning
-    // null, and so does malformed JSON.
+    // Private browsing, blocked storage and malformed JSON all throw rather than return null.
     return EMPTY;
   }
 }
@@ -83,8 +60,7 @@ function publish(next: PlayedSong[]): void {
   try {
     window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
   } catch {
-    // Not being able to remember it is no reason to fail the playback that
-    // triggered it.
+    // Not being able to remember it is no reason to fail the playback that triggered it.
   }
   for (const listener of listeners) listener();
 }
@@ -121,13 +97,8 @@ export function useHistory(): PlayedSong[] {
   return useSyncExternalStore(subscribeHistory, getHistorySnapshot, getHistoryServerSnapshot);
 }
 
-/**
- * Records a play, newest first, one entry per song.
- *
- * Re-playing a song moves it to the front rather than adding a second row —
- * "recently played" is a set of songs in time order, not a log of events, and
- * a repeat on loop would otherwise fill the whole shelf with one track.
- */
+/** Records a play, newest first, one entry per song. A repeat moves to the front rather
+ * than adding a row, or a track on loop fills the whole shelf. */
 export function recordPlay(song: PlayedSong): void {
   const current = getHistorySnapshot();
   if (current[0]?.id === song.id) return;
