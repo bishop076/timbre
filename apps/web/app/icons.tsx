@@ -1,9 +1,5 @@
-/**
- * Inline icons.
- *
- * Hand-rolled rather than pulled from an icon package: six small paths are not
- * worth a dependency, and inlining keeps them themeable with currentColor.
- */
+/** Inline icons. Hand-rolled rather than a dependency, and inlining keeps them
+ * themeable with currentColor. */
 
 type IconProps = { className?: string };
 
@@ -221,13 +217,8 @@ export function PlusIcon({ className }: IconProps) {
   );
 }
 
-/**
- * Add to the play queue — a list with a plus.
- *
- * Deliberately not {@link PlusIcon}. Song rows carry both actions side by side,
- * and two identical plus buttons on one row is a coin toss over which one adds
- * to a playlist and which one queues.
- */
+/** Add to the play queue — a list with a plus. Not {@link PlusIcon}: song rows carry
+ * both actions, and two identical plus buttons is a coin toss over which does what. */
 export function QueueAddIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
@@ -282,13 +273,8 @@ export function CheckIcon({ className }: IconProps) {
   );
 }
 
-/**
- * Save to a playlist — lines with a plus.
- *
- * Distinct from a bare {@link PlusIcon}, which means "add to queue". The two
- * sit on the same tile and a shared glyph made them indistinguishable; the
- * lines say *a list* is being added to, which is the difference.
- */
+/** Save to a playlist — lines with a plus. Distinct from {@link PlusIcon}, which means
+ * "add to queue"; the two sit on the same tile. */
 export function PlaylistAddIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>
@@ -298,13 +284,8 @@ export function PlaylistAddIcon({ className }: IconProps) {
   );
 }
 
-/**
- * Explore — a compass.
- *
- * Not a magnifier: that glyph belongs to the search field, which now sits above
- * every page, and reusing it for a browsing tab would put two different meanings
- * on one shape a centimetre apart.
- */
+/** Explore — a compass. Not a magnifier: that glyph belongs to the search field above
+ * every page, and reusing it would put two meanings on one shape. */
 export function CompassIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden>

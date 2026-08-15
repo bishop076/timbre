@@ -32,8 +32,6 @@ function sat(palette: Record<string, string>, token: string): number {
 
 test("album takes its hue from the cover", () => {
   const palette = buildPalette(COVER, ALBUM);
-  // The shadow tokens are pure black at an alpha, so they carry hue 0 by
-  // definition and are excluded from the "one hue" claim.
   const coloured = hues(palette).filter((hue) => hue !== 0);
   assert.deepEqual(new Set(coloured), new Set([190]), "the whole ramp is one hue");
 });
@@ -48,8 +46,6 @@ test("custom ignores the cover entirely — that is the point of it", () => {
 });
 
 test("a missing swatch still yields a usable palette", () => {
-  // Cross-origin artwork cannot be read, which is normal rather than
-  // exceptional — the app must simply keep a sensible default.
   for (const theme of [ALBUM, PASTEL]) {
     const palette = buildPalette(null, theme);
     assert.ok(Object.keys(palette).length > 10, `${theme.mode} produced a full palette`);
@@ -65,8 +61,7 @@ test("dark grounds are dark and light grounds are light", () => {
 });
 
 test("text separates from the surface it sits on, in every mode", () => {
-  // The failure this guards against is a label rendered at the same lightness
-  // as its background — invisible, and only noticed when the wrong album plays.
+  // Guards against a label at the same lightness as its background — invisible.
   for (const theme of [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const surface = light(palette, "--surface-1");
@@ -87,9 +82,7 @@ test("accent text separates from the accent behind it", () => {
 });
 
 test("surfaces step in a consistent direction", () => {
-  // Dark themes get lighter as they stack; pastel gets *closer* rather than
-  // darker, which is what makes it read as soft — so only the ordering that
-  // each ground actually claims is asserted.
+  // Dark themes get lighter as they stack; pastel gets closer rather than darker.
   const dark = buildPalette(COVER, ALBUM);
   assert.ok(light(dark, "--bg") < light(dark, "--surface-1"));
   assert.ok(light(dark, "--surface-1") < light(dark, "--surface-2"));
@@ -105,21 +98,12 @@ test("pastel is gentler than the album ramp at the same hue", () => {
   const pastelBg = saturation(buildPalette(COVER, PASTEL)["--bg"]!);
   const albumBg = saturation(buildPalette(COVER, ALBUM)["--bg"]!);
 
-  // A pale surface shows hue far more readily than a dark one, so matching the
-  // album ramp's saturation here would produce neon, not pastel.
+  // A pale surface shows hue readily, so the album ramp's saturation reads as neon.
   assert.ok(pastelBg < albumBg, `pastel bg saturation ${pastelBg}% should be under ${albumBg}%`);
 });
 
 test("light grounds keep an edge, but a soft one", () => {
-  /*
-   * Two failure modes, opposite directions, and the light themes can hit
-   * either.
-   *
-   * Too pale and the border vanishes into the plane — an app of floating text
-   * with no structure. Too dark and it is the *dark* ramp's near-black outline
-   * drawn around every panel on a bright surface, which is what made the light
-   * themes look harsh rather than bright. The edge has to live in between.
-   */
+  // Too pale and the border vanishes; too dark and it is the dark ramp's harsh outline.
   for (const theme of [PASTEL, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const ink = light(palette, "--ink");
@@ -131,14 +115,8 @@ test("light grounds keep an edge, but a soft one", () => {
 });
 
 test("light grounds cast a short, translucent shadow", () => {
-  /*
-   * Two properties, and softening only one of them is not enough.
-   *
-   * A solid shadow sits directly behind the border and doubles the apparent
-   * weight of the edge. But the *offset* is a distance, and on a pale ground
-   * the eye reads that gap as a second edge however faint it is — so the throw
-   * has to shorten too, or the outline survives the colour change.
-   */
+  // A solid shadow doubles the edge's weight, and on a pale ground the offset itself
+  // reads as a second edge, so the throw has to shorten too.
   for (const theme of [PASTEL, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const drop = palette["--drop"]!;
@@ -154,24 +132,19 @@ test("light grounds cast a short, translucent shadow", () => {
 });
 
 test("the dark ground keeps its longer, solid throw", () => {
-  // The shortening above is a light-ground fix. Between two nearly-black planes
-  // the offset is the only thing saying one sits on the other.
+  // Between near-black planes the offset is all that says one sits on the other.
   const drop = buildPalette(COVER, ALBUM)["--drop"]!;
   assert.ok(Number(/^(\d+)px/.exec(drop)?.[1]) >= 3, `dark --drop should keep its depth: ${drop}`);
 });
 
 test("the dark ground keeps its hard edge", () => {
-  // The softening above is for light grounds only. Over near-black there is
-  // barely any contrast to spend, and the solid edge is what makes a panel
-  // legible as an object at all.
+  // Over near-black there is no contrast to spend; the solid edge carries the panel.
   const palette = buildPalette(COVER, ALBUM);
   assert.ok(light(palette, "--ink") < 10, "dark ink stays near-black");
   assert.ok(light(palette, "--ink") < light(palette, "--surface-1"));
 });
 
 test("an extreme swatch is pulled back into a usable range", () => {
-  // A fully saturated cover would otherwise vibrate, and a washed-out one would
-  // produce a palette with no colour at all.
   const neon = buildPalette({ hue: 300, sat: 1 }, ALBUM);
   const washed = buildPalette({ hue: 300, sat: 0 }, ALBUM);
 
@@ -180,10 +153,7 @@ test("an extreme swatch is pulled back into a usable range", () => {
 });
 
 test("surfaces carry far less hue than the accent", () => {
-  // The reason the first version of this ramp was tiring: a strong cover made
-  // the ground, the panels *and* the labels the same loud colour, so the eye
-  // had nowhere to rest and the artwork competed with its own backdrop. The
-  // colour belongs in the accent; the surfaces only hint at it.
+  // Otherwise a strong cover makes ground, panels and labels one loud colour.
   const palette = buildPalette({ hue: 300, sat: 0.7 }, ALBUM);
 
   assert.ok(
@@ -223,7 +193,6 @@ test("neutral still reads as white or as dark", () => {
 
   assert.ok(light(white, "--bg") > 85, "white is white");
   assert.ok(light(dark, "--bg") < 15, "dark is dark");
-  // Still legible, which is the thing a colourless palette most easily loses.
   assert.ok(Math.abs(light(white, "--fg") - light(white, "--surface-1")) > 40);
   assert.ok(Math.abs(light(dark, "--fg") - light(dark, "--surface-1")) > 40);
 });

@@ -6,18 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { MoreIcon, PencilIcon, TrashIcon } from "../icons";
 import { deletePlaylist, renamePlaylist } from "./store";
 
-/**
- * Rename and delete, for one playlist.
- *
- * An overflow menu rather than two buttons on the header: neither action is
- * what anyone came to the page to do, and a delete control sitting beside
- * "Play" at the same weight is a control that eventually gets hit by accident.
- *
- * Deleting asks first, in place. A modal would be the conventional answer, but
- * a confirm step that replaces the menu's own contents is read in the same
- * glance and cannot be dismissed by clicking the backdrop it does not have.
- * The destructive button is not the one under the cursor when the menu opens.
- */
+/** Rename and delete, for one playlist. An overflow menu, because a delete control beside
+ * "Play" at the same weight eventually gets hit by accident; the destructive button is
+ * never the one under the cursor when the menu opens. */
 export function PlaylistActions({
   id,
   name,
@@ -39,14 +30,9 @@ export function PlaylistActions({
   const [draft, setDraft] = useState(name);
   const [error, setError] = useState<string | null>(null);
 
-  /**
-   * Reopening always starts from the menu, never from a half-finished rename
-   * or a pending delete confirmation left over from last time.
-   *
-   * Reset on the way in rather than in an effect watching `open`: the state
-   * belongs to the act of opening, and deriving it from a render pass would
-   * mean rendering the stale menu once before correcting it.
-   */
+  // Reopening starts from the menu, never a rename or delete left over from last time.
+  // Reset on the way in rather than in an effect watching `open`, which would render the
+  // stale menu once before correcting it.
   function toggle() {
     setOpen((was) => {
       if (!was) {
@@ -83,12 +69,8 @@ export function PlaylistActions({
     };
   }, [open]);
 
-  /*
-   * Both actions are synchronous now that playlists live in this browser. The
-   * store notifies every view, so nothing here has to refresh a route to make
-   * the change appear — only a delete navigates, because the page it happened
-   * on is the one that just stopped existing.
-   */
+  // The store notifies every view, so only a delete navigates — the page it happened
+  // on just stopped existing.
   function submitRename(event: React.FormEvent) {
     event.preventDefault();
     const next = draft.trim();
@@ -185,8 +167,6 @@ export function PlaylistActions({
                 The songs stay searchable — only the list goes.
               </p>
               <div className="flex gap-1.5">
-                {/* Cancel first, so the safe option is the one nearest the
-                    pointer coming down from the menu item above. */}
                 <button
                   type="button"
                   onClick={() => setMode("menu")}
