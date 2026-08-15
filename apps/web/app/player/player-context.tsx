@@ -23,104 +23,37 @@ import {
   writeVolume,
 } from "./volume-store";
 
-/**
- * The queue holds **songs**, not source-tracks.
- *
- * A song may exist on several services; the controller plays it from whichever
- * source it can actually drive. Only YouTube Music is controllable today —
- * Deezer and Apple are link-only, and Spotify's embed exposes no play API — so
- * a chart entry from Deezer is resolved to its YouTube Music copy before it can
- * play. That resolution is the whole point of the matcher.
- *
- * **One copy is never enough.** Rights holders routinely bar embedding on
- * individual uploads — most often the auto-generated "art tracks" on Topic
- * channels that YouTube Music returns for a plain song search. The embedded
- * player reports only "Video unavailable", and crucially this cannot be
- * detected from the server: a blocked upload still answers oEmbed with 200 and
- * still reports playableInEmbed:true on its watch page. Only the browser
- * learns the truth, and only by trying.
- *
- * So a song carries a list of candidate uploads and falls through to the next
- * when one refuses, instead of declaring the song unplayable on first refusal.
+/*
+ * The queue holds songs, not source-tracks; only YouTube Music and SoundCloud are
+ * controllable. A blocked embed cannot be detected server-side — a barred upload answers
+ * oEmbed with 200 and reports playableInEmbed:true — so a song carries candidate uploads.
  */
 
 export type PlayState = "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
 
-/**
- * `off` continues into the recommendations when the queue ends, which is the
- * default because a queue that simply stops is the thing this app most wanted
- * to fix. `all` loops the queue instead, and `one` repeats a single track.
- */
+/** `off` continues into the recommendations at queue end; `all` loops the queue; `one` repeats a track. */
 export type RepeatMode = "off" | "all" | "one";
 
 interface PlayerState {
   queue: Song[];
   index: number;
   current: Song | null;
-  /** YouTube video id currently loaded, or null. */
   videoId: string | null;
-  /** SoundCloud permalink currently loaded, or null. */
   soundcloudUrl: string | null;
-  /**
-   * Which player owns the current song.
-   *
-   * **Exactly one player is ever mounted**, and this is what selects it.
-   * Mounting only the active player is deliberate: an unmounted player cannot
-   * make sound, whereas a merely-paused one can be restarted by a stray event
-   * or a race during handoff. Silence by construction beats silence by
-   * discipline — this is the bug most likely to bite.
-   */
+  /** Which player owns the current song. Exactly one is ever mounted — a paused one can be restarted by a stray event. */
   activeSource: "ytmusic" | "soundcloud" | null;
-  /**
-   * Whether the now-playing panel is shown — the third column on desktop, a
-   * floating card above the mini player on a phone. The video lives inside it.
-   *
-   * The video itself carries **no controls of its own** — it is a display, and
-   * everything that acts on it lives in the player bar. That is how Spotify
-   * treats a track that happens to have a video: one set of controls, always in
-   * the same place, whether or not there are pictures.
-   *
-   * Hiding it never unmounts or resizes the player, only clips it. YouTube's
-   * IFrame API stops playback below 200×200, so shrinking to hide would be
-   * indistinguishable from breaking it — see docs/BUGS.md B-1.
-   */
+  /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
-  /**
-   * Whether the panel has taken over the content area as a big video.
-   *
-   * Clicking the picture expands it; clicking again puts it back. Both states
-   * render **the same element**, only sized differently, because moving the
-   * player to a different place in the tree would re-parent its iframe — and a
-   * re-parented iframe reloads, which means playback stops dead.
-   */
+  /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
   theater: boolean;
   state: PlayState;
-  /** Why the current song could not be played, when state is "unplayable". */
   problem: string | null;
-  /** Playback position and length in seconds, reported by the embedded player. */
   position: number;
   duration: number;
-  /**
-   * Output level, 0–100, and whether it is muted.
-   *
-   * Held here rather than in the player because the player is torn down and
-   * rebuilt on every source switch — a level living inside it would reset to
-   * full every time a track fell through to another copy. Each player reads
-   * this and applies it on ready.
-   */
+  /** Output level, 0–100, and mute. Held here because the player is torn down on every source switch. */
   volume: number;
   muted: boolean;
-  /**
-   * What to play after the queue, drawn from every source that will answer and
-   * ranked by agreement between them — not a passthrough of any one service's
-   * radio. See `recommend.ts`.
-   *
-   * Fetched on **every track change**, not when the queue nears its end. That
-   * is the remedy docs/BUGS.md B-5 prescribes for the fall-through stall,
-   * applied here: by the time the last song finishes this is already in memory,
-   * so continuing costs no network round trip. It also means one fetch serves
-   * both the autoplay and the "similar songs" panel.
-   */
+  /** What to play after the queue (`recommend.ts`). Fetched on every track change so continuing costs no round trip (BUGS.md B-5). */
   radio: Song[];
   shuffle: boolean;
   repeat: RepeatMode;
@@ -129,43 +62,27 @@ interface PlayerState {
 interface PlayerControls extends PlayerState {
   /** Plays a song, optionally queueing the list it came from behind it. */
   play: (song: Song, rest?: Song[]) => void;
-  /** Appends to the queue without disturbing what is playing. */
   enqueue: (songs: Song[]) => void;
-  /** Drops one entry by queue position, including the one playing. */
   removeAt: (position: number) => void;
-  /** Moves an entry to another position, carrying playback with it. */
   move: (from: number, to: number) => void;
   /** Drops everything after the current song, keeping it playing. */
   clearQueue: () => void;
   toggle: () => void;
   next: () => void;
   previous: () => void;
-  /** Called by the embedded player when a track finishes. */
   handleEnded: () => void;
   handleStateChange: (state: PlayState) => void;
   handleProgress: (position: number, duration: number) => void;
-  /**
-   * Reports a playback failure. `worthRetrying` is true when the fault belongs
-   * to this upload — embedding disabled, video removed — so another copy of
-   * the same song stands a chance.
-   */
+  /** Reports a playback failure. `worthRetrying` means the fault is this upload's, so another copy stands a chance. */
   handleError: (reason: string, worthRetrying: boolean) => void;
   seek: (seconds: number) => void;
-  /** Sets the level, 0–100. Setting it unmutes, since that is what was meant. */
   setVolume: (level: number) => void;
   toggleMute: () => void;
-  /** Shows or hides the now-playing panel. Never resizes the player inside it. */
   togglePanel: () => void;
-  /** Expands the video to fill the content area, or puts it back in the panel. */
   toggleTheater: () => void;
-  /**
-   * Puts the video back without toggling. Navigation needs this: the expanded
-   * video *replaces* the content area, so going to Search or Library while it
-   * is open would change a page nobody can see.
-   */
+  /** Puts the video back without toggling — navigation needs it, since the expanded video replaces the content area. */
   exitTheater: () => void;
   toggleShuffle: () => void;
-  /** Steps off → all → one → off. One button, three states, like every player. */
   cycleRepeat: () => void;
   registerToggle: (fn: (() => void) | null) => void;
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
@@ -179,15 +96,11 @@ export function usePlayer(): PlayerControls {
   return context;
 }
 
-/** The YouTube Music copy of a song, if it has one. */
 function youtubeIdOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null;
 }
 
-/**
- * The SoundCloud copy, if it has one. The widget takes a permalink rather than
- * an id, which is why this returns `url` and not `sourceId`.
- */
+/** The SoundCloud copy, if any. Returns `url`, not `sourceId` — the widget takes a permalink. */
 function soundcloudUrlOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
 }
@@ -205,13 +118,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [radio, setRadio] = useState<Song[]>([]);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<RepeatMode>("off");
-  /**
-   * Songs already played in this shuffle pass, by id.
-   *
-   * Without it, "random next" replays tracks while others go unheard — the
-   * complaint everyone has about naive shuffle. A pass ends when every song has
-   * been played, and only then does it start over.
-   */
+  // Played in this shuffle pass. A pass restarts only once every song has played.
   const shuffled = useRef<Set<string>>(new Set());
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -221,12 +128,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     getVolumeServerSnapshot,
   );
 
-  // Set by the embedded player so the bar's play/pause button can reach it.
   const toggleRef = useRef<(() => void) | null>(null);
   const seekRef = useRef<((seconds: number) => void) | null>(null);
   const resolving = useRef<AbortController | null>(null);
 
-  // Fallback bookkeeping for the song currently being attempted.
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
@@ -235,8 +140,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const attempt = useCallback((id: string) => {
     attempted.current.add(id);
-    // Switching players tears the other one down, which is what guarantees
-    // only one is audible.
     setSoundcloudUrl(null);
     setActiveSource("ytmusic");
     setVideoId(id);
@@ -244,7 +147,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setState("loading");
   }, []);
 
-  /** Hands the song to the SoundCloud widget instead of the YouTube player. */
   const attemptSoundCloud = useCallback((url: string) => {
     setVideoId(null);
     setActiveSource("soundcloud");
@@ -253,7 +155,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setState("loading");
   }, []);
 
-  /** Every YouTube Music upload of this song the search knows about. */
   const findCandidates = useCallback(async (song: Song, signal: AbortSignal) => {
     const query = [song.title, song.artists[0]].filter(Boolean).join(" ");
     const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
@@ -277,17 +178,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVideoId(null);
       setSoundcloudUrl(null);
 
-      // A song found on YouTube Music already has a copy to try; alternatives
-      // are fetched only if it turns out to be blocked, so the common case
-      // costs no extra request.
       const direct = youtubeIdOf(song);
       if (direct) {
         attempt(direct);
         return;
       }
 
-      // No YouTube copy, but SoundCloud can play it. This is the only path for
-      // a pasted SoundCloud link, since that catalogue cannot be searched.
       const soundcloud = soundcloudUrlOf(song);
       if (soundcloud) {
         attemptSoundCloud(soundcloud);
@@ -340,13 +236,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [load],
   );
 
-  /**
-   * Which song follows this one, or null when the queue is spent.
-   *
-   * Null is meaningful rather than an error: it is what hands over to the
-   * recommendations. Repeat and shuffle both resolve here so that the manual
-   * skip button and auto-advance can never disagree about what "next" means.
-   */
+  // Null at queue end. Repeat and shuffle resolve here, so manual skip and auto-advance
+  // can never disagree about what "next" means.
   const nextIndex = useCallback((): number | null => {
     if (queue.length === 0) return null;
 
@@ -358,8 +249,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (unplayed.length > 0) {
         return unplayed[Math.floor(Math.random() * unplayed.length)]!.position;
       }
-      // Every song has had a turn. Only a repeating queue starts a new pass;
-      // otherwise this is genuinely the end and the radio takes over.
       if (repeat === "all") {
         shuffled.current = new Set();
         return queue.length > 1 ? (index + 1) % queue.length : index;
@@ -372,28 +261,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [queue, index, shuffle, repeat]);
 
   const next = useCallback(() => {
-    // A skipped song has had its turn. Without this it stays "unplayed" for the
-    // rest of the shuffle pass and can be drawn again a moment later, which is
-    // the one thing the bookkeeping exists to prevent — and `handleEnded`
-    // already marks the songs that finish, so the two disagreed about what
-    // "played" meant depending on whether you pressed the button.
+    // A skip counts as a turn, or it is drawn again at once — and `handleEnded` marks the
+    // songs that finish, so the two would disagree about "played".
     const playing = queue[index];
     if (playing) shuffled.current.add(playing.id);
 
     const target = nextIndex();
-    // A manual skip at the end of a non-repeating queue steps into the
-    // recommendations rather than doing nothing.
     if (target === null) {
       const known = new Set(queue.map((song) => song.id));
       const fresh = radio.filter((song) => !known.has(song.id));
       if (fresh.length === 0) return;
       setQueue((current) => [...current, ...fresh]);
       setRadio([]);
-      // The first appended song, which is where the old queue ended — *not*
-      // `index + 1`. Those are the same thing only when the current song is the
-      // last one, which is true in order but not in shuffle: a spent pass
-      // returns null from any position, so `index + 1` walked into an
-      // already-played song and left the radio sitting unplayed behind it.
+      // Where the old queue ended, *not* `index + 1`. Those match only when the
+      // current song is last — in shuffle a spent pass returns null from any
+      // position, so `index + 1` landed on a played song and left the radio unplayed.
       goTo(queue.length);
       return;
     }
@@ -404,8 +286,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggleShuffle = useCallback(() => {
     setShuffle((on) => {
-      // A fresh pass each time it is switched on, so turning it off and back on
-      // does not leave half the queue unreachable.
+      // A fresh pass on each switch-on, or half the queue stays unreachable.
       shuffled.current = new Set();
       return !on;
     });
@@ -415,14 +296,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setRepeat((mode) => (mode === "off" ? "all" : mode === "all" ? "one" : "off"));
   }, []);
 
-  /**
-   * Songs from `additions` that are not already queued.
-   *
-   * The queue is deduplicated by song id because every entry point can supply
-   * overlapping lists — a shelf, a playlist and the radio routinely contain the
-   * same track — and a queue that lists the same song twice makes shuffle's
-   * "played everything once" bookkeeping wrong as well as looking careless.
-   */
+  // Entry points overlap, and a duplicate breaks shuffle's "played once" bookkeeping.
   const unqueued = useCallback(
     (additions: Song[]) => {
       const known = new Set(queue.map((song) => song.id));
@@ -431,7 +305,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [queue],
   );
 
-  /** Tears down the players and returns to rest. Used when the queue empties. */
   const stop = useCallback(() => {
     resolving.current?.abort();
     songRef.current = null;
@@ -449,10 +322,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const fresh = unqueued(songs);
       if (fresh.length === 0) return;
 
-      // Adding to an empty queue has to start playback. Without this the first
-      // song becomes `current` — the bar and panel show it — while no player
-      // was ever asked to load it, so it sits there looking playable and never
-      // plays.
+      // Adding to an empty queue must start playback, or nothing loads the song.
       if (queue.length === 0) {
         setQueue(fresh);
         setIndex(0);
@@ -481,8 +351,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (position: number) => {
       const song = queue[position];
       if (!song) return;
-      // Otherwise a re-added song counts as already played for the rest of the
-      // shuffle pass and gets skipped.
+      // Otherwise a re-added song counts as already played and gets skipped.
       shuffled.current.delete(song.id);
       applyEdit(removeFromQueue(queue, index, position));
     },
@@ -495,23 +364,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const clearQueue = useCallback(() => {
-    // Keeps the current song. Clearing what you are listening to would be a
-    // stop button wearing the wrong label.
     setQueue((current) => current.slice(0, index + 1));
   }, [index]);
 
-  /*
-   * The queue and position, readable without being depended on.
-   *
-   * The effect below must not re-run when either changes — it is keyed on the
-   * loaded upload alone, and adding them would refetch the blend on every
-   * append, which is the thing that append is trying to avoid. But its
-   * *callback* has to know where playback currently sits. A ref is the way to
-   * read a value without subscribing to it.
-   *
-   * Written in an effect rather than during render, so the value is only ever
-   * observed after React has committed the state it mirrors.
-   */
+  // Read by the radio effect but not depended on — as deps they refetch on every append.
   const queueRef = useRef<Song[]>(queue);
   const indexRef = useRef(index);
 
@@ -520,14 +376,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     indexRef.current = index;
   }, [queue, index]);
 
-  /*
-   * Recommendations for whatever is playing.
-   *
-   * Seeded from the video id **actually loaded** rather than from the song's
-   * declared source, so it stays correct after a fall-through picked a
-   * different upload, and works for a chart song whose YouTube copy was found
-   * by search rather than shipped with it.
-   */
+  // Seeded from the video id actually loaded, so it stays right after a fall-through.
   useEffect(() => {
     const seed = activeSource === "ytmusic" ? videoId : null;
     const song = queue[index];
@@ -543,22 +392,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       .then((data) => {
         const songs = data?.songs ?? [];
 
-        /*
-         * Adopted straight into the queue when nothing follows the current
-         * track, instead of being held until the queue runs dry.
-         *
-         * Playing a search result queues that one song by design — see
-         * `search-results.tsx`. The blend was then parked in `radio` and only
-         * merged at the moment the song *ended*, so a fresh tab showed a queue
-         * of one, no "up next", and then twenty-six entries appearing at once
-         * when the track changed. Nothing was broken; the queue simply had no
-         * way to say what it already knew was coming.
-         *
-         * Only when the current track is the last one. Mid-queue the blend
-         * stays parked, which is what stops it appending twenty-five more
-         * songs on every track change — the seed moves with playback, so the
-         * eager path would otherwise grow the queue without bound.
-         */
+        // Adopted only when nothing follows, so a one-song queue shows "up next" instead
+        // of twenty-six entries the moment it ends. Mid-queue it stays parked, or the
+        // moving seed grows the queue without bound.
         const queued = queueRef.current;
         if (indexRef.current < queued.length - 1) {
           setRadio(songs);
@@ -567,20 +403,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
         const known = new Set(queued.map((song) => song.id));
         const fresh = songs.filter((song) => !known.has(song.id));
-        // Consumed, exactly as the end-of-queue paths consume it. The next
-        // track reseeds this, so the radio stays endless either way.
         setRadio([]);
         if (fresh.length > 0) setQueue((current) => [...current, ...fresh]);
       })
       .catch(() => {
-        // No recommendations is not an error worth showing anyone: the queue
-        // still plays and the panel simply hides its shelf.
+        // No recommendations is not worth surfacing: the queue still plays.
       });
 
     return () => aborter.abort();
-    // Deliberately keyed on the loaded upload alone. Depending on the song
-    // object would refetch whenever the queue array is rebuilt, and depending
-    // on `queue`/`index` would refetch on every append.
+    // Keyed on the loaded upload alone — see the ref note above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSource, videoId]);
 
@@ -589,9 +420,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const setVolume = useCallback((level: number) => writeVolume(level), []);
   const toggleMute = useCallback(() => writeMuteToggle(), []);
-  // Closing the panel leaves theater too: the expanded video *is* the panel, so
-  // a hidden panel that is still "expanded" would blank the content area for a
-  // video nobody can see.
+  // Closing the panel leaves theater — a hidden-but-expanded panel blanks the content area.
   const togglePanel = useCallback(() => {
     setPanelOpen((open) => {
       if (open) setTheater(false);
@@ -612,14 +441,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(total);
   }, []);
 
-  /**
-   * Records a play the first time a song actually starts.
-   *
-   * On "playing" rather than on `load`, which would record songs that never
-   * played because every copy refused to embed — and rather than on
-   * `handleEnded`, which would miss the songs you skipped but nonetheless
-   * chose. The ref stops a pause/resume from recording the same song twice.
-   */
+  // On "playing": `load` counts copies that refused and `handleEnded` misses skips. The
+  // ref stops a pause/resume recording twice.
   const recorded = useRef<string | null>(null);
   const handleStateChange = useCallback(
     (next: PlayState) => {
@@ -635,18 +458,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         title: song.title,
         artists: song.artists,
         artworkUrl: song.artworkUrl,
-        // The upload that played, not the one the song shipped with — that is
-        // what can seed a radio later.
+        // The upload that played, not the one the song shipped with — only it can seed a radio.
         videoId,
       });
     },
     [queue, index, videoId],
   );
 
-  /**
-   * A copy refused to play. Blocked embedding belongs to one upload, not to
-   * the song, so try the next upload before giving up on it.
-   */
   const handleError = useCallback(
     async (reason: string, worthRetrying: boolean) => {
       const song = songRef.current;
@@ -659,10 +477,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState("resolving");
       try {
         if (candidates.current.length === 0) {
-          // The previous one is cancelled first. Without this, a fall-through
-          // that happens while `load` is still resolving left that request
-          // running and its controller unreachable, so the response landed and
-          // overwrote `candidates` for a song that was no longer playing.
+          // Cancel the previous, or a fall-through mid-`load` leaves it running and its
+          // response overwrites `candidates` for a song no longer playing.
           resolving.current?.abort();
           const aborter = new AbortController();
           resolving.current = aborter;
@@ -677,12 +493,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
       }
 
-      // Every YouTube upload refused. If SoundCloud has this song, it is a
-      // genuinely different service with its own rights position, so it is
-      // worth one last try before declaring defeat.
-      //
-      // The SoundCloud player always reports errors as not-worth-retrying, so
-      // a failure here exits above rather than looping back into this branch.
+      // SoundCloud has its own rights position, and reports not-worth-retrying, so a failure
+      // exits above rather than looping back here.
       const soundcloud = soundcloudUrlOf(song);
       if (soundcloud) {
         attemptSoundCloud(soundcloud);
@@ -695,21 +507,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [attempt, attemptSoundCloud, findCandidates],
   );
 
-  /**
-   * A song finished.
-   *
-   * When the queue runs out, it continues into the recommendations rather than
-   * stopping — which is what every music app does, and what the dead `idle`
-   * branch here used to prevent. The list is already in memory (see the fetch
-   * effect), so this costs no round trip and the gap is just the player load.
-   *
-   * `goTo` reads the queue inside a `setQueue` updater, and React runs queued
-   * updaters in order, so it observes the appended songs rather than the stale
-   * array this closure captured.
-   */
+  // Continues into the recommendations at queue end. `goTo` reads the queue inside a
+  // `setQueue` updater, which React runs in order, so it sees the appended songs.
   const handleEnded = useCallback(() => {
-    // Repeat-one is checked before anything else: it is the one mode that means
-    // "ignore the queue entirely".
+    // Repeat-one ignores the queue entirely.
     if (repeat === "one") {
       goTo(index);
       return;
@@ -732,11 +533,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
 
     setQueue((current) => [...current, ...fresh]);
-    // Consumed. The next track changes the seed, which refills this — so the
-    // radio is effectively endless, with the id filter as the only loop guard.
     setRadio([]);
-    // Where the old queue ended, which is where `fresh` now starts. See the note
-    // in `next` on why this is not `index + 1`.
+    // Where the old queue ended. See `next` for why this is not `index + 1`.
     goTo(queue.length);
   }, [goTo, nextIndex, queue, radio, repeat, index]);
 

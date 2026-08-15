@@ -1,18 +1,8 @@
-/**
- * Turning wheel events into volume steps.
- *
- * Pure and separate from the control because the arithmetic has two traps that
- * are invisible until the wrong input device is used:
- *
- * 1. **Devices disagree wildly about magnitude.** One notch of a mouse wheel
- *    reports ~100, while a trackpad reports a stream of 1–10 values sixty times
- *    a second. Stepping once per *event* means a mouse moves the volume 5% and
- *    a trackpad slams it from full to silent in a flick. Accumulating distance
- *    and spending it in fixed steps makes both feel the same.
- *
- * 2. **`deltaY` is not always pixels.** `deltaMode` says whether the number
- *    means pixels, lines or pages, and Firefox commonly reports lines. Treating
- *    3 lines as 3 pixels makes the control nearly inert there.
+/*
+ * Wheel events into volume steps. One mouse notch reports ~100 while a trackpad streams 1–10
+ * sixty times a second, so stepping per *event* moves 5% on a mouse and full-to-silent on a
+ * trackpad — hence distance accumulated and spent in fixed steps. And `deltaY` is not always
+ * pixels: `deltaMode` may say lines, as Firefox commonly does.
  */
 
 /** How much scrolling buys one step of volume. */
@@ -36,19 +26,11 @@ export interface WheelSteps {
 }
 
 /**
- * Splits accumulated scroll into whole steps and a remainder.
- *
- * The remainder is the point: without carrying it, a trackpad's small deltas
- * each round to zero and the control never moves at all.
- *
- * `Math.trunc` rather than `Math.floor` so the two directions behave
- * symmetrically — `floor(-0.5)` is `-1`, which would make scrolling up spend a
- * step it had not yet earned while scrolling down waited its turn.
+ * Accumulated scroll as whole steps plus a remainder. Uncarried, a trackpad's small deltas
+ * each round to zero and nothing moves. `Math.trunc`, not `Math.floor` — `floor(-0.5)` is `-1`.
  */
 export function wheelSteps(accumulated: number): WheelSteps {
-  // `+ 0` normalises negative zero: `Math.trunc(-0.5)` is `-0`, which is equal
-  // to `0` in arithmetic but not under `Object.is` or a strict assertion — a
-  // needless surprise to hand a caller.
+  // `+ 0` normalises negative zero, which `Object.is` and strict assertions catch.
   const steps = Math.trunc(accumulated / WHEEL_THRESHOLD) + 0;
   return { steps, rest: accumulated - steps * WHEEL_THRESHOLD };
 }
