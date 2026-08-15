@@ -8,8 +8,10 @@ import { Artwork } from "../artwork";
 import { PlayIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { SongRow } from "../song-row";
 import type { Song } from "../types";
 import type { AlbumDetail } from "@/lib/discography";
+import { formatDuration } from "../duration";
 
 /**
  * A release and its running order.
@@ -19,12 +21,6 @@ import type { AlbumDetail } from "@/lib/discography";
  * That resolution is invisible and takes about as long as any other first play,
  * which is why the rows do not advertise it.
  */
-
-function formatDuration(ms: number | null): string {
-  if (ms === null) return "—";
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
-}
 
 export function AlbumView({ album }: { album: AlbumDetail }) {
   const { play, current, state } = usePlayer();
@@ -88,51 +84,37 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
           {songs.map((song, position) => {
             const isCurrent = current?.id === song.id;
             return (
-              <li
+              <SongRow
                 key={song.id}
-                className={`group flex items-center gap-3 rounded-lg px-2 transition sm:gap-4 ${
-                  isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
-                }`}
-              >
-                <span className="w-6 shrink-0 text-right text-xs tabular-nums text-[var(--fg-faint)]">
-                  {isCurrent && state === "playing" ? (
+                song={song}
+                onPlay={() => play(song, songs)}
+                isCurrent={isCurrent}
+                isPlaying={state === "playing"}
+                // No artwork: every row here is under the one cover in the header.
+                thumbnail={false}
+                rank={
+                  isCurrent && state === "playing" ? (
                     <span aria-label="Playing" className="text-[var(--accent)]">
                       &#9834;
                     </span>
                   ) : (
                     position + 1
-                  )}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => play(song, songs)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left focus:outline-none sm:py-3"
-                  aria-label={`Play ${song.title}`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate text-[15px] font-medium ${
-                        isCurrent ? "text-[var(--accent)]" : ""
-                      }`}
-                    >
-                      {song.title}
+                  )
+                }
+                subtitle={<ArtistLink artists={song.artists} />}
+                trailing={
+                  <>
+                    <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
+                      {formatDuration(song.durationMs)}
                     </span>
-                    <span className="block truncate text-sm text-[var(--fg-dim)]">
-                      <ArtistLink artists={song.artists} />
-                    </span>
-                  </span>
-                </button>
 
-                <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
-                  {formatDuration(song.durationMs)}
-                </span>
-
-                <AddToPlaylist
-                  song={song}
-                  className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                />
-              </li>
+                    <AddToPlaylist
+                      song={song}
+                      className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+                    />
+                  </>
+                }
+              />
             );
           })}
         </ul>

@@ -11,10 +11,12 @@ import { ExternalIcon, NoteIcon, PlayIcon } from "../icons";
 import { AddToQueue } from "../player/add-to-queue";
 import { usePlayer } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { SongRow } from "../song-row";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import type { Release, RelatedArtist } from "@/lib/discography";
 import { cover as coverSrc } from "../artwork-url";
+import { formatDuration } from "../duration";
 
 // The artist page's surface. Songs are a plain ranked list rather than shelves of albums,
 // because Timbre's sources do not agree on album membership — YouTube Music often has none
@@ -32,11 +34,6 @@ const GROUPS: { heading: string; kinds: readonly string[] }[] = [
   { heading: "Singles", kinds: ["single"] },
 ];
 
-function formatDuration(ms: number | null): string {
-  if (ms === null) return "—";
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
-}
 
 export function ArtistView({
   name,
@@ -140,77 +137,33 @@ export function ArtistView({
           )}
 
           <ul className="divide-y divide-[var(--line)]">
-            {visible.map((song) => {
-              const isCurrent = current?.id === song.id;
-              return (
-                <li
-                  key={song.id}
-                  className={`group flex items-center gap-3 rounded-lg px-2 transition sm:gap-4 ${
-                    isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => play(song, songs)}
-                    className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left focus:outline-none sm:gap-4 sm:py-3"
-                    aria-label={`Play ${song.title}`}
-                  >
-                    <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)] sm:size-12">
-                      {song.artworkUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-                        <img
-                          src={coverSrc(song.artworkUrl, 112) ?? undefined}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <span className="flex size-full items-center justify-center text-[var(--fg-dim)]">
-                          <NoteIcon className="size-5" />
-                        </span>
-                      )}
-                      <span
-                        className={`absolute inset-0 flex items-center justify-center bg-black/55 transition ${
-                          isCurrent && state === "playing"
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                        }`}
-                      >
-                        <PlayIcon className="size-4 text-white" />
-                      </span>
+            {visible.map((song) => (
+              <SongRow
+                key={song.id}
+                song={song}
+                onPlay={() => play(song, songs)}
+                isCurrent={current?.id === song.id}
+                isPlaying={state === "playing"}
+                subtitle={song.album ?? song.artists.join(", ")}
+                trailing={
+                  <>
+                    <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
+                      {formatDuration(song.durationMs)}
                     </span>
 
-                    <span className="min-w-0 flex-1">
-                      <span
-                        className={`block truncate text-[15px] font-medium ${
-                          isCurrent ? "text-[var(--accent)]" : ""
-                        }`}
-                      >
-                        {song.title}
-                      </span>
-                      <span className="block truncate text-sm text-[var(--fg-dim)]">
-                        {song.album ?? song.artists.join(", ")}
-                      </span>
-                    </span>
-                  </button>
+                    <AddToQueue
+                      song={song}
+                      className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+                    />
 
-                  <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
-                    {formatDuration(song.durationMs)}
-                  </span>
-
-                  <AddToQueue
-                    song={song}
-                    className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-                  />
-
-                  <AddToPlaylist
-                    song={song}
-                    className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                  />
-                </li>
-              );
-            })}
+                    <AddToPlaylist
+                      song={song}
+                      className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+                    />
+                  </>
+                }
+              />
+            ))}
           </ul>
 
           {!showAll && songs.length > SONG_LIMIT && (
