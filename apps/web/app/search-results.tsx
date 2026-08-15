@@ -27,14 +27,7 @@ function formatDuration(ms: number | null): string {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
-/**
- * Search results.
- *
- * **The field is not here.** It lives in the app shell, above the router, so it
- * survives the navigation from Home to this page — see `top-bar.tsx` for why
- * that has to be true for typing to work. This component reads what was typed
- * and answers it; it owns no input and draws no chrome.
- */
+/** Search results. The field lives in the app shell, above the router, so it survives navigation — see `top-bar.tsx`. */
 export function SearchResults() {
   const query = useSearchQuery();
   const [results, setResults] = useState<SongsResponse | null>(null);
@@ -61,10 +54,8 @@ export function SearchResults() {
       setLoading(true);
       setError(null);
 
-      // A pasted link is resolved rather than searched. This is the only way
-      // SoundCloud tracks get in: its catalogue cannot be searched without a
-      // paid account, while its player needs no credentials at all. Sharing a
-      // link is also just how people pass songs around.
+      // A pasted link is resolved, not searched — the only way SoundCloud tracks get in,
+      // since its catalogue needs a paid account and its player needs none.
       const endpoint = isUrl(trimmed)
         ? `/api/resolve?url=${encodeURIComponent(trimmed)}`
         : `/api/search?q=${encodeURIComponent(trimmed)}`;
@@ -77,8 +68,6 @@ export function SearchResults() {
           }
           if (!response.ok) throw new Error(`Search failed (${response.status})`);
           const body = (await response.json()) as SongsResponse | { song: Song };
-          // /api/resolve answers with a single song; normalise so the rest of
-          // the component only ever handles one shape.
           return "song" in body ? { songs: [body.song], failures: [] } : body;
         })
         .then((data) => {
@@ -94,10 +83,8 @@ export function SearchResults() {
 
     return () => {
       clearTimeout(timer);
-      // The request goes too, not just the pending debounce. Leaving `/search`
-      // mid-flight left a search running to completion and then calling
-      // `setResults` on a component nobody was looking at — a wasted round trip
-      // against a metered upstream, on the one route people leave fastest.
+      // The in-flight request goes too, not just the debounce, or leaving `/search`
+      // costs a round trip and a `setResults` nobody is looking at.
       controller.current?.abort();
     };
   }, [query]);
@@ -105,13 +92,7 @@ export function SearchResults() {
   const hasQuery = query.trim().length > 0;
   const songs = results?.songs ?? [];
 
-  /*
-   * Every source Timbre asked refused.
-   *
-   * Guarded on `attempted > 0` because the count is optional — /api/resolve
-   * answers with one song and no fan-out — and `0 === 0` would otherwise
-   * declare a total outage on a response that never contacted anything.
-   */
+  // Guarded on `attempted > 0`: optional, and `0 === 0` declares a false total outage.
   const attempted = results?.attempted ?? 0;
   const allSourcesDown = attempted > 0 && results?.failures.length === attempted;
 
@@ -124,14 +105,8 @@ export function SearchResults() {
           </p>
         )}
 
-        {/*
-          Partial and total outages are different events and must not share a
-          message. With every source down, the old rendering stacked three
-          "showing everything else" banners above "Nothing found for …" — which
-          promised results that did not exist and then blamed the query for
-          their absence. Someone reading that goes looking for a different
-          spelling of a song that was there the whole time.
-        */}
+        {/* Partial and total outages must not share a message: "showing everything else"
+            above "Nothing found for …" blames the query for an outage. */}
         {allSourcesDown ? (
           <div
             role="alert"
@@ -153,16 +128,8 @@ export function SearchResults() {
           ))
         )}
 
-        {/*
-          Nothing typed.
-
-          **No suggestions here.** They belong to the field, which now shows them
-          in a panel the moment it is focused — and since clearing the box leaves
-          it focused, rendering them here as well put the same four chips on
-          screen twice, one set directly above the other. A line of text is the
-          whole empty state; the chips are one click away and already visible
-          when anyone is actually about to type.
-        */}
+        {/* No suggestions here — the field shows them on focus, and clearing the box
+            leaves it focused, so this would put the same chips on screen twice. */}
         {!hasQuery && (
           <p className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
             Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
@@ -171,8 +138,7 @@ export function SearchResults() {
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
-        {/* `!allSourcesDown`: "nothing found" is a statement about the
-            catalogue, and it is only true if something actually looked. */}
+        {/* `!allSourcesDown`: "nothing found" is only true if something actually looked. */}
         {hasQuery && !loading && songs.length === 0 && !error && !allSourcesDown && (
           <p className="py-16 text-center text-[var(--fg-dim)]">
             Nothing found for “{query.trim()}”.
@@ -201,20 +167,9 @@ function SongRow({ song }: { song: Song }) {
         isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
       }`}
     >
-      {/*
-        The row itself plays. Opening the source is a deliberate secondary
-        action on the badges, not what a click does by default.
-
-        **It plays this song alone, and does not queue the other results.**
-        Searching a song title returns that song over and over — the official
-        upload, lyric videos, karaoke, covers, mashups, KIDZ BOP — because that
-        is what the catalogue holds, and they are genuinely different uploads so
-        the merger is right not to collapse them. Queueing all of them meant
-        hearing the same song twenty times and never reaching the end of the
-        queue, which is also where recommendations begin. Playing one song and
-        continuing into the blend is both what you wanted and what Spotify and
-        YouTube Music do with a search result.
-      */}
+      {/* Plays this song alone and does *not* queue the other results: a title search
+          returns the same song many times over, so queueing them all never reaches the
+          end of the queue, which is where recommendations begin. */}
       <button
         type="button"
         onClick={() => play(song)}

@@ -1,16 +1,7 @@
 /**
- * The placeholder for a cover tile.
- *
- * Written out in five places before this: twice in `search-results.tsx`, once
- * in `explore/loading.tsx`, once in `profile-view.tsx`. They had already drifted
- * — two used `rounded`, one `rounded-[var(--r-sm)]`, and the bar widths
- * disagreed — which is the usual fate of a shape that is easier to retype than
- * to import.
- *
- * A square, a title bar and a shorter subtitle bar, because that is what a
- * `SongCard` is. Reserving the same box is the whole point: a skeleton that is a
- * different height from the thing it stands in for moves the page when the real
- * content lands, which is the problem it was supposed to solve.
+ * The placeholder for a cover tile — a square, a title bar and a shorter subtitle bar,
+ * because that is what a `SongCard` is. Reserving the same box is the point: a skeleton
+ * of a different height moves the page when the real content lands.
  */
 export function TileSkeleton() {
   return (
@@ -22,12 +13,8 @@ export function TileSkeleton() {
   );
 }
 
-/**
- * A row of them, each in a box of the caller's width.
- *
- * `aria-hidden` on every tile: a screen reader announcing eight empty groups is
- * worse than silence while something loads.
- */
+/** A row of them, each in a box of the caller's width. `aria-hidden` on every tile: a
+ * screen reader announcing eight empty groups is worse than silence. */
 export function TileSkeletons({ count, className }: { count: number; className?: string }) {
   return Array.from({ length: count }, (_, index) => (
     <div key={index} className={className} aria-hidden>
