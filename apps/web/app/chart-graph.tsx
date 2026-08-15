@@ -4,30 +4,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { ChartTrack } from "@/lib/discover";
 
-/**
- * The chart, plotted.
- *
- * **Why a dot plot and not bars.** Deezer publishes a popularity score beside
- * every charting track, and the scores sit in a narrow band near the top of
- * their range — this week's spread is roughly 600k to 999k out of a million.
- * A bar has to grow from zero or its length lies about the ratio, and from zero
- * every one of these bars is between 60% and 100% full: twenty-five near
- * identical blocks. A dot carries no length, so it can sit on a scale that
- * starts where the data does, and the differences become visible without
- * anything being overstated.
- *
- * **What it actually shows, which is not what it looks like.** Position and
- * popularity are two different measures and they disagree — this week's #16 is
- * a remastered Clash single with the *lowest* catalogue popularity on the board,
- * and #9 has the highest while sitting eight places down. The graph is worth
- * having because of that disagreement: a flat line would mean the chart was
- * simply popularity re-sorted, and there would be nothing to look at. The
- * caption says so plainly, because a reader who assumes the dots should descend
- * will read the scatter as a bug.
- *
- * Every plotted value is also readable as text one link away, on the chart's own
- * page — a value reachable *only* by pointing at a dot is the one thing a graph
- * must never do.
+/*
+ * Dots rather than bars: the popularity scores sit in a narrow band near the top of their
+ * range (roughly 600k–999k of a million), and a bar must grow from zero or its length
+ * lies. A dot has none, so its scale can start where the data does.
  */
 
 /** Plot chrome, in pixels. Left is wide enough for a `1.0M` tick. */
@@ -36,18 +16,8 @@ const PAD = { left: 42, right: 14, top: 14, bottom: 20 };
 /** The tooltip's widest, matching its `max-w-[15rem]`. Kept in step by hand. */
 const TIP_MAX_W = 240;
 
-/**
- * Measured before the browser paints, not after.
- *
- * The plot needs its own width before it can draw anything, and an effect that
- * runs *after* paint means the first frame is an empty box — which is exactly
- * what made switching to this view flicker. `useLayoutEffect` runs between
- * render and paint, so the measurement lands in the same frame.
- *
- * It falls back to `useEffect` on the server, where there is no layout to read
- * and React warns about the layout variant being useless. This component is
- * client-side but still server-rendered, so it hits that path on every request.
- */
+// Between render and paint: after paint the first frame is an empty box and the view
+// flickers. `useEffect` on the server, where React warns the other is useless.
 const useMeasure = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 function formatScore(value: number): string {
@@ -56,13 +26,6 @@ function formatScore(value: number): string {
   return String(value);
 }
 
-/**
- * Four ticks on a round number.
- *
- * The band is padded outwards to the enclosing round values so the extreme dots
- * are never clipped against the frame, and so the axis reads as a scale rather
- * than as "exactly the range of this data".
- */
 function scale(values: number[]): { min: number; max: number; ticks: number[] } {
   const low = Math.min(...values);
   const high = Math.max(...values);
@@ -93,19 +56,12 @@ export function ChartGraph({
   const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
 
-  /*
-   * Measured, not a viewBox.
-   *
-   * Scaling an SVG with `viewBox` scales its text with it, so a 12px axis label
-   * renders at 6px on a phone. Laying the plot out in real pixels keeps the
-   * labels at the size they were chosen to be at every width.
-   */
+  // Measured, not a viewBox — scaling an SVG scales its text, so a 12px label hits 6px.
   useMeasure(() => {
     const element = box.current;
     if (!element) return;
 
-    // Read once up front. The observer does fire on observe, but only on the
-    // next frame — and that frame is the empty one this is here to avoid.
+    // Read up front: the observer fires on observe, but only next frame — the empty one.
     setWidth(element.clientWidth);
 
     const observer = new ResizeObserver(([entry]) => {
@@ -117,9 +73,7 @@ export function ChartGraph({
 
   const points = tracks.filter((track) => track.popularity > 0);
 
-  // One point cannot show a spread, and zero cannot show anything. Below two the
-  // graph would be a single dot on an invented axis, so it stands down and lets
-  // the list speak for itself.
+  // Below two points this is a single dot on an invented axis.
   if (points.length < 2) return <div ref={box} />;
 
   const { min, max, ticks } = scale(points.map((track) => track.popularity));
@@ -131,26 +85,15 @@ export function ChartGraph({
   const y = (value: number) =>
     PAD.top + plotHeight - ((value - min) / (max - min || 1)) * plotHeight;
 
-  // Smaller dots when they would otherwise touch. The 2px surface ring is what
-  // keeps neighbours legible where they nearly overlap, so it never shrinks.
+  // Smaller dots when they would touch. The 2px surface ring never shrinks.
   const gap = plotWidth / Math.max(1, points.length - 1);
   const radius = gap < 14 ? 3.5 : 4.5;
 
   const active = hover !== null ? points[hover] : null;
 
   return (
-    /*
-     * The height is reserved, not left to the contents.
-     *
-     * Without it the box is empty — and so zero-tall — until a width has been
-     * measured, and the card around it collapsed and sprang open every time
-     * this view was opened. Server-rendered markup has no width either, so the
-     * jump happened on first paint as well as on every click of the rail.
-     *
-     * Stating the height the plot is going to be is also just honest layout:
-     * the caller passes a fixed height, so nothing here was ever going to size
-     * itself from its contents.
-     */
+    // Height reserved: until a width is measured the box is zero-tall, and the card around
+    // it sprang open on paint and on every click of the rail.
     <div ref={box} className="relative w-full" style={{ height }}>
       {width > 0 && (
         <svg
@@ -165,16 +108,14 @@ export function ChartGraph({
           onPointerMove={(event) => {
             const bounds = event.currentTarget.getBoundingClientRect();
             const offset = event.clientX - bounds.left - PAD.left;
-            // Nearest point rather than a hit on the dot itself: a 9px target is
-            // far too small to ask anyone to land on.
+            // Nearest point, not a hit on the dot itself — a 9px target is too small.
             const index = Math.round((offset / (plotWidth || 1)) * (points.length - 1));
             setHover(Math.min(points.length - 1, Math.max(0, index)));
           }}
         >
           {ticks.map((tick) => (
             <g key={tick}>
-              {/* Solid hairlines, one step off the surface. Dashes read as a
-                  threshold or a projection when they are only a grid. */}
+              {/* Solid hairlines — dashes read as a threshold rather than a grid. */}
               <line
                 x1={PAD.left}
                 x2={width - PAD.right}
@@ -195,8 +136,7 @@ export function ChartGraph({
             </g>
           ))}
 
-          {/* The hovered position, marked on the plot rather than only in the
-              tooltip, so the reader can see which dot they are being told about. */}
+          {/* The hovered position marked on the plot, so it is clear which dot the tooltip means. */}
           {hover !== null && (
             <line
               x1={x(hover)}
@@ -217,8 +157,6 @@ export function ChartGraph({
                 cy={y(track.popularity)}
                 r={focused ? radius + 1.5 : radius}
                 fill="var(--accent)"
-                // The ring is the surface, not a border: it is what keeps two
-                // dots that nearly overlap from reading as one lumpy mark.
                 stroke="var(--surface-1)"
                 strokeWidth={2}
                 onClick={() => onPick?.(track)}
@@ -227,8 +165,7 @@ export function ChartGraph({
             );
           })}
 
-          {/* Only the ends are labelled. A number under every dot is the fastest
-              way to make a graph unreadable. */}
+          {/* Only the ends are labelled — a number under every dot is unreadable. */}
           <text
             x={PAD.left}
             y={height - 5}
@@ -252,26 +189,10 @@ export function ChartGraph({
         <div
           className="slab pointer-events-none absolute z-20 max-w-[15rem] rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 shadow-[var(--drop-lg)]"
           style={{
-            /*
-             * Clamped so a tooltip near either end is never cut off by the card
-             * that holds it.
-             *
-             * The right-hand bound has to be the width this box can actually
-             * reach — `max-w-[15rem]`, 240px — and it was 170. A long enough
-             * title on one of the last few dots grew past the clamp and hung
-             * outside the card, the same failure as the vertical one below.
-             */
+            // Clamped by the width the box can reach (`TIP_MAX_W`), never a guess.
             left: Math.min(Math.max(x(hover ?? 0) - 80, 0), Math.max(0, width - TIP_MAX_W)),
-            /*
-             * Above the dot when the dot is low, below it otherwise.
-             *
-             * Anchoring the *bottom* edge for the flipped case is what makes
-             * this work without knowing how tall the tooltip is — and it varies,
-             * since the title and artist wrap. Positioned with `top` and a
-             * guessed height, a three-line tooltip on a low dot hung out through
-             * the bottom of the card, which is where the 600k end of this scale
-             * lives.
-             */
+            // Above a low dot, below otherwise. Anchoring the *bottom* edge when flipped
+            // avoids needing a height that varies as the title wraps.
             ...(y(active.popularity) > PAD.top + plotHeight / 2
               ? { bottom: height - y(active.popularity) + 14 }
               : { top: y(active.popularity) + 14 }),

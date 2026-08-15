@@ -5,47 +5,23 @@ import { PlayIcon } from "./icons";
 import { usePlayer } from "./player/player-context";
 import type { Song } from "./types";
 
-/**
- * The phone's home screen: one mix, one button.
- *
- * A deliberate inversion of the desktop home, which opens with shelves to
- * browse. A phone is picked up to *start something*, usually one-handed and
- * often while walking — so the first screen offers a single decision the size
- * of a thumb, and the shelves come after it rather than before.
- *
- * `lg:hidden`: on a desktop this would be a large empty banner where a wall of
- * covers belongs, and the shelves are already the better answer at that width.
- *
- * The arrangement — oversized title, one round play button, a scatter of
- * circular covers — follows the pattern Material You music apps have settled
- * on, PixelPlayer among them. Written here from scratch; none of its files are
- * used, and none could be, since it is proprietary.
- */
+/** The phone's home screen: one mix, one button, with the shelves after it. `lg:hidden` —
+ * on a desktop this is a large empty banner where a wall of covers belongs. */
 export function MixHero({ songs, personal }: { songs: Song[]; personal: boolean }) {
   const { play } = usePlayer();
 
-  // Nothing to play means nothing to offer. The shelves below still render, so
-  // this is a missing flourish rather than an empty page.
+  // The shelves below still render, so this is a missing flourish, not an empty page.
   if (songs.length === 0) return null;
 
-  /*
-   * Four covers at most, and only songs that have one.
-   *
-   * A collage with a placeholder note icon in it looks broken rather than
-   * sparse, and four is where the scatter still reads as a cluster instead of
-   * a grid that lost its alignment.
-   */
+  // Four at most, and only songs with a cover: a placeholder note icon in the collage looks
+  // broken rather than sparse, and past four the scatter reads as a misaligned grid.
   const covers = songs.filter((song) => song.artworkUrl).slice(0, 4);
 
   return (
     <section className="mb-2 lg:hidden">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          {/*
-            Two lines on purpose. "Your Mix" set across two lines at this weight
-            is the shape the whole screen is built around — on one line it is
-            just a heading, and the covers below have nothing to sit under.
-          */}
+          {/* Two lines on purpose: on one it is just a heading, with nothing under it. */}
           <h1 className="text-[2.75rem] font-extrabold leading-[0.92] tracking-tight">
             Your
             <br />
@@ -67,18 +43,12 @@ export function MixHero({ songs, personal }: { songs: Song[]; personal: boolean 
         </button>
       </div>
 
-      {/*
-        The covers, scattered rather than gridded.
-
-        Sized and placed in percentages inside a fixed-aspect box, so the
-        cluster scales with the screen instead of overflowing a narrow one —
-        the failure mode of absolute pixel offsets on a 320px phone.
-      */}
+      {/* Percentages inside a fixed-aspect box, so the cluster scales rather than
+          overflowing a 320px phone. */}
       {covers.length > 0 && (
         <div className="relative mt-5 aspect-[2/1] w-full" aria-hidden>
           {covers.map((song, index) => {
-            // Four fixed positions: one anchor and three satellites. Ordered so
-            // a mix with only one or two covers still looks arranged.
+            // One anchor and three satellites, ordered so one or two covers still look arranged.
             const spots = [
               "left-[26%] top-[6%] w-[46%]",
               "left-[2%] top-[30%] w-[20%]",
