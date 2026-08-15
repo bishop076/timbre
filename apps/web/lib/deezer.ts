@@ -1,17 +1,12 @@
 import "server-only";
 
 /**
- * One way in to Deezer's public catalogue.
+ * One way in to Deezer's public catalogue: no key, a timeout, Deezer's habit of answering
+ * `200` with an `error` object in the body, and a failure that must not take a page down.
  *
- * Three features now read from it — the artist page, the artist lookup and
- * Explore — and each had the same four quirks to get right: no key, a timeout,
- * Deezer's habit of answering `200` with an `error` object in the body, and a
- * failure that must not take a page down with it. Written once here rather than
- * three times, because the third copy is where they start to disagree.
- *
- * **Every call is cached at the fetch layer**, which is what makes this safe to
- * call several times per page. Deezer's own rate limit is generous but shared
- * across every visitor of a deployment, since they all leave by one address.
+ * Every call is cached at the fetch layer, which is what makes this safe to call several
+ * times per page — Deezer's rate limit is shared across every visitor of a deployment,
+ * since they all leave by one address.
  */
 export async function deezer<T>(path: string, revalidateSeconds = 86_400): Promise<T | null> {
   try {
@@ -26,13 +21,8 @@ export async function deezer<T>(path: string, revalidateSeconds = 86_400): Promi
     // than with a status code, so the happy path has to be checked explicitly.
     return body && "error" in body && body.error ? null : body;
   } catch {
-    /*
-     * Unreachable, slow, or malformed — all the same answer.
-     *
-     * Every caller treats `null` as "this section has nothing to show" and
-     * renders without it. A missing shelf is a smaller failure than a page that
-     * refuses to render because a third party is having a bad afternoon.
-     */
+    // Unreachable, slow or malformed — all the same answer. Every caller treats `null` as
+    // "this section has nothing to show" and renders without it.
     return null;
   }
 }

@@ -6,29 +6,10 @@ import { deezer } from "./deezer";
 import { bandOf } from "./rank-bands";
 import { getProviderRuntime } from "./providers";
 
-/**
- * A ranking nobody publishes.
- *
- * **The point is that it is not one service's chart.** Every catalogue's chart
- * is a measurement of its own subscribers, and Deezer's is visibly so from
- * here: the catalogue-wide artist chart is led by a German audio-drama series,
- * because that is what Deezer's German listeners were playing. Apple's feed
- * disagrees, and neither is wrong — they are counting different rooms.
- *
- * So this counts both and rewards *agreement*. A song that charts on Deezer and
- * on Apple outranks one that charts higher on a single service, which is the
- * closest thing to unbiased that free data allows: no single audience can carry
- * an entry to the top on its own.
- *
- * The fusion is `scoreCandidates` from `@timbre/providers` — Reciprocal Rank
- * Fusion with a consensus multiplier, already written and tested for the radio.
- * Reusing it rather than writing a second ranker is deliberate: two rankings
- * that disagree about what "popular" means would be a bug nobody could see.
- *
- * **What it cannot be honest about**, and says so on the page: there are two
- * charts to fuse, not twenty. Two agreeing is better than one asserting, and it
- * is still two Western streaming services. Adding a third needs a source that
- * publishes a chart without credentials, and there are not many.
+/*
+ * A cross-service ranking: each catalogue's chart measures its own subscribers, so this
+ * fuses them and rewards agreement. `scoreCandidates` is the same RRF the radio uses,
+ * reused so two rankings can't disagree about what "popular" means.
  */
 
 export interface RankedSong {
@@ -44,7 +25,6 @@ export interface RankedSong {
   position: number;
   /** Which charts carried it — the evidence behind the position. */
   charts: string[];
-  /** Where it sat on each chart it appeared on. */
   positions: Record<string, number>;
 }
 
@@ -52,41 +32,25 @@ export interface Rankings {
   songs: RankedSong[];
   /** Every chart that answered, in the order they were asked. */
   charts: string[];
-  /** Charts that were asked and did not answer. */
   failed: string[];
 }
 
-/** Ranks within one list, 1-based, keyed the way `mergeTracks` keys a source. */
 function keyOf(source: string, sourceId: string): string {
   return `${source}:${sourceId}`;
 }
 
+/** The fused cross-service ranking. `allSettled`, so one dead chart doesn't sink the page. */
 export async function fetchRankings(limit = 100): Promise<Rankings> {
   const { limiter } = getProviderRuntime();
   const providers = listProviders().filter((provider) => provider.chart !== undefined);
 
-  /*
-   * Each chart is fetched as its own list rather than through `chartAll`, which
-   * concatenates them. Fusion needs to know *where* in a list a song sat, and a
-   * flat array of everyone's tracks has thrown that away.
-   */
+  // Own list per chart, not `chartAll`, which concatenates — fusion needs positions.
   const settled = await Promise.allSettled(
     providers.map(async (provider) => ({
       list: provider.id,
-      /*
-       * Cacheable, which is what makes `/explore` a prerendered page.
-       *
-       * The providers default to `cache: "no-store"` because their other caller
-       * is a route handler that keeps its own cache — and a single `no-store`
-       * fetch anywhere in a render opts the whole route out of static
-       * generation. So Explore declared `revalidate = 3600`, was quietly marked
-       * **dynamic** in the build output, and re-ran every one of these upstream
-       * requests on every request instead of once an hour. Nothing looked
-       * broken; the page was simply built from scratch for every visitor.
-       *
-       * One hour, matching the route's own `revalidate`, so the two cannot
-       * disagree about how old a chart may be.
-       */
+      // Must stay cacheable: providers default to `cache: "no-store"`, and one
+      // `no-store` fetch anywhere in a render opts the whole route out of static
+      // generation, so Explore declared `revalidate = 3600` yet built per visitor.
       tracks: await provider.chart!({ limiter, revalidate: 3_600 }, limit),
     })),
   );
@@ -103,7 +67,6 @@ export async function fetchRankings(limit = 100): Promise<Rankings> {
 
   if (lists.length === 0) return { songs: [], charts: [], failed };
 
-  // Where each source's own chart put each of its tracks.
   const ranks = new Map<string, number>();
   for (const entry of lists) {
     entry.tracks.forEach((track, index) => {
@@ -134,8 +97,7 @@ export async function fetchRankings(limit = 100): Promise<Rankings> {
         durationMs: song.durationMs,
         isrc: song.isrc,
         artworkUrl: song.artworkUrl,
-        // Narrowed to `link`: neither charting source can be played directly,
-        // so every one of these resolves a copy at play time.
+        // `link` — neither charting source is playable, so each resolves a copy later.
         sources: song.sources.map((source) => ({
           source: source.source,
           sourceId: source.sourceId,
@@ -151,23 +113,9 @@ export async function fetchRankings(limit = 100): Promise<Rankings> {
 }
 
 /**
- * Which genres feed the chart, and how high their entries land.
- *
- * **This is the page's stacked column chart, and it took a wrong turn first.**
- * The obvious x-axis for a chart is chart position — but the bands are equal by
- * construction, ten songs in every ten places, so every column comes out the
- * same height and the graph says nothing. Genre is the axis where the height is
- * a real measurement: pop feeds the mainstream chart heavily, jazz barely, and
- * the difference is the finding.
- *
- * Segments are the rank band an entry landed in, which is an **ordered** scale —
- * so they take four steps of one hue rather than four different colours. A
- * rainbow across ordered bands would say the bands are unrelated kinds, when
- * 1–25 and 26–50 are neighbours on one ruler.
- *
- * Matching is exact, not fuzzy: a genre chart and the global chart both come
- * from Deezer, so the same recording carries the same id in both. No title
- * comparison, and so no chance of counting a live version as its studio twin.
+ * Which genres feed the chart, and how high they land. Genre is the x-axis because rank
+ * bands are equal by construction, so a position axis gives every column the same height.
+ * Matched by Deezer id, never title, so a live version can't count as its twin.
  */
 export interface GenreMix {
   genre: string;
@@ -183,17 +131,8 @@ export interface GenreChart {
 }
 
 /**
- * The per-genre charts, fetched.
- *
- * **Split from the cross-referencing on purpose.** This used to be one function
- * that took the fused ranking, and so could not start until the ranking had
- * arrived — thirteen Deezer round-trips chained behind a request that needed
- * none of them. Deezer answers in one to two seconds from a cold cache, so that
- * ordering was worth several seconds of a page nobody could see yet.
- *
- * Nothing here looks at the ranking. Splitting it lets the caller start these
- * requests alongside every other one on the page and do the matching, which is
- * a map lookup over a few hundred ids, once both have landed.
+ * The per-genre charts. Independent of the fused ranking so the caller starts both at
+ * once — chaining thirteen Deezer round-trips behind it cost seconds of blank page.
  */
 export async function fetchGenreCharts(genres: number): Promise<GenreChart[]> {
   const list = await deezer<{ data?: { id: number; name: string }[] }>("/genre", 604_800);
@@ -216,7 +155,6 @@ export async function fetchGenreCharts(genres: number): Promise<GenreChart[]> {
 
 /** Where the fused ranking's songs land across those genre charts. Pure. */
 export function mixGenres(charts: GenreChart[], songs: RankedSong[]): GenreMix[] {
-  // Where each Deezer recording sits in the fused ranking.
   const placed = new Map<string, number>();
   for (const song of songs) {
     for (const source of song.sources) {
@@ -238,23 +176,11 @@ export function mixGenres(charts: GenreChart[], songs: RankedSong[]): GenreMix[]
     return { genre: chart.genre, total, bands };
   });
 
-  // Empty genres are dropped rather than drawn as zero-height columns: a column
-  // with no bar reads as a rendering failure, and a row of them buries the ones
-  // that have something to say.
+  // Empty genres dropped — a zero-height column reads as a rendering failure.
   return mixes.filter((mix) => mix.total > 0).sort((a, b) => b.total - a.total);
 }
 
-/**
- * How many entries each artist holds.
- *
- * The honest version of "market share": not a guess at listening hours, just a
- * count of slots on a board of a known size. An artist with four of a hundred
- * has four of a hundred, and the denominator is stated wherever it is shown.
- *
- * Credited to the first-listed artist only. Splitting a feature between two
- * names would make the shares sum past the number of songs, and a share chart
- * whose parts exceed the whole is worse than one that undercounts guests.
- */
+/** Chart entries per artist, credited to the lead only — splitting a feature makes the shares exceed the songs. */
 export function shareByArtist(
   songs: RankedSong[],
 ): { artist: string; entries: number; best: number }[] {
@@ -277,13 +203,7 @@ export function shareByArtist(
     .sort((a, b) => b.entries - a.entries || a.best - b.best);
 }
 
-/**
- * How much the charts agree with each other.
- *
- * This is the measurement the whole page rests on, so it is shown rather than
- * asserted: if almost nothing appears on both charts, the "consensus" ranking
- * is really two lists interleaved, and a reader deserves to see that.
- */
+/** How much the charts agree. Shown, not asserted: little overlap means two lists interleaved. */
 export function agreement(rankings: Rankings): {
   shared: number;
   only: { chart: string; count: number }[];

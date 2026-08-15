@@ -12,17 +12,11 @@ import {
 import { getEnv } from "./env";
 
 /**
- * Wires up the source registry and the shared rate limiter.
- *
- * The limiter is cached on globalThis for the same reason as the database
- * pool: Next's dev hot-reload re-evaluates modules on every edit, and a fresh
- * limiter each time would forget how much quota had been spent.
- *
- * Registration is checked separately rather than being guarded by that cache.
- * The registry lives in a module-scoped Map inside @timbre/providers, so HMR
- * can empty it while the cached limiter survives — leaving a runtime with no
- * sources and no error, which is exactly the silent failure that hid Deezer
- * and Apple after they were added.
+ * Wires up the source registry and the shared rate limiter, which is cached on globalThis
+ * because dev hot-reload re-evaluates modules and a fresh limiter forgets how much quota
+ * was spent. Registration is checked separately rather than guarded by that cache: the
+ * registry is a module-scoped Map, so HMR can empty it while the cached limiter survives —
+ * a runtime with no sources and no error, which is what hid Deezer and Apple.
  */
 
 const globalForProviders = globalThis as unknown as {
@@ -32,36 +26,24 @@ const globalForProviders = globalThis as unknown as {
 function registerAll(): void {
   const env = getEnv();
 
-  // YouTube Music first: it is the only source that can be *searched* and
-  // played, so its results lead. Deezer and Apple contribute identity, artwork
-  // and availability — Deezer's ISRCs are what make cross-source matching
-  // reliable.
+  // YouTube Music first: the only source that can be both searched and played. Deezer's
+  // ISRCs are what make cross-source matching reliable.
   registerProvider(
     createYtMusicProvider({
       baseUrl: env.YTMUSIC_SERVICE_URL,
       sharedSecret: env.YTMUSIC_SHARED_SECRET,
     }),
   );
-  // SoundCloud is deliberately NOT registered, and that is not an oversight.
-  //
-  // Its player is free and needs no credentials — `createSoundCloudProvider()`
-  // is written, tested and working. Its *catalogue search* is not: that needs a
-  // client_id, which needs a paid Artist Pro account and a case-by-case approval
-  // taking weeks. Without search the only way in is a user pasting a URL they
-  // already found elsewhere, which is a badge in the UI almost nobody could
-  // trigger — a source you cannot search is not a source.
-  //
-  // To ship it: set `searchable: true` in soundcloud.ts and add
-  // `registerProvider(createSoundCloudProvider())` here. Nothing else changes.
-  // See docs/BLOCKED.md.
+  // SoundCloud is deliberately NOT registered: `createSoundCloudProvider()` works, but
+  // catalogue search needs a client_id gated behind a paid account and weeks of approval.
+  // To ship it, set `searchable: true` in soundcloud.ts and register here. See docs/BLOCKED.md.
   registerProvider(createDeezerProvider());
   registerProvider(createAppleProvider());
 }
 
 export function getProviderRuntime(): { limiter: RateLimiter } {
-  // In-memory, and permanently so: Timbre runs no database. Pacing is
-  // per-instance, which is the correct scope when each instance has its own
-  // outbound IP and the limits being respected are per-IP.
+  // In-memory permanently: Timbre runs no database, and per-instance pacing is the right
+  // scope when each instance has its own outbound IP and the limits are per-IP.
   globalForProviders.__timbreLimiter ??= new RateLimiter(new MemoryBucketStore());
 
   if (listProviders().length === 0) registerAll();

@@ -2,18 +2,9 @@ import "server-only";
 
 import { z } from "zod";
 
-/**
- * Server environment, validated once at first use.
- *
- * **Almost empty, and that is the point.** Timbre stores nothing about anyone:
- * playlists, profile and history live in the reader's browser, so there is no
- * database URL, no session secret, no encryption key and no mail server. What
- * is left is the address of the YouTube Music sidecar and the secret shared
- * with it.
- *
- * That is what makes free hosting possible — the app is a stateless front end
- * over public catalogues, with one small service behind it.
- */
+// Server environment, validated once at first use. Almost empty by design: playlists,
+// profile and history live in the reader's browser, so there is no database URL, session
+// secret or mail server — only the sidecar's address and its shared secret.
 const schema = z.object({
   /** The Python sidecar. Loopback by default; never expose it publicly. */
   YTMUSIC_SERVICE_URL: z.url().default("http://127.0.0.1:8787"),
@@ -21,11 +12,8 @@ const schema = z.object({
     .string()
     .min(1, "YTMUSIC_SHARED_SECRET must match the sidecar's own value."),
 
-  /**
-   * SoundCloud stays optional and unset. Its player needs no credentials at
-   * all; only its catalogue search does, and that is gated — see
-   * docs/BLOCKED.md.
-   */
+  /** Optional and unset: only SoundCloud's catalogue search needs credentials, and
+   * that is gated — see docs/BLOCKED.md. */
   SOUNDCLOUD_CLIENT_ID: z.string().optional(),
   SOUNDCLOUD_CLIENT_SECRET: z.string().optional(),
 

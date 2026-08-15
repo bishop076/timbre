@@ -3,19 +3,10 @@ import "server-only";
 import { deezer } from "./deezer";
 import type { ChartTrack } from "./discover";
 
-/**
- * A collection: several songs, gathered into one thing with a name.
- *
- * Explore is a page of cards, and a card has to *lead* somewhere — otherwise it
- * is a picture of a chart position and the page is a list of the same songs in
- * three different shapes. Every card here opens one of these instead: a genre's
- * chart, a Deezer playlist, or a mood resolved to one. One route, one page, one
- * cover, one queue you can play end to end.
- *
- * All three kinds resolve to the same shape deliberately. The page that renders
- * them has no idea which it is showing, so a mood behaves exactly like a
- * playlist and a genre chart behaves like both — there is no third layout to
- * keep in step.
+/*
+ * A collection: songs gathered under one name — a genre chart, a Deezer playlist, or a
+ * mood resolved to one. All kinds resolve to the same shape, so the page rendering them
+ * never knows which it has and there is no second layout.
  */
 
 export type CollectionKind = "genre" | "playlist" | "mood" | "radio";
@@ -26,16 +17,8 @@ export interface Collection {
   title: string;
   /** What it is, in a few words: "Deezer chart", "48 songs · Deezer". */
   subtitle: string;
-  /**
-   * Up to four covers.
-   *
-   * A collection has no artwork of its own when it is assembled rather than
-   * published — a genre chart is not a record and nobody drew a sleeve for it.
-   * Four of its own covers tiled together is the honest picture: it is made of
-   * these, and it says so.
-   */
+  /** Up to four covers, tiled when the collection was assembled rather than published. */
   covers: string[];
-  /** A published cover, when the collection came with one. */
   coverUrl: string | null;
   tracks: ChartTrack[];
 }
@@ -50,11 +33,7 @@ interface RawTrack {
   album?: { title?: string; cover_medium?: string; cover_big?: string };
 }
 
-/**
- * The same mapping `discover.ts` uses, kept here rather than exported across
- * because the two differ in one way that matters: a playlist has no chart
- * position, so `position` is the index and nothing pretends otherwise.
- */
+/** Deezer's track shape, mapped. Separate from `discover.ts` because a playlist has no chart position. */
 function toTrack(raw: RawTrack, index: number): ChartTrack {
   return {
     id: `deezer:${raw.id}`,
@@ -77,7 +56,6 @@ function toTrack(raw: RawTrack, index: number): ChartTrack {
   };
 }
 
-/** The first four distinct covers, for the tile. */
 function coversOf(tracks: ChartTrack[]): string[] {
   const seen = new Set<string>();
   for (const track of tracks) {
@@ -98,9 +76,7 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
   }>(`/playlist/${id}`, 86_400);
   if (!raw?.title) return null;
 
-  // Capped at 100. Deezer serves some playlists two hundred tracks deep, and a
-  // page that long is a scroll nobody finishes — while every row is a card, an
-  // image request and a row of controls.
+  // Capped at 100: some playlists run two hundred deep, and every row costs an image.
   const tracks = (raw.tracks?.data ?? []).slice(0, 100).map(toTrack);
   const by = raw.creator?.name;
 
@@ -117,12 +93,7 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
   };
 }
 
-/**
- * A genre's chart, as something you can open and play.
- *
- * The name is looked up rather than passed in the URL, so the page cannot be
- * made to display a title of somebody else's choosing by editing the address.
- */
+/** A genre's chart. The name is looked up, never taken from the URL, so the heading can't be dictated. */
 async function fromGenre(id: string): Promise<Collection | null> {
   const [chart, genres] = await Promise.all([
     deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
@@ -132,22 +103,9 @@ async function fromGenre(id: string): Promise<Collection | null> {
   const tracks = (chart?.tracks?.data ?? []).map(toTrack);
   if (tracks.length === 0) return null;
 
-  /*
-   * The id has to name a genre Deezer actually publishes.
-   *
-   * `/chart/{id}` does not validate its path segment: a numeric id it does not
-   * know returns an empty chart, which this already handled — but anything
-   * *non-numeric* returns the **global** chart, byte for byte identical to
-   * `/chart/0`. So `/collection/genre/abc` rendered the worldwide top songs
-   * under the heading "Genre right now", and every made-up word in that slot
-   * produced another page saying the same untrue thing.
-   *
-   * Falling back to the word "Genre" for an unknown name was what hid it. The
-   * name is not decoration — it is the claim the page is making about where
-   * these songs came from, and when it cannot be established there is no page
-   * to render. `0` is the exception because it is the global chart by
-   * definition, and says so in its title.
-   */
+  // The id must name a genre Deezer publishes: `/chart/{id}` does not validate its path
+  // segment, and a non-numeric id returns the *global* chart, so `/genre/abc` served the
+  // worldwide top songs under a made-up heading. Never fall back to a placeholder.
   const name = genres?.data?.find((entry) => String(entry.id) === id)?.name;
   if (id !== "0" && name === undefined) return null;
 
@@ -164,15 +122,7 @@ async function fromGenre(id: string): Promise<Collection | null> {
   };
 }
 
-/**
- * A mood or a decade, resolved to a real playlist.
- *
- * Nothing is stored for these — the pill carries a search term and this finds
- * something to back it, so "Workout" and "1980s" cost nothing until somebody
- * presses them. The candidate with the most tracks wins, which is a rough proxy
- * for "the one somebody maintains" and beats taking whatever Deezer happens to
- * return first.
- */
+/** A mood or decade resolved to a playlist. Nothing is stored; most tracks wins, as a proxy for "maintained". */
 async function fromMood(term: string): Promise<Collection | null> {
   const found = await deezer<{ data?: { id: number; nb_tracks?: number }[] }>(
     `/search/playlist?q=${encodeURIComponent(term)}&limit=10`,
@@ -187,15 +137,7 @@ async function fromMood(term: string): Promise<Collection | null> {
   const collection = await fromPlaylist(String(best.id), "mood");
   if (!collection) return null;
 
-  /*
-   * The pill's own word is the heading, and the playlist it found is named
-   * underneath.
-   *
-   * Pressing "Sleep" and arriving at a page headed "Classical sleep", with no
-   * mention of sleep anywhere, reads as a broken link rather than as a good
-   * match. Saying both keeps the promise the pill made and still credits what
-   * is actually being played.
-   */
+  // The pill's word heads the page: landing on "Classical sleep" alone reads as broken.
   return {
     ...collection,
     id: term,
@@ -204,7 +146,6 @@ async function fromMood(term: string): Promise<Collection | null> {
   };
 }
 
-/** `hip-hop` → `Hip-Hop`, `1980s` → `1980s`. The pill's label, recovered. */
 function label(term: string): string {
   return term
     .split(/[-\s]+/)
@@ -213,13 +154,7 @@ function label(term: string): string {
     .join(" ");
 }
 
-/**
- * A Deezer radio — one of the categories Explore is built from.
- *
- * Its own tracks, not a search for its name: the station *is* the collection,
- * so there is nothing to resolve. The title comes from Deezer rather than from
- * the URL, so the heading cannot be dictated by editing the address.
- */
+/** A Deezer radio's own tracks. Title from Deezer, never from the URL. */
 async function fromRadio(id: string): Promise<Collection | null> {
   const [meta, list] = await Promise.all([
     deezer<{ title?: string; picture_big?: string }>(`/radio/${id}`, 86_400),
@@ -240,6 +175,7 @@ async function fromRadio(id: string): Promise<Collection | null> {
   };
 }
 
+/** One collection by kind and id, or null when it cannot be established. */
 export async function fetchCollection(
   kind: CollectionKind,
   id: string,
