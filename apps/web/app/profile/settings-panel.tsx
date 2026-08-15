@@ -14,27 +14,13 @@ import {
   SparkleIcon,
 } from "../icons";
 
-/**
- * Fetched when the Appearance section is first opened.
- *
- * The picker carries every palette and its swatches, and it is the largest
- * thing in this panel by some way. The panel itself only renders behind a
- * button, and this is one section inside it — two clicks from the profile page
- * loading, which is far enough in that nobody is waiting on it.
- */
+// Fetched when Appearance is first opened; the picker is the largest thing here.
 const ThemePicker = dynamic(() => import("../theme/theme-picker").then((m) => m.ThemePicker));
 
-/** Where the source lives. */
 const REPO = "https://github.com/bishop076/timbre";
 
-/**
- * What is running, as a string.
- *
- * Both halves come from `next.config.ts` — see the note there. The commit is
- * empty in development and the label simply loses it rather than printing
- * "unknown", which is a word that looks like a fault rather than like a local
- * build with uncommitted changes in it.
- */
+/** What is running. Both halves come from `next.config.ts`; the commit is empty in
+ * development and the label drops it rather than printing "unknown". */
 const VERSION = [
   `v${process.env.NEXT_PUBLIC_TIMBRE_VERSION ?? "0.0.0"}`,
   process.env.NEXT_PUBLIC_TIMBRE_COMMIT ? `(${process.env.NEXT_PUBLIC_TIMBRE_COMMIT})` : "",
@@ -42,39 +28,8 @@ const VERSION = [
   .filter(Boolean)
   .join(" ");
 
-/**
- * Settings, behind one button.
- *
- * The theme picker used to sit open on the profile page, three cards wide and
- * most of a screen tall, between the header and the playlists. It is a control
- * most people touch once and then never again, and it was taking the best
- * position on the page to say so — pushing the playlists, which is what anybody
- * actually came here for, below the fold.
- *
- * **A rail of sections beside a pane, which is what settings look like.** Every
- * desktop application converges on this shape for the same reason: it is the
- * one arrangement where adding a tenth thing costs nothing. A stack of
- * disclosures grows downwards until nothing is findable, and a row of tabs runs
- * out of width at about five.
- *
- * Most of these sections are empty. That is deliberate — they are the shape the
- * panel is growing into, and retrofitting a rail later means moving every
- * control written on the assumption that this was a single column. Adding the
- * next one is an entry in `SECTIONS` and nothing else.
- *
- * A dialog rather than an inline disclosure, because settings are a detour.
- * Expanding in place would push the page around underneath somebody who is
- * about to change something, and the whole point of moving this was to stop
- * doing that.
- */
-
-/**
- * The sections, in rail order.
- *
- * `render` rather than a component per entry, so a section that is three lines
- * of JSX does not need a file of its own to exist. When one grows past a
- * screenful it gets promoted to its own component and this still just calls it.
- */
+/** The sections, in rail order. `render` rather than a component per entry, so a
+ * three-line section needs no file of its own. */
 const SECTIONS = [
   {
     id: "general",
@@ -113,8 +68,8 @@ const SECTIONS = [
   },
   {
     id: "whats-new",
-    // A real apostrophe, not `&rsquo;` — this is a JavaScript string rendered
-    // as a text node, so an entity here would show up on screen verbatim.
+    // A real apostrophe, not `&rsquo;`: this is a string rendered as a text node, so an
+    // entity would show up on screen verbatim.
     label: "What’s New",
     Icon: SparkleIcon,
     render: () => <Planned>The changelog, shipped with the build it describes.</Planned>,
@@ -123,18 +78,8 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-/**
- * The shortcuts, read off the code that implements them.
- *
- * Listed rather than configurable, because a rebinding UI has to store the
- * bindings, migrate them when a default changes, and cope with two actions
- * claiming one key — none of which is worth building before anybody has said
- * the defaults are wrong.
- *
- * The transport keys come from `player/transport-keys.ts`, which is unit-tested
- * and the single source of truth for them. This table has to be kept in step by
- * hand, which is the cost of not generating a UI from a switch statement.
- */
+/** The shortcuts, listed rather than configurable. Implemented in
+ * `player/transport-keys.ts` — this table is kept in step by hand. */
 const SHORTCUTS: { keys: string[]; action: string; note?: string }[] = [
   { keys: ["Space"], action: "Play or pause", note: "Once something is loaded" },
   { keys: ["→"], action: "Next track" },
@@ -177,13 +122,8 @@ function Shortcuts() {
   );
 }
 
-/**
- * A section that exists in the rail and not yet in the app.
- *
- * Deliberately not styled as a control anybody could mistake for a broken one:
- * it says what will be here rather than showing a disabled switch, because a
- * greyed-out toggle is a promise with a date on it and this is not.
- */
+/** A rail section not yet built. Says what will be here rather than showing a
+ * disabled switch nobody could tell from a broken one. */
 function Planned({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5">
@@ -193,6 +133,7 @@ function Planned({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Settings, behind one button — a rail of sections beside a pane, in a dialog. */
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<SectionId>(SECTIONS[0].id);
@@ -201,14 +142,7 @@ export function SettingsPanel() {
 
   const active = SECTIONS.find((entry) => entry.id === section) ?? SECTIONS[0];
 
-  /*
-   * Escape closes, and focus goes back where it came from.
-   *
-   * Returning focus is not a nicety — opening this from the keyboard and
-   * closing it otherwise drops the caret at the top of the document, so the
-   * next Tab starts from the beginning of the page rather than from the button
-   * that was just pressed.
-   */
+  // Focus returns to the trigger, or the next Tab starts from the top of the document.
   useEffect(() => {
     if (!open) return;
 
@@ -223,12 +157,8 @@ export function SettingsPanel() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  /*
-   * The page behind does not scroll while this is up.
-   *
-   * Without it a wheel over the backdrop scrolls the profile page, so closing
-   * the panel returns you somewhere you never chose to be.
-   */
+  // A wheel over the backdrop would move the page behind, so closing would return you
+  // somewhere you never chose.
   useEffect(() => {
     if (!open) return;
     const previous = document.body.style.overflow;
@@ -238,8 +168,6 @@ export function SettingsPanel() {
     };
   }, [open]);
 
-  // Focus moves into the panel so a keyboard reader is not left outside the
-  // thing that just opened, and so Escape has somewhere to return from.
   useEffect(() => {
     if (open) panel.current?.focus();
   }, [open]);
@@ -253,12 +181,6 @@ export function SettingsPanel() {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label="Settings"
-        /*
-          The same control the banner's own buttons are: a circle of dark glass
-          over the picture, sized and coloured to match, so the corner reads as
-          one set of tools rather than as a page button that happened to land
-          next to them.
-        */
         className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-full)] bg-black/45 text-white backdrop-blur transition hover:bg-black/60"
       >
         <SettingsIcon className="size-4" />
@@ -269,29 +191,14 @@ export function SettingsPanel() {
         createPortal(
           <div
             className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-6"
-            // A click on the backdrop and nowhere else. Checking the target is
-            // the element itself rather than using a bubbled handler means a
-            // drag that starts inside the panel and ends out here does not
-            // count as a dismissal.
+            // Target-checked, so a drag ending out here is not a dismissal.
             onPointerDown={(event) => {
               if (event.target === event.currentTarget) setOpen(false);
             }}
           >
-            {/*
-              A sheet on a phone, a window above it.
-
-              **A definite height, not a maximum.** Sized to content, the dialog
-              grew and shrank as you moved between sections — the rail jumped,
-              the close button moved, and picking a theme after reading the
-              shortcuts meant chasing a target that had just relocated. 32rem
-              holds the longest section without scrolling and every shorter one
-              without looking empty, so the frame is a fixed thing you navigate
-              inside of, which is what a settings window is.
-
-              The scroll lives on the *pane*, so the rail and the title stay put
-              while a long section moves past them. That is the entire advantage
-              of this arrangement over one tall column.
-            */}
+            {/* A definite 32rem height, not a maximum: sized to content the dialog grew
+                and shrank between sections, so the rail jumped and the close button moved
+                out from under the pointer. The scroll lives on the pane. */}
             <div
               ref={panel}
               role="dialog"
@@ -300,22 +207,9 @@ export function SettingsPanel() {
               tabIndex={-1}
               className="slab @container flex max-h-[85dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[var(--r-lg)] bg-[var(--surface-1)] outline-none sm:h-[32rem] sm:flex-row sm:rounded-[var(--r-lg)]"
             >
-              {/*
-                The rail separates by *tone*, not by a rule.
-
-                It had a border down its right and the header had one across the
-                top, which met in a T a third of the way along — an arbitrary
-                junction that belonged to neither. Giving the rail its own
-                surface says the same thing with no line at all, and the header
-                went away entirely: the pane titles itself, so a full-width bar
-                repeating "Settings" above a rail that lists the sections was a
-                third label for the same idea.
-
-                A row of chips on a phone, a column on anything wider — the same
-                trade the rankings rail makes. A vertical list above the content
-                on a small screen would push the controls somebody came for off
-                the bottom of the sheet.
-              */}
+              {/* Separated by tone, not a rule. A row of chips on a phone, since a
+                  vertical list above the content would push the controls off the
+                  bottom of the sheet. */}
               <nav
                 aria-label="Settings sections"
                 className="shelf flex shrink-0 gap-1 overflow-x-auto bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-visible sm:p-3"
@@ -341,22 +235,13 @@ export function SettingsPanel() {
                     );
                   })}
 
-                  {/*
-                    Pinned to the foot of the rail on a wide screen, and simply
-                    the last chip in the strip on a phone.
-
-                    `mt-auto` rather than a spacer element: the rail is a flex
-                    column with a definite height, so the margin does the whole
-                    job and there is nothing extra in the tree to keep in step.
-                    It is a no-op in the horizontal layout, which is exactly the
-                    behaviour wanted there.
-                  */}
+                  {/* `mt-auto` rather than a spacer element, and a no-op in the
+                      horizontal layout. */}
                 <div className="flex shrink-0 items-center gap-2.5 sm:mt-auto sm:px-1 sm:pt-4">
                   <a
                     href={REPO}
                     target="_blank"
-                    // `noreferrer` alongside `noopener`: this opens a tab that
-                    // would otherwise be handed a reference back to this one.
+                    // `noreferrer` too, or the new tab gets a reference back to this one.
                     rel="noopener noreferrer"
                     aria-label="Timbre on GitHub"
                     title="Timbre on GitHub"
@@ -370,12 +255,6 @@ export function SettingsPanel() {
                 </div>
               </nav>
 
-              {/*
-                The pane titles itself and carries the close button, which is
-                what let the header bar go. The title sits on the same baseline
-                as the control, so the top of the pane is one row rather than a
-                bar above a heading above content.
-              */}
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-1 pt-4 sm:px-6 sm:pt-5">
                   <h2 className="text-xl font-extrabold tracking-tight">{active.label}</h2>

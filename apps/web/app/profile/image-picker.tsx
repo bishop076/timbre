@@ -5,18 +5,8 @@ import { useRef, useState } from "react";
 import { CameraIcon, SpinnerIcon, TrashIcon } from "../icons";
 import { clearLocalImage, setLocalImage, type ImageKind } from "./local-images";
 
-/**
- * Choose or remove a local picture.
- *
- * Two shapes from one component, because the underlying act is identical and
- * only the surface differs: the avatar wants an overlay covering the circle,
- * the banner wants a button in its corner.
- *
- * Nothing uploads. The label says so — "Only on this device" is not a
- * disclaimer to bury, it is the reason there is no account picture to sync and
- * the first thing someone will wonder when the avatar is missing on their
- * phone.
- */
+/** Choose or remove a local picture, as an overlay on the avatar's circle or a button in the
+ * banner's corner. Nothing uploads, and the label says so. */
 export function ImagePicker({
   kind,
   hasImage,
@@ -44,7 +34,7 @@ export function ImagePicker({
       setError(cause instanceof Error ? cause.message : "Couldn't use that picture.");
     } finally {
       setBusy(false);
-      // Cleared so choosing the same file twice still fires a change event.
+      // Or choosing the same file twice fires no change event.
       if (input.current) input.current.value = "";
     }
   }
@@ -63,13 +53,10 @@ export function ImagePicker({
         ref={input}
         type="file"
         /*
-          Nudges phones towards the photo library rather than a file browser,
-          and offers each picture only what it will take — GIF on the avatar,
-          stills on the banner. See `ACCEPTED` in `image-resize.ts`.
-
-          A hint, never the check. `accept` filters the picker's default view
-          and nothing else: "all files" is one dropdown away, and a drag-and-drop
-          never consults it at all. The refusal that matters is in `redraw`.
+          GIF on the avatar, stills on the banner — see `ACCEPTED` in
+          `image-resize.ts`. A hint, never the check: `accept` only filters the
+          picker's default view, and "all files" is one dropdown away. The refusal
+          that matters is in `redraw`.
         */
         accept={
           kind === "avatar"
@@ -83,16 +70,7 @@ export function ImagePicker({
       />
 
       {variant === "overlay" ? (
-        /*
-          Both actions live on the picture itself.
-          Removing used to be a text link sitting in the stats row, which put a
-          destructive control in a line of figures and made someone read the
-          word "remove" every time they looked at their own follower count. A
-          control belongs on the thing it acts on.
-
-          A container of buttons rather than one full-cover button: a button may
-          not contain another, and the overlay needs two.
-        */
+        // A button may not contain another, and the overlay needs two.
         <div className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-full bg-black/55 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
           <button
             type="button"
@@ -123,15 +101,8 @@ export function ImagePicker({
         </div>
       ) : (
         <div className="flex items-center gap-1.5">
-          {/*
-            A circle like the ones either side of it, not a labelled pill.
-
-            The word made this the widest object in a cluster of three, so a row
-            of small round controls had one long capsule wedged into the middle
-            of it. The camera says the same thing in a quarter of the width, and
-            the label survives where it is needed — `aria-label` for a screen
-            reader, `title` for anyone unsure on a pointer.
-          */}
+          {/* A circle, not a labelled pill — the word made this the widest object in a
+              cluster of three. The label survives in `aria-label` and `title`. */}
           <button
             type="button"
             onClick={() => input.current?.click()}
@@ -162,14 +133,9 @@ export function ImagePicker({
       )}
 
       {/*
-        Anchored to whichever side the control sits on.
-
-        `left-0` is right under the avatar, which is in the middle of the header.
-        The banner's button is in the top-right corner, where the same rule ran a
-        224px-wide box off the edge of the page — so that one hangs from its right
-        edge instead. Both are positioned against the picker's own wrapper: see
-        the `relative` on the banner cluster in `profile-view.tsx`, and the note
-        there about why the avatar's outer box must not clip.
+        Anchored to whichever side the control sits on: `left-0` under the avatar in
+        mid-header, right-anchored for the banner's corner button, where the same rule
+        ran a 224px-wide box off the edge of the page.
       */}
       {error && (
         <p
