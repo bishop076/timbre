@@ -8,42 +8,20 @@ import { SongCard } from "./song-card";
 import { TileSkeletons } from "./tile-skeleton";
 import type { Song, SongsResponse } from "./types";
 
-/**
- * The home page's shelves.
- *
- * Split out of `search-results.tsx`, which had grown to hold both halves of two
- * different pages: the search results and everything Home renders. Because
- * `home-view.tsx` imported `HomeShelves` from there, `/` was downloading the
- * whole search-results view and `/search` was downloading all of this — each
- * route carrying the other's page for nothing.
- *
- * Nothing here is shared with search any more, which is what makes the two
- * separable at all.
- */
+// The home page's shelves. Split out of `search-results.tsx` so `/` no longer downloads
+// the search view and `/search` no longer downloads this.
 
-/*
- * One tile's width.
- *
- * 9.5rem left barely two covers on a phone, so a shelf read as a stack of
- * posters rather than a row to browse — the point of a shelf is that the next
- * item is already visible. 7rem fits three with the fourth cut, which is the
- * cue that says "this scrolls" without an arrow.
- */
+// One tile's width. At 9.5rem a phone showed barely two covers; 7rem fits three with
+// the fourth cut, which is the cue that says "this scrolls" without an arrow.
 const TILE = "w-[7rem] shrink-0 sm:w-[10.5rem]";
 
-/**
- * Shelves built from what you have listened to.
- *
- * Both render nothing on a first visit, so a cold home page is exactly what it
- * was before this existed. History lives in localStorage and never leaves the
- * browser — see `history-store.ts`.
- */
+/** Shelves built from what you have listened to; nothing on a first visit. */
 function ForYou() {
   const history = useHistory();
   const [radio, setRadio] = useState<Song[]>([]);
 
-  // The most recent play that can seed a radio. A song whose every copy
-  // refused to embed has no upload id and cannot start one.
+  // The most recent play that can seed a radio — a song whose every copy refused to
+  // embed has no upload id.
   const seed = history.find((entry) => entry.videoId);
 
   useEffect(() => {
@@ -64,29 +42,13 @@ function ForYou() {
     return () => aborter.abort();
   }, [seed?.videoId, seed?.title, seed?.artists]);
 
-  /*
-   * Nothing played — or nothing *read yet*, which is not the same thing and was
-   * being treated as though it were.
-   *
-   * `useHistory` returns empty from `getServerSnapshot`, because the server has
-   * no storage to read. So on every load this returned `null`, the page rendered
-   * the arrangement a **first-time visitor** should see — "Trending now" at the
-   * top and no personalised shelves — and then hydration inserted two shelves
-   * above it and shoved the whole page down. A returning listener saw the guest
-   * layout first, every single time.
-   *
-   * The placeholder reserves what is coming. Which of the two cases this is
-   * cannot be known here — the markup is identical for both — but it *can* be
-   * known before the first paint: the boot script sets `data-listener` on
-   * `<html>` when this browser has a history, and `globals.css` shows this only
-   * then. A genuine guest has no such attribute and sees nothing, which is
-   * correct for them.
-   */
+  // Nothing played — or nothing *read yet*, which is not the same thing. `useHistory`
+  // returns empty from `getServerSnapshot`, so a returning listener got the guest layout on
+  // every load and then had two shelves inserted above it by hydration. `data-listener` on
+  // `<html>` is the one thing the first paint can know, and `globals.css` gates on it.
   if (history.length === 0) return <ForYouPending />;
 
-  // Recently-played entries are stored flat rather than as whole songs, so
-  // they are given the minimum a card needs. Playing one re-resolves it, the
-  // same path a Deezer chart entry already takes.
+  // History is stored flat, so an entry gets the minimum a card needs.
   const recent: Song[] = history.slice(0, 12).map((entry) => ({
     id: entry.id,
     title: entry.title,
@@ -130,19 +92,8 @@ function ForYou() {
   );
 }
 
-/**
- * The space "Recently played" will occupy, held open until it can be filled.
- *
- * Shown only when `<html>` carries `data-listener` — see the `.for-you-pending`
- * rule in `globals.css`. That attribute is the one thing about a listener's
- * history the first paint can know, so it is what decides whether there is
- * anything to reserve.
- *
- * One shelf, not two. "Recently played" is certain for anyone with a history;
- * "Because you played X" depends on a request that may return nothing, and
- * reserving room for a shelf that never arrives would leave a hole instead of
- * closing one.
- */
+/** The space "Recently played" will occupy — see `.for-you-pending` in `globals.css`. One
+ * shelf, not two: "Because you played X" depends on a request that may return nothing. */
 function ForYouPending() {
   return (
     <div className="for-you-pending" aria-hidden>
@@ -156,14 +107,8 @@ function ForYouPending() {
 export function HomeShelves({ charts }: { charts: SongsResponse | null }) {
   const songs = charts?.songs ?? [];
 
-  /*
-   * Charts arrived, and there are none.
-   *
-   * Left alone this rendered an empty shelf under a "Trending now" heading —
-   * a page that looks like it finished loading and simply has nothing to say,
-   * which is indistinguishable from the app being broken. Skeletons are not the
-   * answer either: they promise something is still coming when nothing is.
-   */
+  // Charts arrived, and there are none. An empty shelf under a "Trending now" heading
+  // is indistinguishable from the app being broken, and skeletons promise more.
   const chartsFailed = charts !== null && songs.length === 0;
 
   return (
@@ -182,8 +127,6 @@ export function HomeShelves({ charts }: { charts: SongsResponse | null }) {
         )}
       </Shelf>
 
-      {/* Search still works when the charts do not, so this says so rather than
-          implying the whole app is down. */}
       {chartsFailed && (
         <p className="-mt-2 px-1 text-sm leading-relaxed text-[var(--fg-dim)]">
           Charts aren&rsquo;t available right now. Search still works — try a song or artist
