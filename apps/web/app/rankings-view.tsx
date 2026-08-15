@@ -13,18 +13,9 @@ import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { sourceStyle } from "./sources";
 import { StackedColumns } from "./stacked-columns";
 
-/**
- * The graphs behind a tab, fetched when that tab is opened.
- *
- * `StackedColumns` stays a static import because it draws the *default* view —
- * lazy-loading the thing that renders on arrival would only add a fetch to the
- * critical path. `BarChart` (Artists, Agreement) and `ChartGraph` (Spread) are
- * each one click away.
- *
- * The boundary has to be here rather than in `explore/page.tsx`: this Next
- * version does not code-split a Client Component that a Server Component
- * imports dynamically, and Explore's page is a server component.
- */
+// Fetched when a tab opens; `StackedColumns` stays static as the default view. The split
+// must be here, not `explore/page.tsx` — this Next version won't code-split a Client
+// Component that a Server Component imports dynamically.
 const BarChart = dynamic(() => import("./bar-chart").then((m) => m.BarChart));
 const ChartGraph = dynamic(() => import("./chart-graph").then((m) => m.ChartGraph));
 import type { ChartTrack } from "@/lib/discover";
@@ -32,33 +23,13 @@ import { RANK_BANDS } from "@/lib/rank-bands";
 import type { GenreMix, Rankings } from "@/lib/rankings";
 import { cover as coverSrc } from "./artwork-url";
 
-/**
- * Rankings — the charts, and the working behind them.
- *
- * Shaped after OpenRouter's rankings page: a rail of topics down the side, one
- * view at a time beside it. That arrangement is worth copying because it admits
- * something most chart pages hide — that "top" is a choice of measurement, and
- * a different choice gives a different list. Naming each view is what lets a
- * reader see which one they are being shown.
- *
- * **What could not be copied, and why.** OpenRouter's headline chart is a year
- * of weekly usage. It can draw that because it *is* the thing being measured —
- * every request goes through it. Timbre measures nothing: no source publishes
- * chart history without credentials, and there is no server here to accumulate
- * it in. So every view below is a slice of one week's standings, never a trend,
- * and the page says so rather than drawing a line through a single point.
- *
- * The one exception is movement, which is genuinely over time — because your
- * own browser kept the last reading. It is labelled as personal wherever it
- * appears.
+/*
+ * Rankings — a rail of views down the side. No source publishes chart history keyless and
+ * there is no server to accumulate it, so every view is one week's standings, never a
+ * trend. Movement is the exception, and labelled personal.
  */
 
-/**
- * The snapshot key for the fused ranking.
- *
- * Named, because it used to be a bare `-1` written here and read by the
- * collection page — see `chart-memory.ts` for what that produced.
- */
+/** Snapshot key for the fused ranking. Named, not a bare `-1` — see `chart-memory.ts`. */
 const FUSED_RANKING = -1;
 
 type ViewId = "mix" | "spread" | "songs" | "artists" | "agreement";
@@ -84,31 +55,14 @@ export function RankingsView({
   agree: { shared: number; only: { chart: string; count: number }[]; total: number };
   mix: GenreMix[];
   chart: ChartTrack[];
-  /**
-   * Rendered inside another page rather than as one.
-   *
-   * Explore has room for this and `/rankings` still exists for the direct link,
-   * so one component serves both — an embedded copy that drifted from the page
-   * version would be two rankings that disagree.
-   */
+  /** Rendered inside another page rather than as one. Explore embeds it; `/rankings` is the direct link. */
   embedded?: boolean;
 }) {
-  // The graph leads, the way OpenRouter's page does — a rankings page that
-  // opens on a list is a list with a menu beside it.
+  // The graph leads: a rankings page that opens on a list is a list with a menu.
   const [view, setView] = useState<ViewId>(mix.length > 0 ? "mix" : "songs");
   const current = VIEWS.find((entry) => entry.id === view)!;
 
-  /*
-   * The failure state has to respect `embedded` too.
-   *
-   * It did not, and every chart source being down was the one moment the bug
-   * showed: Explore already opens with an `<h1>Explore</h1>`, so this rendered a
-   * *second* top-level heading on the same page, wrapped in the page padding
-   * and max-width of a route it is not — a band of content indented inside a
-   * container that had already indented it.
-   *
-   * The same two decisions as the success path below, for the same reasons.
-   */
+  // The failure state respects `embedded` too, or a page with an <h1> gets a second.
   if (rankings.songs.length === 0) {
     return (
       <div className={embedded ? "" : "mx-auto w-full max-w-6xl px-4 py-16 sm:px-7"}>
@@ -151,13 +105,8 @@ export function RankingsView({
 
       <div className="mt-5 flex flex-col gap-5 @3xl:flex-row @3xl:gap-7">
         {/*
-          Chips that wrap on a phone, a column on a wide screen.
-
-          They used to scroll sideways, which meant the last one or two were
-          simply cut off at the panel edge with nothing to say they were there —
-          "Top artists" arrived as "Top a" against a hard edge, which reads as
-          broken rather than as scrollable. Five short labels wrap into two tidy
-          rows and every one of them is visible without a gesture.
+          Chips wrap on a phone, a column on a wide screen. Never side-scroll them:
+          a label clipped at the panel edge reads as broken, not as scrollable.
         */}
         <nav
           aria-label="Ranking views"
@@ -201,19 +150,12 @@ export function RankingsView({
   );
 }
 
-/** The fused ranking, with the evidence for each position beside it. */
 function SongsView({ rankings }: { rankings: Rankings }) {
   const { play, current, state } = usePlayer();
   const songs = rankings.songs;
 
-  /*
-   * Movement uses a reserved key rather than a genre id.
-   *
-   * This is the fused ranking, not Deezer's chart, so comparing it against the
-   * snapshot taken on a genre page would report movement that never happened —
-   * two different orders differ everywhere. Genre ids are non-negative, so a
-   * negative key cannot collide with one.
-   */
+  // A reserved key, not a genre id: the fused ranking against a genre snapshot reports
+  // movement that never happened. Genre ids are non-negative, so this can't collide.
   const snapshot = useChartSnapshot(FUSED_RANKING, songs);
 
   return (
@@ -287,11 +229,7 @@ function SongsView({ rankings }: { rankings: Rankings }) {
 
               <Movement delta={moved} />
 
-              {/*
-                Which charts carried it, and where. This is the whole argument
-                for the ranking: a badge pair means two independent audiences
-                put it here, and one badge means one did.
-              */}
+              {/* Which charts carried it, and where — a badge pair means two audiences agreed. */}
               <div className="hidden shrink-0 items-center gap-1 @lg:flex">
                 {song.charts.map((chart) => {
                   const style = sourceStyle(chart);
@@ -320,14 +258,7 @@ function SongsView({ rankings }: { rankings: Rankings }) {
   );
 }
 
-/**
- * Who holds the most places.
- *
- * The honest version of "market share": a count of slots on a board of a known
- * size, not an estimate of listening hours. Nobody publishes hours for free,
- * and a number invented to fill that column would be the only untrue thing on
- * the page.
- */
+/** Who holds the most places — a count of chart slots, not an estimate of listening hours. */
 function ArtistsView({
   share,
   total,
@@ -366,14 +297,7 @@ function ArtistsView({
   );
 }
 
-/**
- * How much the charts agree.
- *
- * This is the measurement the ranking rests on, so it is shown rather than
- * asserted. If almost nothing appears on both charts, then "consensus" is
- * really two lists interleaved — and a reader is owed that, not a page that
- * quietly claims more rigour than the data supports.
- */
+/** How much the charts agree — the measurement the ranking rests on, shown rather than asserted. */
 function AgreementView({
   agree,
   rankings,
@@ -418,14 +342,6 @@ function AgreementView({
   );
 }
 
-/**
- * The stacked column chart: which genres feed the chart, and how high.
- *
- * The nearest honest answer to OpenRouter's headline graph. Theirs plots a year
- * of weekly usage because they log every request; this plots genre against
- * placings because that is a measurement that exists. Same form, different
- * axis, and the caption says which.
- */
 function GenreMixView({ mix }: { mix: GenreMix[] }) {
   if (mix.length === 0) {
     return (
@@ -436,15 +352,8 @@ function GenreMixView({ mix }: { mix: GenreMix[] }) {
     );
   }
 
-  /*
-   * Eight, not twelve.
-   *
-   * The chart is no longer a scroll box — it fits whatever width it is given —
-   * so the number of columns now decides how thin each one gets. Twelve on a
-   * phone is a row of slivers under labels that are all ellipsis. Eight is the
-   * most that stays legible at the narrowest size the app supports, and the
-   * genres beyond it are the ones contributing one or two songs.
-   */
+  // Eight is the most that stays legible at the narrowest width — the chart fits its
+  // container, so more columns only means thinner ones.
   const top = mix.slice(0, 8);
 
   return (
@@ -470,18 +379,7 @@ function GenreMixView({ mix }: { mix: GenreMix[] }) {
   );
 }
 
-/**
- * Chart position against catalogue popularity.
- *
- * Deezer's chart rather than the fused ranking, and labelled as such — the
- * popularity score is Deezer's measure of a Deezer recording, and presenting it
- * over a ranking built from two catalogues would be claiming a number that
- * neither of them published.
- *
- * A dot plot, not bars. The scores sit in a narrow band near the top of their
- * range, and a bar has to grow from zero or its length lies — from zero these
- * are twenty-five near-identical blocks. See `chart-graph.tsx`.
- */
+/** Chart position against popularity. Deezer's chart, since the score is Deezer's own measure. */
 function SpreadView({ chart }: { chart: ChartTrack[] }) {
   const { play } = usePlayer();
 
