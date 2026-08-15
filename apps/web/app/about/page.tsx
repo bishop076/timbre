@@ -8,24 +8,10 @@ export const metadata = {
     "What Timbre is, what it deliberately does not do, and who actually serves the music.",
 };
 
-/**
- * The honesty page.
- *
- * Three of the obligations Timbre carries meet here, and none of them is
- * decoration:
- *
- * - **Attribution.** Every service embedded here requires that its name is
- *   shown and that traffic can go back to it. That is a term of use, not a
- *   courtesy.
- * - **Not affiliated.** Naming four companies on a page invites the assumption
- *   that one of them endorsed it. Saying otherwise, plainly, is the fix.
- * - **The mobile limit.** Playback stops when a phone locks, and nothing here
- *   can change that. A reader who discovers it mid-song concludes the app is
- *   broken; a reader told up front knows it is the shape of the thing.
- *
- * Server-rendered and static: it reads from nothing and changes only when this
- * file does.
- */
+// The honesty page, carrying three obligations: attribution — every embedded service
+// requires its name shown and traffic able to reach it, as a term of use — a plain
+// statement of non-affiliation, and the mobile limit, since playback stops when a phone
+// locks and a reader who finds that out mid-song concludes the app is broken.
 
 /** Where a reader goes to hear the catalogue at its own source. */
 const SOURCES = [

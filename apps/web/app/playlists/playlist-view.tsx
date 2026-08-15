@@ -12,17 +12,8 @@ import { PlaylistCover } from "./playlist-cover";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
 import { cover as coverSrc } from "../artwork-url";
 
-/**
- * One playlist, in full.
- *
- * Playing from here hands the whole list to the queue in order, which is what
- * makes a playlist different from a search result: the rest of the list is the
- * point, not an accident of what was on screen.
- *
- * A saved row carries the whole song — every source it was found on — so the
- * list renders and plays with no network at all. When a cached upload stops
- * working the player already falls through to another copy of the same song.
- */
+// A saved row carries the whole song — every source it was found on — so the list renders
+// and plays with no network at all.
 
 function formatDuration(ms: number | null): string {
   if (ms === null) return "—";
@@ -30,19 +21,10 @@ function formatDuration(ms: number | null): string {
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
+/** One playlist, in full. */
 export function PlaylistView({ id }: { id: string }) {
-  /*
-   * Finding a song in this playlist, which is not the same question as search.
-   *
-   * The shell's field asks the catalogue; this asks the forty rows in front of
-   * you. They used to be one box — the shell's — sitting above every page, and
-   * typing in it here threw you out to a global result set, which reads as the
-   * field ignoring the page it is on. See `top-bar.tsx`.
-   *
-   * Local state, not the search store, precisely so the two cannot bleed into
-   * one another: leaving and coming back should not restore a filter that hides
-   * most of the playlist with no obvious cause.
-   */
+  // Finds a song in *this* playlist, not the catalogue (see `top-bar.tsx`). Local state,
+  // not the search store, so returning can't restore a hidden filter.
   const [filter, setFilter] = useState("");
   const { play, current, state } = usePlayer();
   const { settled } = usePlaylists();
@@ -52,8 +34,7 @@ export function PlaylistView({ id }: { id: string }) {
     loadPlaylists();
   }, []);
 
-  // Storage has not been read yet — not the same as "no such playlist", and
-  // showing "not found" first would flash a lie on every direct visit.
+  // Storage unread is not "no such playlist" — "not found" first flashes a lie.
   if (!settled) {
     return (
       <div className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-7">
@@ -87,15 +68,8 @@ export function PlaylistView({ id }: { id: string }) {
     .filter((url): url is string => Boolean(url))
     .slice(0, 4);
 
-  /*
-   * Filtering carries each song's *real* index with it.
-   *
-   * Every row control here is index-based — `moveSong(id, from, to)` and
-   * `removeSongAt(id, position)` address the stored array, not the screen. Map
-   * first and filter second, and the position travels with the song, so a
-   * delete while filtered removes the row you clicked rather than whatever
-   * happens to sit at that offset in the shortened list.
-   */
+  // Map first, filter second, so each song carries its *stored* index — the row controls
+  // address that array, and otherwise a delete hits the wrong offset.
   const term = filter.trim().toLowerCase();
   const visible = songs
     .map((song, position) => ({ song, position }))
@@ -124,17 +98,7 @@ export function PlaylistView({ id }: { id: string }) {
             {playlist.name}
           </h1>
           <p className="mt-2 text-xs text-[var(--fg-faint)]">
-            {/*
-              Just the count. "Only in this browser" was appended to every
-              playlist, and a promise repeated on every page stops being a
-              promise and becomes furniture — it is the same sentence whatever
-              you are looking at, so it carries no information about *this*
-              playlist and pushes the one number that does out of the way.
-
-              It is still said, once, where it answers a question somebody is
-              actually asking: on the library page above the whole collection,
-              and in Settings beside the rest of what this browser is holding.
-            */}
+            {/* Just the count — "only in this browser" is said once, on the library page. */}
             {songs.length} {songs.length === 1 ? "song" : "songs"}
           </p>
 
@@ -150,20 +114,14 @@ export function PlaylistView({ id }: { id: string }) {
                 Play
               </button>
             )}
-            {/* Deleting from here has to navigate away — the page it is on is
-                about to stop existing. */}
+            {/* Deleting has to navigate away — this page is about to stop existing. */}
             <PlaylistActions id={playlist.id} name={playlist.name} onDeletedGoTo="/library" />
           </div>
         </div>
       </header>
 
-      {/*
-        Small, and only once there is enough to lose something in.
-
-        A filter over three rows is a control that costs more attention than the
-        looking it saves, so it appears at ten — the point where the list stops
-        fitting on a phone screen.
-      */}
+      {/* Ten is where the list stops fitting a phone screen; below that a filter
+          costs more attention than the looking it saves. */}
       {songs.length >= 10 && (
         <div className="mb-3 flex items-center justify-end gap-3">
           {term !== "" && (
@@ -284,22 +242,11 @@ export function PlaylistView({ id }: { id: string }) {
                   {formatDuration(song.durationMs)}
                 </span>
 
-                {/*
-                  Buttons rather than drag-and-drop. Dragging needs pointer
-                  handlers, a drop indicator, autoscroll and a keyboard path
-                  built separately; two buttons are reorderable by keyboard and
-                  on a touch screen for free, and this list is short.
-                */}
+                {/* Buttons, not drag-and-drop: these work by keyboard and touch for free. */}
                 <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                  {/*
-                    No reordering while a filter is on.
-
-                    The arrows move a song one place in the *stored* list, and
-                    while rows are hidden that neighbour is usually one of the
-                    hidden ones — so the press would be correct, change the
-                    playlist, and appear to do nothing at all. Removing is
-                    unambiguous either way and stays.
-                  */}
+                  {/* No reordering while filtered: the arrows move a song one place in the
+                      *stored* list, whose neighbour is usually hidden, so the press
+                      changes the playlist and appears to do nothing. */}
                   {term === "" && (
                     <>
                       <button

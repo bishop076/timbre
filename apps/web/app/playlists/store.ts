@@ -1,24 +1,10 @@
 "use client";
 
 /**
- * Playlists, in the browser. **Nothing is stored on a Timbre server.**
- *
- * This used to be a thin client over Postgres. It is not any more, and the
- * reason is deployment rather than taste: keeping playlists server-side meant
- * an always-on database, an account system to own them, and — the part that
- * actually costs money — an SMTP provider to deliver magic links. Local
- * playlists need none of those, so Timbre can be hosted for free and holds no
- * personal data at all.
- *
- * The consequence is stated plainly wherever these appear: clearing site data
- * loses them, and they do not follow you to another device. Export is the
- * escape hatch, which is why it is a first-class feature here rather than a
- * nicety.
- *
- * A playlist stores **whole songs**, not references. The normalised tables this
- * replaced existed so a match computed once could be reused across users; with
- * one browser and one person there is nobody to share a cache with, and a flat
- * copy is what lets a saved list render and play with no network at all.
+ * Playlists, in the browser — no database, no accounts, no personal data. The cost, stated
+ * wherever these appear: clearing site data loses them and they do not follow you to
+ * another device, which is why export is a first-class feature. A playlist stores whole
+ * songs, not references, so a saved list renders and plays with no network at all.
  */
 
 import { useSyncExternalStore } from "react";
@@ -73,14 +59,9 @@ function summarise(playlist: LocalPlaylist): PlaylistSummary {
   };
 }
 
-/**
- * Most recently touched first, which is the order every music app uses.
- *
- * The error is passed in rather than cleared. It used to be hard-coded to
- * `null` here, which silently undid the quota message `persist` had just set on
- * the line above — so running out of storage looked exactly like success until
- * the next reload lost the change.
- */
+/** Republishes, most recently touched first. `error` is a parameter rather than hard-coded
+ * `null`, which silently undid the quota message `persist` had just set — running out of
+ * storage looked exactly like success until the next reload. */
 function publish(error: string | null = null): void {
   snapshot = {
     playlists: [...all]
@@ -96,8 +77,7 @@ function persist(): void {
   try {
     window.localStorage.setItem(KEY, JSON.stringify(all));
   } catch {
-    // Quota. Reported rather than swallowed: the change is already in memory
-    // and the reader needs to know it will not survive a reload.
+    // Quota. Reported, not swallowed: the change is in memory but will not survive a reload.
     publish("Out of browser storage. Remove a playlist, or a profile picture.");
     return;
   }
@@ -110,8 +90,7 @@ function readStorage(): LocalPlaylist[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    // Shape-checked rather than trusted. This is user-editable storage, and a
-    // half-valid entry would crash a render far away from here.
+    // Shape-checked, not trusted: a half-valid entry would crash a render far from here.
     return parsed.filter(
       (item): item is LocalPlaylist =>
         typeof item === "object" &&
@@ -142,25 +121,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getSnapshot(): PlaylistsState {
-  /*
-   * Storage is read here, on the first client read, rather than from an effect.
-   *
-   * `loadPlaylists()` is synchronous — it is a `localStorage.getItem` and a
-   * `JSON.parse` — but every caller ran it from `useEffect`, which is *after*
-   * the first paint. So the library rendered its header, an empty grid and a
-   * footer pushed to the middle of an empty column, and then filled in. The
-   * data was on disk the whole time; only the schedule was wrong.
-   *
-   * Reading lazily here is the same shape `theme/theme-store.ts` uses, and it
-   * satisfies `useSyncExternalStore`'s contract: the read happens once and
-   * every later call returns the identical object, so the snapshot is stable.
-   * It cannot run on the server — `getServerSnapshot` is a separate function —
-   * which is exactly why the first *client* read is the right place for it.
-   *
-   * No `publish()` here: that notifies listeners, and notifying React while it
-   * is asking for a snapshot is a render-phase side effect. Assigning the
-   * snapshot is enough, because this runs during the render that will use it.
-   */
+  /* Read here rather than from an effect: the read is synchronous, but from `useEffect` it
+   * lands after the first paint, so the library painted an empty grid first. It happens
+   * once and every later call returns the identical object, which is
+   * `useSyncExternalStore`'s stability contract. No `publish()` — notifying React while it
+   * asks for a snapshot is a render-phase side effect. */
   if (!snapshot.settled) {
     all = readStorage();
     snapshot = {
@@ -178,11 +143,8 @@ function getServerSnapshot(): PlaylistsState {
   return EMPTY;
 }
 
-/**
- * Reads storage once. Named for the shape it replaced so callers did not all
- * have to change, and still worth calling on mount: the first read cannot
- * happen during render, because the server has no localStorage.
- */
+/** Reads storage once, on mount — the first read cannot happen during render, because the
+ * server has no localStorage. */
 export function loadPlaylists(): void {
   if (snapshot.settled) return;
   all = readStorage();
@@ -195,8 +157,8 @@ export function usePlaylists(): PlaylistsState {
 
 /** One playlist in full, or null. Returns songs, unlike the summaries. */
 export function usePlaylist(id: string): LocalPlaylist | null {
-  // Subscribed through the same store so a rename or a reorder repaints here
-  // too; the lookup itself is against the live array rather than the snapshot.
+  // Subscribed through the same store so a rename repaints here too; the lookup itself is
+  // against the live array rather than the snapshot.
   usePlaylists();
   return all.find((playlist) => playlist.id === id) ?? null;
 }
@@ -234,12 +196,7 @@ export function deletePlaylist(id: string): void {
   persist();
 }
 
-/**
- * Appends a song.
- *
- * The same song twice is allowed, because a playlist that refuses a repeat is
- * making an editorial decision on someone's behalf.
- */
+/** Appends a song. A repeat is allowed — refusing one is an editorial decision. */
 export function addSongToPlaylist(id: string, song: Song): void {
   const playlist = all.find((item) => item.id === id);
   if (!playlist) return;
@@ -273,17 +230,10 @@ export function moveSong(id: string, from: number, to: number): void {
   persist();
 }
 
-// ---------------------------------------------------------------------------
 // Moving between devices
-// ---------------------------------------------------------------------------
 
-/**
- * Everything, as a file.
- *
- * Local storage means a browser is the only copy, so this is not a convenience
- * — it is the *only* way to move a library to another machine or survive
- * clearing site data. Versioned so a future format change can still read it.
- */
+/** Everything, as a file — the only way to move a library to another machine or survive
+ * clearing site data. Versioned so a format change can still read it. */
 export interface PlaylistExport {
   format: "timbre.playlists";
   version: 1;
@@ -302,13 +252,8 @@ export function exportPlaylists(): PlaylistExport {
 
 export class ImportError extends Error {}
 
-/**
- * Merges an exported file back in.
- *
- * Merge rather than replace, and new ids for everything: importing on a
- * machine that already has playlists should never silently overwrite them, and
- * re-importing the same file should be visible rather than destructive.
- */
+/** Merges an exported file back in, returning how many arrived. Merge rather than replace,
+ * with new ids: importing must never silently overwrite what is already here. */
 export function importPlaylists(data: unknown): number {
   const file = data as Partial<PlaylistExport>;
   if (!file || file.format !== "timbre.playlists" || !Array.isArray(file.playlists)) {
