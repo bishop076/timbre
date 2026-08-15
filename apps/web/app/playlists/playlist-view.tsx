@@ -4,22 +4,18 @@ import { ArtistLink } from "../artist-link";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { ChevronIcon, CloseIcon, NoteIcon, PlayIcon, SearchIcon, TrashIcon } from "../icons";
+import { ChevronIcon, CloseIcon, PlayIcon, SearchIcon, TrashIcon } from "../icons";
 import { usePlayer } from "../player/player-context";
+import { SongRow } from "../song-row";
 import { sourceStyle } from "../sources";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
-import { cover as coverSrc } from "../artwork-url";
+import { formatDuration } from "../duration";
 
 // A saved row carries the whole song — every source it was found on — so the list renders
 // and plays with no network at all.
 
-function formatDuration(ms: number | null): string {
-  if (ms === null) return "—";
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
-}
 
 /** One playlist, in full. */
 export function PlaylistView({ id }: { id: string }) {
@@ -164,123 +160,76 @@ export function PlaylistView({ id }: { id: string }) {
         </p>
       ) : (
         <ul className="divide-y divide-[var(--line)]">
-          {visible.map(({ song, position }) => {
-            const isCurrent = current?.id === song.id;
-            return (
-              <li
-                key={`${song.id}-${position}`}
-                className={`group flex items-center gap-3 rounded-lg px-2 transition sm:gap-4 ${
-                  isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
-                }`}
-              >
-                <span className="w-6 shrink-0 text-right text-xs tabular-nums text-[var(--fg-faint)]">
-                  {position + 1}
-                </span>
+          {visible.map(({ song, position }) => (
+            <SongRow
+              key={`${song.id}-${position}`}
+              song={song}
+              onPlay={() => play(song, songs)}
+              isCurrent={current?.id === song.id}
+              isPlaying={state === "playing"}
+              rank={position + 1}
+              subtitle={<ArtistLink artists={song?.artists ?? []} />}
+              trailing={
+                <>
+                  <div className="hidden shrink-0 items-center gap-1 @xl:flex">
+                    {song.sources.map((source) => {
+                      const style = sourceStyle(source.source);
+                      return (
+                        <span
+                          key={source.source}
+                          style={{ color: style.color, backgroundColor: style.tint }}
+                          className="rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90"
+                        >
+                          {style.short}
+                        </span>
+                      );
+                    })}
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => play(song, songs)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left focus:outline-none sm:gap-4 sm:py-3"
-                  aria-label={`Play ${song.title}`}
-                >
-                  <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)] sm:size-12">
-                    {song.artworkUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-                      <img
-                        src={coverSrc(song.artworkUrl, 112) ?? undefined}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      <span className="flex size-full items-center justify-center text-[var(--fg-dim)]">
-                        <NoteIcon className="size-5" />
-                      </span>
+                  <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
+                    {formatDuration(song.durationMs)}
+                  </span>
+
+                  {/* Buttons, not drag-and-drop: these work by keyboard and touch for free. */}
+                  <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                    {/* No reordering while filtered: the arrows move a song one place in the
+                        *stored* list, whose neighbour is usually hidden, so the press
+                        changes the playlist and appears to do nothing. */}
+                    {term === "" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => moveSong(playlist.id, position, position - 1)}
+                          disabled={position === 0}
+                          aria-label={`Move ${song.title} up`}
+                          className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
+                        >
+                          <ChevronIcon className="size-4 rotate-180" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSong(playlist.id, position, position + 1)}
+                          disabled={position === songs.length - 1}
+                          aria-label={`Move ${song.title} down`}
+                          className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
+                        >
+                          <ChevronIcon className="size-4" />
+                        </button>
+                      </>
                     )}
-                    <span
-                      className={`absolute inset-0 flex items-center justify-center bg-black/55 transition ${
-                        isCurrent && state === "playing"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => removeSongAt(playlist.id, position)}
+                      aria-label={`Remove ${song.title} from ${playlist.name}`}
+                      className="press mr-1 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-red-400"
                     >
-                      <PlayIcon className="size-4 text-white" />
-                    </span>
-                  </span>
-
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate text-[15px] font-medium ${
-                        isCurrent ? "text-[var(--accent)]" : ""
-                      }`}
-                    >
-                      {song.title}
-                    </span>
-                    <span className="block truncate text-sm text-[var(--fg-dim)]">
-                      <ArtistLink artists={song?.artists ?? []} />
-                    </span>
-                  </span>
-                </button>
-
-                <div className="hidden shrink-0 items-center gap-1 @xl:flex">
-                  {song.sources.map((source) => {
-                    const style = sourceStyle(source.source);
-                    return (
-                      <span
-                        key={source.source}
-                        style={{ color: style.color, backgroundColor: style.tint }}
-                        className="rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90"
-                      >
-                        {style.short}
-                      </span>
-                    );
-                  })}
-                </div>
-
-                <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
-                  {formatDuration(song.durationMs)}
-                </span>
-
-                {/* Buttons, not drag-and-drop: these work by keyboard and touch for free. */}
-                <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                  {/* No reordering while filtered: the arrows move a song one place in the
-                      *stored* list, whose neighbour is usually hidden, so the press
-                      changes the playlist and appears to do nothing. */}
-                  {term === "" && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => moveSong(playlist.id, position, position - 1)}
-                        disabled={position === 0}
-                        aria-label={`Move ${song.title} up`}
-                        className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
-                      >
-                        <ChevronIcon className="size-4 rotate-180" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveSong(playlist.id, position, position + 1)}
-                        disabled={position === songs.length - 1}
-                        aria-label={`Move ${song.title} down`}
-                        className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)] disabled:opacity-25 disabled:hover:bg-transparent"
-                      >
-                        <ChevronIcon className="size-4" />
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeSongAt(playlist.id, position)}
-                    aria-label={`Remove ${song.title} from ${playlist.name}`}
-                    className="press mr-1 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-red-400"
-                  >
-                    <TrashIcon className="size-4" />
-                  </button>
-                </div>
-              </li>
-            );
-          })}
+                      <TrashIcon className="size-4" />
+                    </button>
+                  </div>
+                </>
+              }
+            />
+          ))}
         </ul>
       )}
     </div>
