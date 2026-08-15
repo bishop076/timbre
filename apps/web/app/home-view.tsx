@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { rememberCharts, useCachedCharts } from "./charts-cache";
 import { MixHero } from "./mix-hero";
 import { useHistory } from "./player/history-store";
-import { HomeShelves } from "./search-results";
+import { HomeShelves } from "./home-shelves";
 import type { Song, SongsResponse } from "./types";
 
 /**
