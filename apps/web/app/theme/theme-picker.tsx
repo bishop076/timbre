@@ -11,30 +11,8 @@ import {
 } from "./theme-store";
 
 /**
- * Choosing how the app looks.
- *
- * Each option is previewed in **its own colours** rather than described in
- * words. "Album" and "Pastel" are ideas about how colour behaves over time, not
- * fixed palettes, so a swatch is worth more than a name — and the custom row is
- * the only one where a name would be meaningless anyway.
- *
- * Lives on the profile page because that is where the other per-browser
- * preferences already are, and this is one more thing stored on this device
- * only.
- */
-
-/**
- * Named for the ground first, and the trick second.
- *
- * They were called Album, Pastel and One colour — names for *how each palette
- * is built*, which is the author's view of them and not the reader's. Somebody
- * opening this wants the dark one or the light one, and had to read three
- * sentences to find out which was which.
- *
- * So the label is the answer to the question actually being asked, and the
- * blurb carries what makes each one Timbre's rather than anyone else's. The
- * ids are untouched: they are what is written to storage, so renaming them
- * would silently reset the theme of everyone who had already chosen one.
+ * The modes, labelled by ground rather than by how each palette is built. Never rename
+ * the ids — they are written to storage, so a rename silently resets everyone's theme.
  */
 const MODES: { id: ThemeMode; label: string; blurb: string }[] = [
   {
@@ -55,27 +33,18 @@ const MODES: { id: ThemeMode; label: string; blurb: string }[] = [
 ];
 
 /**
- * Twelve hues, evenly spaced.
- *
- * A ring rather than a native colour input: `<input type="color">` opens the
- * operating system's picker, which is a modal dialogue in a font and language
- * Timbre does not control, for a decision that is one of twelve. Saturation and
- * lightness are the palette's job in any case — only the hue is the reader's.
+ * Twelve evenly spaced hues. A ring, not `<input type="color">`, which opens the OS
+ * picker — a modal Timbre controls neither the font nor the language of.
  */
 const HUES = Array.from({ length: 12 }, (_, index) => index * 30);
 
+/** Choosing how the app looks, each option previewed in its own colours. */
 export function ThemePicker() {
   const theme = useTheme();
 
   return (
     <section>
-      {/*
-        No heading of its own any more. This is rendered inside a settings
-        section that is already titled "Themes" by both the rail and the pane —
-        a third "Theme" under those two was a label for a label. The sentence
-        stays, because where the choice is kept is a real question and nothing
-        else on screen answers it.
-      */}
+      {/* No heading: the settings section around this is already titled "Themes". */}
       <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
         Saved in this browser, like everything else here.
       </p>
@@ -102,8 +71,7 @@ export function ThemePicker() {
                 </span>
               )}
 
-              {/* The preview is the argument. Each strip is the mode's own
-                  ground and accent, so the choice is visible before it is made. */}
+              {/* Each strip is the mode's own ground and accent, so the choice is visible first. */}
               <span
                 aria-hidden
                 className="slab-sm flex h-8 w-full items-end gap-1 overflow-hidden rounded-[var(--r-md)] p-1 sm:h-11 sm:p-1.5"
@@ -131,8 +99,7 @@ export function ThemePicker() {
         })}
       </div>
 
-      {/* Only shown for the mode it belongs to. Controls for an inactive mode
-          would change something invisible, which reads as a broken button. */}
+      {/* Only for the active mode — a control that changes something invisible reads as broken. */}
       {theme.mode === "custom" && (
         <div className="slab mt-3 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2.5 sm:p-3.5">
           <p className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)]">
@@ -140,11 +107,7 @@ export function ThemePicker() {
           </p>
 
           <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-2.5 sm:gap-2">
-            {/*
-              White and dark first, because "no colour" is a choice about the
-              whole app rather than one more hue — and putting them at the end
-              of a colour ring would read as two more colours.
-            */}
+            {/* White and dark first: at the end of a colour ring they read as two more hues. */}
             {[
               { light: true, label: "White", swatch: "#ffffff" },
               { light: false, label: "Dark", swatch: "#131318" },
@@ -187,8 +150,7 @@ export function ThemePicker() {
             })}
           </div>
 
-          {/* Hidden for the neutrals: "White" already names its ground, and a
-              white theme on a dark ground is not a thing anyone can want. */}
+          {/* Hidden for the neutrals — "White" already names its ground. */}
           <div className={`mt-4 items-center gap-2 ${theme.customNeutral ? "hidden" : "flex"}`}>
             <span className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)]">
               Ground
@@ -221,13 +183,7 @@ export function ThemePicker() {
   );
 }
 
-/**
- * The ground a mode paints on, for its preview strip.
- *
- * Album's swatch is deliberately close to neutral — the ramp only carries about
- * a third of the hue on its surfaces, and a vivid preview would promise a more
- * colourful app than the one it selects.
- */
+/** The ground a mode paints on, for its preview. Album stays near neutral — its ramp carries a third of the hue. */
 function previewGround(theme: {
   mode: ThemeMode;
   customHue: number;
@@ -240,7 +196,6 @@ function previewGround(theme: {
   return theme.customLight ? `hsl(${theme.customHue} 40% 90%)` : `hsl(${theme.customHue} 14% 8%)`;
 }
 
-/** The accent a mode shows, for its preview strip. */
 function previewAccent(theme: {
   mode: ThemeMode;
   customHue: number;

@@ -1,9 +1,7 @@
-/**
- * Client-side mirrors of the shapes returned by /api/search and /api/charts.
- *
- * Declared separately from @timbre/providers rather than imported: these cross
- * the network as JSON, so they are a wire contract, and a client component
- * should not pull in the server-only provider package to describe it.
+/*
+ * Client-side mirrors of what /api/search and /api/charts return. Re-declared rather than
+ * imported from @timbre/providers: they cross the network as JSON, so they are a wire
+ * contract, and a client component must not pull in a server-only package to describe one.
  */
 
 export interface SourceTrack {
@@ -28,12 +26,8 @@ export interface SongsResponse {
   songs: Song[];
   failures: { source: string; message: string }[];
   /**
-   * How many sources were asked.
-   *
-   * Optional because `/api/resolve` answers with a single song and has no
-   * fan-out to report. Where it is present, `failures.length === attempted`
-   * means nothing was reachable — which needs a different message from "no
-   * results", not a louder version of the same one.
+   * How many sources were asked. Optional — `/api/resolve` has no fan-out. When present,
+   * `failures.length === attempted` means nothing was reachable, which is not "no results".
    */
   attempted?: number;
 }

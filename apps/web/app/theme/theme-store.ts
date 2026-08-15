@@ -2,46 +2,22 @@
 
 import { useSyncExternalStore } from "react";
 
-/**
- * Which palette the app wears.
- *
- * Stored outside React and outside the server, for the same reason volume is:
- * it has to survive a reload, which means `localStorage`, which the server
- * cannot read. `useSyncExternalStore` is what keeps hydration honest — the
- * server renders the default, then React re-reads the real value.
- *
- * The three modes are genuinely different ideas, not three colour swaps:
- *
- * - **`album`** — the whole interface is a tonal ramp built from the current
- *   cover, on a dark ground. The app is *made of* the album's colour.
- * - **`pastel`** — the same idea inverted: a light ground, and the cover's hue
- *   held at high lightness and gentle saturation so it reads as soft rather
- *   than bright.
- * - **`custom`** — one hue, chosen once, that never moves. For people who want
- *   the app to look the same at 3pm and at midnight regardless of what is
- *   playing, which the other two deliberately do not.
- *
- * `custom` carries its own light/dark choice because a fixed hue still needs a
- * ground to sit on, and the mode is the only one where the reader — not the
- * artwork — decides everything.
+/*
+ * Which palette the app wears. Lives in `localStorage`, so outside React and unreadable by
+ * the server; `useSyncExternalStore` renders the default and then re-reads the real value.
  */
 
+/** `album` ramps from the cover on dark, `pastel` inverts that onto light, `custom` is one fixed hue. */
 export type ThemeMode = "album" | "pastel" | "custom";
 
 export interface ThemeState {
   mode: ThemeMode;
   /** Hue in degrees, 0–359. Only consulted in `custom`, and ignored when neutral. */
   customHue: number;
-  /** Whether `custom` sits on a light ground. */
   customLight: boolean;
   /**
-   * No hue at all — plain white or plain dark.
-   *
-   * A separate flag rather than "hue with zero saturation" because it is a
-   * different intent: every other choice here tints the entire interface, and
-   * this one is the request to stop doing that. Storing it as a saturation of
-   * zero would make it indistinguishable from a colour the reader picked and
-   * would be silently undone the moment they touched a swatch.
+   * No hue at all. A separate flag, not a saturation of zero, which would be
+   * indistinguishable from a picked colour and undone the moment a swatch was touched.
    */
   customNeutral: boolean;
 }
@@ -76,9 +52,7 @@ function read(): ThemeState {
     const value = parsed as Partial<ThemeState>;
     const hue = Number(value.customHue);
 
-    // Each field is validated on its own rather than trusting the object: this
-    // is user-editable storage, and a half-valid record should degrade to the
-    // default for the bad field only.
+    // Field by field: user-editable storage, so a half-valid record degrades per field.
     return {
       mode: isMode(value.mode) ? value.mode : DEFAULT.mode,
       customHue: Number.isFinite(hue) && hue >= 0 && hue < 360 ? Math.round(hue) : DEFAULT.customHue,
@@ -86,8 +60,7 @@ function read(): ThemeState {
       customNeutral: value.customNeutral === true,
     };
   } catch {
-    // Private browsing throws rather than returning null, and malformed JSON
-    // throws too. Either way the default is the right answer.
+    // Private browsing throws rather than returning null; so does malformed JSON.
     return DEFAULT;
   }
 }
@@ -97,7 +70,6 @@ function write(next: ThemeState): void {
   try {
     window.localStorage.setItem(KEY, JSON.stringify(next));
   } catch {
-    // Not being able to remember the choice is no reason to refuse to make it.
   }
   for (const listener of listeners) listener();
 }
@@ -118,9 +90,8 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+/** The current theme. Lazy for the server, cached after — `getSnapshot` needs a stable object. */
 export function getThemeSnapshot(): ThemeState {
-  // Lazy so the module stays importable on the server; every read after the
-  // first returns a cached object, as getSnapshot requires.
   if (!loaded) {
     loaded = true;
     snapshot = read();
@@ -142,9 +113,7 @@ export function setThemeMode(mode: ThemeMode): void {
 
 export function setCustomHue(hue: number): void {
   const wrapped = ((Math.round(hue) % 360) + 360) % 360;
-  // Choosing a colour is choosing the mode: adjusting the swatch while another
-  // mode is active would otherwise change nothing visible and read as broken.
-  // It also leaves neutral, since picking a hue is the opposite of that ask.
+  // Also chooses the mode and leaves neutral, or the swatch changes nothing visible.
   write({ ...getThemeSnapshot(), customHue: wrapped, customNeutral: false, mode: "custom" });
 }
 
@@ -152,23 +121,12 @@ export function setCustomLight(light: boolean): void {
   write({ ...getThemeSnapshot(), customLight: light, mode: "custom" });
 }
 
-/**
- * Plain white or plain dark, with no tint at all.
- *
- * Sets the ground too, because these are not a colour *and* a ground — "white"
- * already names both, and offering a dark white would be nonsense.
- */
+/** Plain white or plain dark, no tint. Sets the ground too — "white" already names both. */
 export function setNeutral(light: boolean): void {
   write({ ...getThemeSnapshot(), customNeutral: true, customLight: light, mode: "custom" });
 }
 
-/**
- * Whether a mode paints on a light ground.
- *
- * The single place that answers it, because three separate copies of this
- * question — the palette builder, the CSS attribute and the ambient wash — is
- * three chances for them to disagree about what "light" means.
- */
+/** Whether a mode paints on a light ground — the single answer, so builder, attribute and wash agree. */
 export function isLightTheme(theme: ThemeState): boolean {
   if (theme.mode === "pastel") return true;
   if (theme.mode === "custom") return theme.customLight;

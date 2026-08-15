@@ -7,17 +7,8 @@ import { CheckIcon, PlaylistAddIcon, PlusIcon } from "../icons";
 import type { Song } from "../types";
 import { addSongToPlaylist, createPlaylist, loadPlaylists, usePlaylists } from "./store";
 
-/**
- * Saves a song to a playlist.
- *
- * A menu rather than a heart, because Timbre has no single "liked songs" list —
- * a playlist is the only container there is, so the question is always *which
- * one*, and a one-tap control would have to invent an answer.
- *
- * Saving needs no account and touches no network: playlists live in this
- * browser. That is why there is no signed-out state here any more, and why the
- * whole interaction is synchronous.
- */
+/** Saves a song to a playlist. A menu rather than a heart, since there is no single
+ * "liked songs" list. Playlists are local, so the interaction is synchronous. */
 export function AddToPlaylist({ song, className }: { song: Song; className?: string }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -27,32 +18,17 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
 
-  /*
-   * The menu is rendered into `document.body`, not beside its button.
-   *
-   * Two things were breaking it in place. Shelves scroll horizontally, so their
-   * container is `overflow-x-auto` — and an absolutely positioned child of a
-   * scroll container is **clipped by it**, which cut the menu off mid-list. And
-   * anchoring to the button's right edge sent the menu off the left of the
-   * screen for the first tile in a row.
-   *
-   * A portal escapes every ancestor's overflow, and fixed coordinates measured
-   * from the trigger let it flip to whichever side actually has room.
-   */
+  // Portalled into `document.body`, not rendered beside its button: shelves are
+  // `overflow-x-auto`, and an absolutely positioned child of a scroll container is clipped
+  // by it. Fixed coordinates also let it flip to whichever side has room.
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
     if (open) loadPlaylists();
   }, [open]);
 
-  /*
-   * Measured before paint, so the menu never appears at the wrong place first.
-   * `useLayoutEffect` rather than `useEffect` for exactly that reason.
-   */
+  // `useLayoutEffect` so the menu never appears at the wrong place first.
   useLayoutEffect(() => {
-    // Nothing to place while closed, and nothing to clear either: the position
-    // is only ever read when `open` is true, so it can go stale harmlessly
-    // rather than being reset on the way out.
     if (!open) return;
 
     const place = () => {
@@ -61,16 +37,12 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
 
       const WIDTH = 240;
       const MARGIN = 8;
-      // Prefer growing left from the button's right edge, which keeps the menu
-      // under the control. Flip when that would cross the viewport's left edge.
       const wantLeft = trigger.right - WIDTH;
       const left = Math.min(
         Math.max(MARGIN, wantLeft < MARGIN ? trigger.left : wantLeft),
         window.innerWidth - WIDTH - MARGIN,
       );
 
-      // Open upward when there is more room above than below — the menu is tall
-      // and the button is often near the bottom of a shelf.
       const below = window.innerHeight - trigger.bottom;
       const top = below < 260 && trigger.top > below ? trigger.top - 8 - 260 : trigger.bottom + 6;
 
@@ -78,8 +50,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     };
 
     place();
-    // Anything that moves the trigger moves the menu with it, rather than
-    // leaving it stranded where the button used to be.
     window.addEventListener("scroll", place, true);
     window.addEventListener("resize", place);
     return () => {
@@ -88,15 +58,12 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     };
   }, [open]);
 
-  // Dismiss on an outside click or Escape. Both, because a menu that only
-  // closes one way is a menu that gets stranded open.
   useEffect(() => {
     if (!open) return;
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      // The menu lives in a portal, so it is not inside `root` any more and
-      // has to be checked separately or every click in it would close it.
+      // The menu is in a portal, so it is not inside `root` and needs its own check.
       if (root.current?.contains(target) || menu.current?.contains(target)) return;
       setOpen(false);
     };
@@ -118,7 +85,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   function save(playlistId: string) {
     addSongToPlaylist(playlistId, song);
     setSaved(playlistId);
-    // Long enough to read the tick, short enough not to feel stuck.
     setTimeout(() => setOpen(false), 700);
   }
 

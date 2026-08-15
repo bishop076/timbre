@@ -16,19 +16,10 @@ import type { Song } from "../types";
 import type { Release, RelatedArtist } from "@/lib/discography";
 import { cover as coverSrc } from "../artwork-url";
 
-/**
- * The artist page's surface.
- *
- * Songs are a plain ranked list rather than shelves of albums, because the
- * sources Timbre can reach do not agree on album membership — YouTube Music
- * often has no album at all for an upload, and stitching one together from
- * three partial answers would invent a discography rather than show one.
- *
- * Playing any row queues the rest of the list behind it, so the page behaves
- * like a playlist without pretending to be one.
- */
+// The artist page's surface. Songs are a plain ranked list rather than shelves of albums,
+// because Timbre's sources do not agree on album membership — YouTube Music often has none
+// at all. Playing any row queues the rest behind it.
 
-/** Reading order for a discography, and what Deezer's tags map onto. */
 /** One tile's width, shared by every shelf on the page. */
 const TILE = "w-[7rem] shrink-0 snap-start sm:w-[10.5rem]";
 
@@ -70,14 +61,7 @@ export function ArtistView({
 }) {
   const { play, current, state } = usePlayer();
 
-  /*
-   * Ten songs, then a button.
-   *
-   * The search behind this returns forty, and forty rows pushed the
-   * discography so far down the page that most people never saw it. Ten is
-   * about a screen — enough to recognise an artist by, short enough that what
-   * comes after it is still on the way.
-   */
+  // Ten, then a button: forty rows pushed the discography below where anyone looked.
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? songs : songs.slice(0, SONG_LIMIT);
 
@@ -148,9 +132,8 @@ export function ArtistView({
         <>
           <h2 className="mb-3 text-xl font-extrabold tracking-tight">Songs</h2>
           {!filtered && (
-            // Honest caveat rather than a silently looser list: the filter found
-            // nothing, so these are search results for the name, not a verified
-            // discography.
+            // The filter found nothing, so these are search results for the name rather
+            // than a verified discography — said plainly, not silently.
             <p className="mb-3 text-xs leading-relaxed text-[var(--fg-faint)]">
               No result credits {name} directly, so these are search matches for the name.
             </p>
@@ -242,14 +225,9 @@ export function ArtistView({
         </>
       )}
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Discography                                                       */}
-      {/* ---------------------------------------------------------------- */}
       {/*
-        Grouped by what Deezer calls the record, in the order a discography is
-        usually read: albums, then EPs, then singles. Compilations are left in
-        with the albums rather than given a heading of their own — one row
-        labelled "Compilation" on most artists is a heading that earns nothing.
+        Discography, grouped by Deezer's record type in reading order. Compilations
+        stay with the albums — one row labelled "Compilation" earns no heading.
       */}
       {GROUPS.map(({ heading, kinds }) => {
         const group = releases.filter((release) => kinds.includes(release.kind));
@@ -286,16 +264,11 @@ export function ArtistView({
         );
       })}
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Neighbours                                                        */}
-      {/* ---------------------------------------------------------------- */}
       {related.length > 0 && (
         <Shelf title="Similar artists">
           {related.map((artist) => (
             <div key={artist.name} className="w-28 shrink-0 snap-start">
-              {/* Keyed by name like every other artist link here — Timbre's
-                  artist route belongs to no single service, so it cannot take
-                  Deezer's id even though that is what found this row. */}
+              {/* Keyed by name: Timbre's artist route belongs to no single service. */}
               <Link
                 href={`/artist/${toArtistSlug(artist.name)}`}
                 className="block rounded-[var(--r-lg)] p-2 text-center transition hover:bg-[var(--surface-2)]"

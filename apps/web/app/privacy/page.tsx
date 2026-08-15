@@ -5,22 +5,11 @@ export const metadata = {
   description: "What Timbre stores about you, which is nothing, and what the services it embeds can see.",
 };
 
-/**
- * The privacy policy.
- *
- * **Required, not optional.** YouTube's API Services Terms oblige every client
- * that embeds their player to publish one, so this page is a condition of using
- * the player at all — the same class of obligation as keeping the video visible.
- *
- * It is short because the truthful version is short: there is no server-side
- * store, no account and no analytics. The part that needs care is the opposite
- * of the usual one — not admitting what Timbre collects, but being clear that
- * embedding someone else's player means **they** can see the reader, and that
- * Timbre cannot speak for them. A policy that said "we collect nothing" and
- * stopped there would be technically true and materially misleading.
- *
- * Written in plain language on purpose. It describes what the code does, and
- * the code is the thing it has to keep matching.
+/*
+ * The privacy policy. Required, not optional: YouTube's API Services Terms oblige every
+ * client embedding their player to publish one. The care goes into saying that embedding
+ * someone else's player means *they* can see the reader — "we collect nothing" alone
+ * would be technically true and materially misleading.
  */
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

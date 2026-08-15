@@ -29,22 +29,8 @@ function clock(seconds: number): string {
   return `${minutes}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
-/**
- * The persistent player.
- *
- * Three zones on desktop — what is playing, how to control it, everything else
- * — so the transport stays optically centred no matter how long a title runs.
- * A two-zone bar puts the buttons wherever the title ends, which moves them
- * every track.
- *
- * On a phone it collapses to a mini bar: artwork, title, one play button. The
- * scrub track stays, because knowing where you are in a song matters more than
- * being able to skip precisely.
- *
- * This component also **owns the app's accent colour**, recolouring everything
- * from the current artwork. It lives here because the player bar is the one
- * component that is always mounted and always knows the current track.
- */
+/** The persistent player. Three zones on desktop, so the transport stays optically centred
+ * however long a title runs; a mini bar on a phone, keeping the scrub track. */
 export function PlayerBar() {
   const {
     current,
@@ -70,23 +56,14 @@ export function PlayerBar() {
     cycleRepeat,
   } = usePlayer();
 
-  // The theme is applied in `AppShell`, not here — see the note there. This bar
-  // only mounts once something is playing, which is far too late for it.
+  // The theme is applied in `AppShell`: this bar only mounts once something is playing.
   const busy = state === "resolving" || state === "loading";
   const playing = state === "playing";
-  // Next is live whenever anything *can* follow: the rest of the queue, a
-  // repeat that will wrap, or a blend waiting to be stepped into.
+  // Live whenever anything can follow: the queue, a wrapping repeat, or a blend.
   const hasNext = index + 1 < queue.length || repeat !== "off" || radio.length > 0;
   const source = sourceStyle(activeSource ?? "ytmusic");
 
-  /**
-   * Shows or hides the now-playing panel — the video, the track, what's next.
-   *
-   * Lives here rather than on the video itself so the transport never moves:
-   * one row of controls, in one place, whether the current track has pictures
-   * or not. Hiding only clips the panel — the player keeps its size, because
-   * shrinking it below 200×200 stops YouTube playback outright.
-   */
+  // Hiding only clips the panel: shrinking it below 200×200 stops YouTube playback.
   const panelButton = (
     <button
       type="button"
@@ -101,11 +78,7 @@ export function PlayerBar() {
     </button>
   );
 
-  /**
-   * The same thing clicking the picture does, offered where the rest of the
-   * controls are — because a click target with no marking on it is not
-   * discoverable, and this is the only one in the app.
-   */
+  // The same thing clicking the picture does — an unmarked target is undiscoverable.
   const theaterButton = (
     <button
       type="button"
@@ -120,14 +93,7 @@ export function PlayerBar() {
     </button>
   );
 
-  /**
-   * Shuffle and repeat flank the transport, as they do in every player.
-   *
-   * They are drawn as plain tinted icons rather than as slabs: the three
-   * central buttons are the transport, and giving a mode toggle the same
-   * physical weight as Play would misstate what it does. Colour carries "on",
-   * which is the only state that needs announcing.
-   */
+  // Plain tinted icons rather than slabs, so a mode toggle does not carry Play's weight.
   const modeButton = (
     label: string,
     on: boolean,
@@ -144,8 +110,7 @@ export function PlayerBar() {
       }`}
     >
       {icon}
-      {/* A dot under an active mode. The accent is recoloured from the artwork,
-          so on some covers colour alone is too quiet to read at a glance. */}
+      {/* The accent follows the artwork, so on some covers colour alone is too quiet. */}
       <span
         className={`absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current transition-opacity ${
           on ? "opacity-100" : "opacity-0"
@@ -181,10 +146,8 @@ export function PlayerBar() {
             {state === "unplayable" ? (
               <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
             ) : (
-              // Attribution names the source actually playing, never a
-              // hardcoded one — a terms requirement for every service Timbre
-              // embeds, and the only way a listener can tell whose player they
-              // are hearing.
+              // Names the source actually playing, never a hardcoded one — a terms
+              // requirement for every service Timbre embeds.
               <span
                 className="hidden shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium sm:inline"
                 style={{ color: source.color, backgroundColor: source.tint }}
@@ -226,7 +189,6 @@ export function PlayerBar() {
 
   return (
     <>
-      {/* ── Mobile: mini player, stacked directly on the bottom nav ────────── */}
       <footer className="shrink-0 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-3 pb-2 pt-2.5 lg:hidden">
         <div className="mb-2 flex items-center gap-2">
           {artwork("size-11")}
@@ -237,54 +199,24 @@ export function PlayerBar() {
         <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
       </footer>
 
-      {/* ── Desktop: three zones ───────────────────────────────────────────── */}
       {/*
-        One row, with the scrub on the top edge.
-
-        It used to be two stacked rows — transport above, scrub below — which is
-        Spotify's shape and cost 100px of a 900px window for four controls and a
-        line. Moving the scrub onto the border turns the divider itself into the
-        progress indicator, which is what YouTube Music does, and halves the
-        height without dropping a single control.
-      */}
-      {/*
-        No top border: the scrub *is* the divider.
-
-        The comment below always claimed this, but the border was drawn as well —
-        so the bar carried two full-width lines two pixels apart. On a dark
-        ground they merged and nobody noticed; on a light one they read as a
-        doubled rule ruled across the window, which is the "line" that kept
-        coming back however much either one was softened. Removing one of them
-        is the fix; softening both was never going to be.
+        The scrub sits on the top edge and *is* the divider — no top border. Drawing both
+        put two full-width lines two pixels apart, invisible on a dark ground and a
+        doubled rule across the window on a light one.
       */}
       <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 py-2 lg:flex">
-        {/* The seek line, which is also the divider — see above. */}
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
           <Scrub position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
         </div>
 
-        {/* Left — what is playing */}
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {artwork("size-11")}
           {meta}
-          {/*
-            Saving belongs next to the song, not in the transport.
-
-            Everything in the middle and right of this bar acts on *playback* —
-            skip, shuffle, volume, the video. This acts on the track, so it sits
-            with the title and the artist, which is also where Spotify and
-            YouTube Music put their equivalent and therefore where a hand
-            already goes looking.
-
-            `shrink-0` because `meta` is the flexible one: without it the button
-            is the thing that gets squeezed when a long title arrives, and a
-            control that changes width with the song is a control you cannot aim
-            at.
-          */}
+          {/* `shrink-0` because `meta` is the flexible one — otherwise the button is what a
+              long title squeezes, changing width per song. */}
           {current && <AddToPlaylist song={current} className="shrink-0" />}
         </div>
 
-        {/* Centre — transport, now the only thing in this zone. */}
         <div className="flex shrink-0 items-center justify-center">
           <div className="relative flex items-center gap-2">
             {modeButton("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
@@ -324,12 +256,8 @@ export function PlayerBar() {
           </div>
         </div>
 
-        {/* Right — everything else. Balances the left zone so the transport
-            sits optically centred rather than merely mathematically. */}
+        {/* Balances the left zone so the transport is optically centred. */}
         <div className="flex flex-1 items-center justify-end gap-1.5">
-          {/* The times move here now that the scrub is on the border. Elapsed
-              and total in one label rather than flanking a bar that no longer
-              sits between them. */}
           <span className="mr-1 hidden font-mono text-[11px] tabular-nums text-[var(--fg-faint)] xl:inline">
             {clock(position)} / {duration > 0 ? clock(duration) : "—:—"}
           </span>

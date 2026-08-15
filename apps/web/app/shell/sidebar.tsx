@@ -15,39 +15,17 @@ import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { SiteLinks } from "./site-links";
 
-/**
- * Primary navigation and library.
- *
- * Shaped after Spotify's rail, which is really two stacked panels: a short nav
- * block, then a titled region that owns the entire rest of the column and is
- * filled with **rows carrying artwork** — not an empty state, not a legend.
- * That density is most of what makes the shape recognisable, so the library
- * shows the live queue until there are saved playlists to show instead. A
- * sidebar that lists what you are actually listening to is more useful than one
- * apologising for being empty.
- *
- * Desktop only — below `lg` this is replaced by <BottomNav>, because a rail on
- * a phone spends the scarce axis and puts targets out of thumb reach.
- */
+/** Primary navigation and library: a nav block, then a titled region of artwork rows that
+ * owns the rest of the column, showing the live queue until playlists are saved. Desktop
+ * only — below `lg` this is replaced by <BottomNav>. */
 
-/*
- * Home, Explore, Library.
- *
- * **Search is not a tab any more.** The field moved into the shell, so it is on
- * every page already and a nav entry leading to it would be a button that takes
- * you to a box you are currently looking at. What the third tab was actually
- * for — somewhere to go when you do not know what to type — is now its own
- * thing: charts, genres and releases, under its own name.
- */
+// Search is not a tab: the field lives in the shell, so it is on every page already.
 const NAV = [
   { id: "home", label: "Home", icon: HomeIcon, href: "/" },
   { id: "explore", label: "Explore", icon: CompassIcon, href: "/explore" },
   { id: "library", label: "Library", icon: LibraryIcon, href: "/library" },
 ];
 
-// "Artists" is absent rather than disabled. Timbre has artist *pages*, reached
-// from any song, but nothing follows an artist — so a chip here would promise a
-// collection that does not exist.
 const FILTERS = ["Queue", "Playlists"] as const;
 
 export function Sidebar() {
@@ -59,54 +37,25 @@ export function Sidebar() {
   const { playlists, settled } = usePlaylists();
   const pathname = usePathname();
 
-  // Loaded once for the rail, and shared with every "add to playlist" menu, so
-  // switching to the Playlists chip is instant rather than a fetch.
+  // Loaded once and shared with every "add to playlist" menu, so the chip is instant.
   useEffect(() => {
     void loadPlaylists();
   }, []);
 
   const rows = filter === "Queue" ? queue : [];
 
-  /*
-   * A few pixels trimmed above, so the library panel gets them.
-   *
-   * The panel is `flex-1` — it cannot be made taller directly, only handed
-   * space by what sits above it. The last row was landing half-cut against the
-   * edge, which is the difference between a list that scrolls and one that
-   * looks cramped, and that difference is about a dozen pixels. They come from
-   * the gaps and the profile row's padding rather than from any one place, so
-   * nothing above visibly shrinks.
-   */
+  // `pb-1.5`: the library panel is `flex-1`, so it can only be handed space from above —
+  // a dozen pixels decides whether the last row is cut in half.
   return (
     <aside className="hidden w-64 shrink-0 flex-col gap-1.5 p-2 pb-1.5 lg:flex">
-      {/*
-        Whose app this is.
-
-        There is no account, so this is not a session indicator — it is the way
-        into your own profile, wearing whatever name and picture you set on this
-        device. A blank one is the ordinary first-run state rather than a
-        signed-out state, so it links either way.
-      */}
       <Link
         href="/profile"
         onClick={exitTheater}
         className="press relative mb-0.5 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-2.5 hover:bg-[var(--surface-1)]"
       >
-        {/*
-          Drawn on the first paint, not after hydration.
-
-          This row used to render nothing at all until storage could be read,
-          and the claim that it "keeps its height" was simply false: with no
-          children it collapsed to its own padding, so **every load dropped the
-          whole rail 32px down the page and then snapped it back**. That jump is
-          the most visible thing about starting Timbre up.
-
-          Both pieces can be correct this early without the server knowing
-          anything. The avatar paints from `--avatar-thumb` / `--avatar-fill`,
-          and the name from `--profile-name`, all three stamped onto `<html>` by
-          the boot script in `layout.tsx` before the first pixel — see
-          `profile/avatar.tsx` and the `.profile-name` rule in `globals.css`.
-        */}
+        {/* Drawn on the first paint, not after hydration: rendering nothing until storage
+            could be read collapsed this row to its padding, dropping the whole rail 32px and
+            snapping it back on every load. Values are stamped on `<html>` by `layout.tsx`. */}
         <Avatar
           id={profile.id}
           name={profile.name}
@@ -115,11 +64,7 @@ export function Sidebar() {
           className="size-8 shrink-0"
           textClassName="text-sm"
         />
-        {/*
-          Empty until hydration, and filled from CSS while it is — which is what
-          keeps the wrong name off the screen without leaving a hole where the
-          right one goes. `:empty` stops applying the moment React puts text in.
-        */}
+        {/* Empty until hydration, filled from CSS meanwhile: no wrong name, and no hole. */}
         <span
           className="replay truncate text-[17px] font-extrabold tracking-tight"
           style={{ "--replay": 'var(--profile-name, "Profile")' } as React.CSSProperties}
@@ -128,24 +73,8 @@ export function Sidebar() {
         </span>
       </Link>
 
-      {/*
-        Library is absent here, and the reasoning went in a circle worth
-        recording so it does not go round again.
-
-        The panel directly below *is* the library — same playlists, same
-        destination — so a nav button above it labelled "Library" puts two
-        controls with one name a centimetre apart. Spotify's rail omits it for
-        exactly this reason: the rail is the library, and the panel's own
-        heading is the way into the full page.
-
-        It was briefly restored because the panel is `flex-1` and dropping a nav
-        row hands that row's height to the list, which had grown twice over.
-        That was solving the wrong problem: the extra height is a *longer list*,
-        which is what was later asked for anyway. The duplicate label is the
-        real defect, so the row goes and the height stays gained.
-
-        <BottomNav> still shows it, because a phone has no rail to replace it.
-      */}
+      {/* Library is filtered out here: the panel below *is* the library, so a nav button of
+          the same name sits a centimetre from its heading. <BottomNav> still shows it. */}
       <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
         {NAV.filter((item) => item.id !== "library").map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -170,8 +99,7 @@ export function Sidebar() {
       </nav>
 
       <div className="slab flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)]">
-        {/* The heading is the link to the full page, which is what lets the
-            nav entry above go away without losing the route. */}
+        {/* The heading is the link to the full page — what lets the nav entry above go. */}
         <Link
           href="/library"
           onClick={exitTheater}
@@ -184,7 +112,6 @@ export function Sidebar() {
           </span>
         </Link>
 
-        {/* Filter chips, Spotify's affordance for slicing the library. */}
         <div className="flex gap-1.5 px-3 pb-3">
           {FILTERS.map((name) => {
             const selected = filter === name;
@@ -206,15 +133,8 @@ export function Sidebar() {
           })}
         </div>
 
-        {/*
-          A plain cut at the edge — no fade, and no extra padding.
-
-          Both were tried. Padding only moves where the cut lands; a mask over
-          the last 20px dissolves the final row, which turned out to read as the
-          list quietly running out rather than as a list that scrolls. A hard
-          edge against the panel is what says "this continues", and it is what
-          this rail did before either attempt.
-        */}
+        {/* A plain cut at the edge — a mask over the last 20px dissolves the final row, which
+            reads as the list running out rather than scrolling. */}
         <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {filter === "Playlists" ? (
             <PlaylistRows playlists={playlists} settled={settled} />
@@ -262,20 +182,13 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* This rail is `lg:flex`, so it cannot be the only route to these — the
-          library page carries the same links for phones. See `site-links.tsx`. */}
+      {/* This rail is `lg:flex`, so the library page carries the same links for phones. */}
       <SiteLinks className="px-2 pt-0.5" />
     </aside>
   );
 }
 
-/**
- * Saved playlists in the rail.
- *
- * Signed out, this is an invitation rather than an empty list — "you have none"
- * and "you cannot have any yet" look identical otherwise, and only one of them
- * is worth showing a create button for.
- */
+/** Saved playlists in the rail. */
 function PlaylistRows({
   playlists,
   settled,
@@ -284,8 +197,7 @@ function PlaylistRows({
   /** False until storage has been read — see the store. */
   settled: boolean;
 }) {
-  // Playlists need no account: they live in this browser. What is left to wait
-  // for is only the first read of storage, which cannot happen during render.
+  // The only thing to wait for is the first read of storage, which cannot happen in render.
   if (!settled || playlists === null) {
     return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
   }
@@ -324,12 +236,8 @@ function PlaylistRows({
   );
 }
 
-/**
- * Mobile navigation.
- *
- * Sits below the mini player so the two stack into one thumb-reachable block at
- * the bottom of the screen, which is where phone music apps put them.
- */
+/** Mobile navigation. Sits below the mini player so the two stack into one
+ * thumb-reachable block. */
 export function BottomNav() {
   const pathname = usePathname();
   const { exitTheater } = usePlayer();
@@ -357,18 +265,9 @@ export function BottomNav() {
   );
 }
 
-/**
- * The way into your profile on a phone.
- *
- * Not a fourth tab. The bottom bar is for *places you go to listen*, and a
- * settings screen sitting alongside them competes for a thumb position it does
- * not deserve — which is why phone music apps put it in the corner of the home
- * header instead. Rendered by the home and search screens.
- *
- * It has to exist somewhere, though: the rail carrying the desktop profile link
- * is `lg:flex`, so without this `/profile` — and the theme picker on it — is
- * unreachable below that width.
- */
+/** The way into your profile on a phone — not a fourth tab, but it has to exist somewhere:
+ * the rail carrying the desktop link is `lg:flex`, so without this `/profile` and the theme
+ * picker on it are unreachable below that width. */
 export function ProfileButton({ className }: { className?: string }) {
   const { exitTheater } = usePlayer();
   const profile = useLocalProfile();
@@ -381,9 +280,8 @@ export function ProfileButton({ className }: { className?: string }) {
       aria-label="Your profile and settings"
       className={`press flex shrink-0 items-center lg:hidden ${className ?? ""}`}
     >
-      {/* As in the rail: drawn immediately, from CSS until React can read
-          storage. The wrapper keeps the box either way, so the search field
-          beside it never resizes. */}
+      {/* As in the rail, drawn from CSS until React can read storage. The wrapper keeps the
+          box either way, so the search field beside it never resizes. */}
       <span className="block size-9">
         <Avatar
           id={profile.id}
@@ -397,4 +295,3 @@ export function ProfileButton({ className }: { className?: string }) {
     </Link>
   );
 }
-

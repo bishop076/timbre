@@ -9,17 +9,9 @@ import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { createPlaylist, exportPlaylists, importPlaylists, loadPlaylists, usePlaylists } from "./store";
 
-/**
- * Every playlist in this browser.
- *
- * A real route rather than only a rail, because the rail is desktop-only —
- * below `lg` it is replaced by a bottom nav, and without this page a phone
- * could save playlists and then have no way back to them.
- *
- * Export is given the same weight as create, which is unusual for a music app
- * and correct for this one: playlists live in this browser only, so a file is
- * the sole way to move them to another device or survive clearing site data.
- */
+/** Every playlist in this browser. A real route rather than only a rail, since the rail is
+ * desktop-only and a phone would have no way back to what it saved. Export is the only way
+ * to move playlists off this browser or survive clearing site data. */
 export function LibraryView() {
   const { playlists, settled, error } = usePlaylists();
   const [name, setName] = useState("");
@@ -39,12 +31,7 @@ export function LibraryView() {
     setName("");
   }
 
-  /**
-   * Hands the file to the browser rather than to a server.
-   *
-   * A blob URL and a synthetic click is the whole mechanism — there is no
-   * export endpoint, because the data was never anywhere but here.
-   */
+  // A blob URL and a synthetic click — there is no export endpoint to send this to.
   function download() {
     const blob = new Blob([JSON.stringify(exportPlaylists(), null, 2)], {
       type: "application/json",
@@ -52,16 +39,9 @@ export function LibraryView() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    // Dated, because the point of an export is having more than one.
     link.download = `timbre-playlists-${new Date().toISOString().slice(0, 10)}.json`;
-    /*
-     * In the document, and revoked on the next turn.
-     *
-     * A detached anchor is ignored outright by Firefox, and revoking the URL on
-     * the same tick as the click races the browser's own read of it — so the
-     * only way this reliably failed was silently, on the one feature that exists
-     * because a browser is the only copy of these playlists.
-     */
+    // In the document, revoked next turn: Firefox ignores a detached anchor outright, and
+    // revoking on the same tick races the browser's own read.
     document.body.append(link);
     link.click();
     link.remove();
@@ -86,15 +66,10 @@ export function LibraryView() {
 
   return (
     <div /*
-        The column has to be taller than its content for `mt-auto` to have
-        anything to push against, and `min-h-full` was not doing it — a
-        percentage min-height needs a definite height on every ancestor, and the
-        scrolling content panel does not reliably offer one. A viewport unit
-        always resolves. `dvh` rather than `vh` so a phone's collapsing address
-        bar does not leave a strip of dead space.
-
-        `lg:min-h-0` switches it straight back off, so the desktop column is
-        exactly what it was — the footer is `lg:hidden` there anyway.
+        The column must be taller than its content for `mt-auto` to push against.
+        `min-h-full` does not work — a percentage min-height needs a definite height on
+        every ancestor, which the scrolling panel does not offer. `dvh` rather than
+        `vh` so a phone's collapsing address bar leaves no strip of dead space.
       */
       className="@container mx-auto flex min-h-[calc(100dvh-var(--nav-h))] w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6 lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -166,9 +141,8 @@ export function LibraryView() {
         <ul className="mt-6 grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
           {playlists?.map((playlist) => (
             <li key={playlist.id} className="group relative">
-              {/* Outside the <Link>, not inside it: a button nested in an
-                  anchor is invalid, and clicking it would follow the link on
-                  the way to opening the menu. */}
+              {/* Outside the <Link>: a button in an anchor is invalid, and clicking it
+                  would follow the link on the way to the menu. */}
               <PlaylistActions
                 id={playlist.id}
                 name={playlist.name}
@@ -195,20 +169,10 @@ export function LibraryView() {
       )}
 
       {/*
-        The phone's route to About and Privacy.
-
-        The rail carries these on desktop, but it is `lg:flex` and the bottom
-        nav has only two entries — this page and search. Since a reachable
-        privacy policy is a condition of embedding the players Timbre depends
-        on, it cannot be desktop-only. `lg:hidden` keeps it from appearing twice
-        where the rail already has it.
-      */}
-      {/*
-        Pushed to the bottom of the scroll rather than sitting under the
-        content. `mt-auto` inside a column that fills the viewport puts these at
-        the end of the page wherever the content stops, so they stop reading as
-        part of the library and start reading as a footer — which is what they
-        are. Smaller too: they are the least important thing on the page.
+        The phone's route to About and Privacy. A reachable privacy policy is a
+        condition of embedding the players Timbre depends on, and the desktop rail is
+        `lg:flex`, so this cannot be desktop-only. `mt-auto` pushes it to the end of
+        the page so it reads as a footer.
       */}
       <SiteLinks className="mt-auto justify-center pt-16 lg:hidden" />
     </div>
