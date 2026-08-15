@@ -2,19 +2,10 @@ import "server-only";
 
 import { deezer } from "./deezer";
 
-/**
- * What Explore is built from.
- *
- * Deezer publishes charts, genres and editorial keyless, which is the only
- * reason a page like this can exist in an app with no budget and no accounts.
- * Everything here is somebody else's ranking — Timbre plays none of it directly
- * and stores none of it, exactly as the artist pages work: picking a track
- * resolves a copy that can actually be driven.
- *
- * One request, not four. `/chart/{genre}` answers with tracks, albums and
- * artists together, so a genre switch costs a single round trip rather than
- * three racing ones that can half-fail and leave the page in a state no
- * combination of retries explains.
+/*
+ * What Explore is built from: Deezer's charts, genres and editorial, all keyless. One
+ * request, not four — `/chart/{genre}` answers with tracks, albums and artists at once,
+ * so a genre switch can't half-fail into a state no retry explains.
  */
 
 /** A Deezer genre. `0` is the catalogue-wide chart, which Deezer calls "All". */
@@ -24,13 +15,7 @@ export interface Genre {
   imageUrl: string | null;
 }
 
-/**
- * A charting song.
- *
- * Deliberately the same shape `<SongCard>` already takes, plus the two fields
- * that make it a *chart* entry rather than a search result. Anything else and
- * the tile would need a second code path to render the same thing.
- */
+/** A charting song — `<SongCard>`'s shape plus the two chart fields, so the tile needs no second path. */
 export interface ChartTrack {
   id: string;
   title: string;
@@ -40,15 +25,8 @@ export interface ChartTrack {
   isrc: string | null;
   artworkUrl: string | null;
   sources: { source: string; sourceId: string; url: string | null; playback: "link" }[];
-  /** Where it sits in this chart, 1-based. */
   position: number;
-  /**
-   * Deezer's own popularity score, 0–1,000,000.
-   *
-   * **Not a play count**, and labelled as a score everywhere it is shown. It is
-   * the only continuous measure any free source publishes, and it is what makes
-   * the difference between #1 and #10 visible instead of implied by the order.
-   */
+  /** Deezer's popularity score, 0–1,000,000. Not a play count — label it as a score. */
   popularity: number;
 }
 
@@ -65,28 +43,13 @@ export interface ChartArtist {
   imageUrl: string | null;
 }
 
-/**
- * A Deezer playlist that is charting.
- *
- * These are the closest thing to Tidal's featured cards that exists without an
- * editorial team: real collections, with their own covers and track counts,
- * published keyless. Featuring one is not a claim Timbre is making — it is
- * showing what Deezer says people are listening to.
- */
 export interface ChartPlaylist {
   id: number;
   title: string;
   by: string | null;
   coverUrl: string | null;
   trackCount: number | null;
-  /**
-   * A few of its own track covers.
-   *
-   * Deezer publishes a single picture per playlist, which makes a featured card
-   * look like one record rather than like a collection. Its first few sleeves,
-   * scattered, say "several things gathered" — which is what a playlist is, and
-   * what Tidal's own collection cards show.
-   */
+  /** A few of its own track covers — Deezer's single picture makes a card look like one record. */
   covers: string[];
 }
 
@@ -140,22 +103,14 @@ interface RawChart {
   playlists?: { data?: RawPlaylist[] };
 }
 
-/**
- * Deezer's genre list, passed through as published.
- *
- * Not curated, and deliberately so. The list is locale-dependent — the
- * catalogue-wide chart is led by a German audio-drama series from here — so any
- * hand-picked subset would be right for one country and wrong for the next.
- * Whatever Deezer considers a genre is what Explore offers.
- */
+/** Deezer's genre list, uncurated: it is locale-dependent, so any subset is wrong somewhere. */
 function toGenre(raw: { id: number; name: string; picture_medium?: string }): Genre {
   return { id: raw.id, name: raw.name, imageUrl: raw.picture_medium ?? null };
 }
 
 function toTrack(raw: RawTrack, index: number): ChartTrack {
   return {
-    // Namespaced so it cannot collide with a merged search result, which keys
-    // on ISRC or on a source pair.
+    // Namespaced against merged search results, which key on ISRC or a source pair.
     id: `deezer:${raw.id}`,
     title: raw.title,
     artists: raw.artist?.name ? [raw.artist.name] : [],
@@ -168,13 +123,11 @@ function toTrack(raw: RawTrack, index: number): ChartTrack {
         source: "deezer",
         sourceId: String(raw.id),
         url: raw.link ?? `https://www.deezer.com/track/${raw.id}`,
-        // Timbre cannot play Deezer audio. Picking one searches for a copy it
-        // can, which is the same path every chart entry already takes.
+        // Deezer audio can't be played here; picking one searches for a copy.
         playback: "link",
       },
     ],
-    // `position` is absent from some genre charts; the array order is the
-    // ranking either way, so the index is the honest fallback rather than a 0.
+    // Absent from some genre charts, and array order is the ranking — so index, not 0.
     position: raw.position ?? index + 1,
     popularity: raw.rank ?? 0,
   };
@@ -189,13 +142,7 @@ export async function fetchGenres(): Promise<Genre[]> {
   return (data?.data ?? []).map(toGenre);
 }
 
-/**
- * A genre's chart, and the genre list beside it.
- *
- * Cached for an hour at the fetch layer: charts move daily at best, and this is
- * the page a visitor lands on, so the first request of the hour pays for
- * everyone else's.
- */
+/** A genre's chart and the genre list. Cached an hour — charts move daily at best. */
 export async function fetchDiscover(genre: number): Promise<Discover> {
   const [genres, chart] = await Promise.all([
     fetchGenres(),
@@ -222,15 +169,8 @@ export async function fetchDiscover(genre: number): Promise<Discover> {
 }
 
 /**
- * Playlists, each carrying a few of its own sleeves.
- *
- * One extra request per playlist, capped at six and cached for a day, so the
- * whole featured row costs six calls an hour across every visitor. `limit=8`
- * rather than the whole tracklist: four distinct covers is all a collage shows,
- * and some playlists run two hundred tracks deep.
- *
- * A failure here costs the scatter and nothing else — the card falls back to
- * the published picture, which is what it used before this existed.
+ * Playlists carrying a few of their own sleeves. One extra request each, capped at six and
+ * cached a day; `limit=8` because a collage shows four covers. A failure costs the scatter.
  */
 async function withCovers(raw: RawPlaylist[]): Promise<ChartPlaylist[]> {
   return Promise.all(

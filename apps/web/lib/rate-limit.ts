@@ -1,24 +1,9 @@
-/**
- * Inbound rate limiting for Timbre's own endpoints.
- *
- * `@timbre/core`'s limiter paces what Timbre sends *out* to Deezer and Apple.
- * This is the other direction: what one client may ask *of Timbre*. They are
- * separate problems and conflating them is how a single script exhausts a
- * per-IP quota that everyone else is sharing.
- *
- * The threat is mundane rather than malicious — a stuck retry loop, a page left
- * open somewhere refreshing, someone curling search in a shell loop. Any of
- * them can spend Apple's ~20 requests/minute before a real reader types a
- * letter, and the failure is invisible: search simply goes quiet for everyone.
- *
- * **Per instance, in memory, and honest about it.** With no database there is
- * nowhere shared to keep counters, so a deployment on several instances gives
- * each its own allowance. That is a weaker guarantee than it looks and is not
- * an access-control mechanism — it is back-pressure, sized to stop accidents.
- *
- * No `server-only` guard: this holds no secrets, and that import throws outside
- * a server component, which would leave the counting logic untestable.
- */
+// Inbound rate limiting for Timbre's own endpoints, as opposed to `@timbre/core`'s limiter,
+// which paces what Timbre sends out. The threat is a stuck retry loop spending Apple's ~20
+// requests/minute before a real reader types a letter, which fails invisibly: search goes
+// quiet for everyone. Per instance and in memory — back-pressure, not an access control. No
+// `server-only` guard: that import throws outside a server component, which would leave the
+// counting logic untestable.
 
 export interface RateLimitOptions {
   /** Sustained requests per window. */
@@ -47,16 +32,8 @@ export interface RateLimiter {
   readonly size: number;
 }
 
-/**
- * A fixed window rather than a token bucket.
- *
- * Windows allow a burst at a boundary that a bucket would smooth, which for a
- * quota this small is the wrong trade in the abstract — but the counters here
- * are per instance and already approximate, and a window is one integer and a
- * timestamp against a bucket's continuous refill. Precision this cannot deliver
- * is not worth the machinery. `@timbre/core` has the real bucket for the
- * outbound side, where the limits are exact and the accounting has to be too.
- */
+/** A limiter using a fixed window rather than a token bucket — the boundary burst is
+ * acceptable because these counters are already approximate. */
 export function createRateLimiter({
   limit,
   windowMs,
@@ -76,8 +53,7 @@ export function createRateLimiter({
 
       if (!existing || existing.resetAt <= at) {
         if (windows.size >= max) {
-          // Sweep what has already lapsed before evicting anything live; under
-          // normal traffic this reclaims the whole map and costs nothing.
+          // Sweep what has lapsed before evicting anything live.
           for (const [id, window] of windows) {
             if (window.resetAt <= at) windows.delete(id);
           }
@@ -103,19 +79,8 @@ export function createRateLimiter({
   };
 }
 
-/**
- * Who is asking.
- *
- * Behind Vercel or Render the socket address is the proxy's, so the client is
- * the **first** entry of `x-forwarded-for` — the list is appended to as it is
- * relayed, and taking the last would key every visitor to the same proxy.
- *
- * A client can forge this header, which matters less than it sounds: forging it
- * spreads your own requests across buckets rather than anyone else's, and the
- * limit is back-pressure against accidents, not a security boundary. Falling
- * back to a single shared key would be worse — one bad client would then
- * throttle everybody.
- */
+/** Who is asking. The client is the *first* entry of `x-forwarded-for` — the list is
+ * appended to as it is relayed, so the last would key every visitor to the same proxy. */
 export function clientKey(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
   const first = forwarded?.split(",")[0]?.trim();

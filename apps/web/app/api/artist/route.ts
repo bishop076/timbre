@@ -3,23 +3,10 @@ import { z } from "zod";
 import { guard } from "@/lib/api";
 import { fetchDiscography, findArtist } from "@/lib/discography";
 
-/**
- * Who an artist is, and what they have released.
- *
- * **There is no way to embed somebody else's artist profile.** Spotify does
- * publish an artist embed, but reaching it needs a track or artist id from an
- * API that now requires a paid developer account — and the free service that
- * used to map a song onto its Spotify equivalent shut down in July 2026. YouTube
- * Music has no artist embed at all. So a real discography cannot be borrowed; it
- * has to be assembled.
- *
- * Deezer turns out to publish the whole thing keyless: releases tagged by kind,
- * top tracks, and neighbouring artists. That is enough to build an artist page
- * with albums, EPs and singles on it — Timbre's own page, from somebody else's
- * catalogue, which is the same trade the rest of the app makes.
- *
- * `?full=1` asks for the discography. The now-playing card does not need it and
- * is called on every track change, so it stays a cheap single lookup by default.
+/*
+ * Who an artist is, and what they have released. No artist profile can be embedded, so the
+ * discography is assembled from Deezer, which publishes releases by kind keyless. `?full=1`
+ * asks for it — the now-playing card runs on every track change, so the default is one lookup.
  */
 export const revalidate = 86_400;
 
@@ -44,8 +31,8 @@ export async function GET(request: Request) {
 
   const artist = await findArtist(parsed.data.name);
 
-  // Not found is a normal answer, not an error: plenty of uploads name someone
-  // no catalogue carries. The panel simply omits the card.
+  // Not found is a normal answer: plenty of uploads name someone no catalogue
+  // carries, and the panel just omits the card.
   if (!artist) return Response.json({ artist: null }, { status: 200 });
 
   const headers = {

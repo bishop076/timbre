@@ -4,23 +4,8 @@ import { normalizeLoose } from "@timbre/core";
 
 import { deezer } from "./deezer";
 
-/**
- * An artist's releases, from Deezer.
- *
- * **There is no way to embed somebody else's artist profile.** Spotify does
- * publish an artist embed, but reaching it needs an id from an API that now
- * requires a paid developer account, and the free service that used to map a
- * song onto its Spotify equivalent shut down in July 2026. YouTube Music has no
- * artist embed at all. So a discography cannot be borrowed whole — it has to be
- * assembled, which is the same trade the rest of Timbre makes.
- *
- * Deezer publishes all of it keyless: releases tagged by kind, with dates and
- * covers, plus neighbouring artists. Playback is somebody else's problem, as
- * always — picking a track resolves a copy Timbre can actually drive.
- *
- * Shared by the artist page and `/api/artist`, so the shaping rules live in one
- * place rather than being written twice and drifting.
- */
+// An artist's releases, from Deezer, which publishes them keyless. No artist profile can
+// be embedded: Spotify's needs an id from a paid API and YouTube Music has none.
 
 export interface Release {
   id: number;
@@ -52,6 +37,7 @@ export function deezerIdFrom(url: string | null | undefined): string | null {
   return match ? match[1]! : null;
 }
 
+/** An artist's releases and neighbouring artists, from their Deezer profile URL. */
 export async function fetchDiscography(
   artistUrl: string | null | undefined,
 ): Promise<{ releases: Release[]; related: RelatedArtist[] }> {
@@ -65,14 +51,8 @@ export async function fetchDiscography(
     ),
   ]);
 
-  /*
-   * Newest first, then deduplicated by title.
-   *
-   * A catalogue routinely carries one record several times — a deluxe edition,
-   * a regional master, a re-release — and a discography listing the same album
-   * four times reads as broken rather than complete. The first sighting wins,
-   * which after the sort is the most recent.
-   */
+  // Deduplicated by title: a catalogue carries one record as deluxe, regional and
+  // re-release editions, and after the sort the first sighting is the newest.
   const seen = new Set<string>();
   const releases = (albums?.data ?? [])
     .slice()
@@ -102,10 +82,6 @@ export async function fetchDiscography(
     })),
   };
 }
-
-// ---------------------------------------------------------------------------
-// One release
-// ---------------------------------------------------------------------------
 
 /** A track as Timbre's player understands it, carrying only Deezer identity. */
 export interface AlbumSong {
@@ -151,6 +127,7 @@ interface DeezerAlbumDetail {
   tracks?: { data?: DeezerTrack[] };
 }
 
+/** One release and its tracks, by Deezer album id. */
 export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
   if (!/^\d+$/.test(id)) return null;
 
@@ -169,8 +146,7 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
     coverUrl: album.cover_big ?? album.cover_medium ?? null,
     trackCount: album.nb_tracks ?? tracks.length,
     songs: tracks.map((track) => ({
-      // ISRC first, matching the merger's own identity rule, so a song saved
-      // from here and the same song saved from search are one entry.
+      // ISRC first, matching the merger, so this and a search hit are one entry.
       id: track.isrc ?? `deezer:${track.id}`,
       title: track.title,
       artists: [track.artist?.name || artistName].filter(Boolean),
@@ -183,18 +159,14 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
           source: "deezer",
           sourceId: String(track.id),
           url: track.link ?? null,
-          // Identity only. Deezer audio needs a subscription, so the player
-          // resolves a copy it can drive when a row is picked.
+          // Identity only: Deezer audio needs a subscription, so the player resolves a
+          // copy it can drive when a row is picked.
           playback: "link" as const,
         },
       ],
     })),
   };
 }
-
-// ---------------------------------------------------------------------------
-// Which artist did they mean
-// ---------------------------------------------------------------------------
 
 export interface ResolvedArtist {
   name: string;
@@ -212,22 +184,8 @@ interface DeezerArtist {
   link?: string;
 }
 
-/**
- * How closely a candidate's name matches what was asked for, 0 to 1.
- *
- * Three tiers, cheapest first, all computed from the strings themselves — there
- * is no list of special cases anywhere in this file, and adding one would only
- * fix the artist somebody happened to complain about.
- *
- * - **Identical** once normalised. Case, punctuation and accents cannot
- *   separate "KATSEYE" from "katseye".
- * - **One contains the other**, scaled by how much of the longer string the
- *   shorter accounts for. Catalogues routinely append a native-script name or
- *   a disambiguator, and "x (y)" is still the artist called "x".
- * - **Shared words**, as a fraction of all distinct words across both. Catches
- *   a missing "the" or a reordering without rewarding two names that merely
- *   share a letter.
- */
+/** How closely a candidate's name matches, 0 to 1: identical once normalised, one
+ * containing the other scaled by length ratio, then shared words as a fraction. */
 function nameScore(query: string, candidate: string): number {
   const a = normalizeLoose(query);
   const b = normalizeLoose(candidate);
@@ -236,8 +194,7 @@ function nameScore(query: string, candidate: string): number {
 
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
   if (longer.includes(shorter)) {
-    // A short query inside a long name is weak evidence — "so" is inside
-    // "sonic youth" — so the ratio does the discounting rather than a rule.
+    // A short query inside a long name is weak evidence — "so" is in "sonic youth".
     return 0.6 + 0.35 * (shorter.length / longer.length);
   }
 
@@ -248,38 +205,16 @@ function nameScore(query: string, candidate: string): number {
   return 0.55 * (shared / new Set([...wordsA, ...wordsB]).size);
 }
 
-/**
- * Popularity, compressed to 0–1.
- *
- * Logarithmic because follower counts span six orders of magnitude: linearly,
- * every artist below a million rounds to zero and the scale stops
- * distinguishing anything.
- */
+/** Popularity, 0–1. Logarithmic because follower counts span six orders of
+ * magnitude — linearly, everyone below a million rounds to zero. */
 function reachScore(followers: number | undefined): number {
   return Math.min(1, Math.log10(1 + (followers ?? 0)) / 7);
 }
 
-/**
- * Finds the artist a name most likely refers to.
- *
- * Deezer's own ordering is not enough on its own. Searching `katseye` returns a
- * three-follower act called "Katseye" **before** the 237,000-follower
- * "KATSEYE", so taking the top hit produced a page with the wrong picture, no
- * discography and a follower count of 3 — while the songs below it, which come
- * from YouTube Music, were right. That reads as Timbre being broken rather than
- * as a mismatch.
- *
- * So candidates are **scored**, not filtered: name similarity decides who is
- * plausible, and reach only ever separates names that are already comparably
- * close. Squaring the similarity is what enforces that — it widens the gap
- * between a good and a mediocre name match far faster than reach can close it,
- * so no amount of popularity promotes a wrong name. Katy Perry has forty times
- * the following of KATSEYE and still loses the query `katseye`, because her
- * name scores zero against it.
- *
- * Nothing here knows any artist. Give it a different catalogue or a different
- * name and the same arithmetic applies.
- */
+/** Finds the artist a name most likely refers to. Deezer's own ordering is not enough:
+ * `katseye` returns a three-follower "Katseye" before the 237,000-follower "KATSEYE", so the
+ * top hit gave a page with the wrong picture and no discography. Squaring the similarity
+ * means no amount of popularity can promote a wrong name. */
 export async function findArtist(name: string): Promise<ResolvedArtist | null> {
   const query = name.trim();
   if (!query) return null;
@@ -296,7 +231,7 @@ export async function findArtist(name: string): Promise<ResolvedArtist | null> {
   for (const candidate of results) {
     const similarity = nameScore(query, candidate.name);
     if (similarity === 0) continue;
-    // Similarity dominates; reach adjusts by at most 40% within a tier.
+    // Similarity dominates; reach adjusts by at most 40%.
     const score = similarity * similarity * (0.6 + 0.4 * reachScore(candidate.nb_fan));
     if (score > bestScore) {
       bestScore = score;
