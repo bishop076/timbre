@@ -4,7 +4,7 @@
 // entries per song and Timbre's automatic pick is sometimes wrong, so a correction has to
 // stick across plays. `id` names a record; `offset` shifts timestamps, positive for late.
 
-import { useSyncExternalStore } from "react";
+import { createLocalStore, useLocalStore } from "../local-store.ts";
 
 export interface LyricsPref {
   id?: number;
@@ -17,10 +17,6 @@ const KEY = "timbre:lyrics-prefs";
 const MAX_ENTRIES = 300;
 
 const EMPTY: Record<string, LyricsPref> = {};
-
-let all: Record<string, LyricsPref> = EMPTY;
-let loaded = false;
-const listeners = new Set<() => void>();
 
 /** Identity of the recording, not the queue's object. */
 export function songKey(title: string, artist: string): string {
@@ -38,39 +34,25 @@ function read(): Record<string, LyricsPref> {
   }
 }
 
-function persist(): void {
-  try {
-    const keys = Object.keys(all);
+// No `keys`, so no cross-tab handling: a correction belongs to the tab that is playing, and
+// following another tab's would move the lyrics under the listener.
+const store = createLocalStore<Record<string, LyricsPref>>({
+  read,
+  initial: EMPTY,
+  write: (map) => {
+    // Evicted on the way out, oldest key first, so the map that is published is the map that
+    // was stored.
+    const keys = Object.keys(map);
     if (keys.length > MAX_ENTRIES) {
-      for (const key of keys.slice(0, keys.length - MAX_ENTRIES)) delete all[key];
+      for (const key of keys.slice(0, keys.length - MAX_ENTRIES)) delete map[key];
     }
-    window.localStorage.setItem(KEY, JSON.stringify(all));
-  } catch {
-    // The correction still applies for this session.
-  }
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot(): Record<string, LyricsPref> {
-  if (!loaded) {
-    loaded = true;
-    all = read();
-  }
-  return all;
-}
-
-function getServerSnapshot(): Record<string, LyricsPref> {
-  return EMPTY;
-}
+    window.localStorage.setItem(KEY, JSON.stringify(map));
+  },
+});
 
 /** The stored correction for one song, or an empty one. */
 export function useLyricsPref(key: string): LyricsPref {
-  const map = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const map = useLocalStore(store);
   return map[key] ?? EMPTY_PREF;
 }
 
@@ -79,27 +61,26 @@ const EMPTY_PREF: LyricsPref = {};
 
 /** Pins a song to one LRCLIB record. */
 export function setLyricsId(key: string, id: number | undefined): void {
-  const current = getSnapshot()[key] ?? {};
+  const all = store.getSnapshot();
+  const current = all[key] ?? {};
   // A new record has its own timing, so an old nudge is dropped, not carried over.
-  all = { ...all, [key]: { ...current, id, offset: undefined } };
-  persist();
+  store.save({ ...all, [key]: { ...current, id, offset: undefined } });
 }
 
 /** Shifts a song's timings, to a tenth of a second. */
 export function setLyricsOffset(key: string, offset: number): void {
-  const current = getSnapshot()[key] ?? {};
+  const all = store.getSnapshot();
+  const current = all[key] ?? {};
   const rounded = Math.round(offset * 10) / 10;
-  all = {
+  store.save({
     ...all,
     [key]: { ...current, offset: rounded === 0 ? undefined : rounded },
-  };
-  persist();
+  });
 }
 
 /** Forgets both corrections for a song. */
 export function clearLyricsPref(key: string): void {
-  const next = { ...getSnapshot() };
+  const next = { ...store.getSnapshot() };
   delete next[key];
-  all = next;
-  persist();
+  store.save(next);
 }
