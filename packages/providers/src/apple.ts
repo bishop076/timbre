@@ -4,10 +4,9 @@
  * than 429. No ISRC is exposed, so Apple contributes artwork rather than identity.
  */
 
-import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
-
-import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import type { SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
+import { createRequester } from "./request.ts";
 
 interface ITunesTrack {
   trackId?: number;
@@ -74,31 +73,16 @@ export interface AppleConfig {
   country?: string;
 }
 
+const get = createRequester({
+  id: "apple",
+  label: "Apple Music",
+  init: cachePolicy,
+  // 403 is Apple's exceeded rate limit, not a permission problem.
+  classify: (status) => (status === 403 ? "rate_limited" : "transient"),
+});
+
 export function createAppleProvider(config: AppleConfig = {}): SearchProvider {
   const country = config.country ?? "us";
-
-  async function get<T>(ctx: SearchContext, url: string): Promise<T> {
-    await ctx.limiter.acquire("apple", DEFAULT_POLICIES.apple);
-
-    let response: Response;
-    try {
-      response = await fetch(url, { signal: ctx.signal, ...cachePolicy(ctx) });
-    } catch (cause) {
-      throw new ProviderError("apple", "transient", "Apple Music unreachable.", { cause });
-    }
-
-    if (!response.ok) {
-      // 403 is Apple's exceeded rate limit, not a permission problem.
-      throw new ProviderError(
-        "apple",
-        response.status === 403 ? "rate_limited" : "transient",
-        `Apple Music returned ${response.status}.`,
-        { status: response.status },
-      );
-    }
-
-    return (await response.json()) as T;
-  }
 
   return {
     id: "apple",
