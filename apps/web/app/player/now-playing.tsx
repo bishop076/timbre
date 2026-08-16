@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { ArtistLink } from "../artist-link";
 
 import { Artwork } from "../artwork";
-import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon } from "../icons";
+import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon, PlayIcon } from "../icons";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
@@ -47,10 +47,14 @@ export function QueueRow({
   song,
   onPlay,
   actions,
+  playOverlay = false,
 }: {
   song: Song;
   onPlay: () => void;
   actions?: ReactNode;
+  /** Hover play wash over the artwork, and the "Play …" label that goes with advertising one.
+   * Opt-in: a queue already reads as a running order, so Related asks for it and Up Next does not. */
+  playOverlay?: boolean;
 }) {
   return (
     <div className="group/row flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]">
@@ -58,12 +62,20 @@ export function QueueRow({
         type="button"
         onClick={onPlay}
         className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus:outline-none"
+        aria-label={playOverlay ? `Play ${song.title}` : undefined}
       >
-        <Artwork
-          src={song.artworkUrl}
-          className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
-          iconClassName="size-4"
-        />
+        <span className="relative shrink-0">
+          <Artwork
+            src={song.artworkUrl}
+            className="slab-sm size-10 rounded-[var(--r-sm)]"
+            iconClassName="size-4"
+          />
+          {playOverlay && (
+            <span className="absolute inset-0 flex items-center justify-center rounded-[var(--r-sm)] bg-black/55 opacity-0 transition group-hover/row:opacity-100">
+              <PlayIcon className="size-4 text-white" />
+            </span>
+          )}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-semibold">{song.title}</span>
           <span className="block truncate text-[11px] text-[var(--fg-dim)]">
