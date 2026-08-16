@@ -65,12 +65,14 @@ export default function AboutPage() {
           player, and the queue moves on by itself when it ends.
         </p>
         <p>
-          Playlists are yours and stay on this device. Nothing you do here reaches a
-          Timbre server, because there is nothing there to reach —{" "}
+          Playlists are yours and stay on this device. Nothing Timbre remembers about you
+          is stored anywhere else, because there is no database to store it in. Your
+          searches do pass through this site on their way to the catalogues — that is how
+          searching works, and{" "}
           <Link href="/privacy" className="font-semibold text-[var(--fg)] underline underline-offset-2">
             the privacy page
           </Link>{" "}
-          explains exactly what that means.
+          says exactly what is and is not kept.
         </p>
       </Section>
 
