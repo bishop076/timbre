@@ -181,7 +181,10 @@ function ResultRow({ song }: { song: Song }) {
                   rel="noreferrer noopener"
                   title={`Open on ${style.label}`}
                   style={{ color: style.color, backgroundColor: style.tint }}
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100"
+                  // `focus-visible` alongside the hover reveal: these are real anchors in
+                  // the tab order, so without it a keyboard user lands on a fully
+                  // transparent control. Every other hover-reveal in the app pairs the two.
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100 focus-visible:!opacity-100"
                 >
                   {style.short}
                   <ExternalIcon className="size-2.5" />
