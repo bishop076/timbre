@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { rememberCharts, useCachedCharts } from "./charts-cache";
 import { MixHero } from "./mix-hero";
 import { useHistory } from "./player/history-store";
-import { HomeShelves } from "./home-shelves";
+import { HomeShelves, songFromHistory } from "./home-shelves";
 import type { Song, SongsResponse } from "./types";
 
 /** Home — the mix and the shelves. Search is a route of its own. */
@@ -42,25 +42,7 @@ export function HomeView() {
   const personal = history.length >= 3;
 
   const mix: Song[] = personal
-    ? history.slice(0, 20).map((entry) => ({
-        id: entry.id,
-        title: entry.title,
-        artists: entry.artists,
-        album: null,
-        durationMs: null,
-        isrc: null,
-        artworkUrl: entry.artworkUrl,
-        sources: entry.videoId
-          ? [
-              {
-                source: "ytmusic",
-                sourceId: entry.videoId,
-                url: `https://music.youtube.com/watch?v=${entry.videoId}`,
-                playback: "queue" as const,
-              },
-            ]
-          : [],
-      }))
+    ? history.slice(0, 20).map(songFromHistory)
     : (charts?.songs ?? []);
 
   return (
