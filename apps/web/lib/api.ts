@@ -66,3 +66,9 @@ export function guard(request: Request): Response | null {
 export function cached<T>(key: string, produce: () => Promise<T>): Promise<T> {
   return responseCache().take(key, produce as () => Promise<unknown>) as Promise<T>;
 }
+
+/** Edge `cache-control` for answers that move daily at best — charts, radio. */
+export const CACHE_CONTROL_HOUR = "public, s-maxage=3600, stale-while-revalidate=86400";
+
+/** Longer, for facts about an artist, which change on the scale of a release. */
+export const CACHE_CONTROL_DAY = "public, s-maxage=86400, stale-while-revalidate=604800";
