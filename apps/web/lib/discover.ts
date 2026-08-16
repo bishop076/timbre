@@ -62,7 +62,8 @@ export interface Discover {
   playlists: ChartPlaylist[];
 }
 
-interface RawTrack {
+/** Deezer's track shape, as much of it as anything here reads. */
+export interface RawTrack {
   id: number;
   title: string;
   duration?: number;
@@ -108,7 +109,8 @@ function toGenre(raw: { id: number; name: string; picture_medium?: string }): Ge
   return { id: raw.id, name: raw.name, imageUrl: raw.picture_medium ?? null };
 }
 
-function toTrack(raw: RawTrack, index: number): ChartTrack {
+/** A chart row, taking Deezer's own `position` where it sends one. */
+export function toTrack(raw: RawTrack, index: number): ChartTrack {
   return {
     // Namespaced against merged search results, which key on ISRC or a source pair.
     id: `deezer:${raw.id}`,
@@ -131,6 +133,22 @@ function toTrack(raw: RawTrack, index: number): ChartTrack {
     position: raw.position ?? index + 1,
     popularity: raw.rank ?? 0,
   };
+}
+
+/** The same, ranked by array order alone — a playlist or radio has no chart position. A
+ * separate function, not a flag: `.map(toTrack)` would hand the flag the array. */
+export function toTrackByOrder(raw: RawTrack, index: number): ChartTrack {
+  return { ...toTrack(raw, index), position: index + 1 };
+}
+
+/** The first `max` distinct covers, in order. */
+export function coversOf(covers: (string | null | undefined)[], max: number): string[] {
+  const seen = new Set<string>();
+  for (const cover of covers) {
+    if (cover) seen.add(cover);
+    if (seen.size === max) break;
+  }
+  return [...seen];
 }
 
 export async function fetchGenres(): Promise<Genre[]> {
@@ -180,20 +198,16 @@ async function withCovers(raw: RawPlaylist[]): Promise<ChartPlaylist[]> {
         86_400,
       );
 
-      const covers = new Set<string>();
-      for (const track of tracks?.data ?? []) {
-        const cover = track.album?.cover_medium ?? track.album?.cover_big;
-        if (cover) covers.add(cover);
-        if (covers.size === 5) break;
-      }
-
       return {
         id: playlist.id,
         title: playlist.title,
         by: playlist.creator?.name ?? playlist.user?.name ?? null,
         coverUrl: playlist.picture_big ?? playlist.picture_medium ?? null,
         trackCount: playlist.nb_tracks ?? null,
-        covers: [...covers],
+        covers: coversOf(
+          (tracks?.data ?? []).map((track) => track.album?.cover_medium ?? track.album?.cover_big),
+          5,
+        ),
       };
     }),
   );

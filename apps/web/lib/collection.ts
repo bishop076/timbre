@@ -1,7 +1,7 @@
 import "server-only";
 
 import { deezer } from "./deezer";
-import type { ChartTrack } from "./discover";
+import { coversOf, toTrackByOrder, type ChartTrack, type RawTrack } from "./discover";
 
 /*
  * A collection: songs gathered under one name — a genre chart, a Deezer playlist, or a
@@ -23,46 +23,12 @@ export interface Collection {
   tracks: ChartTrack[];
 }
 
-interface RawTrack {
-  id: number;
-  title: string;
-  duration?: number;
-  rank?: number;
-  link?: string;
-  artist?: { name?: string };
-  album?: { title?: string; cover_medium?: string; cover_big?: string };
-}
-
-/** Deezer's track shape, mapped. Separate from `discover.ts` because a playlist has no chart position. */
-function toTrack(raw: RawTrack, index: number): ChartTrack {
-  return {
-    id: `deezer:${raw.id}`,
-    title: raw.title,
-    artists: raw.artist?.name ? [raw.artist.name] : [],
-    album: raw.album?.title ?? null,
-    durationMs: raw.duration ? raw.duration * 1000 : null,
-    isrc: null,
-    artworkUrl: raw.album?.cover_big ?? raw.album?.cover_medium ?? null,
-    sources: [
-      {
-        source: "deezer",
-        sourceId: String(raw.id),
-        url: raw.link ?? `https://www.deezer.com/track/${raw.id}`,
-        playback: "link",
-      },
-    ],
-    position: index + 1,
-    popularity: raw.rank ?? 0,
-  };
-}
-
-function coversOf(tracks: ChartTrack[]): string[] {
-  const seen = new Set<string>();
-  for (const track of tracks) {
-    if (track.artworkUrl) seen.add(track.artworkUrl);
-    if (seen.size === 4) break;
-  }
-  return [...seen];
+/** Four covers, tiled. */
+function tiles(tracks: ChartTrack[]): string[] {
+  return coversOf(
+    tracks.map((track) => track.artworkUrl),
+    4,
+  );
 }
 
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
@@ -77,7 +43,7 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
   if (!raw?.title) return null;
 
   // Capped at 100: some playlists run two hundred deep, and every row costs an image.
-  const tracks = (raw.tracks?.data ?? []).slice(0, 100).map(toTrack);
+  const tracks = (raw.tracks?.data ?? []).slice(0, 100).map(toTrackByOrder);
   const by = raw.creator?.name;
 
   return {
@@ -87,7 +53,7 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
     subtitle: [`${raw.nb_tracks ?? tracks.length} songs`, by ? `by ${by}` : null, "on Deezer"]
       .filter(Boolean)
       .join(" · "),
-    covers: coversOf(tracks),
+    covers: tiles(tracks),
     coverUrl: raw.picture_big ?? null,
     tracks,
   };
@@ -100,7 +66,7 @@ async function fromGenre(id: string): Promise<Collection | null> {
     deezer<{ data?: { id: number; name: string }[] }>("/genre", 604_800),
   ]);
 
-  const tracks = (chart?.tracks?.data ?? []).map(toTrack);
+  const tracks = (chart?.tracks?.data ?? []).map(toTrackByOrder);
   if (tracks.length === 0) return null;
 
   // The id must name a genre Deezer publishes: `/chart/{id}` does not validate its path
@@ -116,7 +82,7 @@ async function fromGenre(id: string): Promise<Collection | null> {
     id,
     title,
     subtitle: `${tracks.length} songs · Deezer chart`,
-    covers: coversOf(tracks),
+    covers: tiles(tracks),
     coverUrl: null,
     tracks,
   };
@@ -161,7 +127,7 @@ async function fromRadio(id: string): Promise<Collection | null> {
     deezer<{ data?: RawTrack[] }>(`/radio/${id}/tracks`, 3_600),
   ]);
 
-  const tracks = (list?.data ?? []).slice(0, 100).map(toTrack);
+  const tracks = (list?.data ?? []).slice(0, 100).map(toTrackByOrder);
   if (tracks.length === 0) return null;
 
   return {
@@ -169,7 +135,7 @@ async function fromRadio(id: string): Promise<Collection | null> {
     id,
     title: meta?.title ?? "Radio",
     subtitle: `${tracks.length} songs · Deezer radio`,
-    covers: coversOf(tracks),
+    covers: tiles(tracks),
     coverUrl: meta?.picture_big ?? null,
     tracks,
   };
