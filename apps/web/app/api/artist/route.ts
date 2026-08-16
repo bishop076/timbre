@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { guard } from "@/lib/api";
+import { CACHE_CONTROL_DAY, guard } from "@/lib/api";
 import { fetchDiscography, findArtist } from "@/lib/discography";
 
 /*
@@ -35,9 +35,7 @@ export async function GET(request: Request) {
   // carries, and the panel just omits the card.
   if (!artist) return Response.json({ artist: null }, { status: 200 });
 
-  const headers = {
-    "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800",
-  };
+  const headers = { "cache-control": CACHE_CONTROL_DAY };
 
   if (!parsed.data.full) {
     return Response.json({ artist, releases: [], related: [] }, { headers });

@@ -2,7 +2,7 @@ import { isSourceId, recommendFrom } from "@timbre/providers";
 import { z } from "zod";
 
 import { getProviderRuntime } from "@/lib/providers";
-import { guard } from "@/lib/api";
+import { CACHE_CONTROL_HOUR, guard } from "@/lib/api";
 
 // What to play next — not a passthrough of YouTube Music's watch queue. Every source that
 // can answer contributes a ranked list, and the lists are **fused**: a song several reach
@@ -60,10 +60,6 @@ export async function GET(request: Request) {
   // Always 200: a failed radio and an empty one produce the same UI.
   return Response.json(
     { songs, failures: [] },
-    {
-      headers: {
-        "cache-control": "public, s-maxage=3600, stale-while-revalidate=86400",
-      },
-    },
+    { headers: { "cache-control": CACHE_CONTROL_HOUR } },
   );
 }
