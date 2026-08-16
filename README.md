@@ -2,7 +2,7 @@
 
 **A music player for people who don't pay for streaming.**
 
-One search box, one queue, across YouTube Music and SoundCloud — with Spotify alongside where it's allowed.
+One search box, one queue. Free sources only, and nothing stored on a server.
 
 ## Why this exists
 
@@ -17,9 +17,17 @@ The full reasoning — including why the original "connect all three accounts" i
 ## What it does
 
 - **Search** one box → results from YouTube Music, merged with availability on Deezer and Apple
-- **Play** one continuous queue mixing YouTube Music and SoundCloud
-- **Spotify panel** — the official embed plays **full tracks for free Spotify accounts** when signed in
+- **Play** a continuous queue, from YouTube Music. A track resolves to a playable copy at
+  play time, and falls through to another upload when one refuses to embed
+- **Explore** charts fused across Deezer and Apple, so agreeing on two beats charting
+  higher on one — plus genres, radios and editorial lists
+- **Lyrics** synced from LRCLIB, with a version picker and a timing nudge
 - **Playlists** of your own, saved in your browser — no account, no sign-up
+- **A profile** with a name and pictures, kept on the device rather than uploaded
+
+SoundCloud has a working player and provider, but is **not** registered: catalogue search
+needs a `client_id` behind a paid account, so nothing surfaces its tracks yet. Spotify is
+not integrated at all — see below.
 
 ## What it deliberately doesn't do
 
@@ -28,13 +36,23 @@ These aren't missing features — they're rules Timbre respects.
 - **No background playback on mobile.** On desktop, Timbre plays in a background tab exactly like YouTube's or Spotify's own web player. On mobile, locking the screen stops playback — the audio lives inside YouTube's iframe, and background play there is the feature YouTube Premium sells. There's no legitimate way around it.
 - **No audio-only YouTube.** The video player stays visible; isolating audio is prohibited.
 - **No downloading or caching audio.** Ever.
-- **No blending Spotify into the queue.** Spotify's Developer Terms §IV.2 forbid integrating their streams with another service's. The embed is a separate, clearly attributed panel.
+- **No Spotify.** Their Developer Terms §IV.2 forbid integrating Spotify streams with another service's, so it could only ever be a separate, clearly attributed panel — and that panel is not built. Nothing in the app talks to Spotify today.
 - **No gapless cross-source playback.** Handing off between two iframe players always has a small gap. Continuous, not gapless.
-- **No accounts, and no data.** Timbre asks for no email and keeps no user record. Playlists, your profile and your history live in your browser and nowhere else. Nothing to breach, nothing to subpoena, nothing to pay for — and the honest cost is that clearing site data loses them, so **Export** exists on the library page. It covers playlists; your profile and history are not in the file yet.
+- **No accounts, and no data.** Timbre asks for no email and keeps no user record. Playlists, your profile and your history live in your browser and nowhere else. Nothing to breach, nothing to subpoena, nothing to pay for — and the honest cost is that clearing site data loses them, so **Export** exists on the library page. It covers playlists; your profile and history are not in the file yet. One cookie is set, `timbre-name`, so your own display name is in the first paint rather than arriving a frame later.
 
 ## Status
 
-**Phase 0 (foundation) complete.** Monorepo, schema, rate limiter, matching engine and both services run and are verified. **Phase A (search) is next.** See [docs/ROADMAP.md](docs/ROADMAP.md).
+Search and playlists are done; playback and polish are most of the way there.
+
+| Phase | | |
+| :--- | :--- | :--- |
+| 0 — Foundation | 33/33 | ✅ |
+| A — Search | 24/24 | ✅ |
+| B — Playback | 28/33 | 🔨 |
+| C — Playlists | 12/13 | ✅ |
+| D — Polish and launch | 12/20 | 🔨 |
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the task-level detail and [docs/BLOCKED.md](docs/BLOCKED.md) for what is waiting on somebody else.
 
 ## Prerequisites
 
@@ -87,10 +105,12 @@ packages/
   providers/  SearchProvider interface + per-source adapters
 ```
 
-There is no database package, and no database. Everything a person owns —
-playlists, display name, profile pictures, queue, history — lives in their
-browser's `localStorage`, so the web app is a stateless front end and the only
-thing behind it is the sidecar. That is what makes it free to host.
+There is no database package, and no database. Everything a person owns lives in
+their own browser: playlists, display name, history, theme and volume in
+`localStorage`, and profile pictures in IndexedDB, which holds blobs at their real
+size instead of inflating them by a third as base64. The queue is deliberately not
+persisted — a refresh starts empty. So the web app is a stateless front end and the
+only thing behind it is the sidecar. That is what makes it free to host.
 
 The matching engine in `packages/core` is the heart of the product: showing one song across several sources *is* a matching problem.
 
