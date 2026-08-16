@@ -2,7 +2,7 @@
 // **ISRCs** — which is what lets Timbre say two results are the same recording, since
 // YouTube Music exposes none. Audio is unplayable here, so tracks are `link`.
 
-import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
+import { ProviderError } from "@timbre/core";
 
 import type {
   RankedList,
@@ -11,6 +11,7 @@ import type {
   SourceTrack,
 } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
+import { createRequester } from "./request.ts";
 
 const API = "https://api.deezer.com";
 
@@ -52,31 +53,20 @@ function toSourceTrack(raw: DeezerTrack): SourceTrack {
   };
 }
 
+const request = createRequester({
+  id: "deezer",
+  label: "Deezer",
+  init: cachePolicy,
+  // Quota and validation failures arrive in a **200 body**, not a status code.
+  checkBody: (body) => {
+    const error = (body as { error?: { message?: string } } | null)?.error;
+    if (error) throw new ProviderError("deezer", "transient", error.message ?? "Deezer error.");
+  },
+});
+
+const get = <T>(ctx: SearchContext, path: string): Promise<T> => request<T>(ctx, `${API}${path}`);
+
 export function createDeezerProvider(): SearchProvider {
-  async function get<T>(ctx: SearchContext, path: string): Promise<T> {
-    await ctx.limiter.acquire("deezer", DEFAULT_POLICIES.deezer);
-
-    let response: Response;
-    try {
-      response = await fetch(`${API}${path}`, { signal: ctx.signal, ...cachePolicy(ctx) });
-    } catch (cause) {
-      throw new ProviderError("deezer", "transient", "Deezer unreachable.", { cause });
-    }
-
-    if (!response.ok) {
-      throw new ProviderError("deezer", "transient", `Deezer returned ${response.status}.`, {
-        status: response.status,
-      });
-    }
-
-    const body = (await response.json()) as T & { error?: { message?: string } };
-    // Quota and validation failures arrive in a **200 body**, not a status code.
-    if (body && typeof body === "object" && "error" in body && body.error) {
-      throw new ProviderError("deezer", "transient", body.error.message ?? "Deezer error.");
-    }
-    return body;
-  }
-
   /** Finds an artist by exact name — the search is fuzzy and returns tribute acts and
    * similarly-named producers, so only a case-insensitive exact match passes. */
   async function findArtist(ctx: SearchContext, name: string): Promise<DeezerArtist | null> {
