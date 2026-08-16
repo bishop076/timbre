@@ -1,7 +1,7 @@
 import { chartAll, mergeTracks } from "@timbre/providers";
 
 import { getProviderRuntime } from "@/lib/providers";
-import { guard } from "@/lib/api";
+import { CACHE_CONTROL_HOUR, guard } from "@/lib/api";
 
 /**
  * What's popular right now, for the home page.
@@ -21,10 +21,6 @@ export async function GET(request: Request) {
 
   return Response.json(
     { songs: mergeTracks(tracks), failures, attempted },
-    {
-      headers: {
-        "cache-control": "public, s-maxage=3600, stale-while-revalidate=86400",
-      },
-    },
+    { headers: { "cache-control": CACHE_CONTROL_HOUR } },
   );
 }
