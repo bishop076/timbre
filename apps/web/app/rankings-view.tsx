@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { ArtistLink } from "./artist-link";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { toArtistSlug } from "./artist-slug";
 import { Movement } from "./movement";
@@ -176,7 +177,7 @@ function SongsView({ rankings }: { rankings: Rankings }) {
             size="sm"
             rank={song.position}
             rankPlays
-            subtitle={song.artists.join(", ")}
+            subtitle={<ArtistLink artists={song.artists} />}
             trailing={
               <>
                 <Movement delta={movementOf(snapshot, song.id, song.position)} />
