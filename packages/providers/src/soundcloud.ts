@@ -5,9 +5,8 @@
 // needs a `client_id` gated behind paid approval while playback needs none. See
 // `docs/BLOCKED.md`.
 
-import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
-
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import { createRequester } from "./request.ts";
 
 const OEMBED = "https://soundcloud.com/oembed";
 
@@ -46,6 +45,15 @@ function stripArtistSuffix(title: string, artist: string | undefined): string {
   return title.endsWith(suffix) ? title.slice(0, -suffix.length).trim() : title;
 }
 
+const request = createRequester({
+  id: "soundcloud",
+  label: "SoundCloud",
+  // No cache policy: oEmbed is the playback path, not a catalogue read Next may revalidate.
+  init: () => ({ cache: "no-store" }),
+  // A private, deleted or geo-blocked track is normal, not a provider failure.
+  softStatuses: [403, 404],
+});
+
 export function createSoundCloudProvider(): SearchProvider {
   return {
     id: "soundcloud",
@@ -61,32 +69,11 @@ export function createSoundCloudProvider(): SearchProvider {
     async resolve(ctx: SearchContext, url: string): Promise<SourceTrack | null> {
       if (!isSoundCloudUrl(url)) return null;
 
-      await ctx.limiter.acquire("soundcloud", DEFAULT_POLICIES.soundcloud);
-
-      let response: Response;
-      try {
-        response = await fetch(`${OEMBED}?format=json&url=${encodeURIComponent(url)}`, {
-          signal: ctx.signal,
-          cache: "no-store",
-        });
-      } catch (cause) {
-        throw new ProviderError("soundcloud", "transient", "SoundCloud unreachable.", { cause });
-      }
-
-      // A private, deleted or geo-blocked track is normal, not a provider failure.
-      if (response.status === 403 || response.status === 404) return null;
-
-      if (!response.ok) {
-        throw new ProviderError(
-          "soundcloud",
-          "transient",
-          `SoundCloud returned ${response.status}.`,
-          { status: response.status },
-        );
-      }
-
-      const body = (await response.json()) as SoundCloudOEmbed;
-      if (!body.title) return null;
+      const body = await request<SoundCloudOEmbed>(
+        ctx,
+        `${OEMBED}?format=json&url=${encodeURIComponent(url)}`,
+      );
+      if (!body?.title) return null;
 
       const artist = body.author_name?.trim();
 
