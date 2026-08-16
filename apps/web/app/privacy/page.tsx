@@ -35,21 +35,32 @@ export default function PrivacyPage() {
 
       <Section title="What Timbre stores">
         <p>
-          Your playlists, listening history, volume, and profile name and picture are kept
-          in your browser&rsquo;s local storage. They are never sent anywhere. There is no
-          Timbre server holding them, because Timbre runs no database at all.
+          Your playlists, listening history, volume, theme, lyrics corrections and profile
+          name are kept in your browser&rsquo;s local storage. Profile pictures are larger,
+          so they go in IndexedDB in the same browser. There is no Timbre server holding
+          any of it, because Timbre runs no database at all.
+        </p>
+        <p>
+          One exception, and it is a real one:{" "}
+          <strong className="font-semibold text-[var(--fg)]">Timbre sets one cookie</strong>,{" "}
+          <code className="font-mono text-[13px]">timbre-name</code>, holding the display
+          name you chose. It exists so your own name is in the page the first time it
+          paints instead of appearing a moment later. Being a cookie, it is sent to this
+          site with every request — nothing else Timbre stores is. It is first-party,
+          holds nothing but that name, and you can erase it from Settings.
         </p>
         <p>Two consequences follow, and both cut in your favour and against it:</p>
         <ul className="ml-4 list-disc space-y-2 marker:text-[var(--fg-faint)]">
           <li>Nobody — including whoever runs this site — can look up what you listened to.</li>
           <li>
             Clearing your browser data deletes all of it permanently, and it does not
-            follow you to another device. Use <strong className="font-semibold text-[var(--fg)]">Export</strong>{" "}
-            in{" "}
+            follow you to another device.{" "}
+            <strong className="font-semibold text-[var(--fg)]">Export</strong> in{" "}
             <Link href="/library" className="font-semibold text-[var(--fg)] underline underline-offset-2">
               your library
             </Link>{" "}
-            to keep a copy.
+            keeps a copy of your playlists — but only those. Your history, profile name and
+            pictures are not in the file, so a copy is not a full backup.
           </li>
         </ul>
       </Section>
@@ -58,7 +69,10 @@ export default function PrivacyPage() {
         <ul className="ml-4 list-disc space-y-2 marker:text-[var(--fg-faint)]">
           <li>No accounts, sign-ins, email addresses or passwords.</li>
           <li>No analytics, tracking pixels or advertising identifiers.</li>
-          <li>No cookies set by Timbre.</li>
+          <li>
+            No tracking cookies. The one cookie Timbre sets holds your display name and
+            nothing else — see above.
+          </li>
           <li>Nothing is sold or shared, because nothing is collected.</li>
         </ul>
       </Section>
