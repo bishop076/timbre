@@ -6,10 +6,10 @@ import { useState } from "react";
 
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { toArtistSlug } from "./artist-slug";
-import { NoteIcon, PlayIcon } from "./icons";
 import { Movement } from "./movement";
 import { usePlayer } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
+import { SongRow } from "./song-row";
 import { sourceStyle } from "./sources";
 import { StackedColumns } from "./stacked-columns";
 
@@ -21,7 +21,6 @@ const ChartGraph = dynamic(() => import("./chart-graph").then((m) => m.ChartGrap
 import type { ChartTrack } from "@/lib/discover";
 import { RANK_BANDS } from "@/lib/rank-bands";
 import type { GenreMix, Rankings } from "@/lib/rankings";
-import { cover as coverSrc } from "./artwork-url";
 
 /*
  * Rankings — a rail of views down the side. No source publishes chart history keyless and
@@ -167,92 +166,46 @@ function SongsView({ rankings }: { rankings: Rankings }) {
       )}
 
       <ul className="divide-y divide-[var(--line)]">
-        {songs.slice(0, 50).map((song) => {
-          const isCurrent = current?.id === song.id;
-          const moved = movementOf(snapshot, song.id, song.position);
+        {songs.slice(0, 50).map((song) => (
+          <SongRow
+            key={song.id}
+            song={song}
+            onPlay={() => play(song, songs)}
+            isCurrent={current?.id === song.id}
+            isPlaying={state === "playing"}
+            size="sm"
+            rank={song.position}
+            rankPlays
+            subtitle={song.artists.join(", ")}
+            trailing={
+              <>
+                <Movement delta={movementOf(snapshot, song.id, song.position)} />
 
-          return (
-            <li
-              key={song.id}
-              className={`group flex items-center gap-2.5 rounded-lg px-2 transition sm:gap-3 ${
-                isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => play(song, songs)}
-                className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left focus:outline-none sm:gap-3"
-                aria-label={`Play ${song.title}`}
-              >
-                <span className="w-6 shrink-0 text-right text-[13px] font-bold tabular-nums text-[var(--fg-faint)]">
-                  {song.position}
-                </span>
+                {/* Which charts carried it, and where — a badge pair means two audiences agreed. */}
+                <div className="hidden shrink-0 items-center gap-1 @lg:flex">
+                  {song.charts.map((chart) => {
+                    const style = sourceStyle(chart);
+                    return (
+                      <span
+                        key={chart}
+                        title={`#${song.positions[chart]} on ${style.label}`}
+                        style={{ color: style.color, backgroundColor: style.tint }}
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums"
+                      >
+                        {style.short} #{song.positions[chart]}
+                      </span>
+                    );
+                  })}
+                </div>
 
-                <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)]">
-                  {song.artworkUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-                    <img
-                      src={coverSrc(song.artworkUrl, 112) ?? undefined}
-                      alt=""
-                      width={40}
-                      height={40}
-                      loading="lazy"
-                      className="size-full object-cover"
-                    />
-                  ) : (
-                    <span className="flex size-full items-center justify-center text-[var(--fg-dim)]">
-                      <NoteIcon className="size-4" />
-                    </span>
-                  )}
-                  <span
-                    className={`absolute inset-0 flex items-center justify-center bg-black/55 transition ${
-                      isCurrent && state === "playing"
-                        ? "opacity-100"
-                        : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                    }`}
-                  >
-                    <PlayIcon className="size-4 text-white" />
-                  </span>
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span
-                    className={`block truncate text-[14px] font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
-                  >
-                    {song.title}
-                  </span>
-                  <span className="block truncate text-[12px] text-[var(--fg-dim)]">
-                    {song.artists.join(", ")}
-                  </span>
-                </span>
-              </button>
-
-              <Movement delta={moved} />
-
-              {/* Which charts carried it, and where — a badge pair means two audiences agreed. */}
-              <div className="hidden shrink-0 items-center gap-1 @lg:flex">
-                {song.charts.map((chart) => {
-                  const style = sourceStyle(chart);
-                  return (
-                    <span
-                      key={chart}
-                      title={`#${song.positions[chart]} on ${style.label}`}
-                      style={{ color: style.color, backgroundColor: style.tint }}
-                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums"
-                    >
-                      {style.short} #{song.positions[chart]}
-                    </span>
-                  );
-                })}
-              </div>
-
-              <AddToPlaylist
-                song={song}
-                className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-              />
-            </li>
-          );
-        })}
+                <AddToPlaylist
+                  song={song}
+                  className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+                />
+              </>
+            }
+          />
+        ))}
       </ul>
     </>
   );
