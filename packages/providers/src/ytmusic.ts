@@ -3,9 +3,8 @@
  * in search and playback. `ytmusicapi` searches unauthenticated, so there are no tokens.
  */
 
-import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
-
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import { createRequester } from "./request.ts";
 
 interface SidecarTrack {
   video_id: string;
@@ -44,44 +43,25 @@ function toSourceTrack(raw: SidecarTrack): SourceTrack {
 }
 
 export function createYtMusicProvider(config: YtMusicConfig): SearchProvider {
-  async function call<T>(
-    ctx: SearchContext,
-    path: string,
-    body: unknown,
-  ): Promise<T> {
-    await ctx.limiter.acquire("ytmusic", DEFAULT_POLICIES.ytmusic);
+  const request = createRequester({
+    id: "ytmusic",
+    label: "YouTube Music sidecar",
+    // Every call is a POST carrying the shared secret, and is never cached.
+    init: () => ({
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-timbre-secret": config.sharedSecret,
+      },
+      cache: "no-store",
+    }),
+    // The sidecar returns 502 when ytmusicapi itself fails upstream, which is
+    // worth retrying or falling back from; anything else is our bug.
+    classify: (status) => (status === 502 ? "transient" : "unknown"),
+  });
 
-    let response: Response;
-    try {
-      response = await fetch(new URL(path, config.baseUrl), {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-timbre-secret": config.sharedSecret,
-        },
-        body: JSON.stringify(body),
-        signal: ctx.signal,
-        cache: "no-store",
-      });
-    } catch (cause) {
-      throw new ProviderError("ytmusic", "transient", "YouTube Music sidecar unreachable.", {
-        cause,
-      });
-    }
-
-    if (!response.ok) {
-      // The sidecar returns 502 when ytmusicapi itself fails upstream, which is
-      // worth retrying or falling back from; anything else is our bug.
-      throw new ProviderError(
-        "ytmusic",
-        response.status === 502 ? "transient" : "unknown",
-        `YouTube Music sidecar returned ${response.status}.`,
-        { status: response.status },
-      );
-    }
-
-    return (await response.json()) as T;
-  }
+  const call = <T>(ctx: SearchContext, path: string, body: unknown): Promise<T> =>
+    request<T>(ctx, new URL(path, config.baseUrl), { body: JSON.stringify(body) });
 
   return {
     id: "ytmusic",
