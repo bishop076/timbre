@@ -1,9 +1,12 @@
 const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"]);
-const TYPING_ROLES = new Set(["button", "textbox", "link", "searchbox", "menuitem"]);
+// `slider` because both of Timbre's are `<div role="slider">` with their own arrow keys: the
+// global handler runs in the capture phase, so without this a seek nudge also skipped the track.
+const TYPING_ROLES = new Set(["button", "textbox", "link", "searchbox", "menuitem", "slider"]);
 
 /**
- * Whether a keystroke belongs to the focused element: text entry, and buttons/links/selects
- * where Space and Enter already activate the control. Duck-typed rather than `instanceof
+ * Whether a keystroke belongs to the focused element: text entry, buttons/links/selects where
+ * Space and Enter already activate the control, and sliders, which own the arrow keys.
+ * Duck-typed rather than `instanceof
  * HTMLElement` — an element from another realm, such as the iframes this app mounts, is not
  * an instance of *this* realm's, and `instanceof` against a missing global throws.
  */

@@ -96,6 +96,20 @@ test("elements standing in for controls via role are respected", () => {
   assert.equal(isTypingTarget(element("SPAN", { role: "presentation" })), false);
 });
 
+test("arrows on a focused slider seek or set the volume, and must not also skip", () => {
+  // Both sliders are `<div role="slider">` with their own keydown, and the transport binds
+  // window in the capture phase: claiming the key here ran the seek *and* changed track.
+  const slider = element("DIV", { role: "slider" });
+  assert.equal(isTypingTarget(slider), true);
+  for (const key of ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"]) {
+    assert.equal(
+      actionFor({ key, ctrlKey: false, metaKey: false, altKey: false, target: slider }),
+      null,
+      `${key} on a slider belongs to the slider`,
+    );
+  }
+});
+
 test("ordinary containers do not swallow the shortcut", () => {
   for (const tag of ["DIV", "SECTION", "MAIN", "LI", "BODY"]) {
     assert.equal(isTypingTarget(element(tag)), false, `${tag} should not block transport keys`);
