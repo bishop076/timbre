@@ -1,12 +1,10 @@
 "use client";
 
-import { ArtistLink } from "../artist-link";
 import { useEffect, useState } from "react";
 
-import { Artwork } from "../artwork";
-import { PlayIcon } from "../icons";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import type { Song, SongsResponse } from "../types";
+import { QueueRow } from "./now-playing";
 import { usePlayer } from "./player-context";
 
 /**
@@ -65,39 +63,19 @@ export function RelatedPanel() {
     <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
       <ul className="flex flex-col gap-0.5">
         {songs.map((song) => (
-          <li
-            key={song.id}
-            className="group flex items-center gap-2.5 rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]"
-          >
-            <button
-              type="button"
+          <li key={song.id}>
+            <QueueRow
+              song={song}
               // Queues the rest behind it, so picking one becomes a station rather
               // than stranding a single song at the end of the queue.
-              onClick={() => play(song, [...songs.filter((item) => item.id !== song.id), ...queue])}
-              className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-              aria-label={`Play ${song.title}`}
-            >
-              <span className="relative shrink-0">
-                <Artwork
-                  src={song.artworkUrl}
-                  className="slab-sm size-10 rounded-[var(--r-sm)]"
-                  iconClassName="size-4"
+              onPlay={() => play(song, [...songs.filter((item) => item.id !== song.id), ...queue])}
+              playOverlay
+              actions={
+                <AddToPlaylist
+                  song={song}
+                  className="shrink-0 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100"
                 />
-                <span className="absolute inset-0 flex items-center justify-center rounded-[var(--r-sm)] bg-black/55 opacity-0 transition group-hover:opacity-100">
-                  <PlayIcon className="size-4 text-white" />
-                </span>
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-semibold">{song.title}</span>
-                <span className="block truncate text-[11px] text-[var(--fg-dim)]">
-                  <ArtistLink artists={song?.artists ?? []} />
-                </span>
-              </span>
-            </button>
-
-            <AddToPlaylist
-              song={song}
-              className="shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+              }
             />
           </li>
         ))}
