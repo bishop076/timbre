@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { useHistory } from "./player/history-store";
+import { useHistory, type PlayedSong } from "./player/history-store";
 import { Shelf } from "./shelf";
 import { SongCard } from "./song-card";
 import { TileSkeletons } from "./tile-skeleton";
@@ -14,6 +14,30 @@ import type { Song, SongsResponse } from "./types";
 // One tile's width. At 9.5rem a phone showed barely two covers; 7rem fits three with
 // the fourth cut, which is the cue that says "this scrolls" without an arrow.
 const TILE = "w-[7rem] shrink-0 sm:w-[10.5rem]";
+
+/** History is stored flat, so an entry gets the minimum a card needs. Without an upload id
+ * there is nothing to play, and the card falls back to searching. */
+export function songFromHistory(entry: PlayedSong): Song {
+  return {
+    id: entry.id,
+    title: entry.title,
+    artists: entry.artists,
+    album: null,
+    durationMs: null,
+    isrc: null,
+    artworkUrl: entry.artworkUrl,
+    sources: entry.videoId
+      ? [
+          {
+            source: "ytmusic",
+            sourceId: entry.videoId,
+            url: `https://music.youtube.com/watch?v=${entry.videoId}`,
+            playback: "queue" as const,
+          },
+        ]
+      : [],
+  };
+}
 
 /** Shelves built from what you have listened to; nothing on a first visit. */
 function ForYou() {
@@ -48,26 +72,7 @@ function ForYou() {
   // `<html>` is the one thing the first paint can know, and `globals.css` gates on it.
   if (history.length === 0) return <ForYouPending />;
 
-  // History is stored flat, so an entry gets the minimum a card needs.
-  const recent: Song[] = history.slice(0, 12).map((entry) => ({
-    id: entry.id,
-    title: entry.title,
-    artists: entry.artists,
-    album: null,
-    durationMs: null,
-    isrc: null,
-    artworkUrl: entry.artworkUrl,
-    sources: entry.videoId
-      ? [
-          {
-            source: "ytmusic",
-            sourceId: entry.videoId,
-            url: `https://music.youtube.com/watch?v=${entry.videoId}`,
-            playback: "queue" as const,
-          },
-        ]
-      : [],
-  }));
+  const recent: Song[] = history.slice(0, 12).map(songFromHistory);
 
   return (
     <>
