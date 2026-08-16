@@ -13,6 +13,15 @@ export function HomeView() {
   // Whatever this browser saw last, not grey placeholders. See `charts-cache`.
   const cached = useCachedCharts();
   const [fetched, setFetched] = useState<SongsResponse | null>(null);
+  /*
+   * Told apart from "still loading", which it was not.
+   *
+   * A refused or unreachable /api/charts left `fetched` null for ever, and null is what
+   * the shelves render eight pulsing skeletons for — so a 429 or an offline first visit
+   * showed "Trending now" over placeholders that never resolved. The sentence saying
+   * search still works was already written and could not be reached.
+   */
+  const [failed, setFailed] = useState(false);
   const charts = fetched ?? cached;
   const history = useHistory();
 
@@ -27,12 +36,16 @@ export function HomeView() {
     fetch("/api/charts", { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
       .then((data) => {
-        if (!data) return;
+        if (!data) {
+          setFailed(true);
+          return;
+        }
         setFetched(data);
         rememberCharts(data);
       })
-      .catch(() => {
-        // A missing chart is not worth an error message.
+      .catch((cause: unknown) => {
+        // An abort is this component unmounting, not a failure to report.
+        if (!(cause instanceof DOMException && cause.name === "AbortError")) setFailed(true);
       });
     return () => aborter.abort();
   }, []);
@@ -48,7 +61,7 @@ export function HomeView() {
   return (
     <>
       <MixHero songs={mix} personal={personal} />
-      <HomeShelves charts={charts} />
+      <HomeShelves charts={charts} failed={failed && charts === null} />
     </>
   );
 }

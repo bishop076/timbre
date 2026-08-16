@@ -109,31 +109,48 @@ function ForYouPending() {
   );
 }
 
-export function HomeShelves({ charts }: { charts: SongsResponse | null }) {
+export function HomeShelves({
+  charts,
+  /**
+   * The request answered and there is nothing to show — as opposed to still waiting.
+   *
+   * Without this the two were the same `null`, so a refused or unreachable /api/charts
+   * left eight skeletons pulsing under "Trending now" for ever, and the sentence below
+   * was unreachable.
+   */
+  failed = false,
+}: {
+  charts: SongsResponse | null;
+  failed?: boolean;
+}) {
   const songs = charts?.songs ?? [];
 
-  // Charts arrived, and there are none. An empty shelf under a "Trending now" heading
-  // is indistinguishable from the app being broken, and skeletons promise more.
-  const chartsFailed = charts !== null && songs.length === 0;
+  // Either the request failed, or it answered with an empty chart. An empty shelf under a
+  // heading is indistinguishable from the app being broken, and skeletons promise more.
+  const chartsFailed = failed || (charts !== null && songs.length === 0);
+  const waiting = charts === null && !failed;
 
   return (
     <div className="rise pt-2">
       <ForYou />
 
-      <Shelf title="Trending now" caption="Deezer · Apple Music">
-        {charts === null ? (
-          <TileSkeletons count={8} className={TILE} />
-        ) : (
-          songs.slice(0, 12).map((song) => (
-            <div key={song.id} className={TILE}>
-              <SongCard song={song} queue={songs} />
-            </div>
-          ))
-        )}
-      </Shelf>
+      {(waiting || songs.length > 0) && (
+        <Shelf title="Trending now" caption="Deezer · Apple Music">
+          {waiting ? (
+            <TileSkeletons count={8} className={TILE} />
+          ) : (
+            songs.slice(0, 12).map((song) => (
+              <div key={song.id} className={TILE}>
+                <SongCard song={song} queue={songs} />
+              </div>
+            ))
+          )}
+        </Shelf>
+      )}
 
+      {/* No shelf is drawn in this state, so this is not tucked under one. */}
       {chartsFailed && (
-        <p className="-mt-2 px-1 text-sm leading-relaxed text-[var(--fg-dim)]">
+        <p className="mb-6 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)] sm:mb-9">
           Charts aren&rsquo;t available right now. Search still works — try a song or artist
           above.
         </p>
