@@ -20,11 +20,27 @@ export function Artwork({
   src,
   className = "",
   iconClassName = "size-5",
+  /*
+   * The empty tile's own colours, replaced rather than appended.
+   *
+   * They cannot come through `className`: both are Tailwind arbitrary values, so
+   * they carry equal specificity and the generated stylesheet's order decides
+   * which wins, not the class attribute's. A caller that needs a different tone
+   * has to substitute it.
+   *
+   * A song row needs exactly that — its rows are `hover:bg-[var(--surface-2)]`,
+   * so a `--surface-2` placeholder disappears into the row under the cursor and
+   * leaves a note glyph floating on its own.
+   */
+  surfaceClassName = "bg-[var(--surface-2)]",
+  noteClassName = "text-[var(--fg-faint)]",
   eager,
 }: {
   src: string | null | undefined;
   className?: string;
   iconClassName?: string;
+  surfaceClassName?: string;
+  noteClassName?: string;
   eager?: boolean;
 }) {
   // The *url* that failed, not a flag: the bar keeps one instance across every track,
@@ -39,7 +55,7 @@ export function Artwork({
   const showImage = Boolean(attempted) && failedSrc !== chosen;
 
   return (
-    <span className={`block overflow-hidden bg-[var(--surface-2)] ${className}`}>
+    <span className={`block overflow-hidden ${surfaceClassName} ${className}`}>
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
         <img
@@ -54,7 +70,7 @@ export function Artwork({
           className="size-full object-cover"
         />
       ) : (
-        <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
+        <span className={`flex size-full items-center justify-center ${noteClassName}`}>
           <NoteIcon className={iconClassName} />
         </span>
       )}

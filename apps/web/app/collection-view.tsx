@@ -3,11 +3,12 @@
 import { ArtistLink } from "./artist-link";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { Collage } from "./collage";
-import { NoteIcon, PlayIcon, ShuffleIcon } from "./icons";
+import { PlayIcon, ShuffleIcon } from "./icons";
 import { Movement } from "./movement";
 import { AddToQueue } from "./player/add-to-queue";
 import { usePlayer } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
+import { SongRow } from "./song-row";
 import type { Collection } from "@/lib/collection";
 import { cover as coverSrc } from "./artwork-url";
 
@@ -97,78 +98,33 @@ export function CollectionView({ collection }: { collection: Collection }) {
         </p>
       ) : (
         <ul className="divide-y divide-[var(--line)]">
-          {tracks.map((track) => {
-            const isCurrent = current?.id === track.id;
-            return (
-              <li
-                key={track.id}
-                className={`group flex items-center gap-2.5 rounded-lg px-2 transition sm:gap-3 ${
-                  isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => play(track, tracks)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 py-2 text-left focus:outline-none sm:gap-3 sm:py-2.5"
-                  aria-label={`Play ${track.title}`}
-                >
-                  <span className="w-6 shrink-0 text-right text-[13px] font-bold tabular-nums text-[var(--fg-faint)]">
-                    {track.position}
-                  </span>
+          {tracks.map((track) => (
+            <SongRow
+              key={track.id}
+              song={track}
+              onPlay={() => play(track, tracks)}
+              isCurrent={current?.id === track.id}
+              isPlaying={state === "playing"}
+              size="sm"
+              rank={track.position}
+              rankPlays
+              subtitle={<ArtistLink artists={track.artists} />}
+              trailing={
+                <>
+                  <Movement delta={movementOf(snapshot, track.id, track.position)} />
 
-                  <span className="relative size-10 shrink-0 overflow-hidden rounded-md bg-[var(--surface-1)] sm:size-11">
-                    {track.artworkUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
-                      <img
-                        src={coverSrc(track.artworkUrl, 112) ?? undefined}
-                        alt=""
-                        width={44}
-                        height={44}
-                        loading="lazy"
-                        decoding="async"
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      <span className="flex size-full items-center justify-center text-[var(--fg-dim)]">
-                        <NoteIcon className="size-4" />
-                      </span>
-                    )}
-                    <span
-                      className={`absolute inset-0 flex items-center justify-center bg-black/55 transition ${
-                        isCurrent && state === "playing"
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                      }`}
-                    >
-                      <PlayIcon className="size-4 text-white" />
-                    </span>
-                  </span>
-
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate text-[14px] font-medium ${isCurrent ? "text-[var(--accent)]" : ""}`}
-                    >
-                      {track.title}
-                    </span>
-                    <span className="block truncate text-[12px] text-[var(--fg-dim)]">
-                      <ArtistLink artists={track.artists} />
-                    </span>
-                  </span>
-                </button>
-
-                <Movement delta={movementOf(snapshot, track.id, track.position)} />
-
-                <AddToQueue
-                  song={track}
-                  className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-                />
-                <AddToPlaylist
-                  song={track}
-                  className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                />
-              </li>
-            );
-          })}
+                  <AddToQueue
+                    song={track}
+                    className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+                  />
+                  <AddToPlaylist
+                    song={track}
+                    className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+                  />
+                </>
+              }
+            />
+          ))}
         </ul>
       )}
     </div>
