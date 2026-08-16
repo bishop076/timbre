@@ -8,7 +8,7 @@
  * state after mount is a cascading render by another name.
  */
 
-import { useSyncExternalStore } from "react";
+import { createLocalStore, useLocalStore } from "../local-store.ts";
 
 export interface PlayedSong {
   id: string;
@@ -27,11 +27,6 @@ const LIMIT = 50;
 
 /** Referentially stable, and what hydration renders against. */
 const EMPTY: PlayedSong[] = [];
-
-let snapshot: PlayedSong[] = EMPTY;
-let loaded = false;
-
-const listeners = new Set<() => void>();
 
 function isPlayed(value: unknown): value is PlayedSong {
   if (typeof value !== "object" || value === null) return false;
@@ -55,46 +50,22 @@ function read(): PlayedSong[] {
   }
 }
 
-function publish(next: PlayedSong[]): void {
-  snapshot = next;
-  try {
-    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
-  } catch {
-    // Not being able to remember it is no reason to fail the playback that triggered it.
-  }
-  for (const listener of listeners) listener();
-}
+// A failed write is swallowed: not being able to remember a play is no reason to fail the
+// playback that triggered it.
+const store = createLocalStore<PlayedSong[]>({
+  read,
+  initial: EMPTY,
+  write: (next) => window.localStorage.setItem(HISTORY_KEY, JSON.stringify(next)),
+  keys: [HISTORY_KEY],
+});
 
-function onStorage(event: StorageEvent): void {
-  if (event.key !== HISTORY_KEY) return;
-  snapshot = read();
-  for (const listener of listeners) listener();
-}
-
-export function subscribeHistory(listener: () => void): () => void {
-  listeners.add(listener);
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
-}
-
-export function getHistorySnapshot(): PlayedSong[] {
-  if (!loaded) {
-    loaded = true;
-    snapshot = read();
-  }
-  return snapshot;
-}
-
-export function getHistoryServerSnapshot(): PlayedSong[] {
-  return EMPTY;
-}
+export const subscribeHistory = store.subscribe;
+export const getHistorySnapshot = store.getSnapshot;
+export const getHistoryServerSnapshot = store.getServerSnapshot;
 
 /** Subscribes a component to the history. Client-only, like the store. */
 export function useHistory(): PlayedSong[] {
-  return useSyncExternalStore(subscribeHistory, getHistorySnapshot, getHistoryServerSnapshot);
+  return useLocalStore(store);
 }
 
 /** Records a play, newest first, one entry per song. A repeat moves to the front rather
@@ -103,5 +74,5 @@ export function recordPlay(song: PlayedSong): void {
   const current = getHistorySnapshot();
   if (current[0]?.id === song.id) return;
 
-  publish([song, ...current.filter((entry) => entry.id !== song.id)].slice(0, LIMIT));
+  store.save([song, ...current.filter((entry) => entry.id !== song.id)].slice(0, LIMIT));
 }

@@ -2,6 +2,8 @@
 // after mount. 0–100, because that is what both the YouTube IFrame API and the SoundCloud
 // widget take — converting per call site invites a scale bug.
 
+import { createLocalStore } from "../local-store.ts";
+
 export interface VolumeState {
   volume: number;
   muted: boolean;
@@ -12,11 +14,6 @@ const MUTED_KEY = "timbre:muted";
 
 /** Referentially stable, and what hydration renders against. */
 const DEFAULT: VolumeState = { volume: 100, muted: false };
-
-let snapshot: VolumeState = DEFAULT;
-let loaded = false;
-
-const listeners = new Set<() => void>();
 
 function read(): VolumeState {
   try {
@@ -34,52 +31,32 @@ function read(): VolumeState {
   }
 }
 
-function write(next: VolumeState): void {
-  snapshot = next;
-  try {
+// Two keys, so both are followed across tabs: another tab moved the volume, match it rather
+// than fighting over it.
+const store = createLocalStore<VolumeState>({
+  read,
+  initial: DEFAULT,
+  write: (next) => {
     window.localStorage.setItem(VOLUME_KEY, String(next.volume));
     window.localStorage.setItem(MUTED_KEY, next.muted ? "1" : "0");
-  } catch {
-    // Not being able to remember it is no reason to refuse to change it.
-  }
-  for (const listener of listeners) listener();
-}
+  },
+  keys: [VOLUME_KEY, MUTED_KEY],
+});
 
-/** Another tab moved the volume; match it rather than fighting over it. */
-function onStorage(event: StorageEvent): void {
-  if (event.key !== VOLUME_KEY && event.key !== MUTED_KEY) return;
-  snapshot = read();
-  for (const listener of listeners) listener();
-}
+export const subscribeVolume = store.subscribe;
 
-export function subscribeVolume(listener: () => void): () => void {
-  listeners.add(listener);
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
-}
+/** Lazy so the module stays importable on the server; the same object thereafter, as
+ * `getSnapshot` requires. */
+export const getVolumeSnapshot = store.getSnapshot;
 
-export function getVolumeSnapshot(): VolumeState {
-  // Lazy so the module stays importable on the server; the same object thereafter,
-  // as getSnapshot requires.
-  if (!loaded) {
-    loaded = true;
-    snapshot = read();
-  }
-  return snapshot;
-}
-
-export function getVolumeServerSnapshot(): VolumeState {
-  return DEFAULT;
-}
+export const getVolumeServerSnapshot = store.getServerSnapshot;
 
 /** Sets the level. Unmutes, because that is what moving a slider means. */
 export function writeVolume(level: number): void {
-  write({ volume: Math.round(Math.min(100, Math.max(0, level))), muted: false });
+  store.save({ volume: Math.round(Math.min(100, Math.max(0, level))), muted: false });
 }
 
 export function writeMuteToggle(): void {
-  write({ ...getVolumeSnapshot(), muted: !getVolumeSnapshot().muted });
+  const current = getVolumeSnapshot();
+  store.save({ ...current, muted: !current.muted });
 }

@@ -7,8 +7,7 @@
  * songs, not references, so a saved list renders and plays with no network at all.
  */
 
-import { useSyncExternalStore } from "react";
-
+import { createLocalStore, useLocalStore } from "../local-store.ts";
 import type { Song } from "../types";
 
 export interface LocalPlaylist {
@@ -42,8 +41,6 @@ const KEY = "timbre:playlists";
 const EMPTY: PlaylistsState = { playlists: null, settled: false, error: null };
 
 let all: LocalPlaylist[] = [];
-let snapshot: PlaylistsState = EMPTY;
-const listeners = new Set<() => void>();
 
 function summarise(playlist: LocalPlaylist): PlaylistSummary {
   return {
@@ -59,29 +56,15 @@ function summarise(playlist: LocalPlaylist): PlaylistSummary {
   };
 }
 
-/** Republishes, most recently touched first. `error` is a parameter rather than hard-coded
- * `null`, which silently undid the quota message `persist` had just set — running out of
- * storage looked exactly like success until the next reload. */
-function publish(error: string | null = null): void {
-  snapshot = {
+/** The state for the playlists in hand, most recently touched first. */
+function state(error: string | null): PlaylistsState {
+  return {
     playlists: [...all]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map(summarise),
     settled: true,
     error,
   };
-  for (const listener of listeners) listener();
-}
-
-function persist(): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(all));
-  } catch {
-    // Quota. Reported, not swallowed: the change is in memory but will not survive a reload.
-    publish("Out of browser storage. Remove a playlist, or a profile picture.");
-    return;
-  }
-  publish();
 }
 
 function readStorage(): LocalPlaylist[] {
@@ -105,54 +88,37 @@ function readStorage(): LocalPlaylist[] {
   }
 }
 
-function onStorage(event: StorageEvent): void {
-  if (event.key !== KEY) return;
-  all = readStorage();
-  publish();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
-}
-
-function getSnapshot(): PlaylistsState {
-  /* Read here rather than from an effect: the read is synchronous, but from `useEffect` it
-   * lands after the first paint, so the library painted an empty grid first. It happens
-   * once and every later call returns the identical object, which is
-   * `useSyncExternalStore`'s stability contract. No `publish()` — notifying React while it
-   * asks for a snapshot is a render-phase side effect. */
-  if (!snapshot.settled) {
+// The lazy read fills `all` as well as the snapshot, so a cross-tab write refreshes both.
+// `EMPTY` is not settled, which is what marks the store unread.
+const store = createLocalStore<PlaylistsState>({
+  read: () => {
     all = readStorage();
-    snapshot = {
-      playlists: [...all]
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .map(summarise),
-      settled: true,
-      error: null,
-    };
-  }
-  return snapshot;
-}
+    return state(null);
+  },
+  initial: EMPTY,
+  keys: [KEY],
+});
 
-function getServerSnapshot(): PlaylistsState {
-  return EMPTY;
+/** Writes, then republishes. Published through `state`, so a quota message survives: dropping
+ * it for a hard-coded `null` here made running out of storage look exactly like a successful
+ * save until the next reload. */
+function persist(): void {
+  try {
+    window.localStorage.setItem(KEY, JSON.stringify(all));
+  } catch {
+    // Quota. Reported, not swallowed: the change is in memory but will not survive a reload.
+    store.publish(state("Out of browser storage. Remove a playlist, or a profile picture."));
+    return;
+  }
+  store.publish(state(null));
 }
 
 /** Reads storage once, on mount — the first read cannot happen during render, because the
  * server has no localStorage. */
-export function loadPlaylists(): void {
-  if (snapshot.settled) return;
-  all = readStorage();
-  publish();
-}
+export const loadPlaylists = store.load;
 
 export function usePlaylists(): PlaylistsState {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return useLocalStore(store);
 }
 
 /** One playlist in full, or null. Returns songs, unlike the summaries. */

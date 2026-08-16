@@ -4,7 +4,7 @@
 // id seeds the avatar's colour, so it stays stable for as long as the browser keeps its
 // data. Generated once, never sent anywhere.
 
-import { useSyncExternalStore } from "react";
+import { createLocalStore, useLocalStore } from "../local-store.ts";
 
 import { monogram } from "./avatar";
 
@@ -36,15 +36,7 @@ function recordMonogram(profile: LocalProfile): void {
 // from the browser's on the first paint; empty means "not loaded yet".
 const EMPTY: LocalProfile = { id: "", name: null };
 
-let snapshot: LocalProfile = EMPTY;
-let loaded = false;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
-}
-
-function read(): LocalProfile {
+function readStorage(): LocalProfile {
   try {
     let id = window.localStorage.getItem(ID_KEY);
     if (!id) {
@@ -58,46 +50,31 @@ function read(): LocalProfile {
   }
 }
 
-// Another tab renamed the profile; follow it. Without this a rename left other tabs on
-// the old name, then wrote from one of them against a stale snapshot.
-function onStorage(event: StorageEvent): void {
-  if (event.key !== NAME_KEY && event.key !== ID_KEY) return;
-  loaded = true;
-  snapshot = read();
-  recordMonogram(snapshot);
-  emit();
+/** Every read records the monogram, so a cross-tab rename updates it too — not only the
+ * first read. */
+function read(): LocalProfile {
+  const profile = readStorage();
+  recordMonogram(profile);
+  return profile;
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
-}
-
-function getSnapshot(): LocalProfile {
-  if (!loaded) {
-    loaded = true;
-    snapshot = read();
+// Both keys are followed: another tab renamed the profile, and without that a rename left
+// other tabs on the old name, then wrote from one of them against a stale snapshot.
+const store = createLocalStore<LocalProfile>({
+  read,
+  initial: EMPTY,
+  keys: [ID_KEY, NAME_KEY],
+  onFirstRead: (profile) => {
     // Backfilled for anyone named before the cookie existed, on the first read so it is
     // written before the next navigation asks for HTML.
-    if (snapshot.name && !document.cookie.includes(`${NAME_COOKIE}=`)) {
-      writeNameCookie(snapshot.name);
+    if (profile.name && !document.cookie.includes(`${NAME_COOKIE}=`)) {
+      writeNameCookie(profile.name);
     }
-    // Likewise the monogram, so an existing profile gets it on the next load.
-    recordMonogram(snapshot);
-  }
-  return snapshot;
-}
-
-function getServerSnapshot(): LocalProfile {
-  return EMPTY;
-}
+  },
+});
 
 export function useLocalProfile(): LocalProfile {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return useLocalStore(store);
 }
 
 // The name, in a cookie as well as in storage — the one thing that lets the server render
@@ -131,7 +108,8 @@ export function setDisplayName(name: string): void {
     // Not being able to remember it is no reason to refuse to change it.
   }
   writeNameCookie(trimmed || null);
-  snapshot = { ...getSnapshot(), name: trimmed || null };
-  recordMonogram(snapshot);
-  emit();
+  // Published rather than saved: the keys are written above, one of them by removal.
+  const next = { ...store.getSnapshot(), name: trimmed || null };
+  recordMonogram(next);
+  store.publish(next);
 }
