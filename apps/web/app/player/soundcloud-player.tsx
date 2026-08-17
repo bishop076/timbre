@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 
 // The SoundCloud HTML5 Widget player, embedded unmodified. Mirrors `youtube-player.tsx`,
 // including the parts that look paranoid: the widget *replaces* the iframe it is given, so
@@ -103,7 +103,7 @@ export function SoundCloudPlayer({
     handleError,
     registerToggle,
     registerSeek,
-  } = usePlayer();
+  } = usePlayerControls();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<SCWidget | null>(null);

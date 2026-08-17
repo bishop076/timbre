@@ -6,14 +6,14 @@ import { AddToPlaylist } from "../playlists/add-to-playlist";
 import type { Song, SongsResponse } from "../types";
 import { QueueRow } from "./now-playing";
 import { Empty } from "./panel-tabs";
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 
 /**
  * What else sounds like this. Distinct from Up Next — the queue is what *will* play, this
  * is what *could*, and nothing is queued until picked. See docs/RECOMMENDATIONS.md.
  */
 export function RelatedPanel() {
-  const { current, play, queue } = usePlayer();
+  const { current, play, queue } = usePlayerControls();
   // Stored with its seed, so "loading" is derived rather than a second state.
   const [found, setFound] = useState<{ seed: string; songs: Song[] } | null>(null);
 

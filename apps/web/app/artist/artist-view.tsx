@@ -9,7 +9,7 @@ import { Artwork } from "../artwork";
 import { Shelf } from "../shelf";
 import { ExternalIcon, NoteIcon, PlayIcon } from "../icons";
 import { AddToQueue } from "../player/add-to-queue";
-import { usePlayer } from "../player/player-context";
+import { usePlayerControls } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { SongRow } from "../song-row";
 import { sourceStyle } from "../sources";
@@ -56,7 +56,7 @@ export function ArtistView({
   releases: Release[];
   related: RelatedArtist[];
 }) {
-  const { play, current, state } = usePlayer();
+  const { play, current, state } = usePlayerControls();
 
   // Ten, then a button: forty rows pushed the discography below where anyone looked.
   const [showAll, setShowAll] = useState(false);

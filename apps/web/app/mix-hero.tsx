@@ -2,13 +2,13 @@
 
 import { Artwork } from "./artwork";
 import { PlayIcon } from "./icons";
-import { usePlayer } from "./player/player-context";
+import { usePlayerControls } from "./player/player-context";
 import type { Song } from "./types";
 
 /** The phone's home screen: one mix, one button, with the shelves after it. `lg:hidden` —
  * on a desktop this is a large empty banner where a wall of covers belongs. */
 export function MixHero({ songs, personal }: { songs: Song[]; personal: boolean }) {
-  const { play } = usePlayer();
+  const { play } = usePlayerControls();
 
   // The shelves below still render, so this is a missing flourish, not an empty page.
   if (songs.length === 0) return null;
