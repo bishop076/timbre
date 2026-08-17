@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { clearEverything } from "../clear-storage";
 import {
@@ -334,45 +333,33 @@ function Planned({ children }: { children: React.ReactNode }) {
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<SectionId>(SECTIONS[0].id);
+  const dialog = useRef<HTMLDialogElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
 
   const active = SECTIONS.find((entry) => entry.id === section) ?? SECTIONS[0];
 
-  // Focus returns to the trigger, or the next Tab starts from the top of the document.
+  // `showModal()` is where the top layer, the `::backdrop`, Escape, the focus trap and focus
+  // back to the trigger come from. Not the scroll lock: no engine blocks the document for
+  // `dialog:modal`, and a wheel over the backdrop would move the page behind it.
   useEffect(() => {
-    if (!open) return;
+    const el = dialog.current;
+    if (!open || !el) return;
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      setOpen(false);
-      trigger.current?.focus();
-    };
+    el.showModal();
+    // Or the dialog focusing steps land on the first rail button and ring it.
+    panel.current?.focus();
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
-
-  // A wheel over the backdrop would move the page behind, so closing would return you
-  // somewhere you never chose.
-  useEffect(() => {
-    if (!open) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
+      el.close();
     };
-  }, [open]);
-
-  useEffect(() => {
-    if (open) panel.current?.focus();
   }, [open]);
 
   return (
     <>
       <button
-        ref={trigger}
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
@@ -383,99 +370,99 @@ export function SettingsPanel() {
         <SettingsIcon className="size-4" />
       </button>
 
-      {open &&
-        typeof document !== "undefined" &&
-        createPortal(
+      {/* `open:flex`, not `flex`: an author `display` beats the UA's
+          `dialog:not([open]) { display: none }` and would leave this over the page.
+          `::backdrop` does not inherit at this project's floor, so its tint is literal. */}
+      <dialog
+        ref={dialog}
+        aria-modal="true"
+        aria-label="Settings"
+        // Every close goes through the element and comes back as `close`, so the dialog is
+        // already hidden by the time React drops the panel.
+        onClose={() => setOpen(false)}
+        // Target-checked, so a drag ending out here is not a dismissal.
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) event.currentTarget.close();
+        }}
+        className="fixed inset-0 size-full max-h-none max-w-none items-end justify-center overflow-hidden bg-transparent p-0 text-[var(--fg)] backdrop:bg-[rgb(0_0_0/50%)] backdrop:backdrop-blur-[8px] open:flex sm:items-center sm:p-6"
+      >
+        {/* A definite 32rem height, not a maximum: sized to content the dialog grew
+            and shrank between sections, so the rail jumped and the close button moved
+            out from under the pointer. The scroll lives on the pane. */}
+        {open && (
           <div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-6"
-            // Target-checked, so a drag ending out here is not a dismissal.
-            onPointerDown={(event) => {
-              if (event.target === event.currentTarget) setOpen(false);
-            }}
+            ref={panel}
+            tabIndex={-1}
+            className="slab @container flex max-h-[85dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[var(--r-lg)] bg-[var(--surface-1)] outline-none sm:h-[32rem] sm:flex-row sm:rounded-[var(--r-lg)]"
           >
-            {/* A definite 32rem height, not a maximum: sized to content the dialog grew
-                and shrank between sections, so the rail jumped and the close button moved
-                out from under the pointer. The scroll lives on the pane. */}
-            <div
-              ref={panel}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Settings"
-              tabIndex={-1}
-              className="slab @container flex max-h-[85dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[var(--r-lg)] bg-[var(--surface-1)] outline-none sm:h-[32rem] sm:flex-row sm:rounded-[var(--r-lg)]"
+            {/* Separated by tone, not a rule. A row of chips on a phone, since a
+                vertical list above the content would push the controls off the
+                bottom of the sheet. */}
+            <nav
+              aria-label="Settings sections"
+              className="shelf flex shrink-0 gap-1 overflow-x-auto bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-visible sm:p-3"
             >
-              {/* Separated by tone, not a rule. A row of chips on a phone, since a
-                  vertical list above the content would push the controls off the
-                  bottom of the sheet. */}
-              <nav
-                aria-label="Settings sections"
-                className="shelf flex shrink-0 gap-1 overflow-x-auto bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-visible sm:p-3"
-              >
-                  {SECTIONS.map((entry) => {
-                    const selected = entry.id === active.id;
-                    return (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={() => setSection(entry.id)}
-                        aria-current={selected ? "true" : undefined}
-                        className={`press flex shrink-0 items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition sm:w-full ${
-                          selected
-                            ? "slab-sm text-[var(--accent-fg)]"
-                            : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
-                        }`}
-                        style={selected ? { background: "var(--accent)" } : undefined}
-                      >
-                        <entry.Icon className="size-4 shrink-0" />
-                        {entry.label}
-                      </button>
-                    );
-                  })}
-
-                  {/* `mt-auto` rather than a spacer element, and a no-op in the
-                      horizontal layout. */}
-                <div className="flex shrink-0 items-center gap-2.5 sm:mt-auto sm:px-1 sm:pt-4">
-                  <a
-                    href={REPO}
-                    target="_blank"
-                    // `noreferrer` too, or the new tab gets a reference back to this one.
-                    rel="noopener noreferrer"
-                    aria-label="Timbre on GitHub"
-                    title="Timbre on GitHub"
-                    className="press flex size-7 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--fg-faint)] transition hover:bg-[var(--surface-3)] hover:text-[var(--fg)]"
-                  >
-                    <GithubIcon className="size-[18px]" />
-                  </a>
-                  <p className="whitespace-nowrap font-mono text-[11px] text-[var(--fg-faint)]">
-                    {VERSION}
-                  </p>
-                </div>
-              </nav>
-
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-1 pt-4 sm:px-6 sm:pt-5">
-                  <h2 className="text-xl font-extrabold tracking-tight">{active.label}</h2>
+              {SECTIONS.map((entry) => {
+                const selected = entry.id === active.id;
+                return (
                   <button
+                    key={entry.id}
                     type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      trigger.current?.focus();
-                    }}
-                    aria-label="Close settings"
-                    className="press -mr-1 flex size-8 shrink-0 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] transition hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                    onClick={() => setSection(entry.id)}
+                    aria-current={selected ? "true" : undefined}
+                    className={`press flex shrink-0 items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition sm:w-full ${
+                      selected
+                        ? "slab-sm text-[var(--accent-fg)]"
+                        : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                    }`}
+                    style={selected ? { background: "var(--accent)" } : undefined}
                   >
-                    <CloseIcon className="size-4" />
+                    <entry.Icon className="size-4 shrink-0" />
+                    {entry.label}
                   </button>
-                </div>
+                );
+              })}
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-2 sm:px-6">
-                  {active.render()}
-                </div>
+              {/* `mt-auto` rather than a spacer element, and a no-op in the
+                  horizontal layout. */}
+              <div className="flex shrink-0 items-center gap-2.5 sm:mt-auto sm:px-1 sm:pt-4">
+                <a
+                  href={REPO}
+                  target="_blank"
+                  // `noreferrer` too, or the new tab gets a reference back to this one.
+                  rel="noopener noreferrer"
+                  aria-label="Timbre on GitHub"
+                  title="Timbre on GitHub"
+                  className="press flex size-7 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--fg-faint)] transition hover:bg-[var(--surface-3)] hover:text-[var(--fg)]"
+                >
+                  <GithubIcon className="size-[18px]" />
+                </a>
+                <p className="whitespace-nowrap font-mono text-[11px] text-[var(--fg-faint)]">
+                  {VERSION}
+                </p>
+              </div>
+            </nav>
+
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex shrink-0 items-start justify-between gap-4 px-5 pb-1 pt-4 sm:px-6 sm:pt-5">
+                <h2 className="text-xl font-extrabold tracking-tight">{active.label}</h2>
+                <button
+                  type="button"
+                  onClick={() => dialog.current?.close()}
+                  aria-label="Close settings"
+                  className="press -mr-1 flex size-8 shrink-0 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] transition hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                >
+                  <CloseIcon className="size-4" />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-2 sm:px-6">
+                {active.render()}
               </div>
             </div>
-          </div>,
-          document.body,
+          </div>
         )}
+      </dialog>
     </>
   );
 }
