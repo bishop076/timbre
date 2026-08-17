@@ -132,8 +132,15 @@ try {
     if (mono.initial) r.style.setProperty("--avatar-initial", JSON.stringify(mono.initial));
   }
 
-  var name = localStorage.getItem("timbre:profile-name");
-  if (name) r.style.setProperty("--profile-name", JSON.stringify(name));
+  /*
+   * Not "name". This script runs at global scope, where a var of that name IS
+   * window.name -- so assigning null coerced it to the string "null", the guard
+   * below saw a truthy value, and every reader without a saved display name got
+   * --profile-name set to "null". The sidebar rendered the word null until
+   * hydration replaced it. See layout.test.ts.
+   */
+  var saved = localStorage.getItem("timbre:profile-name");
+  if (saved) r.style.setProperty("--profile-name", JSON.stringify(saved));
 
   /*
    * The header's counts, one text node each -- not one sentence. The digits are
