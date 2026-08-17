@@ -21,6 +21,16 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
+/** A pane with one line of explanation instead of content. Lives here because Lyrics and
+ * Related both have four of these and had byte-identical copies. */
+export function Empty({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
+      <p className="text-center text-sm leading-relaxed text-[var(--fg-faint)]">{children}</p>
+    </div>
+  );
+}
+
 export function PanelTabs({ queue }: { queue: ReactNode }) {
   const [active, setActive] = useState<TabId>("queue");
 

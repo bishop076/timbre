@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { formatClock } from "../duration";
 import { ChevronIcon, CheckIcon } from "../icons";
 import type { Song } from "../types";
 import {
@@ -11,6 +12,7 @@ import {
   songKey,
   useLyricsPref,
 } from "./lyrics-prefs";
+import { Empty } from "./panel-tabs";
 import { usePlayer } from "./player-context";
 
 // Lyrics that follow the music: a line is current from its own timestamp until the next,
@@ -253,14 +255,6 @@ export function LyricsPanel() {
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-      <p className="text-center text-sm leading-relaxed text-[var(--fg-faint)]">{children}</p>
-    </div>
-  );
-}
-
 /**
  * The correction bar above the words, collapsed by default. Two fixes, because LRCLIB is
  * wrong in two ways: the wrong song, fixed by choosing another record, and the right words
@@ -406,7 +400,7 @@ function LyricsToolbar({
                       {[
                         option.artistName,
                         option.albumName,
-                        option.duration ? `${Math.floor(option.duration / 60)}:${String(option.duration % 60).padStart(2, "0")}` : null,
+                        option.duration ? formatClock(option.duration) : null,
                         option.synced ? "synced" : "plain",
                       ]
                         .filter(Boolean)

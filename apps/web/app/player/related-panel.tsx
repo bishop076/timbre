@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import type { Song, SongsResponse } from "../types";
 import { QueueRow } from "./now-playing";
+import { Empty } from "./panel-tabs";
 import { usePlayer } from "./player-context";
 
 /**
@@ -80,14 +81,6 @@ export function RelatedPanel() {
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
-      <p className="text-center text-sm leading-relaxed text-[var(--fg-faint)]">{children}</p>
     </div>
   );
 }
