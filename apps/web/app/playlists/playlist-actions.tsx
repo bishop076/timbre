@@ -28,7 +28,6 @@ export function PlaylistActions({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"menu" | "rename" | "confirm">("menu");
   const [draft, setDraft] = useState(name);
-  const [error, setError] = useState<string | null>(null);
 
   // Reopening starts from the menu, never a rename or delete left over from last time.
   // Reset on the way in rather than in an effect watching `open`, which would render the
@@ -38,7 +37,6 @@ export function PlaylistActions({
       if (!was) {
         setMode("menu");
         setDraft(name);
-        setError(null);
       }
       return !was;
     });
@@ -70,7 +68,8 @@ export function PlaylistActions({
   }, [open]);
 
   // The store notifies every view, so only a delete navigates — the page it happened
-  // on just stopped existing.
+  // on just stopped existing. Neither call reports a failure: a quota error is published on
+  // `PlaylistsState.error` and rendered by the views, and this menu closes on submit anyway.
   function submitRename(event: React.FormEvent) {
     event.preventDefault();
     const next = draft.trim();
@@ -183,12 +182,6 @@ export function PlaylistActions({
                 </button>
               </div>
             </div>
-          )}
-
-          {error && (
-            <p role="alert" className="border-t-[length:var(--edge)] border-[var(--ink)] px-3 py-2 text-[11px] text-red-400">
-              {error}
-            </p>
           )}
         </div>
       )}
