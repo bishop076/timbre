@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { createLocalStore, useLocalStore } from "../local-store.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
 import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
@@ -57,6 +58,9 @@ interface PlayerState {
   radio: Song[];
   shuffle: boolean;
   repeat: RepeatMode;
+  /** Whether `next()` would do anything. Derived once here: the two transports each had their
+   * own version, and they disagreed — desktop offered a Next that did nothing at queue end. */
+  hasNext: boolean;
 }
 
 interface PlayerControls extends PlayerState {
@@ -105,6 +109,43 @@ function soundcloudUrlOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
 }
 
+interface PlayModes {
+  shuffle: boolean;
+  repeat: RepeatMode;
+}
+
+const MODES_KEY = "timbre:modes";
+
+/** Referentially stable, and what hydration renders against. */
+const DEFAULT_MODES: PlayModes = { shuffle: false, repeat: "off" };
+
+function readModes(): PlayModes {
+  try {
+    const raw = window.localStorage.getItem(MODES_KEY);
+    if (!raw) return DEFAULT_MODES;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return DEFAULT_MODES;
+
+    const value = parsed as Partial<PlayModes>;
+    return {
+      shuffle: value.shuffle === true,
+      repeat:
+        value.repeat === "all" || value.repeat === "one" ? value.repeat : DEFAULT_MODES.repeat,
+    };
+  } catch {
+    // Private browsing throws rather than returning null; so does malformed JSON.
+    return DEFAULT_MODES;
+  }
+}
+
+// No `keys`: shuffle and repeat steer *this* tab's queue, so following another tab's toggle
+// would reorder playback under the listener. Volume is shared; a traversal mode is not.
+const modeStore = createLocalStore<PlayModes>({
+  read: readModes,
+  initial: DEFAULT_MODES,
+  write: (next) => window.localStorage.setItem(MODES_KEY, JSON.stringify(next)),
+});
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<Song[]>([]);
   const [index, setIndex] = useState(0);
@@ -116,8 +157,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PlayState>("idle");
   const [problem, setProblem] = useState<string | null>(null);
   const [radio, setRadio] = useState<Song[]>([]);
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState<RepeatMode>("off");
+  // Remembered across reloads, like the volume: a listener who shuffles expects to still be
+  // shuffling after a refresh.
+  const { shuffle, repeat } = useLocalStore(modeStore);
   // Played in this shuffle pass. A pass restarts only once every song has played.
   const shuffled = useRef<Set<string>>(new Set());
   const [position, setPosition] = useState(0);
@@ -135,6 +177,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
+  // The song already written to history. Held per id so a pause/resume, or a fall-through to
+  // another copy, does not record twice; see `handleStateChange`.
+  const recorded = useRef<string | null>(null);
 
   const current = queue[index] ?? null;
 
@@ -172,6 +217,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       songRef.current = song;
       candidates.current = [];
       attempted.current = new Set();
+      // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
+      // per-id guard otherwise swallowed every play after the first.
+      recorded.current = null;
       setPosition(0);
       setDuration(0);
       setActiveSource(null);
@@ -236,18 +284,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [load],
   );
 
+  // Entry points overlap, and a duplicate breaks shuffle's "played once" bookkeeping.
+  const unqueued = useCallback(
+    (additions: Song[]) => {
+      const known = new Set(queue.map((song) => song.id));
+      return additions.filter((song) => !known.has(song.id));
+    },
+    [queue],
+  );
+
+  /** Positions still unplayed in this shuffle pass, the current song excluded. */
+  const unplayed = useCallback(
+    () =>
+      queue
+        .map((song, position) => ({ song, position }))
+        .filter(({ song, position }) => position !== index && !shuffled.current.has(song.id)),
+    [queue, index],
+  );
+
   // Null at queue end. Repeat and shuffle resolve here, so manual skip and auto-advance
   // can never disagree about what "next" means.
   const nextIndex = useCallback((): number | null => {
     if (queue.length === 0) return null;
 
     if (shuffle) {
-      const unplayed = queue
-        .map((song, position) => ({ song, position }))
-        .filter(({ song, position }) => position !== index && !shuffled.current.has(song.id));
-
-      if (unplayed.length > 0) {
-        return unplayed[Math.floor(Math.random() * unplayed.length)]!.position;
+      const pool = unplayed();
+      if (pool.length > 0) {
+        return pool[Math.floor(Math.random() * pool.length)]!.position;
       }
       if (repeat === "all") {
         shuffled.current = new Set();
@@ -258,52 +321,77 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     if (index + 1 < queue.length) return index + 1;
     return repeat === "all" ? 0 : null;
-  }, [queue, index, shuffle, repeat]);
+  }, [queue, index, shuffle, repeat, unplayed]);
 
-  const next = useCallback(() => {
-    // A skip counts as a turn, or it is drawn again at once — and `handleEnded` marks the
-    // songs that finish, so the two would disagree about "played".
-    const playing = queue[index];
-    if (playing) shuffled.current.add(playing.id);
+  // Mirrors `advance` rather than calling `nextIndex`: drawing a song picks one at random and
+  // resets the shuffle pass, which is no business of a disabled check. `repeat === "one"` is
+  // deliberately absent — `nextIndex` does not special-case it, so at queue end with nothing
+  // to blend a Next button that claimed to work did nothing at all.
+  const hasNext = useMemo(() => {
+    if (queue.length === 0) return false;
+    if (repeat === "all") return true;
+    // The pass is a ref, and reading one while rendering is normally stale by design. It is
+    // safe here and only here: it changes only alongside `index`, `queue` or `shuffle`, all of
+    // which this memo already depends on, so the button cannot be left behind.
+    // eslint-disable-next-line react-hooks/refs
+    if (shuffle ? unplayed().length > 0 : index + 1 < queue.length) return true;
+    return unqueued(radio).length > 0;
+  }, [index, queue, radio, repeat, shuffle, unplayed, unqueued]);
 
-    const target = nextIndex();
-    if (target === null) {
-      const known = new Set(queue.map((song) => song.id));
-      const fresh = radio.filter((song) => !known.has(song.id));
-      if (fresh.length === 0) return;
+  /**
+   * One step forward, for a skip and for a track that ended alike: they were two copies of
+   * this sequence and drifted. `fromEnd` is the only real difference — a skip that can go
+   * nowhere leaves the song playing, while playback that ran out of queue has stopped.
+   *
+   * `goTo` reads the queue inside a `setQueue` updater, which React runs in order, so it sees
+   * songs appended just above.
+   */
+  const advance = useCallback(
+    (fromEnd: boolean) => {
+      // A turn is spent whether the song finished or was skipped past, or shuffle draws it
+      // again at once.
+      const playing = queue[index];
+      if (playing) shuffled.current.add(playing.id);
+
+      const target = nextIndex();
+      if (target !== null) {
+        goTo(target);
+        return;
+      }
+
+      const fresh = unqueued(radio);
+      if (fresh.length === 0) {
+        if (fromEnd) setState("idle");
+        return;
+      }
+
       setQueue((current) => [...current, ...fresh]);
       setRadio([]);
       // Where the old queue ended, *not* `index + 1`. Those match only when the
       // current song is last — in shuffle a spent pass returns null from any
       // position, so `index + 1` landed on a played song and left the radio unplayed.
       goTo(queue.length);
-      return;
-    }
-    goTo(target);
-  }, [goTo, index, nextIndex, queue, radio]);
+    },
+    [goTo, index, nextIndex, queue, radio, unqueued],
+  );
+
+  const next = useCallback(() => advance(false), [advance]);
 
   const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
 
   const toggleShuffle = useCallback(() => {
-    setShuffle((on) => {
-      // A fresh pass on each switch-on, or half the queue stays unreachable.
-      shuffled.current = new Set();
-      return !on;
-    });
+    const modes = modeStore.getSnapshot();
+    // A fresh pass on each switch-on, or half the queue stays unreachable.
+    shuffled.current = new Set();
+    modeStore.save({ ...modes, shuffle: !modes.shuffle });
   }, []);
 
   const cycleRepeat = useCallback(() => {
-    setRepeat((mode) => (mode === "off" ? "all" : mode === "all" ? "one" : "off"));
+    const modes = modeStore.getSnapshot();
+    const mode: RepeatMode =
+      modes.repeat === "off" ? "all" : modes.repeat === "all" ? "one" : "off";
+    modeStore.save({ ...modes, repeat: mode });
   }, []);
-
-  // Entry points overlap, and a duplicate breaks shuffle's "played once" bookkeeping.
-  const unqueued = useCallback(
-    (additions: Song[]) => {
-      const known = new Set(queue.map((song) => song.id));
-      return additions.filter((song) => !known.has(song.id));
-    },
-    [queue],
-  );
 
   const stop = useCallback(() => {
     resolving.current?.abort();
@@ -441,9 +529,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setDuration(total);
   }, []);
 
-  // On "playing": `load` counts copies that refused and `handleEnded` misses skips. The
-  // ref stops a pause/resume recording twice.
-  const recorded = useRef<string | null>(null);
+  // On "playing": `load` counts copies that refused and `handleEnded` misses skips.
   const handleStateChange = useCallback(
     (next: PlayState) => {
       setState(next);
@@ -507,36 +593,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [attempt, attemptSoundCloud, findCandidates],
   );
 
-  // Continues into the recommendations at queue end. `goTo` reads the queue inside a
-  // `setQueue` updater, which React runs in order, so it sees the appended songs.
   const handleEnded = useCallback(() => {
-    // Repeat-one ignores the queue entirely.
+    // Repeat-one ignores the queue entirely; everything else is `advance`, which also
+    // continues into the recommendations at queue end.
     if (repeat === "one") {
       goTo(index);
       return;
     }
-
-    const current = queue[index];
-    if (current) shuffled.current.add(current.id);
-
-    const target = nextIndex();
-    if (target !== null) {
-      goTo(target);
-      return;
-    }
-
-    const known = new Set(queue.map((song) => song.id));
-    const fresh = radio.filter((song) => !known.has(song.id));
-    if (fresh.length === 0) {
-      setState("idle");
-      return;
-    }
-
-    setQueue((current) => [...current, ...fresh]);
-    setRadio([]);
-    // Where the old queue ended. See `next` for why this is not `index + 1`.
-    goTo(queue.length);
-  }, [goTo, nextIndex, queue, radio, repeat, index]);
+    advance(true);
+  }, [advance, goTo, index, repeat]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
@@ -565,6 +630,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       radio,
       shuffle,
       repeat,
+      hasNext,
       play,
       enqueue,
       removeAt,
@@ -606,6 +672,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       radio,
       shuffle,
       repeat,
+      hasNext,
       play,
       enqueue,
       removeAt,
