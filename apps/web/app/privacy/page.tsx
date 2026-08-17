@@ -47,7 +47,7 @@ export default function PrivacyPage() {
           name you chose. It exists so your own name is in the page the first time it
           paints instead of appearing a moment later. Being a cookie, it is sent to this
           site with every request — nothing else Timbre stores is. It is first-party,
-          holds nothing but that name, and you can erase it from Settings.
+          holds nothing but that name, and clearing your display name clears it too.
         </p>
         <p>Two consequences follow, and both cut in your favour and against it:</p>
         <ul className="ml-4 list-disc space-y-2 marker:text-[var(--fg-faint)]">
