@@ -6,6 +6,8 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
+import { createNotifier } from "../local-store.ts";
+
 export type ImageKind = "avatar" | "banner";
 
 export interface LocalImages {
@@ -17,23 +19,16 @@ export interface LocalImages {
 
 const DB_NAME = "timbre";
 const DB_VERSION = 1;
+
+// Keyed by the kind alone, never `<userId>:<kind>`: the profile id is generated locally and
+// regenerates, and an id in the key made every picture unreachable when it changed.
 const STORE = "images";
 
 const EMPTY: LocalImages = { loaded: false, avatar: null, banner: null };
 
 let snapshot: LocalImages = EMPTY;
 let loading: Promise<void> | null = null;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
-}
-
-// The key is the kind alone, never `<userId>:<kind>`: the profile id is generated locally
-// and regenerates, and an id in the key made every picture unreachable when it changed.
-function keyFor(kind: ImageKind): string {
-  return kind;
-}
+const { emit, subscribe } = createNotifier(onStorage);
 
 // One connection, reused: open connections block a version upgrade, so a `DB_VERSION`
 // bump would hang against handles nothing can close. Eviction closes it and drops the
@@ -99,48 +94,6 @@ async function decoded(url: string | null): Promise<void> {
   }
 }
 
-// Adopts pictures earlier versions left behind: localStorage data URLs keyed
-// `timbre:profile:<kind>:<userId>`, and IndexedDB blobs keyed `<userId>:<kind>`, stranded
-// when profile ids were regenerated. Any id matches.
-async function adoptOrphans(missing: ImageKind[]): Promise<boolean> {
-  let adopted = false;
-
-  for (const kind of missing) {
-    const keys = await run<IDBValidKey[]>("readonly", (store) => store.getAllKeys());
-    const composite = keys.find(
-      (key) => typeof key === "string" && key.endsWith(`:${kind}`),
-    );
-    if (typeof composite === "string") {
-      const blob = await run<Blob | undefined>("readonly", (store) => store.get(composite));
-      if (blob) {
-        await run("readwrite", (store) => store.put(blob, keyFor(kind)));
-        await run("readwrite", (store) => store.delete(composite));
-        adopted = true;
-        continue;
-      }
-    }
-
-    try {
-      const legacy = Object.keys(window.localStorage).find((key) =>
-        key.startsWith(`timbre:profile:${kind}:`),
-      );
-      if (!legacy) continue;
-
-      const dataUrl = window.localStorage.getItem(legacy);
-      if (!dataUrl) continue;
-
-      const blob = await (await fetch(dataUrl)).blob();
-      await run("readwrite", (store) => store.put(blob, keyFor(kind)));
-      window.localStorage.removeItem(legacy);
-      adopted = true;
-    } catch {
-      // Leave the old value alone; it will be retried on the next load.
-    }
-  }
-
-  return adopted;
-}
-
 /** Reads both pictures once. Concurrent callers share the same attempt. */
 function load(): Promise<void> {
   if (loading) return loading;
@@ -148,23 +101,10 @@ function load(): Promise<void> {
 
   loading = (async () => {
     try {
-      // Read first, migrate only if something is missing: the other order put two
-      // `getAllKeys` scans and a `localStorage` sweep in front of every load.
-      let [avatar, banner] = await Promise.all([
-        run<Blob | undefined>("readonly", (store) => store.get(keyFor("avatar"))),
-        run<Blob | undefined>("readonly", (store) => store.get(keyFor("banner"))),
+      const [avatar, banner] = await Promise.all([
+        run<Blob | undefined>("readonly", (store) => store.get("avatar")),
+        run<Blob | undefined>("readonly", (store) => store.get("banner")),
       ]);
-
-      const missing = (["avatar", "banner"] as const).filter((kind) =>
-        kind === "avatar" ? !avatar : !banner,
-      );
-
-      if (missing.length > 0 && (await adoptOrphans(missing))) {
-        [avatar, banner] = await Promise.all([
-          run<Blob | undefined>("readonly", (store) => store.get(keyFor("avatar"))),
-          run<Blob | undefined>("readonly", (store) => store.get(keyFor("banner"))),
-        ]);
-      }
 
       // Decoded before publishing — publishing first produced the flicker.
       const nextAvatar = avatar ? URL.createObjectURL(avatar) : null;
@@ -205,15 +145,6 @@ function onStorage(event: StorageEvent): void {
   // `load()` returns early once settled, so the flag has to come down first.
   snapshot = { ...snapshot, loaded: false };
   void load();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
 }
 
 // A small copy of each picture, read on the first render — IndexedDB cannot be, so the
@@ -346,7 +277,7 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
   await writeThumb(kind, blob);
 
   try {
-    await run("readwrite", (store) => store.put(blob, keyFor(kind)));
+    await run("readwrite", (store) => store.put(blob, kind));
   } catch (cause) {
     // Rolled back: the thumbnail is written first, so a failed save would leave a small
     // copy of a picture that was never stored — painted on the next load, then taken away
@@ -380,7 +311,7 @@ export function clearLocalImage(kind: ImageKind): void {
   };
   emit();
 
-  void run("readwrite", (store) => store.delete(keyFor(kind))).catch(() => {
+  void run("readwrite", (store) => store.delete(kind)).catch(() => {
     // Nothing stored means nothing to remove.
   });
 }
