@@ -90,9 +90,30 @@ export function nextVersion(current, bump) {
   return `${major}.${minor}.${patch + 1}`;
 }
 
-/** A date the way the existing changelog writes them: "17 August 2026". */
-function humanDate(now) {
-  return now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/**
+ * A date the way the changelog writes them: "17 August 2026".
+ *
+ * **Takes the ISO string's own date, not a Date's.** A commit timestamp carries the
+ * author's offset, and `toLocaleDateString` re-expresses it in whatever zone the
+ * process is in — which on a runner is UTC. So a commit made at 00:44 +0700 came out
+ * dated the day before, and this project's history is mostly late-night work, so that
+ * was going to be wrong more often than right. The calendar date somebody was living
+ * in when they committed is the one that belongs in a changelog.
+ */
+export function humanDate(when) {
+  const iso = typeof when === "string" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(when) : null;
+  if (iso) {
+    const [, year, month, day] = iso;
+    return `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`;
+  }
+  // No timestamp given: a local run, where the local zone is the right answer.
+  const date = when instanceof Date ? when : new Date();
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 /**
@@ -183,7 +204,9 @@ function main() {
 
   const version = nextVersion(current, bump);
   // Passed in by the workflow so a re-run produces the same notes; local runs use now.
-  const now = process.env.RELEASE_DATE ? new Date(process.env.RELEASE_DATE) : new Date();
+  // The raw ISO string, not a Date: it carries the author's offset, and humanDate
+  // reads the calendar date out of it rather than re-expressing it in the runner's.
+  const now = process.env.RELEASE_DATE || new Date();
   const section = notesFor(commits, version, now);
 
   console.log(`decision       ${bump} -> ${version}`);

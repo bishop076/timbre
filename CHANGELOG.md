@@ -1,13 +1,16 @@
 # Changelog
 
-What changed in Timbre, written for whoever is listening to it rather than for whoever
-built it. Timbre has one tagged version, `0.1.0`; the entries under it are dated
-development milestones from the week before it, newest first.
+What changed in Timbre, newest first.
+
+The dated sections below `0.1.0` are development milestones from the fortnight before
+the first release, written for whoever is listening to Timbre rather than whoever built
+it. Everything from `0.1.1` onwards is generated from the commit log when a release is
+cut, so it is briefer and closer to the language of the change itself.
 
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
-## 0.1.1 — 17 August 2026
+## 0.1.1 — 18 August 2026
 
 ### Fixed
 
