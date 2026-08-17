@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MoreIcon, PencilIcon, TrashIcon } from "../icons";
 import { deletePlaylist, renamePlaylist } from "./store";
@@ -24,10 +24,18 @@ export function PlaylistActions({
   const router = useRouter();
   const root = useRef<HTMLDivElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"menu" | "rename" | "confirm">("menu");
   const [draft, setDraft] = useState(name);
+
+  // Escape and both forms remove the node holding focus, and the next Tab would restart at
+  // the top of the document. An outside click is left alone, having moved focus itself.
+  const close = useCallback(() => {
+    setOpen(false);
+    trigger.current?.focus();
+  }, []);
 
   // Reopening starts from the menu, never a rename or delete left over from last time.
   // Reset on the way in rather than in an effect watching `open`, which would render the
@@ -55,7 +63,7 @@ export function PlaylistActions({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        setOpen(false);
+        close();
       }
     };
 
@@ -65,7 +73,7 @@ export function PlaylistActions({
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [open, close]);
 
   // The store notifies every view, so only a delete navigates — the page it happened
   // on just stopped existing. Neither call reports a failure: a quota error is published on
@@ -74,18 +82,19 @@ export function PlaylistActions({
     event.preventDefault();
     const next = draft.trim();
     if (next && next !== name) renamePlaylist(id, next);
-    setOpen(false);
+    close();
   }
 
   function confirmDelete() {
     deletePlaylist(id);
-    setOpen(false);
+    close();
     if (onDeletedGoTo) router.push(onDeletedGoTo);
   }
 
   return (
     <div ref={root} className={`relative ${className ?? ""}`}>
       <button
+        ref={trigger}
         type="button"
         onClick={toggle}
         aria-label={`Actions for ${name}`}
