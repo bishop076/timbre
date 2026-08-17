@@ -7,6 +7,15 @@ development milestones from the week before it, newest first.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.1.1 — 17 August 2026
+
+### Fixed
+
+- **docs** — three references to things that do not exist
+- **release** — a breaking change in a silent type released empty notes
+
+4 further changes under the hood — refactoring, docs and tests.
+
 ## 0.1.0 — 17 August 2026
 
 The first release.
