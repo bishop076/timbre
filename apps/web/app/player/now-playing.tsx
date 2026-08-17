@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { ArtistLink } from "../artist-link";
 
 import { Artwork } from "../artwork";
+import { formatDuration } from "../duration";
 import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon, PlayIcon } from "../icons";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
@@ -21,13 +22,6 @@ const SoundCloudPlayer = dynamic(() =>
   import("./soundcloud-player").then((m) => m.SoundCloudPlayer),
 );
 const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
-
-/** Track length for the credits list. */
-function clock(ms: number | null): string | null {
-  if (ms === null) return null;
-  const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
-}
 
 /** One credit line, absent entirely when the sources do not publish it. */
 function Credit({ label, value, mono }: { label: string; value: string | null; mono?: boolean }) {
@@ -204,8 +198,11 @@ export function NowPlayingPanel() {
     : // Docked on a phone the floating card is the video and nothing else.
       "hidden min-h-0 flex-1 flex-col xl:flex";
 
+  // `inert` alongside `aria-hidden`: neither the closed styles nor `aria-hidden` take this
+  // panel's buttons out of the tab order, so focus used to land in an invisible column. Still
+  // never unmounted — that re-parents the iframe and playback stops.
   return (
-    <aside className={shell} aria-hidden={!open} aria-label="Now playing">
+    <aside className={shell} aria-hidden={!open} inert={!open} aria-label="Now playing">
       <div className={card}>
         <div className={videoBox}>
           {/* Embedding barred by the rights holder cannot be worked around. */}
@@ -372,7 +369,12 @@ export function NowPlayingPanel() {
                     <dl className="space-y-1 text-[11px]">
                       <Credit label="Performed by" value={current.artists.join(", ") || null} />
                       <Credit label="Album" value={current.album} />
-                      <Credit label="Length" value={clock(current.durationMs)} />
+                      {/* Not `formatDuration(null)`'s em dash: an unreported length drops
+                          the row rather than printing a placeholder. */}
+                      <Credit
+                        label="Length"
+                        value={current.durationMs === null ? null : formatDuration(current.durationMs)}
+                      />
                       <Credit label="ISRC" value={current.isrc} mono />
                       <Credit
                         label="Available on"
