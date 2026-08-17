@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ArtistLink } from "./artist-link";
 import { ExternalIcon } from "./icons";
+import { log } from "./logs.ts";
 import { AddToQueue } from "./player/add-to-queue";
 import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
@@ -65,6 +66,15 @@ export function SearchResults() {
         .then((data) => {
           setResults(data);
           setLoading(false);
+
+          const answered = (data.attempted ?? 1) - data.failures.length;
+          log(
+            data.failures.length > 0 ? "warn" : "info",
+            `“${trimmed}” — ${answered}/${data.attempted ?? 1} sources answered, ${data.songs.length} results`,
+          );
+          for (const failure of data.failures) {
+            log("warn", `${failure.source} refused: ${failure.message}`);
+          }
         })
         .catch((cause: unknown) => {
           if (cause instanceof DOMException && cause.name === "AbortError") return;
