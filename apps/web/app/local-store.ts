@@ -6,6 +6,28 @@
 
 import { useSyncExternalStore } from "react";
 
+/** Listeners, the notify, and a `storage` listener attached only while something subscribes. */
+export function createNotifier(onStorage?: (event: StorageEvent) => void) {
+  const listeners = new Set<() => void>();
+
+  return {
+    emit(): void {
+      for (const listener of listeners) listener();
+    },
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      if (onStorage) window.addEventListener("storage", onStorage);
+      return () => {
+        listeners.delete(listener);
+        // Last unsubscribe only: the one handler serves every listener.
+        if (onStorage && listeners.size === 0) {
+          window.removeEventListener("storage", onStorage);
+        }
+      };
+    },
+  };
+}
+
 export interface LocalStoreOptions<T> {
   /** Reads and validates storage. Owns its own try/catch: what a blocked or corrupt read
    * should fall back to differs per store. */
@@ -43,12 +65,12 @@ export function createLocalStore<T>({
 }: LocalStoreOptions<T>): LocalStore<T> {
   let snapshot = initial;
   let loaded = false;
-  const listeners = new Set<() => void>();
+  const notifier = createNotifier(keys ? onStorage : undefined);
 
   function publish(value: T): void {
     loaded = true;
     snapshot = value;
-    for (const listener of listeners) listener();
+    notifier.emit();
   }
 
   /** Another tab wrote one of our keys; follow it rather than diverging. */
@@ -58,14 +80,7 @@ export function createLocalStore<T>({
   }
 
   return {
-    subscribe(listener) {
-      listeners.add(listener);
-      if (keys) window.addEventListener("storage", onStorage);
-      return () => {
-        listeners.delete(listener);
-        if (keys && listeners.size === 0) window.removeEventListener("storage", onStorage);
-      };
-    },
+    subscribe: notifier.subscribe,
 
     getSnapshot() {
       /* Read here rather than from an effect: the read is synchronous, but from `useEffect`
