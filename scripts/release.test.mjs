@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   bumpFor,
+  humanDate,
   nextVersion,
   notesFor,
   parseCommit,
@@ -148,6 +149,35 @@ test("a release can never have an empty body", () => {
       .trim();
     assert.notEqual(body, "", `${subject} released with an empty body`);
   }
+});
+
+test("the date comes from the author's offset, not the runner's zone", () => {
+  /*
+   * The bug this replaces: a commit made at 00:44 +0700 was formatted through a Date
+   * on a UTC runner and dated the previous day. It shipped once — 0.1.1 is stamped
+   * 17 August for work done on the 18th — and this project's history is mostly
+   * late-night, so it would have been wrong more often than right.
+   */
+  assert.equal(humanDate("2026-08-18T00:44:00+07:00"), "18 August 2026");
+  assert.equal(humanDate("2026-08-01T23:59:00+07:00"), "1 August 2026");
+  // The same instant expressed in UTC is a different calendar day, and that is the
+  // point: whichever offset the author committed under is the one that counts.
+  assert.equal(humanDate("2026-08-17T17:44:00Z"), "17 August 2026");
+  assert.equal(humanDate("2026-12-31T23:00:00-05:00"), "31 December 2026");
+});
+
+test("without a timestamp the date is local, for a run on somebody's machine", () => {
+  const now = new Date();
+  const expected = `${now.getDate()} ${
+    ["January","February","March","April","May","June","July","August","September","October","November","December"][now.getMonth()]
+  } ${now.getFullYear()}`;
+  assert.equal(humanDate(undefined), expected);
+  assert.equal(humanDate(new Date("2026-03-09T12:00:00")), "9 March 2026");
+});
+
+test("notesFor accepts the raw ISO string the workflow passes", () => {
+  const notes = notesFor(parse("fix: a bug"), "0.1.2", "2026-08-18T00:44:00+07:00");
+  assert.match(notes, /^## 0\.1\.2 — 18 August 2026$/m);
 });
 
 test("a new section goes above the newest existing release, below the preamble", () => {
