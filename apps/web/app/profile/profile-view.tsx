@@ -274,19 +274,33 @@ export function ProfileView({
                 <div
                   className={`mt-3.5 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1.5 text-sm ${onDark ? "text-white/75" : "text-[var(--fg-dim)]"}`}
                 >
-                  <Stat
-                    value={settled ? playlistCount : null}
-                    slot="playlists"
-                    label="playlist"
-                    onDark={onDark}
+                  <span>
+                    <Replay
+                      slot="count-playlists"
+                      value={settled ? playlistCount.toLocaleString() : null}
+                      className={`font-bold tabular-nums ${onDark ? "text-white" : "text-[var(--fg)]"}`}
+                    />{" "}
+                    <Replay
+                      slot="label-playlists"
+                      value={settled ? plural(playlistCount, "playlist") : null}
+                    />
+                  </span>
+                  {/* The boot script only sets `--count-dot` when it has counts to put
+                      around it: a lone middle dot is a worse frame than nothing. */}
+                  <Replay
+                    slot="count-dot"
+                    value={settled ? "·" : null}
+                    className={onDark ? "text-white/40" : "text-[var(--fg-faint)]"}
+                    decorative
                   />
-                  <Dot shown={settled} onDark={onDark} />
-                  <Stat
-                    value={settled ? songCount : null}
-                    slot="songs"
-                    label="song"
-                    onDark={onDark}
-                  />
+                  <span>
+                    <Replay
+                      slot="count-songs"
+                      value={settled ? songCount.toLocaleString() : null}
+                      className={`font-bold tabular-nums ${onDark ? "text-white" : "text-[var(--fg)]"}`}
+                    />{" "}
+                    <Replay slot="label-songs" value={settled ? plural(songCount, "song") : null} />
+                  </span>
                 </div>
               )}
             </div>
@@ -299,11 +313,12 @@ export function ProfileView({
           Playlists
         </h2>
 
-        {/* Both possible shapes are in the markup and CSS picks the one this browser
-            had last time, via `data-saved`. Skeleton tiles reserve the grid — rendering
-            neither and then inserting one pushed the page down a frame after it had been
-            drawn. A first visit matches neither rule and reserves nothing. */}
-        {!settled && (
+        {/* Exactly one of three. While unsettled, both possible shapes are in the markup
+            and CSS picks the one this browser had last time, via `data-saved`. Skeleton
+            tiles reserve the grid — rendering neither and then inserting one pushed the
+            page down a frame after it had been drawn. A first visit matches neither rule
+            and reserves nothing. */}
+        {!settled ? (
           <>
             <p className="saved-none rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
               Nothing saved yet.
@@ -321,15 +336,13 @@ export function ProfileView({
               ))}
             </ul>
           </>
-        )}
-
-        {settled && playlists?.length === 0 ? (
+        ) : !playlists?.length ? (
           <p className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
             Nothing saved yet.
           </p>
         ) : (
           <ul className="grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
-            {playlists?.map((playlist) => (
+            {playlists.map((playlist) => (
               <li key={playlist.id}>
                 <Link
                   href={`/playlist/${playlist.id}`}
@@ -360,49 +373,27 @@ function plural(value: number, label: string): string {
   return `${label}${value === 1 ? "" : "s"}`;
 }
 
-function replay(source: string): React.CSSProperties {
-  return { "--replay": `var(${source}, "")` } as React.CSSProperties;
-}
-
-// One figure in the header's stats line. `null` means "not counted yet", which is not
-// zero: the nodes are left empty and CSS draws the recorded value in this element.
-function Stat({
-  value,
-  label,
+// One text node of the header's stats line. `null` is "not counted yet", which is not zero:
+// the node is left empty and `.replay` in globals.css draws the recorded value here instead.
+function Replay({
   slot,
-  onDark,
+  value,
+  className = "",
+  decorative = false,
 }: {
-  value: number | null;
-  label: string;
-  /** Which pair of recorded values stands in — see `recordCounts`. */
-  slot: "playlists" | "songs";
-  onDark: boolean;
+  /** The custom property the boot script writes into — see `recordCounts` and `layout.tsx`. */
+  slot: "count-playlists" | "label-playlists" | "count-songs" | "label-songs" | "count-dot";
+  value: string | null;
+  className?: string;
+  decorative?: boolean;
 }) {
   return (
-    <span>
-      <span
-        className={`replay font-bold tabular-nums ${onDark ? "text-white" : "text-[var(--fg)]"}`}
-        style={replay(`--count-${slot}`)}
-      >
-        {value === null ? null : value.toLocaleString()}
-      </span>{" "}
-      <span className="replay" style={replay(`--label-${slot}`)}>
-        {value === null ? null : plural(value, label)}
-      </span>
-    </span>
-  );
-}
-
-// A slot like the figures either side: the boot script only sets `--count-dot` when it
-// has counts to put around it, since a lone middle dot is a worse frame than nothing.
-function Dot({ shown, onDark }: { shown: boolean; onDark: boolean }) {
-  return (
     <span
-      aria-hidden
-      className={`replay ${onDark ? "text-white/40" : "text-[var(--fg-faint)]"}`}
-      style={replay("--count-dot")}
+      aria-hidden={decorative || undefined}
+      className={`replay ${className}`}
+      style={{ "--replay": `var(--${slot}, "")` } as React.CSSProperties}
     >
-      {shown ? "·" : null}
+      {value}
     </span>
   );
 }
