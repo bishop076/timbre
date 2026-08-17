@@ -1,0 +1,106 @@
+# Cuts a release from the commit log, with nobody choosing a version number.
+#
+# Timbre's commits are strict conventional commits, so the types since the last tag
+# already say what kind of release this is. `scripts/release.mjs` reads them, works
+# out the next version, rewrites both manifests and CHANGELOG.md, and this pushes the
+# result and publishes the Release. The arithmetic is tested — see release.test.mjs.
+#
+# A push that contains no `feat`, `fix` or `perf` releases nothing, so a day of
+# refactoring and docs does not mint a version.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# One at a time, and never cancelled: a run that is halfway through pushing a tag
+# must not be killed by the next push. CI cancels its own stale runs; this must not.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Version, changelog and GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # The bump commit is itself a push to main, so without this the workflow would
+    # trigger itself for ever. Two guards rather than one, because they fail
+    # differently: `[skip ci]` is honoured by GitHub before a run is even created,
+    # and the subject check still holds if that behaviour ever changes.
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+
+    permissions:
+      # Pushes the version bump, the tag, and the Release itself.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history, or `git describe` cannot find the last tag and every
+          # release would be computed from the beginning of time.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Same placeholders CI uses. The build must never need real credentials.
+      - name: Write a placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          YTMUSIC_SERVICE_URL=http://127.0.0.1:8787
+          YTMUSIC_SHARED_SECRET=ci-placeholder
+          EOF
+
+      # A release must not ship something red. This repeats CI deliberately: CI runs
+      # on every branch and could be green on a stale commit, and the cost of finding
+      # out here is one job rather than a bad tag nobody can take back.
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+      # The Dockerfile's own comment says an untested escape hatch is worse than none.
+      # Built and thrown away: it proves the container still assembles without
+      # publishing anything anywhere.
+      - name: Build the container, and discard it
+        run: docker build -t timbre:ci-check .
+
+      - name: Work out the version
+        id: version
+        env:
+          # Fixed, so a re-run of the same commit writes the same date.
+          RELEASE_DATE: ${{ github.event.head_commit.timestamp }}
+        run: node scripts/release.mjs
+
+      - name: Commit, tag and push
+        if: steps.version.outputs.released == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json apps/web/package.json CHANGELOG.md
+          git commit -m "chore(release): $VERSION [skip ci]"
+          git tag -a "$TAG" -m "Timbre $VERSION"
+          git push origin HEAD:main --follow-tags
+
+      - name: Publish the Release
+        if: steps.version.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release create "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md
+
+      - name: Say why nothing was released
+        if: steps.version.outputs.released != 'true'
+        run: echo "No feat, fix or perf since the last tag — nothing to release." >> "$GITHUB_STEP_SUMMARY"
