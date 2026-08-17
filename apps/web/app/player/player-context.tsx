@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
+import { log } from "../logs.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
 import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
@@ -582,6 +583,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     async (reason: string, worthRetrying: boolean) => {
       const song = songRef.current;
       if (!worthRetrying || !song) {
+        log("error", `Gave up on ${song ? `“${song.title}”` : "playback"}: ${reason}`);
         setState("unplayable");
         setProblem(reason);
         return;
@@ -599,6 +601,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         const alternative = candidates.current.find((id) => !attempted.current.has(id));
         if (alternative) {
+          log(
+            "warn",
+            `“${song.title}” fell back to another copy (${alternative}) after ${attempted.current.size}: ${reason}`,
+          );
           attempt(alternative);
           return;
         }
@@ -610,10 +616,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // exits above rather than looping back here.
       const soundcloud = soundcloudUrlOf(song);
       if (soundcloud) {
+        log(
+          "warn",
+          `“${song.title}” fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`,
+        );
         attemptSoundCloud(soundcloud);
         return;
       }
 
+      log(
+        "error",
+        `“${song.title}” is unplayable — all ${attempted.current.size} copies block embedding`,
+      );
       setState("unplayable");
       setProblem("Every copy of this song blocks playback outside YouTube.");
     },
