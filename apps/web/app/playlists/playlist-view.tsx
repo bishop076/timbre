@@ -23,7 +23,7 @@ export function PlaylistView({ id }: { id: string }) {
   // not the search store, so returning can't restore a hidden filter.
   const [filter, setFilter] = useState("");
   const { play, current, state } = usePlayerControls();
-  const { settled } = usePlaylists();
+  const { settled, error } = usePlaylists();
   const playlist = usePlaylist(id);
 
   useEffect(() => {
@@ -115,6 +115,18 @@ export function PlaylistView({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      {/*
+        A failed write says so here too, not only in the library.
+        Reordering and removing both persist, and this page did not read the
+        store's error — so on a full browser store a drag appeared to work and
+        was gone on the next load, with nothing said.
+      */}
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-red-400">
+          {error}
+        </p>
+      )}
 
       {/* Ten is where the list stops fitting a phone screen; below that a filter
           costs more attention than the looking it saves. */}
