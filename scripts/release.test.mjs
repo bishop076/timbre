@@ -110,9 +110,44 @@ test("one quiet change is singular", () => {
   assert.match(notes, /1 further change under the hood/);
 });
 
-test("a breaking entry is marked as one", () => {
+test("a breaking entry leads, and is not also listed under its own type", () => {
   const notes = notesFor(parse("feat(api)!: rename a field"), "0.2.0", at);
-  assert.match(notes, /rename a field \(breaking\)/);
+  assert.match(notes, /### Breaking/);
+  assert.match(notes, /- \*\*api\*\* — rename a field/);
+  assert.ok(
+    notes.indexOf("### Breaking") < notes.indexOf("rename a field"),
+    "the entry belongs under the Breaking heading",
+  );
+  assert.doesNotMatch(notes, /### Added/, "it should not appear twice");
+});
+
+test("a release can never have an empty body", () => {
+  /*
+   * bumpFor releases on a breaking change of ANY type, including the silent ones. A
+   * refactor!: alone used to produce notes with no section to hold it — the
+   * quiet-work line excludes breaking commits — so the Release body was a bare
+   * heading. Whatever releases must appear.
+   */
+  const NEWLINE = String.fromCharCode(10);
+  for (const message of [
+    ["refactor: move it", "", "BREAKING CHANGE: the export moved"].join(NEWLINE),
+    "chore!: drop node 20",
+    "feat: something ordinary",
+    "fix: a bug",
+  ]) {
+    const subject = message.split(NEWLINE)[0];
+    const commits = parse(message);
+    const bump = bumpFor(commits, "0.1.0");
+    assert.ok(bump, `${subject} should release`);
+
+    // Everything below the version heading.
+    const body = notesFor(commits, nextVersion("0.1.0", bump), at)
+      .split(NEWLINE)
+      .slice(1)
+      .join(NEWLINE)
+      .trim();
+    assert.notEqual(body, "", `${subject} released with an empty body`);
+  }
 });
 
 test("a new section goes above the newest existing release, below the preamble", () => {
