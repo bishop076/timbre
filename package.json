@@ -11,7 +11,8 @@
     "start": "pnpm --filter @timbre/web start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "_comment_test": "The scripts tests are not in a workspace, so -r would miss them — and scripts/release.mjs is what chooses version numbers unattended.",
+    "test": "pnpm -r test && node --test \"scripts/*.test.mjs\""
   },
   "engines": {
     "node": ">=22"

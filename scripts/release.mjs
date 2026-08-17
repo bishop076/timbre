@@ -1,0 +1,208 @@
+/**
+ * Works out the next version from the commit log, and writes it everywhere.
+ *
+ * Timbre's commits are strict conventional commits, so the version does not need
+ * a human to choose it: the *types* since the last tag already say whether this is
+ * a feature release or a fix. This reads them, bumps `package.json` in both places,
+ * prepends a section to CHANGELOG.md, and prints what the workflow needs to tag and
+ * publish.
+ *
+ * `--dry-run` writes nothing and prints what would happen, which is how to check it
+ * before letting it near a repository.
+ *
+ * Deliberately a script rather than a pile of YAML: the interesting part is the
+ * version arithmetic, and that belongs somewhere it can be read and tested. See
+ * release.test.mjs.
+ */
+
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import path from "node:path";
+
+const ROOT = path.resolve(import.meta.dirname, "..");
+const MANIFESTS = ["package.json", "apps/web/package.json"];
+const CHANGELOG = "CHANGELOG.md";
+
+/** Types that make a release, and the heading each gets in the notes. */
+const RELEASING = {
+  feat: "Added",
+  fix: "Fixed",
+  perf: "Faster",
+};
+
+/*
+ * Types that are real work but change nothing a listener can see, so they must not
+ * cut a release on their own. A docs-only push should not mint a version.
+ */
+const SILENT = ["docs", "chore", "refactor", "test", "ci", "build", "style", "revert"];
+
+const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+
+/** The most recent version tag, or null on a repository that has never released. */
+export function lastTag() {
+  try {
+    return git("describe", "--tags", "--abbrev=0", "--match", "v*") || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One commit, parsed. Returns null for anything that is not a conventional commit —
+ * a merge, or a message written by hand — so it neither bumps nor appears.
+ */
+export function parseCommit(message) {
+  const [subject, ...rest] = message.split("\n");
+  const match = /^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)$/.exec(subject ?? "");
+  if (!match) return null;
+
+  const [, type, scope, bang, description] = match;
+  // Either marker counts: `feat!:` in the subject, or a footer in the body.
+  const breaking = bang === "!" || /^BREAKING[ -]CHANGE:/m.test(rest.join("\n"));
+  return { type, scope: scope ?? null, description, breaking };
+}
+
+/**
+ * Which part of the version moves, or null for "do not release".
+ *
+ * **Below 1.0.0 a breaking change bumps the minor, not the major.** That is the
+ * conventional reading of a 0.x line: 0.x is where the shape is still moving, and
+ * promoting every break to 1.0.0 would say the opposite.
+ */
+export function bumpFor(commits, currentVersion) {
+  const releasing = commits.filter((c) => c && (RELEASING[c.type] || c.breaking));
+  if (releasing.length === 0) return null;
+
+  const preMajor = currentVersion.startsWith("0.");
+  if (releasing.some((c) => c.breaking)) return preMajor ? "minor" : "major";
+  if (releasing.some((c) => c.type === "feat")) return "minor";
+  return "patch";
+}
+
+/** Applies a bump to a semver string. */
+export function nextVersion(current, bump) {
+  const [major, minor, patch] = current.split(".").map(Number);
+  if ([major, minor, patch].some((n) => !Number.isInteger(n))) {
+    throw new Error(`not a semver version: ${current}`);
+  }
+  if (bump === "major") return `${major + 1}.0.0`;
+  if (bump === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+/** A date the way the existing changelog writes them: "17 August 2026". */
+function humanDate(now) {
+  return now.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+/**
+ * The release notes, grouped and written for a reader.
+ *
+ * Silent types are summarised as a count rather than listed. Somebody reading a
+ * changelog does not want thirty refactor subjects, but "and 30 changes under the
+ * hood" is honest about the release not being empty.
+ */
+export function notesFor(commits, version, now) {
+  const parsed = commits.filter(Boolean);
+  const lines = [`## ${version} — ${humanDate(now)}`, ""];
+
+  for (const [type, heading] of Object.entries(RELEASING)) {
+    const group = parsed.filter((c) => c.type === type);
+    if (group.length === 0) continue;
+    lines.push(`### ${heading}`, "");
+    for (const commit of group) {
+      const scope = commit.scope ? `**${commit.scope}** — ` : "";
+      lines.push(`- ${scope}${commit.description}${commit.breaking ? " (breaking)" : ""}`);
+    }
+    lines.push("");
+  }
+
+  const quiet = parsed.filter((c) => SILENT.includes(c.type) && !c.breaking).length;
+  if (quiet > 0) {
+    lines.push(
+      `${quiet} further ${quiet === 1 ? "change" : "changes"} under the hood — refactoring, docs and tests.`,
+      "",
+    );
+  }
+
+  return lines.join("\n");
+}
+
+/** Inserts a section directly after the changelog's preamble, newest first. */
+export function prependToChangelog(existing, section) {
+  const firstRelease = existing.indexOf("\n## ");
+  if (firstRelease === -1) return `${existing.trimEnd()}\n\n${section}`;
+  const head = existing.slice(0, firstRelease + 1);
+  const tail = existing.slice(firstRelease + 1);
+  return `${head}${section}\n${tail}`;
+}
+
+function main() {
+  const dryRun = process.argv.includes("--dry-run");
+  const tag = lastTag();
+  const range = tag ? `${tag}..HEAD` : "HEAD";
+
+  // %B is the raw body, and the NUL separator survives subjects containing anything.
+  const raw = git("log", range, "--no-merges", "--format=%B%x00");
+  const messages = raw
+    .split("\0")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const commits = messages.map(parseCommit);
+
+  const manifestPath = path.join(ROOT, MANIFESTS[0]);
+  const current = JSON.parse(readFileSync(manifestPath, "utf8")).version;
+  const bump = bumpFor(commits, current);
+
+  console.log(`last tag       ${tag ?? "(none)"}`);
+  console.log(`commits        ${messages.length}`);
+  console.log(`current        ${current}`);
+
+  if (!bump) {
+    console.log("decision       nothing to release (no feat, fix or perf since the last tag)");
+    if (process.env.GITHUB_OUTPUT) {
+      appendFileSync(process.env.GITHUB_OUTPUT, "released=false\n");
+    }
+    return;
+  }
+
+  const version = nextVersion(current, bump);
+  // Passed in by the workflow so a re-run produces the same notes; local runs use now.
+  const now = process.env.RELEASE_DATE ? new Date(process.env.RELEASE_DATE) : new Date();
+  const section = notesFor(commits, version, now);
+
+  console.log(`decision       ${bump} -> ${version}`);
+  console.log(`\n${section}`);
+
+  if (dryRun) {
+    console.log("(dry run: nothing written)");
+    return;
+  }
+
+  for (const relative of MANIFESTS) {
+    const file = path.join(ROOT, relative);
+    const text = readFileSync(file, "utf8");
+    // A targeted replacement of the top-level "version" only. JSON.parse would
+    // reformat the whole manifest and lose its key order.
+    const updated = text.replace(/("version":\s*")[^"]+(")/, `$1${version}$2`);
+    if (updated === text) throw new Error(`no version field replaced in ${relative}`);
+    writeFileSync(file, updated);
+  }
+
+  const changelog = path.join(ROOT, CHANGELOG);
+  writeFileSync(changelog, prependToChangelog(readFileSync(changelog, "utf8"), section));
+
+  if (process.env.GITHUB_OUTPUT) {
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `released=true\nversion=${version}\ntag=v${version}\n`,
+    );
+  }
+  // The workflow reads this file for the Release body rather than re-deriving it.
+  writeFileSync(path.join(ROOT, "RELEASE_NOTES.md"), section);
+}
+
+// Importable for the tests without running.
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
+  main();
+}

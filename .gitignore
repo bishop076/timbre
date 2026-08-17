@@ -49,3 +49,6 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Written by scripts/release.mjs for the release workflow to read; not part of the tree.
+RELEASE_NOTES.md
