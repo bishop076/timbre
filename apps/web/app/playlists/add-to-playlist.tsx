@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { CheckIcon, PlaylistAddIcon, PlusIcon } from "../icons";
@@ -17,11 +17,20 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   const { playlists, error } = usePlaylists();
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   // Portalled into `document.body`, not rendered beside its button: shelves are
   // `overflow-x-auto`, and an absolutely positioned child of a scroll container is clipped
   // by it. Fixed coordinates also let it flip to whichever side has room.
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+
+  // Focus has to come back with the menu: it is portalled to the end of <body>, so the node
+  // being dropped is nowhere near the row and the next Tab would restart at the top of the
+  // document. An outside click closes without this, having moved focus itself.
+  const close = useCallback(() => {
+    setOpen(false);
+    trigger.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (open) loadPlaylists();
@@ -32,19 +41,20 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     if (!open) return;
 
     const place = () => {
-      const trigger = root.current?.getBoundingClientRect();
-      if (!trigger) return;
+      // `rect`, not `trigger`: that name is the button's ref one scope up.
+      const rect = root.current?.getBoundingClientRect();
+      if (!rect) return;
 
       const WIDTH = 240;
       const MARGIN = 8;
-      const wantLeft = trigger.right - WIDTH;
+      const wantLeft = rect.right - WIDTH;
       const left = Math.min(
-        Math.max(MARGIN, wantLeft < MARGIN ? trigger.left : wantLeft),
+        Math.max(MARGIN, wantLeft < MARGIN ? rect.left : wantLeft),
         window.innerWidth - WIDTH - MARGIN,
       );
 
-      const below = window.innerHeight - trigger.bottom;
-      const top = below < 260 && trigger.top > below ? trigger.top - 8 - 260 : trigger.bottom + 6;
+      const below = window.innerHeight - rect.bottom;
+      const top = below < 260 && rect.top > below ? rect.top - 8 - 260 : rect.bottom + 6;
 
       setAt({ left, top: Math.max(MARGIN, top) });
     };
@@ -70,7 +80,7 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        setOpen(false);
+        close();
       }
     };
 
@@ -80,12 +90,20 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [open, close]);
+
+  // Focus moves in once the menu has somewhere to be, or Enter on the button leaves the next
+  // Tab walking the page while the menu sits at the end of <body> — unreachable by keyboard.
+  // The containment test stops a re-place on scroll from pulling focus out of the name field.
+  useEffect(() => {
+    if (!open || !at) return;
+    if (!menu.current?.contains(document.activeElement)) menu.current?.focus();
+  }, [open, at]);
 
   function save(playlistId: string) {
     addSongToPlaylist(playlistId, song);
     setSaved(playlistId);
-    setTimeout(() => setOpen(false), 700);
+    setTimeout(close, 700);
   }
 
   function createAndSave(event: React.FormEvent) {
@@ -97,12 +115,13 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     addSongToPlaylist(playlist.id, song);
     setCreating("");
     setSaved(playlist.id);
-    setTimeout(() => setOpen(false), 700);
+    setTimeout(close, 700);
   }
 
   return (
     <div ref={root} className={`relative ${className ?? ""}`}>
       <button
+        ref={trigger}
         type="button"
         onClick={() => setOpen((was) => !was)}
         aria-label={`Add ${song.title} to a playlist`}
@@ -119,8 +138,10 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
           <div
             ref={menu}
             role="menu"
+            aria-label={`Playlists for ${song.title}`}
+            tabIndex={-1}
             style={{ left: at.left, top: at.top }}
-            className="slab fixed z-[100] w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
+            className="slab fixed z-[100] w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)] outline-none"
           >
           <div className="scroller max-h-56 overflow-y-auto p-1.5">
             {playlists?.length === 0 && (
