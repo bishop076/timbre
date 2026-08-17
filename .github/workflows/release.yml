@@ -94,12 +94,36 @@ jobs:
           git tag -a "$TAG" -m "Timbre $VERSION"
           git push origin HEAD:main --follow-tags
 
+      # Retried, and safe to run twice.
+      #
+      # 0.1.1 tagged fine and then lost its Release to a 503 from GitHub's own API.
+      # The tag is pushed by the step above, so a single failure here leaves a
+      # version that exists in git with nothing to read about it — and the next push
+      # will not retry, because by then the version is already bumped and there is
+      # nothing left to release.
+      #
+      # Existence is checked first so a re-run of a half-finished job completes it
+      # rather than failing on a Release that is already there.
       - name: Publish the Release
         if: steps.version.outputs.released == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
-        run: gh release create "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "Release $TAG exists."
+              exit 0
+            fi
+            if gh release create "$TAG" --title "$TAG" --notes-file RELEASE_NOTES.md; then
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in $((attempt * 10))s."
+            sleep $((attempt * 10))
+          done
+          echo "::error::Could not publish $TAG after 5 attempts. The tag is pushed;"
+          echo "::error::create the Release by hand with: gh release create $TAG"
+          exit 1
 
       - name: Say why nothing was released
         if: steps.version.outputs.released != 'true'
