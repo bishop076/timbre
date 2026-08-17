@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
-import { clearEverything } from "../clear-storage";
 import {
   CloseIcon,
   GithubIcon,
@@ -14,6 +13,7 @@ import {
   SparkleIcon,
   TrashIcon,
 } from "../icons";
+import { clearLogs, useLogs, type LogLevel } from "../logs.ts";
 
 // Fetched when Appearance is first opened; the picker is the largest thing here.
 const ThemePicker = dynamic(() => import("../theme/theme-picker").then((m) => m.ThemePicker));
@@ -36,7 +36,12 @@ const SECTIONS = [
     id: "general",
     label: "General",
     Icon: SettingsIcon,
-    render: () => <General />,
+    render: () => (
+      <Planned>
+        Playback and behaviour: what happens when a queue ends, and whether lyrics open by
+        default.
+      </Planned>
+    ),
   },
   {
     id: "shortcuts",
@@ -54,13 +59,7 @@ const SECTIONS = [
     id: "logs",
     label: "Logs",
     Icon: LogsIcon,
-    render: () => (
-      <Planned>
-        What the sources actually said — which of them answered, which refused,
-        and why a track fell back to another copy of itself. Kept in memory for
-        this tab only.
-      </Planned>
-    ),
+    render: () => <Logs />,
   },
   {
     id: "whats-new",
@@ -118,92 +117,70 @@ function Shortcuts() {
   );
 }
 
-/** What `clearEverything` takes, in the order someone would miss it. Spelled out rather
- * than summarised: "clear all data" is not consent if nobody said what the data was. */
-const ERASES = [
-  "Every playlist, and the songs saved into them",
-  "Everything you have played, and the suggestions built from it",
-  "Your display name, profile picture and banner",
-  "Your theme, volume and lyrics preferences",
-  "Remembered chart positions, and the offline copy of the app",
-];
+const LEVEL_TONE: Record<LogLevel, string> = {
+  info: "text-[var(--fg-faint)]",
+  warn: "text-amber-500",
+  error: "text-red-400",
+};
 
-function General() {
-  const [confirming, setConfirming] = useState(false);
-  const [erasing, setErasing] = useState(false);
+/** 24-hour, since a log read against a clock wants no am/pm to parse. */
+function stamp(at: number): string {
+  return new Date(at).toLocaleTimeString(undefined, { hour12: false });
+}
+
+/** `app/logs.ts`, newest first. */
+function Logs() {
+  const entries = useLogs();
 
   return (
     <>
-      <Planned>
-        Playback and behaviour: what happens when a queue ends, and whether
-        lyrics open by default.
-      </Planned>
-
-      <section
-        aria-labelledby="erase-heading"
-        className="mt-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5"
-      >
-        <h3 id="erase-heading" className="text-[13px] font-bold text-red-400">
-          Erase everything this browser is holding
-        </h3>
-        <p className="mt-1.5 max-w-prose text-xs leading-relaxed text-[var(--fg-dim)]">
-          Timbre has no account and no server. All of this lives in this browser and
-          nowhere else, so there is no copy to put back afterwards.
+      <div className="flex items-start justify-between gap-4">
+        <p className="max-w-prose text-xs leading-relaxed text-[var(--fg-faint)]">
+          Which sources answered, which refused, and why a track fell back to another
+          copy of itself. This tab only — none of it is written anywhere, and closing
+          the tab loses it.
         </p>
+        <button
+          type="button"
+          onClick={clearLogs}
+          disabled={entries.length === 0}
+          className="press flex shrink-0 items-center gap-2 rounded-[var(--r-sm)] bg-[var(--surface-2)] px-3 py-2 text-[12px] font-semibold transition hover:bg-[var(--surface-3)] disabled:opacity-40"
+        >
+          <TrashIcon className="size-4 shrink-0" />
+          Clear
+        </button>
+      </div>
 
-        <ul className="mt-3 max-w-prose space-y-1 text-xs leading-relaxed text-[var(--fg-dim)]">
-          {ERASES.map((entry) => (
-            <li key={entry} className="flex gap-2">
-              <span aria-hidden="true" className="text-[var(--fg-faint)]">
-                —
+      {entries.length === 0 ? (
+        <div className="mt-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5">
+          <p className="text-[13px] font-bold">Nothing has happened yet</p>
+          <p className="mt-1.5 max-w-prose text-xs leading-relaxed text-[var(--fg-dim)]">
+            Search for something, or play a track, and what each source said turns up here.
+          </p>
+        </div>
+      ) : (
+        <ul
+          aria-label="Log entries, newest first"
+          className="scroller mt-4 max-h-80 divide-y divide-[var(--line)] overflow-y-auto rounded-[var(--r-lg)] bg-[var(--surface-2)] p-1 font-mono text-[11px] leading-relaxed"
+        >
+          {[...entries].reverse().map((entry) => (
+            <li key={entry.id} className="flex gap-2.5 px-2.5 py-2">
+              <time
+                dateTime={new Date(entry.at).toISOString()}
+                className="shrink-0 tabular-nums text-[var(--fg-faint)]"
+              >
+                {stamp(entry.at)}
+              </time>
+              <span className={`w-9 shrink-0 font-bold ${LEVEL_TONE[entry.level]}`}>
+                {entry.level}
               </span>
-              {entry}
+              <span className="min-w-0 flex-1 break-words text-[var(--fg-dim)]">
+                {entry.message}
+              </span>
             </li>
           ))}
         </ul>
-
-        {!confirming ? (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="press mt-4 flex items-center gap-2 rounded-[var(--r-sm)] bg-[var(--surface-3)] px-3 py-2 text-[12px] font-bold text-red-400 transition hover:bg-red-500/15"
-          >
-            <TrashIcon className="size-4 shrink-0" />
-            Erase everything…
-          </button>
-        ) : (
-          <div className="mt-4">
-            <p role="alert" className="max-w-prose text-xs font-semibold leading-relaxed">
-              This cannot be undone. Timbre will reload as a browser that has never
-              opened it.
-            </p>
-            <div className="mt-2.5 flex gap-1.5">
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                disabled={erasing}
-                className="press rounded-[var(--r-sm)] bg-[var(--surface-3)] px-3 py-2 text-[12px] font-semibold disabled:opacity-40"
-              >
-                Keep it
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setErasing(true);
-                  // Not awaited: it ends in `location.reload()`, so nothing here runs after.
-                  void clearEverything();
-                }}
-                disabled={erasing}
-                aria-label="Erase everything this browser is holding, permanently"
-                className="slab-sm press flex items-center gap-2 rounded-[var(--r-sm)] bg-red-500/90 px-3 py-2 text-[12px] font-bold text-white disabled:opacity-40"
-              >
-                <TrashIcon className="size-4 shrink-0" />
-                {erasing ? "Erasing…" : "Erase everything"}
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
+      )}
     </>
   );
 }
