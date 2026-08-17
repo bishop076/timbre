@@ -192,7 +192,7 @@ const RELEASES: { title: string; when?: string; changes: string[] }[] = [
     title: "0.1.0",
     when: "17 August 2026",
     changes: [
-      "Artists have real pages: a discography split into albums, singles and appearances.",
+      "Artists have real pages: a discography split into albums, EPs and singles.",
       "An artist's name finds the artist you meant, and an album plays from the track you clicked.",
       "One library, however you reach it — saved playlists no longer depend on the route.",
       "Search is quicker: songs and videos are looked up at the same time.",
