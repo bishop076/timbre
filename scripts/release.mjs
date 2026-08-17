@@ -105,15 +105,30 @@ function humanDate(now) {
 export function notesFor(commits, version, now) {
   const parsed = commits.filter(Boolean);
   const lines = [`## ${version} — ${humanDate(now)}`, ""];
+  const entry = (commit) => `- ${commit.scope ? `**${commit.scope}** — ` : ""}${commit.description}`;
+
+  /*
+   * Breaking changes lead, and are listed whatever their type.
+   *
+   * `bumpFor` releases on any breaking commit, including types that are otherwise
+   * silent — so a `refactor!:` alone cut a version whose notes had no section to put
+   * it in and no quiet-work count either (that line excludes breaking). The Release
+   * body came out as a bare heading. Listing them here is what makes "released
+   * implies at least one section" true by construction.
+   */
+  const breaking = parsed.filter((c) => c.breaking);
+  if (breaking.length > 0) {
+    lines.push("### Breaking", "");
+    for (const commit of breaking) lines.push(entry(commit));
+    lines.push("");
+  }
 
   for (const [type, heading] of Object.entries(RELEASING)) {
-    const group = parsed.filter((c) => c.type === type);
+    // Breaking ones are above already; listing them twice reads as two changes.
+    const group = parsed.filter((c) => c.type === type && !c.breaking);
     if (group.length === 0) continue;
     lines.push(`### ${heading}`, "");
-    for (const commit of group) {
-      const scope = commit.scope ? `**${commit.scope}** — ` : "";
-      lines.push(`- ${scope}${commit.description}${commit.breaking ? " (breaking)" : ""}`);
-    }
+    for (const commit of group) lines.push(entry(commit));
     lines.push("");
   }
 
