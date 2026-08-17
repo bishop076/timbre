@@ -11,8 +11,8 @@ somewhere else.
 
 The first release.
 
-- **Artists have real pages.** A discography grouped into albums, singles and
-  appearances, instead of one undifferentiated pile of releases.
+- **Artists have real pages.** A discography grouped into albums, EPs and singles,
+  instead of one undifferentiated pile of releases.
 - **An artist's name now finds the artist you meant**, not whoever happened to come back
   first from the search.
 - **An album plays from the track you clicked**, not always from the top.
