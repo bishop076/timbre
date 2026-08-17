@@ -46,15 +46,26 @@ export function Shelf({
 
     // The children too: the row's box never changes size, so nothing fires when its contents
     // grow past it and the arrows stay hidden on a shelf that plainly scrolls.
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    for (const child of el.children) observer.observe(child);
+    const sizes = new ResizeObserver(measure);
+    const watch = () => {
+      sizes.disconnect();
+      sizes.observe(el);
+      for (const child of el.children) sizes.observe(child);
+    };
+    watch();
+
+    // Re-subscribed when tiles are added or removed, so this effect can depend on nothing:
+    // `children` is a new element on every parent render, and depending on it tore down and
+    // rebuilt a listener and an observer per tile whenever anything above re-rendered.
+    const tiles = new MutationObserver(watch);
+    tiles.observe(el, { childList: true });
 
     return () => {
       el.removeEventListener("scroll", measure);
-      observer.disconnect();
+      sizes.disconnect();
+      tiles.disconnect();
     };
-  }, [children]);
+  }, []);
 
   /** Scrolls to a tile edge a screenful away — aimed at a child, not a distance, because
    * `scrollBy` of an arbitrary delta fights `scroll-snap-type`: snapping drags the row back to
