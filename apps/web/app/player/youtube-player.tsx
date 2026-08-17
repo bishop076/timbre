@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { log } from "../logs.ts";
 import { usePlayerControls } from "./player-context";
 
 /**
@@ -229,9 +230,9 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             // Log the raw code, never just the sentence (BUGS.md B-6): a player under
             // 200×200 (B-1) and a barred embed (B-2) produce the same friendly text, so
             // the message alone asserts a cause nobody checked.
-            console.warn(
-              `[timbre] YouTube IFrame error ${event.data} on video ${videoIdRef.current ?? "(none)"}`,
-            );
+            const note = `YouTube IFrame error ${event.data} on video ${videoIdRef.current ?? "(none)"}`;
+            console.warn(`[timbre] ${note}`);
+            log("error", note);
 
             // 101 and 150 are embedding barred reported two ways, 100 a removed upload —
             // all three belong to *this* upload, so another copy is worth trying. Code 2 is
