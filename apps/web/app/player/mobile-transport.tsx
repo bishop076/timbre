@@ -2,28 +2,21 @@
 
 import { useState } from "react";
 
+import { formatClock } from "../duration";
 import {
   ChevronIcon,
   NextIcon,
   PauseIcon,
   PlayIcon,
   PrevIcon,
-  RepeatIcon,
-  RepeatOneIcon,
   ShuffleIcon,
   SpinnerIcon,
 } from "../icons";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { ModeButton, repeatMode } from "../shell/player-bar";
 import { LyricsPanel } from "./lyrics-panel";
 import { usePlayer } from "./player-context";
 import { Scrub } from "./wavy-progress";
-
-/** `m:ss`, for the times either side of the scrubber. */
-function clock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const total = Math.floor(seconds);
-  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
-}
 
 // The phone's full-screen transport, shown under the expanded player. The picture above it
 // is the video, not cover art — YouTube's terms require the player to stay visible while
@@ -40,10 +33,9 @@ export function MobileTransport() {
     next,
     previous,
     index,
-    queue,
-    radio,
     shuffle,
     repeat,
+    hasNext,
     toggleShuffle,
     cycleRepeat,
     toggleTheater,
@@ -53,21 +45,6 @@ export function MobileTransport() {
 
   const playing = state === "playing";
   const busy = state === "loading" || state === "resolving";
-  const hasNext = index + 1 < queue.length || radio.length > 0;
-
-  const mode = (label: string, on: boolean, onClick: () => void, icon: React.ReactNode) => (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={on}
-      className={`press flex size-11 items-center justify-center rounded-[var(--r-full)] transition ${
-        on ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
-      }`}
-    >
-      {icon}
-    </button>
-  );
 
   return (
     <div className="flex min-h-0 shrink flex-col gap-3 px-4 pb-3 pt-3">
@@ -110,8 +87,8 @@ export function MobileTransport() {
       <div>
         <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
         <div className="mt-0.5 flex justify-between font-mono text-[11px] tabular-nums text-[var(--fg-faint)]">
-          <span>{clock(position)}</span>
-          <span>{clock(duration)}</span>
+          <span>{formatClock(position)}</span>
+          <span>{formatClock(duration)}</span>
         </div>
       </div>
 
@@ -155,17 +132,19 @@ export function MobileTransport() {
       </div>
 
       <div className="slab-sm mx-auto flex items-center gap-2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2">
-        {mode("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
-        {mode(
-          repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat queue" : "Repeat off",
-          repeat !== "off",
-          cycleRepeat,
-          repeat === "one" ? (
-            <RepeatOneIcon className="size-[18px]" />
-          ) : (
-            <RepeatIcon className="size-[18px]" />
-          ),
-        )}
+        <ModeButton
+          variant="sheet"
+          label="Shuffle"
+          on={shuffle}
+          onClick={toggleShuffle}
+          icon={<ShuffleIcon className="size-[18px]" />}
+        />
+        <ModeButton
+          variant="sheet"
+          {...repeatMode(repeat)}
+          on={repeat !== "off"}
+          onClick={cycleRepeat}
+        />
         {current && (
           <AddToPlaylist song={current} className="flex size-11 items-center justify-center" />
         )}
