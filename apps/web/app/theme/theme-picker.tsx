@@ -8,6 +8,7 @@ import {
   setThemeMode,
   useTheme,
   type ThemeMode,
+  type ThemeState,
 } from "./theme-store";
 
 /**
@@ -184,24 +185,14 @@ export function ThemePicker() {
 }
 
 /** The ground a mode paints on, for its preview. Album stays near neutral — its ramp carries a third of the hue. */
-function previewGround(theme: {
-  mode: ThemeMode;
-  customHue: number;
-  customLight: boolean;
-  customNeutral: boolean;
-}): string {
+function previewGround(theme: ThemeState): string {
   if (theme.mode === "album") return "hsl(258 12% 7%)";
   if (theme.mode === "pastel") return "hsl(280 30% 96%)";
   if (theme.customNeutral) return theme.customLight ? "hsl(0 0% 100%)" : "hsl(240 6% 8%)";
   return theme.customLight ? `hsl(${theme.customHue} 40% 90%)` : `hsl(${theme.customHue} 14% 8%)`;
 }
 
-function previewAccent(theme: {
-  mode: ThemeMode;
-  customHue: number;
-  customLight: boolean;
-  customNeutral: boolean;
-}): string {
+function previewAccent(theme: ThemeState): string {
   if (theme.mode === "album") return "hsl(258 75% 70%)";
   if (theme.mode === "pastel") return "hsl(300 52% 72%)";
   if (theme.customNeutral) return theme.customLight ? "hsl(0 0% 22%)" : "hsl(0 0% 88%)";
