@@ -3,7 +3,7 @@
 /**
  * What the sources said, and why playback moved copies. In memory, this tab only — it names
  * uploads and services that refused, which is diagnostic detail nobody asked to have kept,
- * so there is no storage key here and nothing for `clear-storage.ts` to sweep.
+ * so there is no storage key here and nothing of it survives the tab.
  */
 
 import { useSyncExternalStore } from "react";

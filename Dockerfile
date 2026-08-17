@@ -43,13 +43,10 @@ RUN pnpm install --frozen-lockfile
 # image, and dotenv-cli exits non-zero when the file is missing. Call next directly
 # and let the platform's environment through.
 #
-# The placeholders exist only to satisfy the zod schema in apps/web/lib/env.ts if
-# a route evaluates it during prerender. They are overwritten by the real
-# environment at runtime and never reach a live connection.
-RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
-    TIMBRE_ENCRYPTION_KEY=build-placeholder \
-    AUTH_SECRET=build-placeholder \
-    YTMUSIC_SHARED_SECRET=build-placeholder \
+# The placeholder exists only to satisfy the zod schema in apps/web/lib/env.ts if
+# a route evaluates it during prerender. It is overwritten by the real environment
+# at runtime and never reaches a live service.
+RUN YTMUSIC_SHARED_SECRET=build-placeholder \
     pnpm --filter @timbre/web exec next build
 
 ENV NODE_ENV=production
