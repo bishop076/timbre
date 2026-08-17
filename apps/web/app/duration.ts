@@ -18,3 +18,17 @@ export function formatDuration(ms: number | null): string {
   const pad = (value: number) => value.toString().padStart(2, "0");
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
+
+/**
+ * A playhead as `m:ss`, from seconds — what the players report, and what the two transports
+ * and the lyrics list all had their own copy of.
+ *
+ * Never `h:mm:ss`: a running clock that gains a field mid-track shifts the whole row. Floored,
+ * so the readout never shows a second the track has not reached, and a guard for the `NaN`
+ * both widgets report before their first progress event.
+ */
+export function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const total = Math.floor(seconds);
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
+}
