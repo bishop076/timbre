@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { VolumeIcon, VolumeMuteIcon } from "../icons";
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 import { VOLUME_STEP } from "./transport-keys";
 import { pixelDelta, wheelSteps } from "./wheel-step";
 
@@ -12,7 +12,7 @@ import { pixelDelta, wheelSteps } from "./wheel-step";
  * as a level of zero, so the control can never show a level you cannot hear.
  */
 export function Volume() {
-  const { volume, muted, setVolume, toggleMute } = usePlayer();
+  const { volume, muted, setVolume, toggleMute } = usePlayerControls();
   const trackRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);

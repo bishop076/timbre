@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 
 /**
  * The YouTube IFrame player, deliberately visible — the policies forbid hiding it. Three
@@ -126,7 +126,7 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
     handleError,
     registerToggle,
     registerSeek,
-  } = usePlayer();
+  } = usePlayerControls();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);

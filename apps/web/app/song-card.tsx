@@ -3,7 +3,7 @@
 import { ArtistLink } from "./artist-link";
 import { Artwork } from "./artwork";
 import { CheckIcon, PlayIcon, PlusIcon } from "./icons";
-import { usePlayer } from "./player/player-context";
+import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import type { Song } from "./types";
 
@@ -14,7 +14,7 @@ import type { Song } from "./types";
  * sees a single unlabelled target.
  */
 export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
-  const { play, enqueue, current, state, queue: playerQueue } = usePlayer();
+  const { play, enqueue, current, state, queue: playerQueue } = usePlayerControls();
   const isCurrent = current?.id === song.id;
   const isPlaying = isCurrent && state === "playing";
   const isQueued = playerQueue.some((queued) => queued.id === song.id);

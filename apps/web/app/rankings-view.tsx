@@ -8,7 +8,7 @@ import { ArtistLink } from "./artist-link";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { toArtistSlug } from "./artist-slug";
 import { Movement } from "./movement";
-import { usePlayer } from "./player/player-context";
+import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
 import { sourceStyle } from "./sources";
@@ -151,7 +151,7 @@ export function RankingsView({
 }
 
 function SongsView({ rankings }: { rankings: Rankings }) {
-  const { play, current, state } = usePlayer();
+  const { play, current, state } = usePlayerControls();
   const songs = rankings.songs;
 
   // A reserved key, not a genre id: the fused ranking against a genre snapshot reports
@@ -335,7 +335,7 @@ function GenreMixView({ mix }: { mix: GenreMix[] }) {
 
 /** Chart position against popularity. Deezer's chart, since the score is Deezer's own measure. */
 function SpreadView({ chart }: { chart: ChartTrack[] }) {
-  const { play } = usePlayer();
+  const { play } = usePlayerControls();
 
   if (chart.length < 2) {
     return (

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import { PlayIcon } from "../icons";
-import { usePlayer } from "../player/player-context";
+import { usePlayerControls } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { SongRow } from "../song-row";
 import type { Song } from "../types";
@@ -23,7 +23,7 @@ import { formatDuration } from "../duration";
  */
 
 export function AlbumView({ album }: { album: AlbumDetail }) {
-  const { play, current, state } = usePlayer();
+  const { play, current, state } = usePlayerControls();
   // The shapes agree structurally; the cast keeps the wire type out of the
   // player's vocabulary rather than widening `Song` to know about Deezer.
   const songs = album.songs as unknown as Song[];

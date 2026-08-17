@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Artwork } from "../artwork";
 import { useHydrated } from "../hydrated";
 import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
-import { usePlayer } from "../player/player-context";
+import { usePlayerControls } from "../player/player-context";
 import { PlaylistCover } from "../playlists/playlist-cover";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
 import { Avatar } from "../profile/avatar";
@@ -29,7 +29,7 @@ const NAV = [
 const FILTERS = ["Queue", "Playlists"] as const;
 
 export function Sidebar() {
-  const { queue, current, play, exitTheater } = usePlayer();
+  const { queue, current, play, exitTheater } = usePlayerControls();
   const profile = useLocalProfile();
   const pictures = useLocalImages();
   const hydrated = useHydrated();
@@ -240,7 +240,7 @@ function PlaylistRows({
  * thumb-reachable block. */
 export function BottomNav() {
   const pathname = usePathname();
-  const { exitTheater } = usePlayer();
+  const { exitTheater } = usePlayerControls();
 
   return (
     <nav className="flex h-[var(--nav-h)] shrink-0 items-stretch border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] lg:hidden">
@@ -269,7 +269,7 @@ export function BottomNav() {
  * the rail carrying the desktop link is `lg:flex`, so without this `/profile` and the theme
  * picker on it are unreachable below that width. */
 export function ProfileButton({ className }: { className?: string }) {
-  const { exitTheater } = usePlayer();
+  const { exitTheater } = usePlayerControls();
   const profile = useLocalProfile();
   const pictures = useLocalImages();
 

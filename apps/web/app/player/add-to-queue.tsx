@@ -2,7 +2,7 @@
 
 import { CheckIcon, QueueAddIcon } from "../icons";
 import type { Song } from "../types";
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 
 /**
  * Queue one song, from any list that shows songs. An already-queued song keeps the
@@ -10,7 +10,7 @@ import { usePlayer } from "./player-context";
  * nothing, and a silently no-op button is indistinguishable from a broken one.
  */
 export function AddToQueue({ song, className }: { song: Song; className?: string }) {
-  const { enqueue, queue } = usePlayer();
+  const { enqueue, queue } = usePlayerControls();
   const queued = queue.some((entry) => entry.id === song.id);
 
   return (

@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { NowPlayingPanel } from "../player/now-playing";
-import { usePlayer } from "../player/player-context";
+import { usePlayerControls } from "../player/player-context";
 import { useArtworkAccent } from "../player/use-artwork-accent";
 import { useTransportKeys } from "../player/use-transport-keys";
 import { TopBar } from "../top-bar";
@@ -23,7 +23,7 @@ let movedOnce = false;
  * drift. `display: none` preserves search results and scroll position.
  */
 export function AppShell({ children }: { children: ReactNode }) {
-  const { theater, current } = usePlayer();
+  const { theater, current } = usePlayerControls();
   const pathname = usePathname();
 
   // The page fades on a navigation and not on a first load. A CSS entry animation begins at

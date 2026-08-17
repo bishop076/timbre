@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { createLocalStore, useLocalStore } from "../local-store.ts";
+import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
 import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
@@ -49,8 +49,6 @@ interface PlayerState {
   theater: boolean;
   state: PlayState;
   problem: string | null;
-  position: number;
-  duration: number;
   /** Output level, 0–100, and mute. Held here because the player is torn down on every source switch. */
   volume: number;
   muted: boolean;
@@ -63,7 +61,13 @@ interface PlayerState {
   hasNext: boolean;
 }
 
-interface PlayerControls extends PlayerState {
+/** Held apart from the rest of the state: these two tick, and nothing else does. */
+interface PlayerProgress {
+  position: number;
+  duration: number;
+}
+
+interface PlayerActions {
   /** Plays a song, optionally queueing the list it came from behind it. */
   play: (song: Song, rest?: Song[]) => void;
   enqueue: (songs: Song[]) => void;
@@ -92,12 +96,44 @@ interface PlayerControls extends PlayerState {
   registerSeek: (fn: ((seconds: number) => void) | null) => void;
 }
 
+/** The player minus the clock: one context, because all of it changes at human speed. */
+type PlayerControls = PlayerState & PlayerActions;
+
+/*
+ * Progress is a store rather than state here: it arrives about twice a second, and as one field
+ * of the context value it re-rendered every consumer on every tick — the sidebar, both
+ * transports, the embeds and every queue button included.
+ */
+const ZERO_PROGRESS: PlayerProgress = { position: 0, duration: 0 };
+const ticks = createNotifier();
+let progressSnapshot = ZERO_PROGRESS;
+
+function writeProgress(position: number, duration: number): void {
+  // A paused player keeps reporting the same second, which `setState` used to swallow.
+  if (position === progressSnapshot.position && duration === progressSnapshot.duration) return;
+  progressSnapshot = { position, duration };
+  ticks.emit();
+}
+
 const PlayerContext = createContext<PlayerControls | null>(null);
 
-export function usePlayer(): PlayerControls {
+/** Everything but the clock. Prefer it: this re-renders only on a change a listener made. */
+export function usePlayerControls(): PlayerControls {
   const context = useContext(PlayerContext);
   if (!context) throw new Error("usePlayer must be used inside <PlayerProvider>.");
   return context;
+}
+
+/** Position and duration. Only what draws a clock should subscribe. */
+export function usePlayerProgress(): PlayerProgress {
+  return useSyncExternalStore(ticks.subscribe, () => progressSnapshot, () => ZERO_PROGRESS);
+}
+
+/** Controls and clock, as before — so it re-renders on the tick. */
+export function usePlayer(): PlayerControls & PlayerProgress {
+  const controls = usePlayerControls();
+  const progress = usePlayerProgress();
+  return useMemo(() => ({ ...controls, ...progress }), [controls, progress]);
 }
 
 function youtubeIdOf(song: Song): string | null {
@@ -162,8 +198,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { shuffle, repeat } = useLocalStore(modeStore);
   // Played in this shuffle pass. A pass restarts only once every song has played.
   const shuffled = useRef<Set<string>>(new Set());
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
   const { volume, muted } = useSyncExternalStore(
     subscribeVolume,
     getVolumeSnapshot,
@@ -220,8 +254,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
       recorded.current = null;
-      setPosition(0);
-      setDuration(0);
+      writeProgress(0, 0);
       setActiveSource(null);
       setVideoId(null);
       setSoundcloudUrl(null);
@@ -401,8 +434,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setActiveSource(null);
     setState("idle");
     setProblem(null);
-    setPosition(0);
-    setDuration(0);
+    writeProgress(0, 0);
   }, []);
 
   const enqueue = useCallback(
@@ -524,11 +556,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const exitTheater = useCallback(() => setTheater(false), []);
 
-  const handleProgress = useCallback((next: number, total: number) => {
-    setPosition(next);
-    setDuration(total);
-  }, []);
-
   // On "playing": `load` counts copies that refused and `handleEnded` misses skips.
   const handleStateChange = useCallback(
     (next: PlayState) => {
@@ -611,92 +638,48 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seekRef.current = fn;
   }, []);
 
-  const value = useMemo<PlayerControls>(
-    () => ({
-      queue,
-      index,
-      current,
-      videoId,
-      soundcloudUrl,
-      activeSource,
-      panelOpen,
-      theater,
-      state,
-      problem,
-      position,
-      duration,
-      volume,
-      muted,
-      radio,
-      shuffle,
-      repeat,
-      hasNext,
-      play,
-      enqueue,
-      removeAt,
-      move,
-      clearQueue,
-      toggle,
-      next,
-      previous,
-      handleEnded,
-      handleStateChange,
-      handleProgress,
-      handleError,
-      seek,
-      setVolume,
-      toggleMute,
-      togglePanel,
-      toggleTheater,
-      exitTheater,
-      toggleShuffle,
-      cycleRepeat,
-      registerToggle,
-      registerSeek,
-    }),
-    [
-      queue,
-      index,
-      current,
-      videoId,
-      soundcloudUrl,
-      activeSource,
-      panelOpen,
-      theater,
-      state,
-      problem,
-      position,
-      duration,
-      volume,
-      muted,
-      radio,
-      shuffle,
-      repeat,
-      hasNext,
-      play,
-      enqueue,
-      removeAt,
-      move,
-      clearQueue,
-      toggle,
-      next,
-      previous,
-      handleEnded,
-      handleStateChange,
-      handleProgress,
-      handleError,
-      seek,
-      setVolume,
-      toggleMute,
-      togglePanel,
-      toggleTheater,
-      exitTheater,
-      toggleShuffle,
-      cycleRepeat,
-      registerToggle,
-      registerSeek,
-    ],
-  );
+  // No memo: with the tick in its own store this component re-renders only when one of these
+  // changed. The callbacks are still individually memoised, so their identities are unchanged.
+  const value: PlayerControls = {
+    queue,
+    index,
+    current,
+    videoId,
+    soundcloudUrl,
+    activeSource,
+    panelOpen,
+    theater,
+    state,
+    problem,
+    volume,
+    muted,
+    radio,
+    shuffle,
+    repeat,
+    hasNext,
+    play,
+    enqueue,
+    removeAt,
+    move,
+    clearQueue,
+    toggle,
+    next,
+    previous,
+    handleEnded,
+    handleStateChange,
+    handleProgress: writeProgress,
+    handleError,
+    seek,
+    setVolume,
+    toggleMute,
+    togglePanel,
+    toggleTheater,
+    exitTheater,
+    toggleShuffle,
+    cycleRepeat,
+    registerToggle,
+    registerSeek,
+  };
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

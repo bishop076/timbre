@@ -1,12 +1,12 @@
 "use client";
 
 import { QueueRow } from "./now-playing";
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 
 /** What Timbre thinks you should hear next — the same fused list the queue continues into
  * when it runs out, so this is a preview rather than a second opinion. */
 export function SimilarSongs({ limit = 5 }: { limit?: number }) {
-  const { radio, queue, play } = usePlayer();
+  const { radio, queue, play } = usePlayerControls();
 
   // Anything already queued is a promise, not a suggestion.
   const queued = new Set(queue.map((song) => song.id));
