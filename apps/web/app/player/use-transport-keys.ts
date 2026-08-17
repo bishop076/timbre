@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 import { actionFor, VOLUME_STEP } from "./transport-keys";
 
 /**
@@ -14,7 +14,7 @@ import { actionFor, VOLUME_STEP } from "./transport-keys";
  * cannot swallow the key first; what must *not* be intercepted is in `transport-keys.ts`.
  */
 export function useTransportKeys(): void {
-  const { toggle, next, previous, setVolume, volume, current } = usePlayer();
+  const { toggle, next, previous, setVolume, volume, current } = usePlayerControls();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

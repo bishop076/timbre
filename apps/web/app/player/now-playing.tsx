@@ -11,7 +11,7 @@ import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon, PlayIco
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
-import { usePlayer } from "./player-context";
+import { usePlayerControls } from "./player-context";
 import { SimilarSongs } from "./similar-songs";
 import { PanelTabs } from "./panel-tabs";
 import { YouTubePlayer } from "./youtube-player";
@@ -148,7 +148,7 @@ export function NowPlayingPanel() {
     move,
     removeAt,
     clearQueue,
-  } = usePlayer();
+  } = usePlayerControls();
 
   const active = current !== null;
   const open = active && panelOpen;

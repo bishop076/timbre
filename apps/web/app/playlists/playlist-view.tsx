@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { ChevronIcon, CloseIcon, PlayIcon, SearchIcon, TrashIcon } from "../icons";
-import { usePlayer } from "../player/player-context";
+import { usePlayerControls } from "../player/player-context";
 import { SongRow } from "../song-row";
 import { sourceStyle } from "../sources";
 import { PlaylistActions } from "./playlist-actions";
@@ -22,7 +22,7 @@ export function PlaylistView({ id }: { id: string }) {
   // Finds a song in *this* playlist, not the catalogue (see `top-bar.tsx`). Local state,
   // not the search store, so returning can't restore a hidden filter.
   const [filter, setFilter] = useState("");
-  const { play, current, state } = usePlayer();
+  const { play, current, state } = usePlayerControls();
   const { settled } = usePlaylists();
   const playlist = usePlaylist(id);
 
