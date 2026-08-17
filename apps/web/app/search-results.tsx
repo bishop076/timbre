@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArtistLink } from "./artist-link";
 import { ExternalIcon } from "./icons";
 import { AddToQueue } from "./player/add-to-queue";
-import { usePlayer } from "./player/player-context";
+import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { useSearchQuery } from "./search-store";
 import { SongRow } from "./song-row";
@@ -150,7 +150,7 @@ export function SearchResults() {
 }
 
 function ResultRow({ song }: { song: Song }) {
-  const { play, current, state } = usePlayer();
+  const { play, current, state } = usePlayerControls();
 
   return (
     <SongRow

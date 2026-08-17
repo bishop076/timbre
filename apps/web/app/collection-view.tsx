@@ -6,7 +6,7 @@ import { Collage } from "./collage";
 import { PlayIcon, ShuffleIcon } from "./icons";
 import { Movement } from "./movement";
 import { AddToQueue } from "./player/add-to-queue";
-import { usePlayer } from "./player/player-context";
+import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
 import type { Collection } from "@/lib/collection";
@@ -17,7 +17,7 @@ import { cover as coverSrc } from "./artwork-url";
  * stored; the page is assembled per request from Deezer and thrown away.
  */
 export function CollectionView({ collection }: { collection: Collection }) {
-  const { play, current, state } = usePlayer();
+  const { play, current, state } = usePlayerControls();
   const { tracks } = collection;
 
   // Movement only for a chart — a playlist's order is whatever its editor typed. Pass
