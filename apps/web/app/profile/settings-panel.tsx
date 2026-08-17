@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { clearEverything } from "../clear-storage";
 import {
   CloseIcon,
   GithubIcon,
@@ -12,6 +13,7 @@ import {
   PaletteIcon,
   SettingsIcon,
   SparkleIcon,
+  TrashIcon,
 } from "../icons";
 
 // Fetched when Appearance is first opened; the picker is the largest thing here.
@@ -35,12 +37,7 @@ const SECTIONS = [
     id: "general",
     label: "General",
     Icon: SettingsIcon,
-    render: () => (
-      <Planned>
-        Playback and behaviour: what happens when a queue ends, whether lyrics
-        open by default, and a way to erase everything this browser is holding.
-      </Planned>
-    ),
+    render: () => <General />,
   },
   {
     id: "shortcuts",
@@ -72,7 +69,7 @@ const SECTIONS = [
     // entity would show up on screen verbatim.
     label: "What’s New",
     Icon: SparkleIcon,
-    render: () => <Planned>The changelog, shipped with the build it describes.</Planned>,
+    render: () => <WhatsNew />,
   },
 ] as const;
 
@@ -118,6 +115,206 @@ function Shortcuts() {
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+/** What `clearEverything` takes, in the order someone would miss it. Spelled out rather
+ * than summarised: "clear all data" is not consent if nobody said what the data was. */
+const ERASES = [
+  "Every playlist, and the songs saved into them",
+  "Everything you have played, and the suggestions built from it",
+  "Your display name, profile picture and banner",
+  "Your theme, volume and lyrics preferences",
+  "Remembered chart positions, and the offline copy of the app",
+];
+
+function General() {
+  const [confirming, setConfirming] = useState(false);
+  const [erasing, setErasing] = useState(false);
+
+  return (
+    <>
+      <Planned>
+        Playback and behaviour: what happens when a queue ends, and whether
+        lyrics open by default.
+      </Planned>
+
+      <section
+        aria-labelledby="erase-heading"
+        className="mt-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5"
+      >
+        <h3 id="erase-heading" className="text-[13px] font-bold text-red-400">
+          Erase everything this browser is holding
+        </h3>
+        <p className="mt-1.5 max-w-prose text-xs leading-relaxed text-[var(--fg-dim)]">
+          Timbre has no account and no server. All of this lives in this browser and
+          nowhere else, so there is no copy to put back afterwards.
+        </p>
+
+        <ul className="mt-3 max-w-prose space-y-1 text-xs leading-relaxed text-[var(--fg-dim)]">
+          {ERASES.map((entry) => (
+            <li key={entry} className="flex gap-2">
+              <span aria-hidden="true" className="text-[var(--fg-faint)]">
+                —
+              </span>
+              {entry}
+            </li>
+          ))}
+        </ul>
+
+        {!confirming ? (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="press mt-4 flex items-center gap-2 rounded-[var(--r-sm)] bg-[var(--surface-3)] px-3 py-2 text-[12px] font-bold text-red-400 transition hover:bg-red-500/15"
+          >
+            <TrashIcon className="size-4 shrink-0" />
+            Erase everything…
+          </button>
+        ) : (
+          <div className="mt-4">
+            <p role="alert" className="max-w-prose text-xs font-semibold leading-relaxed">
+              This cannot be undone. Timbre will reload as a browser that has never
+              opened it.
+            </p>
+            <div className="mt-2.5 flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setConfirming(false)}
+                disabled={erasing}
+                className="press rounded-[var(--r-sm)] bg-[var(--surface-3)] px-3 py-2 text-[12px] font-semibold disabled:opacity-40"
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setErasing(true);
+                  // Not awaited: it ends in `location.reload()`, so nothing here runs after.
+                  void clearEverything();
+                }}
+                disabled={erasing}
+                aria-label="Erase everything this browser is holding, permanently"
+                className="slab-sm press flex items-center gap-2 rounded-[var(--r-sm)] bg-red-500/90 px-3 py-2 text-[12px] font-bold text-white disabled:opacity-40"
+              >
+                <TrashIcon className="size-4 shrink-0" />
+                {erasing ? "Erasing…" : "Erase everything"}
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+/** The headlines from `CHANGELOG.md`, newest first. Written out rather than parsed at
+ * runtime: a markdown reader in the bundle costs more than these strings do. */
+const RELEASES: { title: string; when?: string; changes: string[] }[] = [
+  {
+    title: "0.1.0",
+    when: "17 August 2026",
+    changes: [
+      "Artists have real pages: a discography split into albums, singles and appearances.",
+      "An artist's name finds the artist you meant, and an album plays from the track you clicked.",
+      "One library, however you reach it — saved playlists no longer depend on the route.",
+      "Search is quicker: songs and videos are looked up at the same time.",
+      "Settings shows which build you are running.",
+    ],
+  },
+  {
+    title: "Nothing jumps on load",
+    when: "16 August 2026",
+    changes: [
+      "Your theme, colour, avatar, name and counts are all back before the first frame.",
+      "The profile picture no longer flickers, and the page reserves the space it will fill.",
+      "A rejected picture says why it was rejected.",
+      "Explore is in the sidebar; no player bar until you have played something.",
+    ],
+  },
+  {
+    title: "Explore, and Timbre as an installed app",
+    when: "15 August 2026",
+    changes: [
+      "Explore: the charts and what to play next, on one page.",
+      "Radio, and one page shape for every kind of list, with a play button that starts at the top.",
+      "Search moved into a bar on every page, suggesting from what this browser has played.",
+      "Timbre can be installed, opens off disk, and says so honestly when the network is gone.",
+    ],
+  },
+  {
+    title: "The charts",
+    when: "14 August 2026",
+    changes: [
+      "A ranked chart with the evidence behind every position, and a ranking nobody publishes.",
+      "Movement arrows, from where a song sat the last time you looked.",
+      "Genre mix, a ranked bar chart, and a plot of where two sources disagree.",
+      "Discover shelves, including a set for someone with no history at all.",
+    ],
+  },
+  {
+    title: "No accounts, and the first playable version",
+    when: "10–13 August 2026",
+    changes: [
+      "Accounts and the database are gone: playlists, history and profile stay in this browser.",
+      "Playlists with export and import, a local profile, and three themes.",
+      "Lyrics beside the player, with a choice of version and a nudge for the timing.",
+      "Search across several free sources at once, playing inside Timbre rather than linking out.",
+      "When one copy of a track refuses to play, Timbre falls through to another.",
+    ],
+  },
+];
+
+function WhatsNew() {
+  return (
+    <>
+      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
+        Shipped with the build it describes — this is {VERSION}. The full list is in{" "}
+        <a
+          href={`${REPO}/blob/main/CHANGELOG.md`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-[var(--fg-dim)] underline decoration-dotted hover:text-[var(--fg)]"
+        >
+          CHANGELOG.md
+        </a>
+        .
+      </p>
+
+      <div className="mt-4 divide-y divide-[var(--line)]">
+        {RELEASES.map((release) => (
+          <section key={release.title} className="py-3.5 first:pt-0">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-[13px] font-bold">{release.title}</h3>
+              {release.title === process.env.NEXT_PUBLIC_TIMBRE_VERSION && (
+                <span
+                  className="rounded-[var(--r-full)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--accent-fg)]"
+                  style={{ background: "var(--accent)" }}
+                >
+                  Installed
+                </span>
+              )}
+              {release.when && (
+                <span className="ml-auto shrink-0 text-[11px] text-[var(--fg-faint)]">
+                  {release.when}
+                </span>
+              )}
+            </div>
+
+            <ul className="mt-2 max-w-prose space-y-1.5 text-xs leading-relaxed text-[var(--fg-dim)]">
+              {release.changes.map((change) => (
+                <li key={change} className="flex gap-2">
+                  <span aria-hidden="true" className="text-[var(--fg-faint)]">
+                    —
+                  </span>
+                  {change}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     </>
   );
 }
