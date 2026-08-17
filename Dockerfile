@@ -8,10 +8,10 @@
 # afternoon rather than a project. Build it after changing it, or delete it —
 # an untested escape hatch is worse than none.
 #
-# Build context is the monorepo root, not apps/web: the app imports @timbre/core,
-# @timbre/db and @timbre/providers as workspace *source* with no build step of
-# their own, which is why next.config.ts lists them in transpilePackages. A
-# context of apps/web alone would resolve none of them.
+# Build context is the monorepo root, not apps/web: the app imports @timbre/core
+# and @timbre/providers as workspace *source* with no build step of their own,
+# which is why next.config.ts lists them in transpilePackages. A context of
+# apps/web alone would resolve neither.
 #
 # Deliberately not a multi-stage build. pnpm's node_modules is a symlink farm
 # into a content-addressed store, and copying it between stages by hand is the
