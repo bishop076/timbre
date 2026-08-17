@@ -2,6 +2,7 @@
 
 import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
+import { formatClock } from "../duration";
 import {
   CollapseIcon,
   ExpandIcon,
@@ -16,17 +17,72 @@ import {
   VideoIcon,
   VideoOffIcon,
 } from "../icons";
-import { usePlayer } from "../player/player-context";
+import { usePlayer, type RepeatMode } from "../player/player-context";
 import { Volume } from "../player/volume";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { Scrub } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 
-function clock(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const total = Math.floor(seconds);
-  const minutes = Math.floor(total / 60);
-  return `${minutes}:${(total % 60).toString().padStart(2, "0")}`;
+/**
+ * A transport mode toggle. Plain tinted icons rather than slabs, so a mode does not carry
+ * Play's weight. Two shapes: `bar` is this bar, `sheet` the phone's full-screen transport,
+ * which has room for a bigger target and no need for the dot.
+ */
+export function ModeButton({
+  label,
+  on,
+  onClick,
+  icon,
+  variant,
+}: {
+  label: string;
+  on: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  variant: "bar" | "sheet";
+}) {
+  const bar = variant === "bar";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={on}
+      className={`press flex items-center justify-center ${
+        bar
+          ? "relative size-8 rounded-[var(--r-md)] transition-colors"
+          : "size-11 rounded-[var(--r-full)] transition"
+      } ${
+        on
+          ? "tint text-[var(--accent)]"
+          : `text-[var(--fg-faint)]${bar ? " hover:text-[var(--fg)]" : ""}`
+      }`}
+    >
+      {icon}
+      {/* The accent follows the artwork, so on some covers colour alone is too quiet. */}
+      {bar && (
+        <span
+          className={`absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current transition-opacity ${
+            on ? "opacity-100" : "opacity-0"
+          }`}
+        />
+      )}
+    </button>
+  );
+}
+
+/** Repeat's label and glyph, which both transports name identically. */
+export function repeatMode(repeat: RepeatMode): { label: string; icon: React.ReactNode } {
+  return {
+    label: repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat queue" : "Repeat off",
+    icon:
+      repeat === "one" ? (
+        <RepeatOneIcon className="size-[18px]" />
+      ) : (
+        <RepeatIcon className="size-[18px]" />
+      ),
+  };
 }
 
 /** The persistent player. Three zones on desktop, so the transport stays optically centred
@@ -39,9 +95,7 @@ export function PlayerBar() {
     activeSource,
     panelOpen,
     theater,
-    queue,
     index,
-    radio,
     position,
     duration,
     toggle,
@@ -52,6 +106,7 @@ export function PlayerBar() {
     toggleTheater,
     shuffle,
     repeat,
+    hasNext,
     toggleShuffle,
     cycleRepeat,
   } = usePlayer();
@@ -59,8 +114,6 @@ export function PlayerBar() {
   // The theme is applied in `AppShell`: this bar only mounts once something is playing.
   const busy = state === "resolving" || state === "loading";
   const playing = state === "playing";
-  // Live whenever anything can follow: the queue, a wrapping repeat, or a blend.
-  const hasNext = index + 1 < queue.length || repeat !== "off" || radio.length > 0;
   const source = sourceStyle(activeSource ?? "ytmusic");
 
   // Hiding only clips the panel: shrinking it below 200×200 stops YouTube playback.
@@ -90,32 +143,6 @@ export function PlayerBar() {
       style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
     >
       {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
-    </button>
-  );
-
-  // Plain tinted icons rather than slabs, so a mode toggle does not carry Play's weight.
-  const modeButton = (
-    label: string,
-    on: boolean,
-    onClick: () => void,
-    icon: React.ReactNode,
-  ) => (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      aria-pressed={on}
-      className={`press relative flex size-8 items-center justify-center rounded-[var(--r-md)] transition-colors ${
-        on ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)] hover:text-[var(--fg)]"
-      }`}
-    >
-      {icon}
-      {/* The accent follows the artwork, so on some covers colour alone is too quiet. */}
-      <span
-        className={`absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current transition-opacity ${
-          on ? "opacity-100" : "opacity-0"
-        }`}
-      />
     </button>
   );
 
@@ -219,7 +246,13 @@ export function PlayerBar() {
 
         <div className="flex shrink-0 items-center justify-center">
           <div className="relative flex items-center gap-2">
-            {modeButton("Shuffle", shuffle, toggleShuffle, <ShuffleIcon className="size-[18px]" />)}
+            <ModeButton
+              variant="bar"
+              label="Shuffle"
+              on={shuffle}
+              onClick={toggleShuffle}
+              icon={<ShuffleIcon className="size-[18px]" />}
+            />
 
             <button
               type="button"
@@ -243,23 +276,19 @@ export function PlayerBar() {
               <NextIcon className="size-[18px]" />
             </button>
 
-            {modeButton(
-              repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat queue" : "Repeat off",
-              repeat !== "off",
-              cycleRepeat,
-              repeat === "one" ? (
-                <RepeatOneIcon className="size-[18px]" />
-              ) : (
-                <RepeatIcon className="size-[18px]" />
-              ),
-            )}
+            <ModeButton
+              variant="bar"
+              {...repeatMode(repeat)}
+              on={repeat !== "off"}
+              onClick={cycleRepeat}
+            />
           </div>
         </div>
 
         {/* Balances the left zone so the transport is optically centred. */}
         <div className="flex flex-1 items-center justify-end gap-1.5">
           <span className="mr-1 hidden font-mono text-[11px] tabular-nums text-[var(--fg-faint)] xl:inline">
-            {clock(position)} / {duration > 0 ? clock(duration) : "—:—"}
+            {formatClock(position)} / {duration > 0 ? formatClock(duration) : "—:—"}
           </span>
           <Volume />
           <span className="mx-1 h-6 w-px bg-[var(--line)]" />
