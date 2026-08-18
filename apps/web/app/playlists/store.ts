@@ -64,6 +64,35 @@ function state(error: string | null): PlaylistsState {
   };
 }
 
+/**
+ * A playlist's songs, with anything that would throw downstream removed.
+ *
+ * `Array.isArray(songs)` used to be the entire check, in **both** places a playlist can
+ * arrive — and nothing downstream guards a field before reading it: `summarise` below
+ * reads `song.artworkUrl`, the player reads `song.sources.find(…)`, and every row reads
+ * `song.artists.join(…)`. One `null` in this array was therefore a TypeError thrown
+ * during render, from the sidebar, on every route — and `persist` had already written it
+ * to storage, so it came back on every later load. See docs/SECURITY.md, S-1.
+ *
+ * Dropped rather than repaired, unlike the timestamps below: a record with no artists and
+ * no sources is not a song and there is nothing to fall back to. A playlist that quietly
+ * loses one entry still renders and still plays; a playlist that keeps it renders nothing
+ * ever again.
+ */
+function usableSongs(value: unknown): Song[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter(
+    (song): song is Song =>
+      typeof song === "object" &&
+      song !== null &&
+      typeof (song as Song).id === "string" &&
+      typeof (song as Song).title === "string" &&
+      Array.isArray((song as Song).artists) &&
+      Array.isArray((song as Song).sources),
+  );
+}
+
 function readStorage(): LocalPlaylist[] {
   try {
     const raw = window.localStorage.getItem(KEY);
@@ -93,6 +122,10 @@ function readStorage(): LocalPlaylist[] {
             : typeof playlist.createdAt === "string"
               ? playlist.createdAt
               : "",
+        // Storage is a trust boundary too, not just the import: whatever wrote this may
+        // have been an older Timbre, a half-finished sync, or a poisoned import that got
+        // in before the check above existed. Those browsers have to heal on read.
+        songs: usableSongs(playlist.songs),
       }));
   } catch {
     // Corrupt JSON, or storage blocked entirely.
@@ -115,6 +148,12 @@ const store = createLocalStore<PlaylistsState>({
  * it for a hard-coded `null` here made running out of storage look exactly like a successful
  * save until the next reload. */
 function persist(): void {
+  // Built **before** the write, not after. `state` summarises every playlist, so it is the
+  // step that discovers a record it cannot read — and doing that after `setItem` meant a
+  // throw left storage holding something no later load could parse, turning one bad write
+  // into a permanent one. Computing first makes the failure cost only the change.
+  const next = state(null);
+
   try {
     window.localStorage.setItem(KEY, JSON.stringify(all));
   } catch {
@@ -122,7 +161,7 @@ function persist(): void {
     store.publish(state("Out of browser storage. Remove a playlist, or a profile picture."));
     return;
   }
-  store.publish(state(null));
+  store.publish(next);
 }
 
 /** Reads storage once, on mount — the first read cannot happen during render, because the
@@ -249,8 +288,12 @@ export function importPlaylists(data: unknown): number {
     ...incoming.map((playlist) => ({
       ...playlist,
       id: crypto.randomUUID(),
-      createdAt: playlist.createdAt ?? now,
+      // Typed, not just defaulted: `?? now` accepted an object here, which then sorted
+      // against a string in `state`.
+      createdAt: typeof playlist.createdAt === "string" ? playlist.createdAt : now,
       updatedAt: now,
+      // The file came from outside Timbre and is the least trustworthy input the app has.
+      songs: usableSongs(playlist.songs),
     })),
     ...all,
   ];
