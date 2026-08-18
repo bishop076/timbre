@@ -57,7 +57,6 @@ const request = createRequester({
 export function createSoundCloudProvider(): SearchProvider {
   return {
     id: "soundcloud",
-    displayName: "SoundCloud",
     playback: "queue",
     searchable: false,
 
@@ -89,7 +88,6 @@ export function createSoundCloudProvider(): SearchProvider {
         url,
         artworkUrl: body.thumbnail_url ?? null,
         playback: "queue",
-        isExplicit: false,
       };
     },
   };

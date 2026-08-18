@@ -46,7 +46,6 @@ function fromSearch(raw: ITunesTrack): SourceTrack | null {
     url: raw.trackViewUrl ?? null,
     artworkUrl: upsizeArtwork(raw.artworkUrl100),
     playback: "link",
-    isExplicit: raw.trackExplicitness === "explicit",
   };
 }
 
@@ -64,7 +63,6 @@ function fromRss(raw: RssEntry): SourceTrack | null {
     url: raw.url ?? null,
     artworkUrl: upsizeArtwork(raw.artworkUrl100),
     playback: "link",
-    isExplicit: false,
   };
 }
 
@@ -86,7 +84,6 @@ export function createAppleProvider(config: AppleConfig = {}): SearchProvider {
 
   return {
     id: "apple",
-    displayName: "Apple Music",
     playback: "link",
     searchable: true,
 

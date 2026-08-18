@@ -20,7 +20,6 @@ export interface SourceTrack extends CanonicalTrack {
   url: string | null;
   artworkUrl: string | null;
   playback: Playback;
-  isExplicit: boolean;
   /** YouTube Music's upload kind — `_ATV` (Topic art track), `_OMV`, `_UGC`. Art tracks
    * measured barred from embedding ~7% of the time, official videos never, hence the ranker. */
   videoType?: string | null;
@@ -65,7 +64,6 @@ export interface SearchContext {
 
 export interface SearchProvider {
   readonly id: SourceId;
-  readonly displayName: string;
   /** How Timbre can play this source's tracks, if at all. */
   readonly playback: Playback;
   /** False when the catalogue cannot be searched — SoundCloud's is gated. Still contributes

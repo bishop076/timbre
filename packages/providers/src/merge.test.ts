@@ -15,7 +15,6 @@ function track(overrides: Partial<SourceTrack> & { source: SourceId }): SourceTr
     url: null,
     artworkUrl: null,
     playback: overrides.source === "ytmusic" ? "queue" : "link",
-    isExplicit: false,
     ...overrides,
   };
 }
