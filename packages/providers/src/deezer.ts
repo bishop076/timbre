@@ -49,7 +49,6 @@ function toSourceTrack(raw: DeezerTrack): SourceTrack {
     url: raw.link ?? `https://www.deezer.com/track/${raw.id}`,
     artworkUrl: raw.album?.cover_big ?? raw.album?.cover_medium ?? null,
     playback: "link",
-    isExplicit: Boolean(raw.explicit_lyrics),
   };
 }
 
@@ -82,7 +81,6 @@ export function createDeezerProvider(): SearchProvider {
 
   return {
     id: "deezer",
-    displayName: "Deezer",
     playback: "link",
     searchable: true,
 

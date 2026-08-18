@@ -37,7 +37,6 @@ function toSourceTrack(raw: SidecarTrack): SourceTrack {
     url: `https://music.youtube.com/watch?v=${raw.video_id}`,
     artworkUrl: raw.thumbnail_url,
     playback: "queue",
-    isExplicit: raw.is_explicit,
     videoType: raw.video_type ?? null,
   };
 }
@@ -65,7 +64,6 @@ export function createYtMusicProvider(config: YtMusicConfig): SearchProvider {
 
   return {
     id: "ytmusic",
-    displayName: "YouTube Music",
     playback: "queue",
     searchable: true,
 
