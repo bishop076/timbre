@@ -3,49 +3,20 @@
  * `i.ytimg.com` is on enough lists that artwork silently vanished for anyone running one
  * — another YouTube url cannot help, since the host is what is blocked. Allowlisted
  * deliberately: fetching any url handed in is an SSRF hole. https and images only.
+ *
+ * The fetching itself lives in `lib/artwork-proxy.ts`, where it can be tested. What is
+ * left here is the request: metering, parsing, and the response.
  */
 
-/** Hosts whose artwork Timbre already displays. Nothing else is fetchable. */
-const ALLOWED_HOSTS = new Set([
-  "i.ytimg.com",
-  "i9.ytimg.com",
-  "yt3.ggpht.com",
-  "yt3.googleusercontent.com",
-  "lh3.googleusercontent.com",
-  "music.youtube.com",
-  "cdn-images.dzcdn.net",
-  "e-cdns-images.dzcdn.net",
-  "is1-ssl.mzstatic.com",
-  "is2-ssl.mzstatic.com",
-  "is3-ssl.mzstatic.com",
-  "is4-ssl.mzstatic.com",
-  "is5-ssl.mzstatic.com",
-  "i1.sndcdn.com",
-]);
-
-/** Artwork is small. Anything larger is not artwork. */
-const MAX_BYTES = 8 * 1024 * 1024;
-
-/** Passes a body through, erroring past `limit`. Cancel the source, don't ignore it, or the socket stays open. */
-function capped(body: ReadableStream<Uint8Array> | null, limit: number): ReadableStream<Uint8Array> | null {
-  if (!body) return null;
-
-  let seen = 0;
-  return body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        seen += chunk.byteLength;
-        if (seen > limit) {
-          controller.error(new Error("Artwork exceeded the size limit."));
-          return;
-        }
-        controller.enqueue(chunk);
-      },
-    }),
-  );
-}
+import { guardArtwork } from "@/lib/api";
+import { allowed, capped, fetchAllowed, MAX_BYTES } from "@/lib/artwork-proxy";
 
 export async function GET(request: Request) {
+  // Artwork has its own budget, well above what a page needs and well below a scraper —
+  // the allowlist bounds which hosts can be reached, never how often. See EXPOSURE.md E-7.
+  const refusal = guardArtwork(request);
+  if (refusal) return refusal;
+
   const raw = new URL(request.url).searchParams.get("u");
   if (!raw) return new Response("Missing url.", { status: 400 });
 
@@ -56,21 +27,20 @@ export async function GET(request: Request) {
     return new Response("Not a url.", { status: 400 });
   }
 
-  if (target.protocol !== "https:" || !ALLOWED_HOSTS.has(target.hostname)) {
+  if (!allowed(target)) {
     return new Response("Host not allowed.", { status: 403 });
   }
 
-  let upstream: Response;
+  let upstream: Response | null;
   try {
-    upstream = await fetch(target, {
-      // No cookies, credentials or caller headers: this request is Timbre's.
-      headers: { accept: "image/*" },
-      signal: request.signal,
-      cache: "no-store",
-    });
+    upstream = await fetchAllowed(target, { signal: request.signal });
   } catch {
     return new Response("Upstream unreachable.", { status: 502 });
   }
+
+  // A redirect that left the allowlist. Refused exactly as though the host it landed on
+  // had been asked for directly, which is what it amounts to.
+  if (!upstream) return new Response("Host not allowed.", { status: 403 });
 
   const type = upstream.headers.get("content-type") ?? "";
   if (!upstream.ok || !type.startsWith("image/")) {
@@ -78,18 +48,16 @@ export async function GET(request: Request) {
     return new Response("Not an image.", { status: 404 });
   }
 
-  // The cap must survive a missing `content-length`: `Number(header ?? 0)` made a chunked
-  // response measure zero bytes and stream through unbounded, so an absent header means
-  // metering the body rather than trusting the number.
+  // The declared length is an early-out, not the enforcement. It used to be both, so a
+  // response announcing a modest `content-length` and then sending far more streamed
+  // through unmetered — leaving the cap in the hands of whoever answered. Metering always
+  // costs one comparison per chunk. See docs/EXPOSURE.md, E-9.
   const declared = Number(upstream.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_BYTES) {
     return new Response("Too large.", { status: 413 });
   }
 
-  const body =
-    Number.isFinite(declared) && declared > 0 ? upstream.body : capped(upstream.body, MAX_BYTES);
-
-  return new Response(body, {
+  return new Response(capped(upstream.body, MAX_BYTES), {
     headers: {
       "content-type": type,
       // Artwork for a url never changes, so the proxy leaves the critical path.
