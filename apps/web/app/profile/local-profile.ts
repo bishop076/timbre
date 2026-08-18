@@ -87,7 +87,10 @@ function writeNameCookie(name: string | null): void {
   try {
     const value = name ? encodeURIComponent(name) : "";
     const age = name ? 31_536_000 : 0;
-    document.cookie = `${NAME_COOKIE}=${value};path=/;max-age=${age};SameSite=Lax`;
+    // `Secure` keeps it off plain HTTP and stops a non-secure origin on the same host from
+    // writing it. Local development is unaffected: browsers treat localhost and 127.0.0.1
+    // as secure contexts, so a Secure cookie is set there over http as normal.
+    document.cookie = `${NAME_COOKIE}=${value};path=/;max-age=${age};SameSite=Lax;Secure`;
   } catch {
     // Cookies disabled. The page falls back to filling the name in after load.
   }
