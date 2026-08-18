@@ -34,13 +34,17 @@ One finding is serious, is proven, and is not on the server.
 
 ---
 
-# S-1 · A crafted playlist file permanently bricks the app `HIGH`
+# S-1 · A crafted playlist file permanently bricks the app `FIXED`
 
 **OWASP:** A10:2025 Mishandling of Exceptional Conditions, with A06:2025
 Insecure Design underneath it — validation is missing at a trust boundary.
 
 **Impact:** persistent client-side denial of service. Every page, not one page.
 Recovery destroys all of the victim's data.
+
+**Fixed in `f363aa0`.** The account below is kept in the past tense it was written
+in — it is the record of what was wrong, and the regression test in
+`app/playlists/store.test.ts` is built from the payload in it.
 
 ## What is wrong
 
@@ -157,7 +161,7 @@ A regression test belongs with (1) — the payload above is the test.
 
 ---
 
-# S-2 · No error boundary anywhere `HIGH`
+# S-2 · No error boundary anywhere `FIXED`
 
 **OWASP:** A10:2025 Mishandling of Exceptional Conditions.
 
@@ -172,12 +176,15 @@ them do. The fifth's is incomplete, which is S-1.
 That is a design that depends on every store getting its error handling exactly
 right, forever, with nothing behind it if one does not.
 
-**Fix:** `app/global-error.tsx` with a "reset Timbre's stored data" button —
-which is also the recovery path S-1 currently lacks.
+**Fixed in `f363aa0`.** `app/global-error.tsx` — and it had to be that file rather
+than `error.tsx`, since a throw in the root layout is above a segment boundary. It
+imports nothing from the app, because every module in it is a suspect. It offers a
+**raw, unparsed dump of storage before the reset**, so the recovery no longer
+destroys what it is recovering.
 
 ---
 
-# S-3 · GitHub Actions are pinned to mutable tags, with write access `MEDIUM`
+# S-3 · GitHub Actions are pinned to mutable tags, with write access `FIXED`
 
 **OWASP:** A03:2025 Software Supply Chain Failures.
 
@@ -198,7 +205,8 @@ compromised action there can write to the repository and read the token that let
 it. This is the exact shape of the `tj-actions/changed-files` compromise of March
 2025, which reached tens of thousands of repositories through a retagged action.
 
-**Fix:** pin to full commit SHAs with the tag in a trailing comment —
+**Fixed in `e561412`**, all nine `uses:` across both workflows. Pinned to full
+commit SHAs with the tag in a trailing comment —
 
 ```yaml
 - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -209,7 +217,7 @@ ongoing. Do `release.yml` first; it is the one holding a write token.
 
 ---
 
-# S-4 · The Python service has no lockfile `MEDIUM`
+# S-4 · The Python service has no lockfile `FIXED`
 
 **OWASP:** A03:2025 Software Supply Chain Failures.
 
@@ -239,15 +247,22 @@ there. The Python side simply never got the same treatment.
 `ytmusicapi` is correctly bounded, and the comment explaining why is right — the
 reasoning just was not extended to the rest.
 
-**Fix:** `uv lock` (or `pip-compile`) committed, and `--frozen`/`--require-hashes`
-in CI. Add `pip-audit` to the sidecar job while you are there; `pnpm audit`
-already runs on the other side and reports clean.
+**Fixed in `e561412`.** `apps/ytmusic/uv.lock` pins 55 packages, and Vercel reads
+it alongside `pyproject.toml` — verified against their Python runtime docs — so CI
+and production install the same versions for the first time. CI runs
+`uv sync --locked`, which refuses to re-resolve, and now also runs `pip-audit`
+against an export of that lock. Verified on 3.11 in a scratch checkout: 55 tests
+pass, no known vulnerabilities.
 
 ---
 
-# S-5 · Redirects bypass the art proxy's allowlist `MEDIUM`
+# S-5 · Redirects bypass the art proxy's allowlist `FIXED`
 
 **OWASP:** server-side request forgery.
+
+**Fixed in `1e2e536`** — `redirect: "manual"`, re-validating every hop against the
+same allowlist, three hops maximum, tested against a real loopback server rather
+than a stubbed `fetch`.
 
 Full detail in [EXPOSURE.md](EXPOSURE.md) as **E-8** — `fetch` defaults to
 `redirect: "follow"`, and the host allowlist is applied only to the URL supplied,
@@ -262,7 +277,7 @@ A09:2025 Logging and Alerting Failures).
 
 ---
 
-# S-6 · The same missing validation exists on the storage path `LOW`
+# S-6 · The same missing validation exists on the storage path `FIXED`
 
 **OWASP:** A06:2025 Insecure Design.
 
@@ -271,7 +286,12 @@ then repairs timestamps — careful work, and it stops one element short. It is 
 same gap as S-1 reached by a different route, which is why the fix has to be
 applied in both places and not just at the import.
 
-Recorded separately so that fixing the import does not read as closing the class.
+**Fixed in `f363aa0`.** `usableSongs()` is applied at *both* entries, so a browser
+already holding a poisoned record heals on read rather than needing the fix before
+it was hit.
+
+Recorded separately because the class is what matters: fixing only the import
+would have left every already-affected browser broken.
 
 ---
 
@@ -296,16 +316,29 @@ Each of these is a place a vulnerability would normally be, and is not.
 
 ---
 
-# What to fix, in order
+# Status
 
-1. **S-1** — validate song elements in both `importPlaylists` and `readStorage`,
-   and persist after computing state. Proven bug, permanent damage, small fix.
-2. **S-2** — add `app/global-error.tsx` with a data-reset action. Cheapest
-   resilience available, and it is S-1's missing recovery path.
-3. **S-3** — SHA-pin the actions in `release.yml` first, then `ci.yml`.
-4. **S-4** — commit a Python lockfile; add `pip-audit` to the sidecar job.
-5. **S-5** — `redirect: "manual"` in `/api/art`, re-validating each hop.
-6. Then the cross-referenced EXPOSURE items: **E-7**, **E-14**, **E-11**.
+**All six are fixed**, in `f363aa0`, `e561412`, `1e2e536`, `8f10eef` and `2598c93`.
+The suite went from 71 to 86 tests on the web side and 49 to 55 on the sidecar; the
+four that cover S-1 fail against the previous store, which was checked by running
+them against it.
+
+What that leaves, none of it a vulnerability:
+
+- **Flip the CSP from `Report-Only` to enforcing** once a browser has confirmed it
+  breaks nothing. See EXPOSURE **E-14** for why a strict `script-src` is not
+  available here and what the policy does buy.
+- **Sign the `u` parameter on `/api/art`**, so only URLs Timbre produced are
+  fetchable. The allowlist plus a rate limit is a bound on abuse; a signature is a
+  boundary. EXPOSURE **E-7**.
+- **Log the sidecar's 401s.** A brute-force attempt and a misconfigured deploy are
+  still indistinguishable, which is to say invisible. EXPOSURE **E-12**,
+  A09:2025.
+- **Remove the inert `revalidate`** from `/api/radio`, `/api/artist` and
+  `/api/lyrics`. They read their query strings so they cannot be static; the
+  export promises a cache they do not have. EXPOSURE **E-6**.
+- **E-4**, the per-instance limiters, remains a knowing design trade rather than a
+  defect. Revisit only if traffic makes it real.
 
 ## Sources
 

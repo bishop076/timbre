@@ -158,7 +158,7 @@ and for good reasons. The honest options, cheapest first:
    change — but it ends "no database", which is a real cost to a project whose
    whole pitch is that it has none.
 
-## E-5 · The comment justifying per-instance pacing rests on a false premise `OPEN`
+## E-5 · The comment justifying per-instance pacing rests on a false premise `FIXED`
 
 **Severity:** low as a defect, high as misinformation — it is the reason E-4
 reads as settled.
@@ -173,10 +173,11 @@ The conditional is doing all the work, and per E-3 it does not hold on Vercel
 Hobby. Instances do not get their own outbound IP; they draw from a shared pool
 they do not control.
 
-**Fix:** correct the comment. A wrong justification in the code is worse than no
+**Fixed in `8f10eef`.** The comment now says what is actually true: this is a
+knowing trade, not a matched scope. A wrong justification in code is worse than no
 justification, because it stops the next reader from checking.
 
-## E-6 · `export const revalidate` does nothing on a Route Handler `OPEN`
+## E-6 · `export const revalidate` does nothing on a Route Handler `FIXED`
 
 **Severity:** medium, and it silently removes a layer everyone assumes is there.
 
@@ -213,9 +214,15 @@ per-instance counter from E-4.
 its `revalidate = 3600` is real — which is why the expensive genre fan-out is
 safe and the cheap-looking chart route is not.
 
-**Fix, in order:** add `force-static` where the answer genuinely does not depend
-on the request (`/api/charts` is the clear case); ignore unknown query
-parameters when forming the cache key; keep the `s-maxage` headers regardless.
+**Fixed in `8f10eef`** for `/api/charts`, the clear case — the build now reports it
+as `○ … 1h` rather than dynamic. Getting there meant the handler taking no
+`Request` at all, which is correct for a route rendered at build time: there is no
+caller to meter and no connection to abort. Reading `request.signal` off the
+build-time stub failed the build outright, which is how this was caught.
+
+**Still open** for `/api/radio`, `/api/artist` and `/api/lyrics`. Those genuinely
+read their query strings, so they cannot be static; they keep `s-maxage` and the
+inert `revalidate` should simply be removed from them.
 
 ---
 
@@ -223,7 +230,7 @@ parameters when forming the cache key; keep the `s-maxage` headers regardless.
 
 Every API route calls `guard(request)` except two.
 
-## E-7 · `/api/art` is an unmetered image relay `OPEN`
+## E-7 · `/api/art` is an unmetered image relay `FIXED`
 
 **Severity:** high — the cheapest way to spend this deployment's allowances.
 
@@ -254,13 +261,15 @@ about **1,300 requests exhaust the 10 GB of origin transfer**. At a realistic
 rendering, and a 429 there means a broken image on a legitimate page. That is a
 real concern, and it does not justify *nothing*.
 
-**Fix:** call `guard()` with a limit sized for image traffic rather than API
-traffic — a page renders on the order of 30 covers, so ~300/min is still far
-above a person and far below a scraper. Stronger: accept only URLs Timbre itself
-produced, by signing the `u` parameter with the existing secret. That turns the
-allowlist into an actual boundary.
+**Fixed in `1e2e536`.** `guardArtwork()` — 300/min/client, on its own budget rather
+than sharing the API's, because a page renders ~30 covers and a 429 on an `<img>`
+is a broken picture rather than a retry.
 
-## E-8 · `/api/art` follows redirects without re-checking the allowlist `OPEN`
+**Not done, and worth doing:** signing the `u` parameter with the existing secret,
+so only URLs Timbre itself produced are fetchable. That turns the allowlist into an
+actual boundary rather than a bound on which hosts can be relayed.
+
+## E-8 · `/api/art` follows redirects without re-checking the allowlist `FIXED`
 
 **Severity:** medium, conditional on an open redirect existing upstream.
 
@@ -273,11 +282,13 @@ its own origin, the allowlist is advisory.
 **What limits the damage:** the response must still be `image/*` and the body is
 size-capped, so this is an egress path rather than a data-exfiltration one.
 
-**Fix:** `redirect: "manual"`, then re-validate `location` against the same
-allowlist and loop with a hop limit. Twenty lines, no behaviour change for
-anything legitimate.
+**Fixed in `1e2e536`.** `redirect: "manual"`, re-validating `location` against the
+same allowlist on every hop, three hops maximum. Moved to `lib/artwork-proxy.ts` to
+be testable — nine tests against a real loopback server, since what is being tested
+is how the runtime reports a redirect and a stub would only assert what I already
+believed.
 
-## E-9 · A declared `content-length` under the cap is trusted `OPEN`
+## E-9 · A declared `content-length` under the cap is trusted `FIXED`
 
 **Severity:** low.
 
@@ -289,7 +300,8 @@ In practice the HTTP client errors on a length mismatch, which is why this is
 low rather than medium. It is still a case of the cap being enforced by whoever
 answered rather than by the code whose job it is.
 
-**Fix:** always wrap in `capped()`. The header check stays as the early-out.
+**Fixed in `1e2e536`.** Always wrapped in `capped()`; the header check stays as the
+early-out it should always have been.
 
 ## E-10 · `/api/health` is unguarded and doubles every hit `OPEN`
 
@@ -309,7 +321,7 @@ closing it.
 
 # Part 4 · The sidecar
 
-## E-11 · The shared secret has no rotation path `OPEN`
+## E-11 · The shared secret has no rotation path `FIXED`
 
 **Severity:** medium.
 
@@ -325,9 +337,13 @@ support for two valid secrets at once, which means rotation is an outage — so 
 practice it will not happen, which is how a static secret becomes a permanent
 one.
 
-**Fix:** accept a comma-separated list of valid secrets in `config.py` and
-compare against each. Rotation becomes: add new to both, then remove old from
-both. Roughly five lines.
+**Fixed in `2598c93`.** `config.py` accepts a comma-separated list. The web app
+still sends exactly one, so the sequence has no gap: add the new secret alongside
+the old on the sidecar, move the web app across, drop the old.
+
+`matches()` accumulates rather than short-circuiting — `any()` stops at the first
+hit, so the time taken would report *which* secret matched, and mid-rotation that
+distinguishes a caller still on the old one.
 
 ## E-12 · The secret is the sidecar's only defence `ACCEPTED`
 
@@ -358,7 +374,7 @@ in `docs/DEPLOY.md` is ever taken. Recorded so nobody "cleans it up".
 
 # Part 5 · The browser
 
-## E-14 · No security response headers at all `OPEN`
+## E-14 · No security response headers at all `PARTLY FIXED`
 
 **Severity:** medium.
 
@@ -375,29 +391,52 @@ caching `/profile`. There is no middleware. Absent, therefore:
 
 The last three are one-liners in `next.config.ts` with no design cost.
 
-**CSP is the interesting one**, because Timbre's architecture fights it. The
-boot script in `app/layout.tsx` is inline and must stay inline — it is the entire
-mechanism that stops the first-paint flicker. The usual answer, a per-request
-nonce, forces every page to render dynamically and would throw away the
-prerendering that makes this deployment free.
+**Fixed in `8f10eef`,** except for the CSP — the five headers above ship enforced
+on every response. Clickjacking is covered today by `X-Frame-Options: DENY`, and
+does not wait on anything below.
 
-**The answer that works here:** the script is a module constant. Its SHA-256 is
-computable at build time and never varies per request, so a hash-source CSP
-(`script-src 'sha256-…'`) is compatible with full static prerendering. It also
-means the hash must be regenerated whenever the script changes — and
-`app/layout.test.ts` is already the right place to enforce that, since it
-already guards that literal's contents as text.
+**CSP ships `Report-Only`, and that is a real limitation rather than caution.**
 
-`frame-src` must permit `youtube.com` and `soundcloud.com`, which is the point
-of the app rather than a weakening of the policy.
+I claimed here that a build-time script hash was "the answer that works," on the
+grounds that the boot script is a module constant with a stable SHA-256. **That is
+wrong, and reading the CSP guide shipped in `node_modules/next` is what showed
+it.** The boot script is not the only inline script on the page: Next inlines its
+own bootstrap and streams its flight payload as `<script>` tags whose contents
+differ per page and per render. No fixed set of hashes in `next.config.ts` can
+cover those, and `strict-dynamic` does not help, because they are in the HTML
+rather than loaded by an already-trusted script.
 
-## E-15 · The `timbre-name` cookie is not `Secure` `OPEN`
+The documented answer is a per-request nonce, and the same guide is explicit:
+
+> Every time a page is viewed, a fresh nonce should be generated. This means that
+> you **must use dynamic rendering to add nonces**.
+
+Dynamic rendering is exactly what this deployment cannot afford — it is the
+prerendering that keeps Explore at one upstream fan-out an hour and the whole
+thing inside the free tier. So `script-src` keeps `'unsafe-inline'`, and what the
+policy actually buys is the other directives: `object-src 'none'`,
+`base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, and a
+`script-src` that still refuses any *origin* not named.
+
+`Report-Only` because the remaining risk is a wrong `frame-src` or `connect-src`
+breaking playback silently, and that cannot be verified without a browser. **To
+finish this:** open the console on a page that plays something, a page with an
+avatar, and Explore. If nothing is reported, rename the header key in
+`next.config.ts` to `Content-Security-Policy`.
+
+`frame-src` permits `www.youtube.com` and `w.soundcloud.com`, which is the point
+of the app rather than a weakening of the policy — they are the only two external
+origins in the codebase.
+
+## E-15 · The `timbre-name` cookie is not `Secure` `FIXED`
 
 **Severity:** low.
 
-**`read`.** `apps/web/app/profile/local-profile.ts:83` writes the cookie with
-`path=/`, `max-age`, and `SameSite=Lax` — and no `Secure`. So it would travel
-over plain HTTP, and can be set by a non-secure origin on the same host.
+**Fixed in `5e0d710`.** `apps/web/app/profile/local-profile.ts` wrote the cookie
+with `path=/`, `max-age` and `SameSite=Lax` — and no `Secure`, so it would travel
+over plain HTTP and could be set by a non-secure origin on the same host. Local
+development is unaffected: browsers treat `localhost` and `127.0.0.1` as secure
+contexts, so the cookie is still set there over http.
 
 It carries a display name the user typed and nothing else, control characters
 are stripped at the single choke point (`setDisplayName`), and React escapes it
@@ -481,24 +520,24 @@ worth stating plainly rather than discovering later.
 
 # What to do first
 
-Ordered by consequence over effort.
+**E-5 through E-11 and most of E-14 are fixed** — see each entry. What is left,
+ordered by consequence over effort:
 
 1. **E-17** — run the `POST /search` check against the deployed sidecar.
-   Everything else is conditional on it.
-2. **E-1** — decide about donation and sponsor links *before* adding one.
-3. **E-7** — put a limit on `/api/art`, sized for image traffic. One import,
-   one call.
-4. **E-6** — `force-static` on `/api/charts`, so the CDN absorbs what memory
-   cannot.
-5. **E-5** — correct the comment in `providers.ts`. A false justification costs
-   more than a missing one.
-6. **E-14** — the three one-line headers now; CSP by script hash when there is
-   time.
-7. **E-11** — accept a list of valid secrets, so rotation stops being an outage.
-8. **E-8**, **E-9** — the redirect hop and the unconditional size cap in
-   `/api/art`.
-9. **E-4** — revisit only if traffic makes it real. It is a design decision, not
-   an oversight, and shared state is the thing this project is built to avoid.
+   Everything else is conditional on it, and it is still unmeasured.
+2. **E-1** — decide about donation and sponsor links *before* adding one. This is
+   the one that can end the deployment with no technical warning.
+3. **E-14** — flip the CSP from `Report-Only` to enforcing, once a browser has
+   confirmed it breaks nothing. Three pages to check.
+4. **E-7** — sign the `u` parameter, so the art proxy has a boundary rather than
+   a bound. The rate limit stops the bleeding; this closes it.
+5. **E-12** — log the sidecar's 401s, so a brute-force attempt stops looking
+   exactly like a misconfigured deploy.
+6. **E-6** — drop the inert `revalidate` from the three routes that cannot be
+   static, so nothing advertises a cache it does not have.
+7. **E-3 / E-4** — measure before acting. Log upstream status codes for a week;
+   if Apple is not 403ing, the per-instance limiters are a trade worth keeping,
+   and shared state is the thing this project is built to avoid.
 
 ---
 
