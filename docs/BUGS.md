@@ -94,7 +94,7 @@ all, there is no second source to fall back to.
 
 **Remedy if it ever matters:** other-source ladder (Spotify embed panel →
 SoundCloud widget → iTunes/Deezer preview). Already a TODO at
-`docs/ROADMAP.md:114`. Measured need: **0 of 15 songs** had every candidate
+the roadmap. Measured need: **0 of 15 songs** had every candidate
 barred, so this is genuinely long-tail.
 
 ---
@@ -115,7 +115,7 @@ fail → network round-trip → retry, which the listener hears as a stall mid-s
 ## B-6 · Error text asserts a cause the app never verified `FIXED`
 
 **Severity:** low code impact, **high diagnostic cost**
-**Fixed by Agent B**, 2026-08-17 — see the crossing note in `WORKSTREAMS.md`.
+**Fixed by Agent B**, 2026-08-17 — see the crossing note in the working notes.
 
 `onError` now logs `[timbre] YouTube IFrame error <code> on video <id>` before it
 maps anything to a sentence. The video id comes from a ref rather than the
