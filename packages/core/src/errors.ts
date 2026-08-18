@@ -23,8 +23,6 @@ export class ProviderError extends Error {
   readonly provider: ProviderId;
   readonly kind: ProviderErrorKind;
   readonly status: number | undefined;
-  /** For `quota_exceeded`: when the budget refills, if known. */
-  readonly resetAt: Date | undefined;
 
   constructor(
     provider: ProviderId,
@@ -32,7 +30,6 @@ export class ProviderError extends Error {
     message: string,
     options: {
       status?: number;
-      resetAt?: Date;
       cause?: unknown;
     } = {},
   ) {
@@ -41,11 +38,5 @@ export class ProviderError extends Error {
     this.provider = provider;
     this.kind = kind;
     this.status = options.status;
-    this.resetAt = options.resetAt;
-  }
-
-  /** Whether an ingest job should retry rather than abandon the run. */
-  get retryable(): boolean {
-    return this.kind === "rate_limited" || this.kind === "transient" || this.kind === "auth_expired";
   }
 }
