@@ -153,10 +153,6 @@ export function LyricsPanel() {
     };
   }, []);
 
-  if (!current) {
-    return <Empty>Play something to see its lyrics.</Empty>;
-  }
-
   if (loading && !lyrics) {
     return <Empty>Looking for lyrics…</Empty>;
   }
