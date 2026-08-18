@@ -8,7 +8,8 @@ once the app is reachable from the open internet — limits that do not hold at
 the scale they were sized for, routes that cost more than they look like they
 cost, and assumptions that were true on a laptop and are not true on Vercel.
 
-*Compiled 2026-08-18. Nothing here is theoretical unless it says so.*
+*Compiled 2026-08-18, against `57e266c`; fixes recorded through `5e0d710`. Nothing
+here is theoretical unless it says so.*
 
 ## How to read an entry
 
@@ -111,9 +112,9 @@ lives in the memory of a single process:
 
 | Mechanism | Where | Scope as written |
 |---|---|---|
-| Outbound pacing (token buckets) | `apps/web/lib/providers.ts:47` — `new RateLimiter(new MemoryBucketStore())` | one process |
-| Inbound rate limit, 60/min/client | `apps/web/lib/api.ts:38-43` → `lib/rate-limit.ts` | one process |
-| Response cache, 2 min / 500 entries | `apps/web/lib/api.ts:31-36` → `lib/cache.ts` | one process |
+| Outbound pacing (token buckets) | `apps/web/lib/providers.ts:62` — `new RateLimiter(new MemoryBucketStore())` | one process |
+| Inbound rate limit, 60/min/client | `apps/web/lib/api.ts:53` → `lib/rate-limit.ts` | one process |
+| Response cache, 2 min / 500 entries | `apps/web/lib/api.ts:46` → `lib/cache.ts` | one process |
 
 `packages/core/src/limiter.ts` says of the store interface it defines:
 
