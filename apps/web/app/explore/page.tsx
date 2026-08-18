@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 
 import { fetchDiscover, type ChartTrack } from "@/lib/discover";
+import { GenreMixView } from "../genre-mix-view";
 import { fetchRadios } from "@/lib/radios";
 import {
   agreement,
@@ -50,7 +51,10 @@ async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
       rankings={rankings}
       share={shareByArtist(rankings.songs)}
       agree={agreement(rankings)}
-      mix={mixGenres(genreCharts, rankings.songs)}
+      /* Rendered here rather than inside RankingsView, which is a client component:
+         anything it imports ships as JavaScript, and this chart never changes after
+         paint. See genre-mix-view.tsx. */
+      genreMix={<GenreMixView mix={mixGenres(genreCharts, rankings.songs)} />}
       chart={chart}
       embedded
     />
