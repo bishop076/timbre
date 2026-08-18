@@ -83,7 +83,7 @@ jobs:
   ytmusic:
     name: Sidecar (lint, tests)
     runs-on: ubuntu-latest
-    # Lint and 49 tests, no network and no build — a minute on a cold cache.
+    # Lint, 55 tests and a dependency audit, no network and no build — a minute on a cold cache.
     timeout-minutes: 10
     defaults:
       run:
