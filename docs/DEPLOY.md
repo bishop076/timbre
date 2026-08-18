@@ -134,6 +134,12 @@ count — but an open sidecar being used as somebody else's free search proxy
 would spend real CPU parsing every response, and 4 CPU-hrs is not a lot to give
 away.
 
+The cheaper way to spend all of this is `/api/art`, which is the one route with
+no rate limit on it, and the plan's terms are stricter than its numbers — a
+donation link puts a Hobby project in breach. Both are in
+[EXPOSURE.md](EXPOSURE.md), along with what else changes the moment this is
+reachable from the open internet. **Read it before the first deploy**, not after.
+
 ## When this goes stale
 
 Every fact above has a date on it because free tiers do not keep still. If
