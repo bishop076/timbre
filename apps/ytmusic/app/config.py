@@ -1,9 +1,9 @@
 """Sidecar configuration.
 
-Deliberately tiny. This service holds no secrets of its own and never touches
-the database: the web app decrypts a user's YouTube credentials and passes them
-per request. The only secret here is the shared token proving the caller is the
-web app.
+Deliberately tiny. There is no database and no user credential anywhere in
+Timbre: every call this service makes to YouTube Music is unauthenticated, so
+there is nothing here worth stealing. The one secret is the shared token
+proving a caller is the web app rather than the open internet.
 """
 
 import os
