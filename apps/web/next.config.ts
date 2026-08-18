@@ -36,6 +36,12 @@ const SOUNDCLOUD = "https://w.soundcloud.com";
  * Clickjacking is **not** waiting on that: `X-Frame-Options` below is enforced today and
  * covers what `frame-ancestors` would.
  */
+/*
+ * Development is served over plain http, and two of the directives below are not merely
+ * useless there — they are actively destructive. See `SECURITY_HEADERS`.
+ */
+const IN_PRODUCTION = process.env.NODE_ENV === "production";
+
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline' ${YOUTUBE} ${SOUNDCLOUD}`,
@@ -51,7 +57,9 @@ const CONTENT_SECURITY_POLICY = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
+  // Production only. On a dev server every request is http by definition, so this either
+  // does nothing or rewrites the dev server's own URLs to a port that is not listening.
+  ...(IN_PRODUCTION ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 /**
@@ -69,10 +77,29 @@ const SECURITY_HEADERS = [
   // Already set by hand on `/api/art`; there is no reason for it to be the only route.
   { key: "X-Content-Type-Options", value: "nosniff" },
 
-  // Two years. **No `preload`**: that directive is an application to a browser-shipped
-  // list, and getting off it takes months — not something to opt into from a config file
-  // on a domain that may still change.
-  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+  /*
+   * Two years — and **production only**, which is not tidiness. Sending this from the dev
+   * server breaks development, persistently, and it took a report to find:
+   *
+   * `http://localhost` is a *potentially trustworthy origin*, so a browser does not
+   * discard an HSTS policy served over it the way the RFC says to for plain http. It
+   * records one — for the bare host `localhost`, with no port — and from then on upgrades
+   * every `http://localhost` request to `https://localhost`, where nothing is listening.
+   * That breaks this dev server, **every other project on the machine**, and it keeps
+   * breaking them for two years after the header stops being sent, because the policy now
+   * lives in the browser rather than in this file.
+   *
+   * `http://127.0.0.1` is unaffected: HSTS does not apply to IP literals. That asymmetry
+   * is the tell — curl to 127.0.0.1 succeeding while a browser on localhost cannot connect
+   * is this bug and nothing else.
+   *
+   * **No `preload`** either: that directive is an application to a browser-shipped list,
+   * and getting off it takes months — not something to opt into from a config file on a
+   * domain that may still change.
+   */
+  ...(IN_PRODUCTION
+    ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }]
+    : []),
 
   // Only what Timbre demonstrably never uses. `autoplay`, `fullscreen`, `accelerometer`
   // and `gyroscope` are deliberately left alone: the first two are how the players work,
