@@ -1,6 +1,6 @@
 {
   "name": "@timbre/web",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "scripts": {
     "_comment": "Env lives in one root .env; dotenv-cli loads it for the child process and its workers, which Next would not otherwise see from apps/web.",
