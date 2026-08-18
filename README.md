@@ -59,6 +59,7 @@ See [docs/BLOCKED.md](docs/BLOCKED.md) for what is waiting on somebody else.
 - Node.js 22+ (developed on 26)
 - pnpm 11+
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/) — installs the sidecar from its lockfile
 
 No database, no API keys, no developer accounts, no subscriptions.
 
@@ -71,10 +72,14 @@ cp .env.example .env
 # YTMUSIC_SHARED_SECRET: openssl rand -hex 32
 
 cd apps/ytmusic
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"   # POSIX: .venv/bin/python
+uv sync --extra dev        # or: python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"
 cd ../..
 ```
+
+The sidecar's dependencies are locked in `apps/ytmusic/uv.lock`, which is what CI and
+Vercel both install from — `uv sync` reproduces those versions exactly, while the pip route
+re-resolves and may not. Changing a dependency means re-running `uv lock` and committing
+the result, or CI fails on `--locked`.
 
 Both environment variables live in **one root `.env`**, loaded via `dotenv-cli` because Next does not look outside its own directory in a monorepo.
 
