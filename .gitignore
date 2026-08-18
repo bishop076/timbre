@@ -52,3 +52,7 @@ pnpm-debug.log*
 
 # Written by scripts/release.mjs for the release workflow to read; not part of the tree.
 RELEASE_NOTES.md
+
+# Planning and working notes. Kept on disk, deliberately out of the repository —
+# they are how the project was thought through, not how it is used or built.
+notes/

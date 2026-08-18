@@ -12,7 +12,7 @@ YouTube Music's free tier plus SoundCloud is an enormous catalogue — remixes, 
 
 Timbre is a shell around other services' own players. **It hosts nothing.** Audio always streams from the service it belongs to, through that service's official player, so ads run and artists are paid exactly as they would be otherwise. What belongs to Spotify stays in Spotify.
 
-The full reasoning — including why the original "connect all three accounts" idea is impossible — is in [docs/PLAN.md](docs/PLAN.md).
+That constraint is the whole design: three services' catalogues can be searched together, but their audio cannot be pooled into one stream without breaking every one of their terms.
 
 ## What it does
 
@@ -52,7 +52,7 @@ Search and playlists are done; playback and polish are most of the way there.
 | C — Playlists | 12/13 | ✅ |
 | D — Polish and launch | 12/20 | 🔨 |
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the task-level detail and [docs/BLOCKED.md](docs/BLOCKED.md) for what is waiting on somebody else.
+See [docs/BLOCKED.md](docs/BLOCKED.md) for what is waiting on somebody else.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ macOS/Linux: `pnpm dev:ytmusic:posix`.
 
 ```bash
 curl http://127.0.0.1:3000/api/health
-# {"status":"ok","services":{"database":{"status":"ok"},"ytmusic":{"status":"ok"}}, ...}
+# {"status":"ok","services":{"ytmusic":{"status":"ok"}},"configured":{"soundcloud":false}}
 ```
 
 Returns **503** if the sidecar is down. It is the only dependency there is.
@@ -101,7 +101,7 @@ apps/
   web/        Next.js 16 — search, player orchestration, playlists
   ytmusic/    FastAPI + ytmusicapi — unauthenticated search, holds no secrets
 packages/
-  core/       canonical models, matching, rate limiter, crypto
+  core/       canonical models, matching, rate limiter, error taxonomy
   providers/  SearchProvider interface + per-source adapters
 ```
 
@@ -125,6 +125,5 @@ One normalization rule matters more than the rest: `(Remastered 2011)` and `(Off
 
 ## Notes
 
-- Next.js 16 renamed the `middleware` convention to `proxy` — see [apps/web/proxy.ts](apps/web/proxy.ts).
 - `ytmusicapi` is unofficial and can break when YouTube changes its web client. It's pinned to a minor range and isolated in its own service. It is also Timbre's primary source, so budget for maintenance.
 - Never commit `.env`.
