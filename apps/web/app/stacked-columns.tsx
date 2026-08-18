@@ -1,7 +1,3 @@
-"use client";
-
-import { useState } from "react";
-
 // A stacked column chart: genre on the x-axis, split into rank bands. One hue in four steps
 // rather than four colours, since rank bands are an ordered scale. Built from divs, not SVG,
 // so labels inherit the theme's type scale and wrap normally.
@@ -39,8 +35,6 @@ export function StackedColumns({
   /** What a unit is, singular, for the tooltip. */
   unit: string;
 }) {
-  const [hover, setHover] = useState<number | null>(null);
-
   if (columns.length === 0) return null;
 
   const max = Math.max(...columns.map((column) => column.total), 1);
@@ -89,12 +83,20 @@ export function StackedColumns({
               ))}
 
               <div className="flex h-full items-end gap-1.5 sm:gap-2">
-                {columns.map((column, index) => (
+                {columns.map((column) => (
+                  /*
+                   * Hover and focus in CSS, not state.
+                   *
+                   * A `useState` here forced the whole chart to be a client component,
+                   * and it draws the default Explore view — so every visitor downloaded
+                   * it to render something that never changes after paint. `tabIndex`
+                   * and `group-focus-within` also make the figures reachable by
+                   * keyboard, which pointer events never were.
+                   */
                   <div
                     key={column.label}
-                    className="relative flex h-full min-w-0 flex-1 flex-col justify-end"
-                    onPointerEnter={() => setHover(index)}
-                    onPointerLeave={() => setHover(null)}
+                    tabIndex={0}
+                    className="group relative flex h-full min-w-0 flex-1 flex-col justify-end rounded-[2px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   >
                     {column.values
                       .map((value, band) => ({ value, band }))
@@ -117,8 +119,7 @@ export function StackedColumns({
                     {/* `max-w` in viewport units on the tooltip: centred on a ~28px
                         column it hangs well outside it, and at a fixed 10rem the
                         first and last ran past the card on a phone. */}
-                    {hover === index && (
-                      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 w-40 max-w-[60vw] -translate-x-1/2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 shadow-[var(--drop-lg)]">
+                    <div className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-1 w-40 max-w-[60vw] -translate-x-1/2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 opacity-0 shadow-[var(--drop-lg)] transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
                         <p className="truncate text-[12px] font-semibold">{column.label}</p>
                         <p className="text-[11px] tabular-nums text-[var(--fg-dim)]">
                           {column.total} {column.total === 1 ? unit : `${unit}s`}
@@ -141,8 +142,7 @@ export function StackedColumns({
                             ),
                           )}
                         </ul>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>

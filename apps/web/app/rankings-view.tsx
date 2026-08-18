@@ -12,16 +12,15 @@ import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
 import { sourceStyle } from "./sources";
-import { StackedColumns } from "./stacked-columns";
 
-// Fetched when a tab opens; `StackedColumns` stays static as the default view. The split
+// Fetched when a tab opens. The genre chart is not here at all — the server page renders
+// it and passes it in, so it costs no JavaScript. The split
 // must be here, not `explore/page.tsx` — this Next version won't code-split a Client
 // Component that a Server Component imports dynamically.
 const BarChart = dynamic(() => import("./bar-chart").then((m) => m.BarChart));
 const ChartGraph = dynamic(() => import("./chart-graph").then((m) => m.ChartGraph));
 import type { ChartTrack } from "@/lib/discover";
-import { RANK_BANDS } from "@/lib/rank-bands";
-import type { GenreMix, Rankings } from "@/lib/rankings";
+import type { Rankings } from "@/lib/rankings";
 
 /*
  * Rankings — a rail of views down the side. No source publishes chart history keyless and
@@ -46,20 +45,21 @@ export function RankingsView({
   rankings,
   share,
   agree,
-  mix,
+  genreMix,
   chart,
   embedded = false,
 }: {
   rankings: Rankings;
   share: { artist: string; entries: number; best: number }[];
   agree: { shared: number; only: { chart: string; count: number }[]; total: number };
-  mix: GenreMix[];
+  /* Rendered by the server page — see genre-mix-view.tsx for why. */
+  genreMix: React.ReactNode;
   chart: ChartTrack[];
   /** Rendered inside another page rather than as one. Explore embeds it; `/rankings` is the direct link. */
   embedded?: boolean;
 }) {
   // The graph leads: a rankings page that opens on a list is a list with a menu.
-  const [view, setView] = useState<ViewId>(mix.length > 0 ? "mix" : "songs");
+  const [view, setView] = useState<ViewId>(genreMix ? "mix" : "songs");
   const current = VIEWS.find((entry) => entry.id === view)!;
 
   // The failure state respects `embedded` too, or a page with an <h1> gets a second.
@@ -138,7 +138,7 @@ export function RankingsView({
           <p className="mt-1 text-xs leading-relaxed text-[var(--fg-faint)]">{current.blurb}</p>
 
           <div className="mt-4">
-            {view === "mix" && <GenreMixView mix={mix} />}
+            {view === "mix" && genreMix}
             {view === "spread" && <SpreadView chart={chart} />}
             {view === "songs" && <SongsView rankings={rankings} />}
             {view === "artists" && <ArtistsView share={share} total={rankings.songs.length} />}
@@ -291,43 +291,6 @@ function AgreementView({
 
       <p className="mt-5 max-w-xl text-xs leading-relaxed text-[var(--fg-faint)]">
         Two agreeing charts beat one asserting — still only two Western services.
-      </p>
-    </>
-  );
-}
-
-function GenreMixView({ mix }: { mix: GenreMix[] }) {
-  if (mix.length === 0) {
-    return (
-      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
-        No genre chart overlapped the ranking this week. Genre charts come from Deezer, and either
-        it did not answer or none of its genre entries reached the fused top 100.
-      </p>
-    );
-  }
-
-  // Eight is the most that stays legible at the narrowest width — the chart fits its
-  // container, so more columns only means thinner ones.
-  const top = mix.slice(0, 8);
-
-  return (
-    <>
-      <p className="mb-4 max-w-2xl text-xs text-[var(--fg-faint)]">
-        How many of each genre&rsquo;s songs reached the ranking, and where they landed.
-      </p>
-
-      <StackedColumns
-        columns={top.map((entry) => ({
-          label: entry.genre,
-          total: entry.total,
-          values: entry.bands,
-        }))}
-        segments={RANK_BANDS}
-        unit="song"
-      />
-
-      <p className="mt-5 max-w-2xl text-xs leading-relaxed text-[var(--fg-faint)]">
-        One week&rsquo;s standings, not a trend — no free source publishes chart history.
       </p>
     </>
   );
