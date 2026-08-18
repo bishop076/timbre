@@ -11,13 +11,10 @@ export function ImagePicker({
   kind,
   hasImage,
   variant,
-  onChanged,
 }: {
   kind: ImageKind;
   hasImage: boolean;
   variant: "overlay" | "button";
-  /** Lets the parent clear an error or close a menu after a change. */
-  onChanged?: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -29,7 +26,6 @@ export function ImagePicker({
     setError(null);
     try {
       await setLocalImage(kind, file);
-      onChanged?.();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't use that picture.");
     } finally {
@@ -42,7 +38,6 @@ export function ImagePicker({
   function remove() {
     clearLocalImage(kind);
     setError(null);
-    onChanged?.();
   }
 
   const label = kind === "avatar" ? "profile picture" : "banner";

@@ -48,11 +48,7 @@ export function RelatedPanel() {
   const songs = found?.seed === seed ? found.songs : null;
   const loading = Boolean(current) && songs === null;
 
-  if (!current) {
-    return <Empty>Play something to see what goes with it.</Empty>;
-  }
-
-  if (loading && songs === null) {
+  if (loading) {
     return <Empty>Finding songs like this…</Empty>;
   }
 

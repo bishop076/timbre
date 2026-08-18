@@ -54,7 +54,6 @@ export interface ChartPlaylist {
 }
 
 export interface Discover {
-  genre: number;
   genres: Genre[];
   tracks: ChartTrack[];
   albums: ChartAlbum[];
@@ -168,7 +167,6 @@ export async function fetchDiscover(genre: number): Promise<Discover> {
   ]);
 
   return {
-    genre,
     genres,
     tracks: (chart?.tracks?.data ?? []).map(toTrack),
     albums: (chart?.albums?.data ?? []).map((raw) => ({
