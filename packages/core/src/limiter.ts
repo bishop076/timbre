@@ -4,7 +4,6 @@
  * recovers only at reset, so retrying burns the next day's budget.
  */
 
-import { ProviderError } from "./errors.ts";
 import type { ProviderId } from "./types.ts";
 
 export interface BucketPolicy {

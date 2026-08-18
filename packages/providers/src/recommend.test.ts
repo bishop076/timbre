@@ -17,7 +17,6 @@ function track(title: string, artist: string, overrides: Partial<SourceTrack> = 
     url: null,
     artworkUrl: null,
     playback: source === "ytmusic" ? "queue" : "link",
-    isExplicit: false,
     ...overrides,
   };
 }
