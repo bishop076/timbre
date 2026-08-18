@@ -61,6 +61,17 @@ It is the only thing between the open internet and your quota. `config.py`
 refuses to import without it, so a misconfigured deploy fails loudly rather than
 serving unauthenticated.
 
+**To rotate it later**, the sidecar accepts a comma-separated list, so there is no
+window where the two projects disagree:
+
+1. Sidecar → `YTMUSIC_SHARED_SECRET=<old>,<new>`, redeploy. Both now work.
+2. Web app → `YTMUSIC_SHARED_SECRET=<new>`, redeploy.
+3. Sidecar → `YTMUSIC_SHARED_SECRET=<new>`, redeploy. The old one stops working.
+
+Done in that order nothing 401s at any point. Done as a single swap on each side,
+every search fails until both have finished deploying — which is why the list
+exists.
+
 Then verify, with `$SEC` set to that value:
 
 ```bash
