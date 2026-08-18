@@ -42,8 +42,23 @@ function registerAll(): void {
 }
 
 export function getProviderRuntime(): { limiter: RateLimiter } {
-  // In-memory permanently: Timbre runs no database, and per-instance pacing is the right
-  // scope when each instance has its own outbound IP and the limits are per-IP.
+  /*
+   * In memory, and therefore **per instance** — which is looser than it looks, and is a
+   * trade rather than a solution.
+   *
+   * The justification here used to be that each instance has its own outbound IP, so a
+   * per-instance bucket matched a per-IP limit. That is not true on Vercel: static outbound
+   * IPs are a paid feature and even there a shared pool, so on Hobby the address is drawn
+   * from a pool shared with other customers and can change between invocations. Serverless
+   * therefore runs N of these buckets against upstream limits that count **one** — Apple's
+   * is about 20/minute/IP, and it is the tightest thing in the system.
+   *
+   * Kept anyway, knowingly. `BucketStore` exists so this can become shared state the day it
+   * needs to, but the only way to share it is a database, and not having one is the reason
+   * Timbre is free to host. Pacing is a courtesy to upstream here, not an SLA.
+   *
+   * See docs/EXPOSURE.md, E-3 and E-4.
+   */
   globalForProviders.__timbreLimiter ??= new RateLimiter(new MemoryBucketStore());
 
   if (listProviders().length === 0) registerAll();

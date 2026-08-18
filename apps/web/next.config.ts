@@ -9,6 +9,82 @@ import pkg from "./package.json" with { type: "json" };
 const COMMIT =
   process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? process.env.GIT_COMMIT ?? "";
 
+/*
+ * The two origins Timbre loads code from, besides itself. Both are player SDKs — see
+ * `app/player/youtube-player.tsx` and `soundcloud-player.tsx`. Nothing else is external:
+ * fonts are self-hosted by `next/font` at build time and artwork comes through `/api/art`.
+ */
+const YOUTUBE = "https://www.youtube.com";
+const SOUNDCLOUD = "https://w.soundcloud.com";
+
+/**
+ * Reported, not enforced — deliberately, and this is meant to be flipped.
+ *
+ * `script-src` cannot be made strict here without giving something up. Next inlines its own
+ * bootstrap and streaming payload into the HTML, and those scripts differ per page, so no
+ * fixed set of hashes in this file can cover them. The documented answer is a per-request
+ * nonce, and the Next guide is explicit that a nonce **requires dynamic rendering** — which
+ * would throw away the prerendering that makes this deployment free. So `'unsafe-inline'`
+ * stays, and what this policy actually buys is the *other* directives: no plugins, no base
+ * tag rewriting, no form posting off-site, and no script from an origin not listed above.
+ *
+ * Report-Only because it cannot be verified without a browser: a wrong `frame-src` or
+ * `connect-src` breaks playback silently, and a broken player is worse than a missing
+ * header. Open the console on a page that plays something, on a page with an avatar, and
+ * on Explore. If nothing is reported, rename the key to `Content-Security-Policy`.
+ *
+ * Clickjacking is **not** waiting on that: `X-Frame-Options` below is enforced today and
+ * covers what `frame-ancestors` would.
+ */
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline' ${YOUTUBE} ${SOUNDCLOUD}`,
+  // Tailwind's arbitrary values and the pre-paint boot script both write inline styles.
+  "style-src 'self' 'unsafe-inline'",
+  // `data:` and `blob:` are the profile pictures, which live in IndexedDB and are drawn
+  // from object URLs. `https:` covers the artwork that `proxied()` passes through untouched.
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  `frame-src ${YOUTUBE} ${SOUNDCLOUD}`,
+  "connect-src 'self' https:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "upgrade-insecure-requests",
+].join("; ");
+
+/**
+ * Applied to every response. Each of these was simply absent — the only headers this app
+ * set were the two cache directives on `/profile`. See docs/EXPOSURE.md, E-14.
+ */
+const SECURITY_HEADERS = [
+  // Timbre is never framed by anyone, and a framed copy is a clickjack: the player bar and
+  // the playlist menus are one click each, with no confirmation behind them.
+  { key: "X-Frame-Options", value: "DENY" },
+
+  // Referrers carried the full URL to every third party the page touched.
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+
+  // Already set by hand on `/api/art`; there is no reason for it to be the only route.
+  { key: "X-Content-Type-Options", value: "nosniff" },
+
+  // Two years. **No `preload`**: that directive is an application to a browser-shipped
+  // list, and getting off it takes months — not something to opt into from a config file
+  // on a domain that may still change.
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+
+  // Only what Timbre demonstrably never uses. `autoplay`, `fullscreen`, `accelerometer`
+  // and `gyroscope` are deliberately left alone: the first two are how the players work,
+  // and the last two are how YouTube serves 360° video.
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  },
+
+  { key: "Content-Security-Policy-Report-Only", value: CONTENT_SECURITY_POLICY },
+];
+
 const nextConfig: NextConfig = {
   /** Overridable so a production build can be measured without stopping the dev server,
    * which owns `.next` and serves half-written chunks if a build lands in it underneath. */
@@ -33,6 +109,10 @@ const nextConfig: NextConfig = {
   // `private` says it to whatever only reads that.
   headers() {
     return [
+      {
+        source: "/:path*",
+        headers: SECURITY_HEADERS,
+      },
       {
         source: "/profile",
         headers: [
