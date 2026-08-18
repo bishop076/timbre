@@ -116,10 +116,23 @@ Nothing, and nothing is running. Both projects scale to zero between requests;
 `/explore` is prerendered and revalidates hourly, so the charts cost one set of
 upstream calls an hour however many people are reading.
 
-The limits you would have to pass to leave Hobby: 300s per function invocation
-(a search takes about two), 2 GB of memory, a 500 MB Python bundle (this one is a
-few megabytes), and 100 GB of bandwidth a month — which, since Timbre never
-carries audio, is a great deal of JSON.
+Hobby's monthly allowances, and what actually consumes them:
+
+| | Hobby | What uses it |
+|---|---|---|
+| Invocations | 1,000,000 | one per search, one per uncached page |
+| Active CPU | 4 CPU-hrs | only real CPU — waiting on YouTube does not count |
+| Fast Data Transfer | 100 GB | HTML and JSON; Timbre never carries audio |
+| Provisioned memory | 360 GB-hrs | |
+
+Per-invocation: 300s maximum (a search takes about two), 2 GB of memory, and a
+500 MB Python bundle against a few megabytes here.
+
+**Active CPU is the one to watch**, and it is the reason the shared secret
+matters. A search spends nearly all its time waiting on YouTube, which does not
+count — but an open sidecar being used as somebody else's free search proxy
+would spend real CPU parsing every response, and 4 CPU-hrs is not a lot to give
+away.
 
 ## When this goes stale
 
