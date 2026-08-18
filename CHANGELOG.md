@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.1.2 — 18 August 2026
+
+### Fixed
+
+- **release** — date a release by the author's clock, not the runner's
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.1.1 — 18 August 2026
 
 ### Fixed
