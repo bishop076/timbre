@@ -1,15 +1,16 @@
 # Deploying Timbre for free
 
-Two accounts, two environment variables, no credit card.
+One account, two projects, no card, nothing that sleeps.
 
-*Tier facts verified 2026-08-16. Re-check them — see [When this goes stale](#when-this-goes-stale).*
+*Tier facts verified 2026-08-18 against Vercel's own docs. Re-check them — see
+[When this goes stale](#when-this-goes-stale).*
 
-| Piece | Service | Free tier |
+| Piece | Where | Why it is free |
 |---|---|---|
-| `apps/web` | **Vercel Hobby** | no card, no sleep, 100 GB/month |
-| `apps/ytmusic` | **Render** free web service | 512 MB, 750 instance-hrs/month/workspace |
+| `apps/web` | Vercel Hobby | Next.js, no card, no sleep |
+| `apps/ytmusic` | Vercel Hobby, Python runtime | A serverless function, not a server |
 
-That is the whole deployment. **No database, no mail provider, no domain.**
+**No database, no mail provider, no domain, no container host.**
 
 ## Why it is this small
 
@@ -18,144 +19,117 @@ profile all live in the reader's browser (`app/playlists/store.ts`), so there is
 no database to run, no account system to own the data and — the part that
 actually costs money — no SMTP provider to deliver sign-in links.
 
-That was a deliberate trade and it is worth restating, because it is what makes
-this page short. Server-side playlists would have required Postgres, an account
-system, and an email sender whose free tiers either cap at your own address
-(Resend, without a verified domain) or need a domain you have to buy. Local
-playlists need none of it. The cost is that playlists do not follow you between
-devices and are lost if you clear site data, which is why export is a
-first-class feature rather than a nicety.
-
 The second thing keeping this free is that **Timbre never carries audio**. Every
 stream plays in the service's own embedded player, in the reader's browser, over
 their connection. Bandwidth is HTML and JSON. A player that proxied audio would
 exhaust any free tier in days and would be blocked from a datacenter IP besides
 — see the datacenter note in [BLOCKED.md](BLOCKED.md).
 
-## 1. Sidecar — do this first
+## Why the sidecar is a function, not a container
 
-**Deploy this alone and test it before anything else.** It takes ten minutes and
-settles the one question no documentation can: whether YouTube serves search
-requests from a datacenter IP. The evidence says it should — the blocking that
-kills Invidious is on video delivery, which Timbre does not do — but evidence is
-not a measurement.
+`apps/ytmusic` is a FastAPI app, and the obvious home for it is a small container
+on a free tier. Every such tier this project has tried has either died or started
+sleeping: Fly's free plan ended in 2024, Koyeb closed to new signups in Feb 2026,
+Hugging Face put Docker Spaces behind PRO in Jul 2026. The survivors idle your
+service out after ten or fifteen minutes, which means **the first search after a
+quiet hour costs a 30–60 second cold boot** — on the one interaction the whole app
+is built around.
 
-New Render **Web Service** → this repo → **Docker** runtime → root directory
-`apps/ytmusic`. [Its Dockerfile](../apps/ytmusic/Dockerfile) already binds
-`$PORT`.
+A serverless function has no idle to sleep through. Vercel's Python runtime loads
+a `FastAPI` instance named `app` from `app/main.py`, which is exactly where this
+one already lives, so the service deploys unmodified — the same file `uvicorn`
+runs locally.
 
-One environment variable, and it needs to be a real value:
+The container is still here. [`apps/ytmusic/Dockerfile`](../apps/ytmusic/Dockerfile)
+is built by CI on every release so it cannot rot, and it is the escape hatch if
+this tier is the next one to change.
+
+## 1. The sidecar
+
+New Vercel project → this repository → **Root Directory `apps/ytmusic`**.
+
+Vercel detects FastAPI from `pyproject.toml` and finds `app/main.py` on its own.
+There is no build command and no start command to write.
+
+One environment variable, and it must be a real value:
 
 ```
 YTMUSIC_SHARED_SECRET=<openssl rand -hex 32>
 ```
 
-It is the only thing between the open internet and your quota.
+It is the only thing between the open internet and your quota. `config.py`
+refuses to import without it, so a misconfigured deploy fails loudly rather than
+serving unauthenticated.
 
 Then verify, with `$SEC` set to that value:
 
 ```bash
-curl https://<service>.onrender.com/health
+curl https://<sidecar>.vercel.app/health
 # {"status":"ok","service":"ytmusic"}
 
-curl -s -X POST https://<service>.onrender.com/search \
-  -H "Content-Type: application/json" -H "X-Timbre-Secret: $SEC" \
-  -d '{"query":"Harry Styles As It Was","limit":5}'
+curl -X POST https://<sidecar>.vercel.app/search \
+  -H "X-Timbre-Secret: $SEC" \
+  -H "content-type: application/json" \
+  -d '{"query":"bicep glue","limit":3}'
+# {"items":[{"title":"Glue","artists":["Bicep"],...}]}
 ```
 
-A populated `items` array settles it. Empty results, a `403`, or anything about
-confirming you are not a bot means **stop** — record it in BLOCKED.md and read
-[If the sidecar is blocked](#if-the-sidecar-is-blocked).
+The second call is the one that matters. It settles the question no
+documentation can: whether YouTube serves search from a datacenter IP. The
+evidence says it should — the blocking that kills Invidious is on *video
+delivery*, which Timbre never does — but evidence is not a measurement.
 
-### The cold start, and the arithmetic that fixes it
+If it returns results, the deployment works. If it returns 403s, stop here and
+read [BLOCKED.md](BLOCKED.md); nothing downstream will help.
 
-Free Render services **sleep after 15 minutes idle and take about a minute to
-wake**. On a music player that is the difference between a product and a demo:
-the first search of every session would stall for a minute, and Vercel functions
-give up at 60 seconds, so it would not stall — it would fail.
+## 2. The web app
 
-A month is 730 hours and Render grants 750 instance-hours per workspace, so
-**one** service can stay awake permanently with 20 hours to spare. Point a free
-scheduler (cron-job.org or similar) at `/health` every 10 minutes.
+Second Vercel project → same repository → **Root Directory `apps/web`**.
 
-That budget covers exactly one always-on service, which is why the web app goes
-to Vercel rather than a second Render service.
+Vercel installs from the workspace root, so `@timbre/core` and `@timbre/providers`
+resolve as source. Two environment variables:
 
-## 2. Web app
+```
+YTMUSIC_SHARED_SECRET=<the same value as above>
+YTMUSIC_SERVICE_URL=https://<sidecar>.vercel.app
+```
 
-Import the repo on Vercel, root directory `apps/web`. It detects Next.js and the
-pnpm workspace on its own.
+**Set both before the first deploy.** They are needed at *build* time, not just at
+runtime: `/explore` is prerendered, prerendering registers the providers, and
+registering validates the env schema. A build without `YTMUSIC_SHARED_SECRET`
+fails while prerendering that one page, with an error that does not obviously
+name the cause.
 
-| Variable | Value |
-|---|---|
-| `YTMUSIC_SERVICE_URL` | `https://<service>.onrender.com` |
-| `YTMUSIC_SHARED_SECRET` | identical to the sidecar's |
-
-`SOUNDCLOUD_CLIENT_ID` / `_SECRET` are optional and should stay unset — the
-provider is deliberately unregistered ([BLOCKED.md](BLOCKED.md)).
-
-[The root Dockerfile](../Dockerfile) is **not** used here. It is a tested
-fallback for the day Vercel's terms change, not part of this path.
-
-Confirm the whole graph in one call:
+Then:
 
 ```bash
-curl https://<project>.vercel.app/api/health
-# {"status":"ok","services":{"ytmusic":{"status":"ok"}},...}
+curl https://<web>.vercel.app/api/health
+# {"status":"ok","services":{"ytmusic":{"status":"ok"}},"configured":{"soundcloud":false}}
 ```
 
-That endpoint reports the sidecar, so a `200` means the two halves found each
-other rather than merely that the app booted.
+**503** means the web app cannot reach the sidecar — wrong URL, or the secrets do
+not match. It is the only dependency there is.
 
-## Before inviting anyone else
+## What it costs at rest
 
-Personal use sits comfortably inside every limit. A public link does not, and
-the binding constraint is not money:
+Nothing, and nothing is running. Both projects scale to zero between requests;
+`/explore` is prerendered and revalidates hourly, so the charts cost one set of
+upstream calls an hour however many people are reading.
 
-- **Apple allows ~20 requests/minute per IP**, and every visitor shares the
-  deployment's one outbound address. `/api/search` is cached for two minutes and
-  deduplicates concurrent identical calls (`lib/cache.ts`), and every public
-  route is capped at 60 requests/minute per client (`lib/rate-limit.ts`). Both
-  are per instance — with no database there is nowhere shared to count — so
-  treat them as back-pressure against accidents, not as access control.
-- **Vercel Hobby is non-commercial only.** No ads, no payments. Donations are
-  explicitly fine.
-- **`ytmusicapi` is unofficial** and can break when YouTube changes its web
-  client. A public deployment means that breakage is now other people's problem
-  too. Budget for it, or keep the link private.
-
-## If the sidecar is blocked
-
-No free host fixes a datacenter-IP block, because every free tier is a
-datacenter IP. The options, in order of what they cost you:
-
-1. **Self-host on a machine you own.** A residential IP is the actual fix.
-   Costs an always-on machine.
-2. **A VPS with a cleaner IP range, or a residential proxy.** Costs money, which
-   collides with the standing non-goal.
-3. **Move search into the browser**, so the reader's own IP makes the request.
-   Structurally dodges the block and stays free, but forfeits what makes the
-   sidecar safe: it is credential-free and secret-guarded precisely so that
-   compromising it yields nothing ([main.py](../apps/ytmusic/app/main.py)).
-   A last resort, not a preference.
+The limits you would have to pass to leave Hobby: 300s per function invocation
+(a search takes about two), 2 GB of memory, a 500 MB Python bundle (this one is a
+few megabytes), and 100 GB of bandwidth a month — which, since Timbre never
+carries audio, is a great deal of JSON.
 
 ## When this goes stale
 
-Free container hosting churned hard, and every tier fact here has a shelf life:
+Every fact above has a date on it because free tiers do not keep still. If
+something here is wrong:
 
-| Host | What happened |
-|---|---|
-| Fly.io | free tier ended Oct 2024 |
-| Koyeb | closed to new signups Feb 2026 (Mistral acquisition) |
-| Hugging Face | Docker Spaces moved behind PRO, Jul 2026, with no announcement |
+- **The sidecar tier changed.** The Dockerfile is maintained and CI builds it on
+  every release. Any container host will run it; you lose scale-to-zero and gain
+  a cold start.
+- **The web tier changed.** It is a stock Next.js app with no Vercel-specific
+  code. Anything that runs Next will run it.
 
-Three of four candidate hosts died inside twenty months. Re-verify before
-trusting this document, and prefer a primary source — Hugging Face's pricing
-page still advertised CPU Basic as free while its own docs said Docker Spaces
-required a paid plan.
-
-Timbre is well placed for that churn, and not by luck. The sidecar is stateless,
-credential-free, touches no database and is one Dockerfile; the web app is a
-stateless front end over public catalogues. Moving either is an afternoon. That
-portability is a reason to keep the boundary, not just a side effect of Python
-versus TypeScript.
+Nothing in either app imports a platform SDK, and that is deliberate.

@@ -29,8 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `pnpm build` runs next through `dotenv -e ../../.env`, which exits
-      # non-zero when the file is absent — so CI has to have one.
+      # The build needs YTMUSIC_SHARED_SECRET, and needs it at *build* time:
+      # prerendering /explore registers the providers, which validates the env
+      # schema. Without it the build fails on that page, not at runtime.
+      # (`dotenv -e` on a missing file is fine — it exits 0 and runs anyway.)
       #
       # Written before the checks rather than just before the build: the env
       # schema is validated at first use, and the first use moves. Ordering the
