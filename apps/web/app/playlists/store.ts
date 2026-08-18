@@ -13,7 +13,6 @@ import type { Song } from "../types";
 export interface LocalPlaylist {
   id: string;
   name: string;
-  description: string | null;
   createdAt: string;
   updatedAt: string;
   songs: Song[];
@@ -23,7 +22,6 @@ export interface LocalPlaylist {
 export interface PlaylistSummary {
   id: string;
   name: string;
-  description: string | null;
   trackCount: number;
   covers: string[];
   updatedAt: string;
@@ -46,7 +44,6 @@ function summarise(playlist: LocalPlaylist): PlaylistSummary {
   return {
     id: playlist.id,
     name: playlist.name,
-    description: playlist.description,
     trackCount: playlist.songs.length,
     covers: playlist.songs
       .map((song) => song.artworkUrl)
@@ -74,14 +71,29 @@ function readStorage(): LocalPlaylist[] {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     // Shape-checked, not trusted: a half-valid entry would crash a render far from here.
-    return parsed.filter(
-      (item): item is LocalPlaylist =>
-        typeof item === "object" &&
-        item !== null &&
-        typeof (item as LocalPlaylist).id === "string" &&
-        typeof (item as LocalPlaylist).name === "string" &&
-        Array.isArray((item as LocalPlaylist).songs),
-    );
+    return parsed
+      .filter(
+        (item): item is LocalPlaylist =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as LocalPlaylist).id === "string" &&
+          typeof (item as LocalPlaylist).name === "string" &&
+          Array.isArray((item as LocalPlaylist).songs),
+      )
+      // The timestamps are repaired rather than required: a list with a name and songs is
+      // perfectly usable, so an entry written before these existed must not be discarded.
+      // But `state` sorts on `updatedAt` unconditionally, so a missing one threw on read.
+      // Falling back to `createdAt` keeps whatever ordering the file does carry.
+      .map((playlist) => ({
+        ...playlist,
+        createdAt: typeof playlist.createdAt === "string" ? playlist.createdAt : "",
+        updatedAt:
+          typeof playlist.updatedAt === "string"
+            ? playlist.updatedAt
+            : typeof playlist.createdAt === "string"
+              ? playlist.createdAt
+              : "",
+      }));
   } catch {
     // Corrupt JSON, or storage blocked entirely.
     return [];
@@ -138,7 +150,6 @@ export function createPlaylist(name: string): PlaylistSummary {
   const playlist: LocalPlaylist = {
     id: crypto.randomUUID(),
     name: name.trim(),
-    description: null,
     createdAt: now,
     updatedAt: now,
     songs: [],
