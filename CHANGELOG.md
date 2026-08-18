@@ -10,6 +10,18 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.1.3 — 18 August 2026
+
+### Fixed
+
+- **playlists** — a playlist without a timestamp no longer throws on read
+
+### Faster
+
+- **explore** — the genre chart costs no JavaScript
+
+2 further changes under the hood — refactoring, docs and tests.
+
 ## 0.1.2 — 18 August 2026
 
 ### Fixed
