@@ -225,6 +225,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
+  /** The song the radio was last fetched for. The deps below fire on every load attempt,
+   * and only this keeps a fall-through from re-asking for a list already held. */
+  const seededFor = useRef<string | null>(null);
+
   /** Whether the self-played copy has already had its turn on this song, so a failure there
    * cannot loop straight back into it. YouTube copies are tracked individually in
    * `attempted`; a song carries at most one progressive copy, so one flag is the whole state. */
@@ -551,13 +555,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     indexRef.current = index;
   }, [queue, index]);
 
-  // Seeded from the video id actually loaded, so it stays right after a fall-through — and
-  // from the song's own title and artist regardless, because those are all some sources can
-  // use. Requiring a YouTube id here meant a self-played or SoundCloud track fetched no radio at
-  // all, so the queue simply stopped at its end rather than continuing.
+  // Seeded from the copy that actually **played**, and from the song's own title and artist
+  // regardless, because those are all some sources can use. Requiring a YouTube id here meant
+  // a self-played or SoundCloud track fetched no radio at all, so the queue simply stopped at
+  // its end rather than continuing.
+  //
+  // **Once per song, not once per attempt.** A song whose first uploads refuse to embed
+  // walks the candidate list, and each attempt changed `videoId` and fired another radio
+  // request — measured on *Wonderwall*: three uploads, three `/api/radio` calls in 1.5
+  // seconds, for one song. `seededFor` keys on the song, so a fall-through re-seeds nothing.
+  //
+  // Gating on `state === "playing"` instead would seed from the copy that actually survived,
+  // which is a slightly better seed — and was tried and rejected. It makes the radio depend
+  // on a state the player may never reach: an embed that never starts then yields no
+  // recommendations at all, so the queue stops dead at its end. Three wasted requests is a
+  // far cheaper failure than a queue that will not continue.
   useEffect(() => {
     const song = queue[index];
     if (!song || !activeSource) return;
+    if (seededFor.current === song.id) return;
+    seededFor.current = song.id;
 
     const seed = activeSource === "ytmusic" ? videoId : null;
 
