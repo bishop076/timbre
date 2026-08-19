@@ -57,7 +57,7 @@ export interface SearchAllResult {
  * outranks one that can only link out — which is the same rule `byPlayability` already
  * applies *within* a merged song, applied here *between* them.
  */
-function interleaveByPlayability(
+export function interleaveByPlayability(
   results: { provider: SearchProvider; tracks: SourceTrack[] }[],
 ): SourceTrack[] {
   const tiers = new Map<number, SourceTrack[][]>();
