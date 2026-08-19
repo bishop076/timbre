@@ -17,6 +17,15 @@ const schema = z.object({
   SOUNDCLOUD_CLIENT_ID: z.string().optional(),
   SOUNDCLOUD_CLIENT_SECRET: z.string().optional(),
 
+  /**
+   * An `api-v2`-shaped base the **operator** runs, which makes SoundCloud searchable.
+   * Unset here and in the hosted build, deliberately: search needs a `client_id` this
+   * project will not extract, so the only supported route is pointing this at something
+   * you run yourself — a soundcloak instance exposes one at `https://<host>/_/api/v2`.
+   * Setting it moves the technique, the IP and the terms exposure to whoever set it.
+   */
+  SOUNDCLOUD_API_BASE: z.url().optional(),
+
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
 
@@ -41,7 +50,9 @@ export function getEnv(): Env {
   return cached;
 }
 
-/** Whether the centrally-keyed SoundCloud integration is configured. */
+/** Whether SoundCloud's catalogue can be searched at all — by either route. Playback
+ * never needed either and is always available through `resolve`. */
 export function hasSoundCloud(env: Env): boolean {
+  if (env.SOUNDCLOUD_API_BASE) return true;
   return Boolean(env.SOUNDCLOUD_CLIENT_ID && env.SOUNDCLOUD_CLIENT_SECRET);
 }
