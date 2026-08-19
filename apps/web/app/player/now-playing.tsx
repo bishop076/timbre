@@ -166,8 +166,13 @@ export function NowPlayingPanel() {
   const upcoming = [...queued, ...suggested];
   const source = sourceStyle(activeSource ?? "ytmusic");
 
-  const youtubeUrl =
-    current?.sources.find((item) => item.source === "ytmusic")?.url ??
+  // Where to send someone whose track will not play here. The song's own most-playable
+  // source first — `sources` is already ordered that way — because a track that exists only
+  // on Audius or the archive is not on YouTube, and offering a YouTube search for it is a
+  // dead end dressed as a way out. The search is the last resort, for a song whose sources
+  // publish no page at all.
+  const elsewhereUrl =
+    current?.sources.find((item) => item.url)?.url ??
     (current
       ? `https://www.youtube.com/results?search_query=${encodeURIComponent(
           [current.title, current.artists[0]].filter(Boolean).join(" "),
@@ -210,9 +215,9 @@ export function NowPlayingPanel() {
       <div className={card}>
         <div className={videoBox}>
           {/* Embedding barred by the rights holder cannot be worked around. */}
-          {state === "unplayable" && youtubeUrl && (
+          {state === "unplayable" && elsewhereUrl && (
             <a
-              href={youtubeUrl}
+              href={elsewhereUrl}
               target="_blank"
               rel="noreferrer noopener"
               className="absolute inset-x-0 top-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-2)] px-3 py-2.5 text-xs font-medium text-[var(--fg)] transition hover:text-[var(--accent)]"
