@@ -22,6 +22,9 @@ export const ALLOWED_HOSTS = new Set([
   // stable host that Archive itself runs, while Audius artwork is served by whichever
   // operator-run content node holds the track and the set changes.
   "archive.org",
+  // Mixcloud serves every cover through one thumbnailer, so it can be named the way
+  // archive.org can and Audius cannot.
+  "thumbnailer.mixcloud.com",
 ]);
 
 /** Artwork is small. Anything larger is not artwork. */
