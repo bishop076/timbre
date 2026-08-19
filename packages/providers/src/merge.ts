@@ -64,7 +64,10 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
     return {
       // Qualified with the primary source track: two groups can share a dedupe key and still
       // be different recordings, and without this they collide as React keys.
-      id: group.isrc ?? `${group.key}#${primary.source}:${primary.sourceId}`,
+      // `||` rather than `??`: a provider that sends `""` instead of omitting the field would
+      // otherwise pass an empty id straight through, and every such song would share it —
+      // which is the same collision this line exists to prevent. Audius did exactly that.
+      id: group.isrc || `${group.key}#${primary.source}:${primary.sourceId}`,
       // Display metadata comes from the most playable source — the copy the user hears.
       title: primary.title,
       artists: primary.artists,
