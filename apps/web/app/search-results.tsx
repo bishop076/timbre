@@ -14,6 +14,27 @@ import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
 import { formatDuration } from "./duration";
 
+/**
+ * A failure a reader can act on, rather than the one the platform threw.
+ *
+ * A dropped connection surfaces as `TypeError: Failed to fetch`, and that string was going
+ * straight to the screen — it names no cause, suggests no action, and reads like the app
+ * broke rather than the network. `navigator.onLine` is only trustworthy in the negative
+ * (false definitely means no connection; true means an interface is up, not that anything is
+ * reachable), which is exactly the direction needed here.
+ */
+function readableFailure(cause: unknown): string {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return "You're offline. Timbre searches other people's services, so it needs a connection — this will work again the moment you're back.";
+  }
+  // Every browser words this differently: "Failed to fetch", "NetworkError when attempting
+  // to fetch resource", "Load failed". Matching the class rather than the wording.
+  if (cause instanceof TypeError) {
+    return "Couldn't reach Timbre. The connection dropped, or something between here and it is blocking the request.";
+  }
+  return cause instanceof Error ? cause.message : "Something went wrong.";
+}
+
 /** Whether what was typed is a link to resolve rather than words to search. */
 function isUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
@@ -78,7 +99,7 @@ export function SearchResults() {
         })
         .catch((cause: unknown) => {
           if (cause instanceof DOMException && cause.name === "AbortError") return;
-          setError(cause instanceof Error ? cause.message : "Something went wrong.");
+          setError(readableFailure(cause));
           setLoading(false);
         });
     }, 300);
