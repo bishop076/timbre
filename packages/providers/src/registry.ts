@@ -3,6 +3,7 @@
 
 import { recommend, type SongIdentity } from "./recommend.ts";
 import {
+  PLAYBACK_RANK,
   SOURCE_IDS,
   type RadioSeed,
   type RankedList,
@@ -41,8 +42,49 @@ export interface SearchAllResult {
   attempted: number;
 }
 
-/** Searches every searchable provider concurrently, concatenating in registry order —
- * {@link mergeTracks} preserves input order. */
+/**
+ * Interleaves several sources' results into one list, **most playable tier first**.
+ *
+ * Concatenating instead — all of one source, then all of the next — is what this replaces,
+ * and it was invisible for as long as the link-only sources merged away: Deezer and Apple
+ * carry ISRCs, so their rows folded into the YouTube Music rows above them and never
+ * appeared on their own. Audius carries none and its titles are all distinct remixes, so
+ * nothing merged, and twenty rows landed in a block starting around **#21** — past the end
+ * of what anyone scrolls. A source you cannot see is not a source.
+ *
+ * Round-robin within a tier, so each provider keeps its own relevance order and simply
+ * takes turns. Tiers in `PLAYBACK_RANK` order, so a row you can press play on always
+ * outranks one that can only link out — which is the same rule `byPlayability` already
+ * applies *within* a merged song, applied here *between* them.
+ */
+function interleaveByPlayability(
+  results: { provider: SearchProvider; tracks: SourceTrack[] }[],
+): SourceTrack[] {
+  const tiers = new Map<number, SourceTrack[][]>();
+  for (const { provider, tracks } of results) {
+    if (tracks.length === 0) continue;
+    const rank = PLAYBACK_RANK[provider.playback];
+    const tier = tiers.get(rank) ?? [];
+    tier.push(tracks);
+    tiers.set(rank, tier);
+  }
+
+  const out: SourceTrack[] = [];
+  for (const rank of [...tiers.keys()].sort((a, b) => a - b)) {
+    const lists = tiers.get(rank)!;
+    const deepest = Math.max(...lists.map((list) => list.length));
+    for (let i = 0; i < deepest; i++) {
+      for (const list of lists) {
+        const track = list[i];
+        if (track) out.push(track);
+      }
+    }
+  }
+  return out;
+}
+
+/** Searches every searchable provider concurrently, interleaving the answers so no single
+ * source owns the top of the list — {@link mergeTracks} preserves the order it is given. */
 export async function searchAll(
   ctx: SearchContext,
   query: string,
@@ -54,13 +96,13 @@ export async function searchAll(
     providers.map((provider) => provider.search(ctx, query, limit)),
   );
 
-  const tracks: SourceTrack[] = [];
+  const answered: { provider: SearchProvider; tracks: SourceTrack[] }[] = [];
   const failures: SearchAllResult["failures"] = [];
 
   settled.forEach((result, index) => {
     const provider = providers[index]!;
     if (result.status === "fulfilled") {
-      tracks.push(...result.value);
+      answered.push({ provider, tracks: result.value });
     } else {
       failures.push({
         source: provider.id,
@@ -69,7 +111,7 @@ export async function searchAll(
     }
   });
 
-  return { tracks, failures, attempted: providers.length };
+  return { tracks: interleaveByPlayability(answered), failures, attempted: providers.length };
 }
 
 /** Turns a pasted URL into a track — the only entry point for SoundCloud, whose catalogue
