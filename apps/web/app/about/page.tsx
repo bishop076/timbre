@@ -21,6 +21,16 @@ const SOURCES = [
     role: "Search and playback. Every song you hear plays inside YouTube's own embedded player, so views and ad revenue reach the rights holder exactly as they would on YouTube itself.",
   },
   {
+    id: "audius",
+    href: "https://audius.co",
+    role: "Search and playback, and the only source Timbre plays itself — Audius publishes audio with no player to embed, so the sound comes out of Timbre's own audio element rather than someone else's window. Nothing is downloaded or copied; the audio streams from Audius, and the listen is counted for the artist. Its catalogue is the unsigned half of music: remixes, edits, bootlegs and DJ sets that were never released anywhere else.",
+  },
+  {
+    id: "archive",
+    href: "https://archive.org/details/etree",
+    role: "Live recordings, suggested rather than searched. The Live Music Archive holds concert tapes uploaded with the performing band's permission — the clearest licensing of anything here. It only answers for bands that allow taping, so it stays quiet unless what you are playing is one of them.",
+  },
+  {
     id: "deezer",
     href: "https://www.deezer.com",
     role: "Identity and artwork. Deezer publishes ISRCs — the recording industry's track identifiers — which is what lets Timbre recognise that two search results are the same song.",
@@ -33,7 +43,7 @@ const SOURCES = [
   {
     id: "soundcloud",
     href: "https://soundcloud.com",
-    role: "Built and working, but switched off: SoundCloud's catalogue search needs credentials that are not available without a paid subscription and a manual review. A source you cannot search is not a source.",
+    role: "Playback only. Paste a SoundCloud link into the search box and it plays, in SoundCloud's own player. What is missing is the catalogue search, which needs credentials that are not available without a paid subscription and a manual review — so Timbre can play a SoundCloud track you already found, but cannot find one for you.",
   },
 ] as const;
 
