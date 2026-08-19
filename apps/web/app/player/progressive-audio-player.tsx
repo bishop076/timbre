@@ -4,19 +4,20 @@ import { useEffect, useRef } from "react";
 
 import { usePlayerControls } from "./player-context";
 
-// The first player Timbre owns. YouTube and SoundCloud hand back an iframe and an API to
-// poke at it; Audius hands back audio, so this is an ordinary `<audio>` element and most of
-// the paranoia in the other two files simply does not apply — no script to load, no ad
-// blocker to survive, no polling, because a media element emits real events.
+// The player Timbre owns. YouTube and SoundCloud hand back an iframe and an API to poke at
+// it; Audius and the Internet Archive hand back audio, so this is an ordinary `<audio>`
+// element and most of the paranoia in the other two files simply does not apply — no script
+// to load, no ad blocker to survive, no polling, because a media element emits real events.
+//
+// One component for both, and for whatever comes next: the differences between progressive
+// sources are entirely in the URL, which is `stream-url.ts`'s job. Nothing below this line
+// knows which service it is playing.
 //
 // Three things here are deliberate.
 //
-// **`src` is the API's redirecting endpoint, not a resolved CDN link.** `/tracks/{id}/stream`
-// answers 302 to a *signed* URL on whichever content node holds the track, and the signature
-// carries a timestamp. Pointing the element at the redirect resolves it at the moment of
-// playback, so a link cannot go stale between search and play. The URL is built here rather
-// than imported from `@timbre/providers` for the reason `app/types.ts` gives: a client
-// component must not pull in a server-only package.
+// **A redirect is followed, not resolved ahead of time.** Audius's `/stream` answers 302 to
+// a *signed* URL carrying a timestamp; pointing the element at the redirect resolves it at
+// the moment of playback, so a link cannot go stale between search and play.
 //
 // **`crossOrigin` is never set.** A media element may load cross-origin without CORS; asking
 // for it would *require* the content node to send `Access-Control-Allow-Origin`, which is an
@@ -28,22 +29,14 @@ import { usePlayerControls } from "./player-context";
 // can lose it. Reporting that as a failure would send the controller hunting for another
 // copy of a song that is fine.
 
-const API = "https://api.audius.co/v1";
-
-/** Mirrors `audiusStreamUrl` in `packages/providers/src/audius.ts`, including
- * `skip_play_count=false` — without it the listen is never counted for the artist. The
- * reasoning lives with the provider. */
-function streamUrlFor(trackId: string): string {
-  return `${API}/tracks/${encodeURIComponent(trackId)}/stream?skip_play_count=false`;
-}
-
-export function AudiusPlayer({
-  trackId,
+export function ProgressiveAudioPlayer({
+  streamUrl,
   artworkUrl,
   title,
   size = "w-full",
 }: {
-  trackId: string | null;
+  /** Built by `stream-url.ts` from the active source and its id. */
+  streamUrl: string | null;
   artworkUrl?: string | null;
   title?: string;
   /** Sizing only, so the player area does not collapse when the source has no video. */
@@ -61,7 +54,6 @@ export function AudiusPlayer({
   } = usePlayerControls();
 
   const audioRef = useRef<HTMLAudioElement>(null);
-  const streamUrl = trackId ? streamUrlFor(trackId) : null;
 
   const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
@@ -90,7 +82,7 @@ export function AudiusPlayer({
       // Gated, withdrawn and region-locked uploads all arrive here indistinguishably — the
       // element reports a code, never a reason. Worth retrying: unlike SoundCloud there *is*
       // somewhere to go, since the controller can look the same song up on YouTube Music.
-      handlers.current.handleError("Audius couldn't play this track.", true);
+      handlers.current.handleError("That track wouldn't play.", true);
     };
 
     audio.addEventListener("timeupdate", onTime);
@@ -105,7 +97,7 @@ export function AudiusPlayer({
         handlers.current.handleStateChange("paused");
         return;
       }
-      handlers.current.handleError("Audius couldn't start this track.", true);
+      handlers.current.handleError("That track wouldn't start.", true);
     });
 
     return () => {
@@ -140,7 +132,7 @@ export function AudiusPlayer({
   return (
     <div
       className={`relative flex items-center justify-center overflow-hidden bg-black ${size}`}
-      aria-label="Audius player"
+      aria-label="Audio player"
     >
       {/* The player area is sized for YouTube's 200×200 minimum and is a hole without a
           video in it, so the cover fills it. Not proxied: Audius artwork is served by the

@@ -17,6 +17,7 @@ import { log } from "../logs.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
 import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
+import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import {
   getVolumeServerSnapshot,
   getVolumeSnapshot,
@@ -42,12 +43,12 @@ interface PlayerState {
   current: Song | null;
   videoId: string | null;
   soundcloudUrl: string | null;
-  /** The Audius track id, not a stream URL — the player builds the URL, exactly as the
-   * YouTube one builds an embed from `videoId`. Holding a resolved link here would be wrong
-   * anyway: `/stream` redirects to a *signed* URL that expires. */
-  audiusTrackId: string | null;
+  /** What the `<audio>` element is pointed at, for the sources Timbre plays itself. Built
+   * from the source and its id by `stream-url.ts`; see there on why Audius's is a redirect
+   * rather than a resolved link. */
+  streamUrl: string | null;
   /** Which player owns the current song. Exactly one is ever mounted — a paused one can be restarted by a stray event. */
-  activeSource: "ytmusic" | "soundcloud" | "audius" | null;
+  activeSource: "ytmusic" | "soundcloud" | ProgressiveSource | null;
   /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
   /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
@@ -150,9 +151,11 @@ function soundcloudUrlOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
 }
 
-/** The Audius copy, if any. Returns `sourceId` — the stream endpoint is keyed by track id. */
-function audiusIdOf(song: Song): string | null {
-  return song.sources.find((source) => source.source === "audius")?.sourceId ?? null;
+/** The first copy Timbre can play itself, if any. Sources are already ordered most-playable
+ * first by the merger, so this takes whichever progressive one it meets. */
+function progressiveOf(song: Song): { source: ProgressiveSource; sourceId: string } | null {
+  const found = song.sources.find((source) => isProgressive(source.source));
+  return found && isProgressive(found.source) ? { source: found.source, sourceId: found.sourceId } : null;
 }
 
 interface PlayModes {
@@ -197,8 +200,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [index, setIndex] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
-  const [audiusTrackId, setAudiusTrackId] = useState<string | null>(null);
-  const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | "audius" | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | ProgressiveSource | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -222,10 +225,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
-  /** Whether Audius has already had its turn on this song, so a failure there cannot loop
-   * straight back into it. YouTube copies are tracked individually in `attempted`; Audius
-   * has exactly one copy per song, so one flag is the whole state. */
-  const audiusTried = useRef(false);
+  /** Whether the self-played copy has already had its turn on this song, so a failure there
+   * cannot loop straight back into it. YouTube copies are tracked individually in
+   * `attempted`; a song carries at most one progressive copy, so one flag is the whole state. */
+  const progressiveTried = useRef(false);
   // The song already written to history. Held per id so a pause/resume, or a fall-through to
   // another copy, does not record twice; see `handleStateChange`.
   const recorded = useRef<string | null>(null);
@@ -235,7 +238,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const attempt = useCallback((id: string) => {
     attempted.current.add(id);
     setSoundcloudUrl(null);
-    setAudiusTrackId(null);
+    setStreamUrl(null);
     setActiveSource("ytmusic");
     setVideoId(id);
     setProblem(null);
@@ -244,19 +247,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const attemptSoundCloud = useCallback((url: string) => {
     setVideoId(null);
-    setAudiusTrackId(null);
+    setStreamUrl(null);
     setActiveSource("soundcloud");
     setSoundcloudUrl(url);
     setProblem(null);
     setState("loading");
   }, []);
 
-  const attemptAudius = useCallback((trackId: string) => {
+  const attemptProgressive = useCallback((source: ProgressiveSource, sourceId: string) => {
     setVideoId(null);
     setSoundcloudUrl(null);
-    setActiveSource("audius");
-    setAudiusTrackId(trackId);
-    audiusTried.current = true;
+    setActiveSource(source);
+    setStreamUrl(streamUrlFor(source, sourceId));
+    progressiveTried.current = true;
     setProblem(null);
     setState("loading");
   }, []);
@@ -278,7 +281,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       songRef.current = song;
       candidates.current = [];
       attempted.current = new Set();
-      audiusTried.current = false;
+      progressiveTried.current = false;
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
       recorded.current = null;
@@ -286,7 +289,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setActiveSource(null);
       setVideoId(null);
       setSoundcloudUrl(null);
-      setAudiusTrackId(null);
+      setStreamUrl(null);
 
       const direct = youtubeIdOf(song);
       if (direct) {
@@ -294,11 +297,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Audius before SoundCloud: both play, but Audius is reached by search rather than
-      // only by a pasted URL, so it is the one a listener can actually arrive at.
-      const audius = audiusIdOf(song);
-      if (audius) {
-        attemptAudius(audius);
+      // A source Timbre plays itself comes before SoundCloud: all of them play, but these
+      // are reached by search or by a recommendation rather than only by a pasted URL, so
+      // they are the ones a listener can actually arrive at.
+      const progressive = progressiveOf(song);
+      if (progressive) {
+        attemptProgressive(progressive.source, progressive.sourceId);
         return;
       }
 
@@ -328,7 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [attempt, attemptAudius, attemptSoundCloud, findCandidates],
+    [attempt, attemptProgressive, attemptSoundCloud, findCandidates],
   );
 
   const play = useCallback(
@@ -535,7 +539,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Seeded from the video id actually loaded, so it stays right after a fall-through — and
   // from the song's own title and artist regardless, because those are all some sources can
-  // use. Requiring a YouTube id here meant an Audius or SoundCloud track fetched no radio at
+  // use. Requiring a YouTube id here meant a self-played or SoundCloud track fetched no radio at
   // all, so the queue simply stopped at its end rather than continuing.
   useEffect(() => {
     const song = queue[index];
@@ -575,10 +579,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => aborter.abort();
     // Keyed on whatever is actually loaded — see the ref note above. All three handles are
     // listed because only one is ever non-null at a time: with `videoId` alone, a move
-    // between two Audius tracks changed nothing here and the radio stayed seeded on the
-    // song before it.
+    // between two self-played tracks changed nothing here and the radio stayed seeded on
+    // the song before it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSource, videoId, audiusTrackId, soundcloudUrl]);
+  }, [activeSource, videoId, streamUrl, soundcloudUrl]);
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
@@ -656,13 +660,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
       }
 
-      const audius = audiusIdOf(song);
-      if (audius && !audiusTried.current) {
+      const progressive = progressiveOf(song);
+      if (progressive && !progressiveTried.current) {
         log(
           "warn",
-          `“${song.title}” fell back to Audius after ${attempted.current.size} YouTube copies refused`,
+          `“${song.title}” fell back to ${progressive.source} after ${attempted.current.size} YouTube copies refused`,
         );
-        attemptAudius(audius);
+        attemptProgressive(progressive.source, progressive.sourceId);
         return;
       }
 
@@ -685,7 +689,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState("unplayable");
       setProblem("Every copy of this song blocks playback outside YouTube.");
     },
-    [attempt, attemptAudius, attemptSoundCloud, findCandidates],
+    [attempt, attemptProgressive, attemptSoundCloud, findCandidates],
   );
 
   const handleEnded = useCallback(() => {
@@ -714,7 +718,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     current,
     videoId,
     soundcloudUrl,
-    audiusTrackId,
+    streamUrl,
     activeSource,
     panelOpen,
     theater,
