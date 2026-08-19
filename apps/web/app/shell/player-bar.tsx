@@ -93,6 +93,7 @@ export function PlayerBar() {
     state,
     problem,
     activeSource,
+    streamUrl,
     panelOpen,
     theater,
     index,
@@ -117,6 +118,13 @@ export function PlayerBar() {
   const source = sourceStyle(activeSource ?? "ytmusic");
 
   // Hiding only clips the panel: shrinking it below 200×200 stops YouTube playback.
+  //
+  // Below `xl` the docked panel is the picture and nothing else, and a source Timbre plays
+  // itself has no picture — so for those the panel does not render on a phone at all, and
+  // this control would toggle a state with no visible effect. A button that does nothing
+  // reads as a broken button, so it goes rather than sitting there inert.
+  const audioOnly = Boolean(streamUrl);
+
   const panelButton = (
     <button
       type="button"
@@ -124,7 +132,9 @@ export function PlayerBar() {
       disabled={!current}
       aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
       aria-pressed={panelOpen}
-      className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
+      className={`slab-sm press size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40 ${
+        audioOnly ? "hidden xl:flex" : "flex"
+      }`}
       style={{ background: panelOpen ? "var(--accent)" : "var(--surface-2)" }}
     >
       {panelOpen ? <VideoIcon className="size-[18px]" /> : <VideoOffIcon className="size-[18px]" />}
