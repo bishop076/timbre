@@ -6,5 +6,6 @@ export * from "./ytmusic.ts";
 export * from "./soundcloud.ts";
 export * from "./audius.ts";
 export * from "./archive.ts";
+export * from "./spotify.ts";
 export * from "./deezer.ts";
 export * from "./apple.ts";

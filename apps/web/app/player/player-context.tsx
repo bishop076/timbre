@@ -47,8 +47,11 @@ interface PlayerState {
    * from the source and its id by `stream-url.ts`; see there on why Audius's is a redirect
    * rather than a resolved link. */
   streamUrl: string | null;
+  /** The Spotify track whose embed is showing, if any. Nothing can start it — the embed has
+   * no play API — so this is a panel the reader taps, never a queue member. */
+  spotifyTrackId: string | null;
   /** Which player owns the current song. Exactly one is ever mounted — a paused one can be restarted by a stray event. */
-  activeSource: "ytmusic" | "soundcloud" | ProgressiveSource | null;
+  activeSource: "ytmusic" | "soundcloud" | "spotify" | ProgressiveSource | null;
   /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
   /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
@@ -173,6 +176,12 @@ function giveUpReason(youtubeCopies: number, triedProgressive: boolean): string 
   return "No source here could play this one.";
 }
 
+/** The Spotify copy, if any. `manual` is its own tier: it plays, but only when a person
+ * presses it, so it is reached last and never auto-advanced into. */
+function spotifyIdOf(song: Song): string | null {
+  return song.sources.find((source) => source.source === "spotify")?.sourceId ?? null;
+}
+
 /** The first copy Timbre can play itself, if any. Sources are already ordered most-playable
  * first by the merger, so this takes whichever progressive one it meets. */
 function progressiveOf(song: Song): { source: ProgressiveSource; sourceId: string } | null {
@@ -223,7 +232,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [videoId, setVideoId] = useState<string | null>(null);
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | ProgressiveSource | null>(null);
+  const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<
+    "ytmusic" | "soundcloud" | "spotify" | ProgressiveSource | null
+  >(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -255,6 +267,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * cannot loop straight back into it. YouTube copies are tracked individually in
    * `attempted`; a song carries at most one progressive copy, so one flag is the whole state. */
   const progressiveTried = useRef(false);
+  /** The Spotify track already offered for this song, so the give-up path cannot loop into
+   * the same embed it just showed. */
+  const activeSourceRefSpotify = useRef<string | null>(null);
   // The song already written to history. Held per id so a pause/resume, or a fall-through to
   // another copy, does not record twice; see `handleStateChange`.
   const recorded = useRef<string | null>(null);
@@ -265,6 +280,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     attempted.current.add(id);
     setSoundcloudUrl(null);
     setStreamUrl(null);
+    setSpotifyTrackId(null);
     setActiveSource("ytmusic");
     setVideoId(id);
     setProblem(null);
@@ -274,15 +290,31 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const attemptSoundCloud = useCallback((url: string) => {
     setVideoId(null);
     setStreamUrl(null);
+    setSpotifyTrackId(null);
     setActiveSource("soundcloud");
     setSoundcloudUrl(url);
     setProblem(null);
     setState("loading");
   }, []);
 
+  /** Shows the embed and stops. There is no `loading` here and never a `playing`: nothing
+   * can start a Spotify embed but the reader, so the queue rests on this entry until they
+   * do — which is the point. Silently skipping a song someone queued is worse. */
+  const attemptSpotify = useCallback((trackId: string) => {
+    setVideoId(null);
+    setSoundcloudUrl(null);
+    setStreamUrl(null);
+    setActiveSource("spotify");
+    setSpotifyTrackId(trackId);
+    activeSourceRefSpotify.current = trackId;
+    setProblem("Spotify plays this one — press it to start.");
+    setState("paused");
+  }, []);
+
   const attemptProgressive = useCallback((source: ProgressiveSource, sourceId: string) => {
     setVideoId(null);
     setSoundcloudUrl(null);
+    setSpotifyTrackId(null);
     setActiveSource(source);
     setStreamUrl(streamUrlFor(source, sourceId));
     progressiveTried.current = true;
@@ -308,6 +340,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       candidates.current = [];
       attempted.current = new Set();
       progressiveTried.current = false;
+      activeSourceRefSpotify.current = null;
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
       recorded.current = null;
@@ -316,6 +349,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setVideoId(null);
       setSoundcloudUrl(null);
       setStreamUrl(null);
+      setSpotifyTrackId(null);
 
       const direct = youtubeIdOf(song);
       if (direct) {
@@ -352,6 +386,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // Last, and only when nothing else here can play it: a Spotify embed cannot be
+      // started by script, so reaching it means the queue rests until the reader presses it.
+      const spotify = spotifyIdOf(song);
+      if (spotify) {
+        attemptSpotify(spotify);
+        return;
+      }
+
       setState("resolving");
       setProblem(null);
 
@@ -372,7 +414,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [attempt, attemptProgressive, attemptSoundCloud, findCandidates],
+    [attempt, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
   );
 
   const play = useCallback(
@@ -723,6 +765,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const spotifyLast = spotifyIdOf(song);
+      if (spotifyLast && activeSourceRefSpotify.current !== spotifyLast) {
+        log("warn", `“${song.title}” fell back to Spotify's embed — nothing else would play it`);
+        attemptSpotify(spotifyLast);
+        return;
+      }
+
       // SoundCloud has its own rights position, and reports not-worth-retrying, so a failure
       // exits above rather than looping back here.
       const soundcloud = soundcloudUrlOf(song);
@@ -742,7 +791,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState("unplayable");
       setProblem(giveUpReason(attempted.current.size, progressiveTried.current));
     },
-    [attempt, attemptProgressive, attemptSoundCloud, findCandidates],
+    [attempt, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
   );
 
   const handleEnded = useCallback(() => {
@@ -772,6 +821,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     videoId,
     soundcloudUrl,
     streamUrl,
+    spotifyTrackId,
     activeSource,
     panelOpen,
     theater,
