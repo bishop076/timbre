@@ -12,7 +12,7 @@ YouTube Music's free tier plus SoundCloud is an enormous catalogue — remixes, 
 
 Timbre is mostly a shell around other services' own players. **It hosts nothing.** Audio streams from the service it belongs to — for YouTube Music and SoundCloud through that service's official player, so ads run and artists are paid exactly as they would be otherwise. What belongs to Spotify stays in Spotify.
 
-**Audius is the exception, and it is worth stating plainly.** It publishes progressive audio with no player to embed, so Timbre renders its own `<audio>` element pointed at Audius's CDN. Nothing is downloaded or cached and no byte is re-hosted — but it is Timbre's player, not theirs. One consequence is not yet solved: the stream endpoint returns `skip_play_count=true`, so **a listen through Timbre does not currently register as a play on Audius**. That is a gap to close, not a design choice.
+**Audius is the exception, and it is worth stating plainly.** It publishes progressive audio with no player to embed, so Timbre renders its own `<audio>` element pointed at Audius's CDN. Nothing is downloaded or cached and no byte is re-hosted — but it is Timbre's player, not theirs. Plays are still asked to count: the stream endpoint hands back `skip_play_count=true` by default, which turns out to leak from Audius's own mirror health-check rather than being policy, so Timbre passes `skip_play_count=false` explicitly. Whether the play then increments is Audius's to decide and is not something this project can verify from outside.
 
 That constraint is the whole design: four services' catalogues can be searched together, but their audio cannot be pooled into one stream without breaking every one of their terms.
 
