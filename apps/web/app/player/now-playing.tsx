@@ -25,6 +25,7 @@ const ProgressiveAudioPlayer = dynamic(() =>
   import("./progressive-audio-player").then((m) => m.ProgressiveAudioPlayer),
 );
 const SpotifyPlayer = dynamic(() => import("./spotify-player").then((m) => m.SpotifyPlayer));
+const SpotifyPanel = dynamic(() => import("./spotify-panel").then((m) => m.SpotifyPanel));
 const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
 
 /** One credit line, absent entirely when the sources do not publish it. */
@@ -421,6 +422,8 @@ export function NowPlayingPanel() {
                     </dl>
                   </section>
                 )}
+
+                <SpotifyPanel song={current} />
 
                 <SimilarSongs />
 
