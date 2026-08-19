@@ -3,6 +3,7 @@ import "server-only";
 import { MemoryBucketStore, RateLimiter } from "@timbre/core";
 import {
   createAppleProvider,
+  createAudiusProvider,
   createDeezerProvider,
   createYtMusicProvider,
   listProviders,
@@ -37,6 +38,11 @@ function registerAll(): void {
   // SoundCloud is deliberately NOT registered: `createSoundCloudProvider()` works, but
   // catalogue search needs a client_id gated behind a paid account and weeks of approval.
   // To ship it, set `searchable: true` in soundcloud.ts and register here. See docs/BLOCKED.md.
+  // Audius second: the only other source that can be both searched and played, and the
+  // only one Timbre plays itself. Its catalogue is remixes, edits and DJ sets — the
+  // derivative layer YouTube Music does not carry — so it widens the catalogue rather
+  // than duplicating it.
+  registerProvider(createAudiusProvider());
   registerProvider(createDeezerProvider());
   registerProvider(createAppleProvider());
 }

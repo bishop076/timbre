@@ -21,6 +21,7 @@ import { YouTubePlayer } from "./youtube-player";
 const SoundCloudPlayer = dynamic(() =>
   import("./soundcloud-player").then((m) => m.SoundCloudPlayer),
 );
+const AudiusPlayer = dynamic(() => import("./audius-player").then((m) => m.AudiusPlayer));
 const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
 
 /** One credit line, absent entirely when the sources do not publish it. */
@@ -138,6 +139,7 @@ export function NowPlayingPanel() {
     problem,
     activeSource,
     soundcloudUrl,
+    audiusTrackId,
     panelOpen,
     theater,
     toggleTheater,
@@ -241,6 +243,13 @@ export function NowPlayingPanel() {
           {activeSource === "soundcloud" ? (
             <SoundCloudPlayer
               trackUrl={soundcloudUrl}
+              size={expanded ? "h-full w-full" : "h-[200px] w-full"}
+            />
+          ) : activeSource === "audius" ? (
+            <AudiusPlayer
+              trackId={audiusTrackId}
+              artworkUrl={current?.artworkUrl ?? null}
+              title={current?.title}
               size={expanded ? "h-full w-full" : "h-[200px] w-full"}
             />
           ) : (

@@ -61,6 +61,9 @@ export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
   // Unofficial endpoints — most likely to notice, least likely to say why.
   ytmusic: { capacity: 10, refillPerSecond: 2 },
   soundcloud: { capacity: 30, refillPerSecond: 5 },
+  // Audius publishes no limit and did not throttle 12 requests back to back (measured
+  // 2026-08-19), which is an absence of evidence rather than a licence. Paced like Deezer.
+  audius: { capacity: 20, refillPerSecond: 5 },
   // Spotify's limit is an undocumented rolling 30s window.
   spotify: { capacity: 40, refillPerSecond: 8 },
   // Deezer's public catalogue allows roughly 50 requests per 5 seconds.
