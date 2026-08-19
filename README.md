@@ -16,18 +16,31 @@ That constraint is the whole design: three services' catalogues can be searched 
 
 ## What it does
 
-- **Search** one box → results from YouTube Music, merged with availability on Deezer and Apple
-- **Play** a continuous queue, from YouTube Music. A track resolves to a playable copy at
-  play time, and falls through to another upload when one refuses to embed
+- **Search** one box → results from YouTube Music and Audius, merged with availability on
+  Deezer and Apple
+- **Play** a continuous queue, from YouTube Music and Audius. A track resolves to a playable
+  copy at play time, and falls through to another upload when one refuses to embed
 - **Explore** charts fused across Deezer and Apple, so agreeing on two beats charting
   higher on one — plus genres, radios and editorial lists
 - **Lyrics** synced from LRCLIB, with a version picker and a timing nudge
 - **Playlists** of your own, saved in your browser — no account, no sign-up
 - **A profile** with a name and pictures, kept on the device rather than uploaded
 
+**Audius is the second source you can actually play**, and the only one that needed no key,
+no account and no approval. It is also the first source Timbre plays *itself* — a real
+`<audio>` element rather than someone else's iframe — which is a deliberate change in what
+the product is, not a drift. Nothing is downloaded or cached; the bytes still come from
+Audius's own CDN.
+
+Its catalogue is worth knowing about: searching for chart songs returns **remixes, edits,
+mashups and hour-long DJ sets, not the originals**. That makes it complementary to YouTube
+Music rather than overlapping — YouTube Music has *Blinding Lights*, Audius has three
+remixes of it — and it is why the variant rule below is load-bearing rather than a nicety.
+
 SoundCloud has a working player and provider, but is **not** registered: catalogue search
-needs a `client_id` behind a paid account, so nothing surfaces its tracks yet. Spotify is
-not integrated at all — see below.
+needs a `client_id` behind a paid account, so nothing surfaces its tracks yet. There *is* a
+verified route for self-hosters that needs no approval — see
+[docs/BLOCKED.md](docs/BLOCKED.md). Spotify is not integrated at all — see below.
 
 ## What it deliberately doesn't do
 
@@ -61,7 +74,7 @@ See [docs/BLOCKED.md](docs/BLOCKED.md) for what is waiting on somebody else.
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) — installs the sidecar from its lockfile
 
-No database, no API keys, no developer accounts, no subscriptions.
+No database, no Docker, no API keys, no developer accounts, no subscriptions.
 
 ## Setup
 
@@ -69,35 +82,46 @@ No database, no API keys, no developer accounts, no subscriptions.
 pnpm install
 
 cp .env.example .env
-# YTMUSIC_SHARED_SECRET: openssl rand -hex 32
+# set YTMUSIC_SHARED_SECRET — the sidecar refuses to boot without it:
+#   openssl rand -hex 32
 
 cd apps/ytmusic
 uv sync --extra dev        # or: python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"
 cd ../..
 ```
 
+`YTMUSIC_SHARED_SECRET` is the only value you must supply; `YTMUSIC_SERVICE_URL` defaults
+to loopback. Both live in **one root `.env`**, loaded via `dotenv-cli` because Next does
+not look outside its own directory in a monorepo.
+
 The sidecar's dependencies are locked in `apps/ytmusic/uv.lock`, which is what CI and
 Vercel both install from — `uv sync` reproduces those versions exactly, while the pip route
 re-resolves and may not. Changing a dependency means re-running `uv lock` and committing
 the result, or CI fails on `--locked`.
 
-Both environment variables live in **one root `.env`**, loaded via `dotenv-cli` because Next does not look outside its own directory in a monorepo.
-
 ## Running
 
+**Two terminals, and both are required.** The sidecar is the web app's only dependency:
+start the web app alone and it will run perfectly well, serve pages, and find nothing.
+
 ```bash
+pnpm dev:ytmusic    # FastAPI sidecar on http://127.0.0.1:8787   ← start this first
 pnpm dev            # Next.js on http://127.0.0.1:3000
-pnpm dev:ytmusic    # FastAPI sidecar on http://127.0.0.1:8787
 ```
 
-macOS/Linux: `pnpm dev:ytmusic:posix`.
+macOS/Linux: `pnpm dev:ytmusic:posix` — the default script points at the Windows venv layout.
 
 ```bash
 curl http://127.0.0.1:3000/api/health
 # {"status":"ok","services":{"ytmusic":{"status":"ok"}},"configured":{"soundcloud":false}}
 ```
 
-Returns **503** if the sidecar is down. It is the only dependency there is.
+Returns **503** if the sidecar is down. `"soundcloud":false` is expected — its catalogue
+search is gated, see [docs/BLOCKED.md](docs/BLOCKED.md).
+
+**Setup problems, verification steps and the failure modes worth recognising live in
+[RUNNING.md](RUNNING.md).** Start there before assuming the app is broken; the most common
+symptom by far — search returning nothing — is just the sidecar not running.
 
 ## Layout
 
