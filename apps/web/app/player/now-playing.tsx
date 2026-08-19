@@ -182,9 +182,22 @@ export function NowPlayingPanel() {
   // Widths are explicit, never `w-full`: closing collapses the *outer* box to zero and
   // clips while the card keeps its real size, which is what holds the player above
   // 200×200 while hidden. A percentage width would take playback with it.
+  // Sources Timbre plays itself have no picture to keep on screen. The floating card exists
+  // because YouTube's IFrame API must stay visible and stops below 200×200 — a compliance
+  // floor, not a layout preference — and the SoundCloud widget is a real embed too. An
+  // `<audio>` element is neither, so on a phone the card was 300×200 of cover art parked
+  // over the results, showing a still the player bar already carries as a thumbnail.
+  //
+  // Hidden below `xl` in that case only. `display:none` does not pause a media element the
+  // way re-parenting one would, so the player stays mounted and playing; the queue panel is
+  // already `xl`-only for the same reason, so nothing else is lost on a phone.
+  const audioOnly = Boolean(streamUrl);
+
   const shell = expanded
     ? "flex min-h-0 min-w-0 flex-1 p-2 lg:pl-0"
     : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+0.75rem)] right-3 z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] ${
+        audioOnly ? "hidden xl:block" : ""
+      } ${
         open
           ? "translate-y-0 opacity-100 xl:w-[23rem]"
           : "pointer-events-none translate-y-3 opacity-0 xl:w-0 xl:p-0"
