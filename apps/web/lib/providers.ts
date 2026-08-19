@@ -7,6 +7,7 @@ import {
   createAudiusProvider,
   createDeezerProvider,
   createSoundCloudProvider,
+  createSpotifyProvider,
   createYtMusicProvider,
   listProviders,
   registerProvider,
@@ -53,6 +54,11 @@ function registerAll(): void {
   // confidently wrong: measured, "Fred again.." led with a 1973 Grateful Dead tape. Scoped to
   // an exact creator it abstains instead, which is what makes it safe to register at all.
   registerProvider(createArchiveProvider());
+  // Spotify: playable, and only ever on a tap. Its embed needs no key and no Premium, but
+  // exposes no play API — so it is a panel the reader starts, never a queue member, which is
+  // also what keeps it clear of Developer Terms §IV.2. No catalogue search: that needs a
+  // developer app capped at five users. A pasted track link is the way in.
+  registerProvider(createSpotifyProvider());
   registerProvider(createDeezerProvider());
   registerProvider(createAppleProvider());
 }

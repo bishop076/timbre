@@ -16,6 +16,8 @@ const COMMIT =
  */
 const YOUTUBE = "https://www.youtube.com";
 const SOUNDCLOUD = "https://w.soundcloud.com";
+/** Spotify's embed is an iframe and nothing else — there is no script and no API. */
+const SPOTIFY = "https://open.spotify.com";
 
 /**
  * Reported, not enforced — deliberately, and this is meant to be flipped.
@@ -51,7 +53,7 @@ const CONTENT_SECURITY_POLICY = [
   // from object URLs. `https:` covers the artwork that `proxied()` passes through untouched.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `frame-src ${YOUTUBE} ${SOUNDCLOUD}`,
+  `frame-src ${YOUTUBE} ${SOUNDCLOUD} ${SPOTIFY}`,
   // Audius is the one source Timbre plays itself, so its audio is fetched by an <audio>
   // element on this origin rather than inside someone's iframe. Without this it falls back
   // to `default-src 'self'` and every Audius track fails silently. `https:` rather than a

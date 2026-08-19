@@ -24,6 +24,7 @@ const SoundCloudPlayer = dynamic(() =>
 const ProgressiveAudioPlayer = dynamic(() =>
   import("./progressive-audio-player").then((m) => m.ProgressiveAudioPlayer),
 );
+const SpotifyPlayer = dynamic(() => import("./spotify-player").then((m) => m.SpotifyPlayer));
 const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
 
 /** One credit line, absent entirely when the sources do not publish it. */
@@ -142,6 +143,7 @@ export function NowPlayingPanel() {
     activeSource,
     soundcloudUrl,
     streamUrl,
+    spotifyTrackId,
     panelOpen,
     theater,
     toggleTheater,
@@ -191,6 +193,8 @@ export function NowPlayingPanel() {
   // Hidden below `xl` in that case only. `display:none` does not pause a media element the
   // way re-parenting one would, so the player stays mounted and playing; the queue panel is
   // already `xl`-only for the same reason, so nothing else is lost on a phone.
+  // Spotify's embed is 152px of Spotify's own chrome and has to be visible to be pressed,
+  // so unlike an `<audio>` element it stays on a phone.
   const audioOnly = Boolean(streamUrl);
 
   const shell = expanded
@@ -263,6 +267,11 @@ export function NowPlayingPanel() {
           {activeSource === "soundcloud" ? (
             <SoundCloudPlayer
               trackUrl={soundcloudUrl}
+              size={expanded ? "h-full w-full" : "h-[200px] w-full"}
+            />
+          ) : spotifyTrackId ? (
+            <SpotifyPlayer
+              trackId={spotifyTrackId}
               size={expanded ? "h-full w-full" : "h-[200px] w-full"}
             />
           ) : streamUrl ? (
