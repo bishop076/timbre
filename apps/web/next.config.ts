@@ -18,6 +18,8 @@ const YOUTUBE = "https://www.youtube.com";
 const SOUNDCLOUD = "https://w.soundcloud.com";
 /** Spotify's embed is an iframe and nothing else — there is no script and no API. */
 const SPOTIFY = "https://open.spotify.com";
+/** Mixcloud splits the two: the widget frame and the script that adopts it. */
+const MIXCLOUD = "https://player-widget.mixcloud.com https://widget.mixcloud.com";
 
 /**
  * Reported, not enforced — deliberately, and this is meant to be flipped.
@@ -46,14 +48,14 @@ const IN_PRODUCTION = process.env.NODE_ENV === "production";
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' ${YOUTUBE} ${SOUNDCLOUD}`,
+  `script-src 'self' 'unsafe-inline' ${YOUTUBE} ${SOUNDCLOUD} ${MIXCLOUD}`,
   // Tailwind's arbitrary values and the pre-paint boot script both write inline styles.
   "style-src 'self' 'unsafe-inline'",
   // `data:` and `blob:` are the profile pictures, which live in IndexedDB and are drawn
   // from object URLs. `https:` covers the artwork that `proxied()` passes through untouched.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `frame-src ${YOUTUBE} ${SOUNDCLOUD} ${SPOTIFY}`,
+  `frame-src ${YOUTUBE} ${SOUNDCLOUD} ${SPOTIFY} ${MIXCLOUD}`,
   // Audius is the one source Timbre plays itself, so its audio is fetched by an <audio>
   // element on this origin rather than inside someone's iframe. Without this it falls back
   // to `default-src 'self'` and every Audius track fails silently. `https:` rather than a

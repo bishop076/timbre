@@ -26,6 +26,7 @@ const ProgressiveAudioPlayer = dynamic(() =>
 );
 const SpotifyPlayer = dynamic(() => import("./spotify-player").then((m) => m.SpotifyPlayer));
 const SpotifyPanel = dynamic(() => import("./spotify-panel").then((m) => m.SpotifyPanel));
+const MixcloudPlayer = dynamic(() => import("./mixcloud-player").then((m) => m.MixcloudPlayer));
 const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
 
 /** One credit line, absent entirely when the sources do not publish it. */
@@ -145,6 +146,7 @@ export function NowPlayingPanel() {
     soundcloudUrl,
     streamUrl,
     spotifyTrackId,
+    mixcloudKey,
     panelOpen,
     theater,
     toggleTheater,
@@ -194,8 +196,9 @@ export function NowPlayingPanel() {
   // Hidden below `xl` in that case only. `display:none` does not pause a media element the
   // way re-parenting one would, so the player stays mounted and playing; the queue panel is
   // already `xl`-only for the same reason, so nothing else is lost on a phone.
-  // Spotify's embed is 152px of Spotify's own chrome and has to be visible to be pressed,
-  // so unlike an `<audio>` element it stays on a phone.
+  // Spotify's embed and Mixcloud's widget are both somebody else's chrome and both have to
+  // stay visible — Mixcloud's licence says so outright — so unlike an `<audio>` element they
+  // stay on a phone. Only the sources with no picture at all collapse.
   const audioOnly = Boolean(streamUrl);
 
   const shell = expanded
@@ -268,6 +271,11 @@ export function NowPlayingPanel() {
           {activeSource === "soundcloud" ? (
             <SoundCloudPlayer
               trackUrl={soundcloudUrl}
+              size={expanded ? "h-full w-full" : "h-[200px] w-full"}
+            />
+          ) : mixcloudKey ? (
+            <MixcloudPlayer
+              cloudcastKey={mixcloudKey}
               size={expanded ? "h-full w-full" : "h-[200px] w-full"}
             />
           ) : spotifyTrackId ? (

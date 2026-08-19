@@ -50,8 +50,11 @@ interface PlayerState {
   /** The Spotify track whose embed is showing, if any. Nothing can start it — the embed has
    * no play API — so this is a panel the reader taps, never a queue member. */
   spotifyTrackId: string | null;
+  /** The Mixcloud show the widget holds. Its `key` — `/user/slug/` — not the display URL,
+   * whose user segment is the display name and which the widget refuses. */
+  mixcloudKey: string | null;
   /** Which player owns the current song. Exactly one is ever mounted — a paused one can be restarted by a stray event. */
-  activeSource: "ytmusic" | "soundcloud" | "spotify" | ProgressiveSource | null;
+  activeSource: "ytmusic" | "soundcloud" | "spotify" | "mixcloud" | ProgressiveSource | null;
   /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
   /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
@@ -176,6 +179,11 @@ function giveUpReason(youtubeCopies: number, triedProgressive: boolean): string 
   return "No source here could play this one.";
 }
 
+/** The Mixcloud show, if any. Returns the `key`, which is what the widget takes. */
+function mixcloudKeyOf(song: Song): string | null {
+  return song.sources.find((source) => source.source === "mixcloud")?.sourceId ?? null;
+}
+
 /** The Spotify copy, if any. `manual` is its own tier: it plays, but only when a person
  * presses it, so it is reached last and never auto-advanced into. */
 function spotifyIdOf(song: Song): string | null {
@@ -233,8 +241,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
+  const [mixcloudKey, setMixcloudKey] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<
-    "ytmusic" | "soundcloud" | "spotify" | ProgressiveSource | null
+    "ytmusic" | "soundcloud" | "spotify" | "mixcloud" | ProgressiveSource | null
   >(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
@@ -281,6 +290,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setMixcloudKey(null);
     setActiveSource("ytmusic");
     setVideoId(id);
     setProblem(null);
@@ -291,6 +301,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVideoId(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setMixcloudKey(null);
     setActiveSource("soundcloud");
     setSoundcloudUrl(url);
     setProblem(null);
@@ -300,10 +311,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** Shows the embed and stops. There is no `loading` here and never a `playing`: nothing
    * can start a Spotify embed but the reader, so the queue rests on this entry until they
    * do — which is the point. Silently skipping a song someone queued is worse. */
+  const attemptMixcloud = useCallback((key: string) => {
+    setVideoId(null);
+    setSoundcloudUrl(null);
+    setStreamUrl(null);
+    setSpotifyTrackId(null);
+    setActiveSource("mixcloud");
+    setMixcloudKey(key);
+    setProblem(null);
+    setState("loading");
+  }, []);
+
   const attemptSpotify = useCallback((trackId: string) => {
     setVideoId(null);
     setSoundcloudUrl(null);
     setStreamUrl(null);
+    setMixcloudKey(null);
     setActiveSource("spotify");
     setSpotifyTrackId(trackId);
     activeSourceRefSpotify.current = trackId;
@@ -315,6 +338,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVideoId(null);
     setSoundcloudUrl(null);
     setSpotifyTrackId(null);
+    setMixcloudKey(null);
     setActiveSource(source);
     setStreamUrl(streamUrlFor(source, sourceId));
     progressiveTried.current = true;
@@ -350,6 +374,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSoundcloudUrl(null);
       setStreamUrl(null);
       setSpotifyTrackId(null);
+      setMixcloudKey(null);
 
       const direct = youtubeIdOf(song);
       if (direct) {
@@ -377,6 +402,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const progressive = progressiveOf(song);
       if (progressive) {
         attemptProgressive(progressive.source, progressive.sourceId);
+        return;
+      }
+
+      const mixcloud = mixcloudKeyOf(song);
+      if (mixcloud) {
+        attemptMixcloud(mixcloud);
         return;
       }
 
@@ -414,7 +445,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [attempt, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
+    [attempt, attemptMixcloud, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
   );
 
   const play = useCallback(
@@ -791,6 +822,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState("unplayable");
       setProblem(giveUpReason(attempted.current.size, progressiveTried.current));
     },
+    // No `attemptMixcloud`: Mixcloud is never a *fall-through* target, only a deliberate
+    // pick. Its hits are hour-long mixes that merely share a name with the song — falling
+    // back from a four-minute track to an 88-minute set called *Wonderwall* would be a worse
+    // answer than admitting nothing here can play it.
     [attempt, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
   );
 
@@ -822,6 +857,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     soundcloudUrl,
     streamUrl,
     spotifyTrackId,
+    mixcloudKey,
     activeSource,
     panelOpen,
     theater,

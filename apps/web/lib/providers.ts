@@ -6,6 +6,7 @@ import {
   createArchiveProvider,
   createAudiusProvider,
   createDeezerProvider,
+  createMixcloudProvider,
   createSoundCloudProvider,
   createSpotifyProvider,
   createYtMusicProvider,
@@ -54,6 +55,11 @@ function registerAll(): void {
   // confidently wrong: measured, "Fred again.." led with a 1973 Grateful Dead tape. Scoped to
   // an exact creator it abstains instead, which is what makes it safe to register at all.
   registerProvider(createArchiveProvider());
+  // Mixcloud: the long form. Searchable, keyless, and driveable by script — the first source
+  // since Audius that can be a queue member rather than a panel. It answers the two suggested
+  // searches nothing else could ("boiler room set", "lofi study mix") and is deliberately
+  // weak on single tracks, which is the inverse of every other source here.
+  registerProvider(createMixcloudProvider());
   // Spotify: playable, and only ever on a tap. Its embed needs no key and no Premium, but
   // exposes no play API — so it is a panel the reader starts, never a queue member, which is
   // also what keeps it clear of Developer Terms §IV.2. No catalogue search: that needs a

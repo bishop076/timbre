@@ -34,6 +34,12 @@ export const SOURCE_STYLES: Record<string, SourceStyle> = {
     color: "#cc0fe0",
     tint: "rgba(204, 15, 224, 0.12)",
   },
+  mixcloud: {
+    label: "Mixcloud",
+    short: "Mixcloud",
+    color: "#5000ff",
+    tint: "rgba(80, 0, 255, 0.14)",
+  },
   archive: {
     label: "Live Music Archive",
     short: "Archive",
