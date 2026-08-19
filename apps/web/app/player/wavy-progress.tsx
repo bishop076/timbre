@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { formatDuration } from "../duration";
+
 // A progress slider whose played portion is a travelling wave — a sine sampled as a
 // polyline, with a flat line for the remainder. Phase advances with playback position
 // rather than on a CSS animation, so there is no separate "is it animating" state to keep
@@ -152,6 +154,14 @@ export function Scrub({
       // The reported position, not the interpolated one: a screen reader should hear where
       // the track is, not a per-frame estimate.
       aria-valuenow={Math.round(position)}
+      // Without this a screen reader reads the raw number — "142" rather than "2:22 of
+      // 4:19". `aria-valuenow` is seconds because the range has to be numeric; this is the
+      // same value in the form a person uses.
+      aria-valuetext={
+        duration > 0
+          ? `${formatDuration(position * 1000)} of ${formatDuration(duration * 1000)}`
+          : "not playing"
+      }
       onClick={(event) => {
         if (duration <= 0) return;
         const box = event.currentTarget.getBoundingClientRect();
@@ -161,6 +171,12 @@ export function Scrub({
         if (duration <= 0) return;
         if (event.key === "ArrowRight") onSeek(Math.min(duration, position + 5));
         if (event.key === "ArrowLeft") onSeek(Math.max(0, position - 5));
+        // Expected of any slider, and the only way to reach either end without holding an
+        // arrow key for the length of the track.
+        if (event.key === "Home") onSeek(0);
+        if (event.key === "End") onSeek(duration);
+        if (event.key === "PageUp") onSeek(Math.min(duration, position + 30));
+        if (event.key === "PageDown") onSeek(Math.max(0, position - 30));
       }}
       // Taller than the visible line: 4px is impossible with a thumb.
       className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
