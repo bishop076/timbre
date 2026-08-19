@@ -5,6 +5,7 @@ import {
   createAppleProvider,
   createAudiusProvider,
   createDeezerProvider,
+  createSoundCloudProvider,
   createYtMusicProvider,
   listProviders,
   registerProvider,
@@ -35,9 +36,12 @@ function registerAll(): void {
       sharedSecret: env.YTMUSIC_SHARED_SECRET,
     }),
   );
-  // SoundCloud is deliberately NOT registered: `createSoundCloudProvider()` works, but
-  // catalogue search needs a client_id gated behind a paid account and weeks of approval.
-  // To ship it, set `searchable: true` in soundcloud.ts and register here. See docs/BLOCKED.md.
+  // SoundCloud registers either way, and is searchable only when the operator has pointed
+  // SOUNDCLOUD_API_BASE at something they run. Unset — the hosted default — it contributes
+  // exactly what it always did: `resolve`, so a pasted URL still plays. Catalogue search
+  // needs a client_id gated behind a paid account, and the only supported alternative moves
+  // that to the self-hoster rather than to us. See docs/BLOCKED.md.
+  registerProvider(createSoundCloudProvider({ apiBase: env.SOUNDCLOUD_API_BASE }));
   // Audius second: the only other source that can be both searched and played, and the
   // only one Timbre plays itself. Its catalogue is remixes, edits and DJ sets — the
   // derivative layer YouTube Music does not carry — so it widens the catalogue rather
