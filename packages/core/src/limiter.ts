@@ -68,6 +68,9 @@ export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
   // contribution costs two calls (search, then the item's file list). Paced well below
   // anything else here because it is a courtesy read of a nonprofit's index.
   archive: { capacity: 8, refillPerSecond: 1 },
+  // Mixcloud publishes no limit and answered a burst without complaint. Paced like Deezer,
+  // which is the closest comparable public catalogue read.
+  mixcloud: { capacity: 20, refillPerSecond: 5 },
   // Spotify's limit is an undocumented rolling 30s window.
   spotify: { capacity: 40, refillPerSecond: 8 },
   // Deezer's public catalogue allows roughly 50 requests per 5 seconds.
