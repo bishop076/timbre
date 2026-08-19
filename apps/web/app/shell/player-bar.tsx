@@ -182,6 +182,11 @@ export function PlayerBar() {
             <ArtistLink artists={current.artists} className="truncate" />
             {state === "unplayable" ? (
               <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
+            ) : activeSource === "spotify" ? (
+              // The one source nothing here can start. Saying so is not decoration: the
+              // queue rests on this entry until the reader presses Spotify's own player,
+              // and a transport that looks broken is worse than one that explains itself.
+              <span className="shrink-0 text-[var(--accent)]">press Spotify&rsquo;s player to start</span>
             ) : (
               // Names the source actually playing, never a hardcoded one — a terms
               // requirement for every service Timbre embeds.
