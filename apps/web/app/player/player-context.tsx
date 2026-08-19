@@ -294,6 +294,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const direct = youtubeIdOf(song);
       if (direct) {
         attempt(direct);
+
+        // Warm the fall-through list while the first copy is still loading (`docs/BUGS.md`
+        // B-5). Resolving on failure instead cost fail → round trip → retry, which a
+        // listener hears as a stall part-way through a song; doing it now costs a request
+        // nobody waits on. Deliberately not awaited, and guarded twice: the abort signal
+        // cancels it on a track change, and the song check drops a response that lands
+        // after one anyway, so a stale list can never be attempted for the wrong song.
+        void findCandidates(song, aborter.signal)
+          .then((found) => {
+            if (songRef.current === song) candidates.current = found;
+          })
+          .catch(() => {
+            // A failed prefetch is not a failure: `handleError` still fetches on demand.
+          });
         return;
       }
 
