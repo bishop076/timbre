@@ -3,6 +3,7 @@ import "server-only";
 import { MemoryBucketStore, RateLimiter } from "@timbre/core";
 import {
   createAppleProvider,
+  createArchiveProvider,
   createAudiusProvider,
   createDeezerProvider,
   createSoundCloudProvider,
@@ -47,6 +48,11 @@ function registerAll(): void {
   // derivative layer YouTube Music does not carry — so it widens the catalogue rather
   // than duplicating it.
   registerProvider(createAudiusProvider());
+  // The Internet Archive contributes recommendations only — `searchable: false`, permanently.
+  // Its index holds *shows*, and a plain query for the music Timbre's readers look for is
+  // confidently wrong: measured, "Fred again.." led with a 1973 Grateful Dead tape. Scoped to
+  // an exact creator it abstains instead, which is what makes it safe to register at all.
+  registerProvider(createArchiveProvider());
   registerProvider(createDeezerProvider());
   registerProvider(createAppleProvider());
 }

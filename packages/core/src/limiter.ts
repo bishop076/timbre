@@ -64,6 +64,10 @@ export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
   // Audius publishes no limit and did not throttle 12 requests back to back (measured
   // 2026-08-19), which is an absence of evidence rather than a licence. Paced like Deezer.
   audius: { capacity: 20, refillPerSecond: 5 },
+  // The Internet Archive asks for restraint rather than publishing a number, and a radio
+  // contribution costs two calls (search, then the item's file list). Paced well below
+  // anything else here because it is a courtesy read of a nonprofit's index.
+  archive: { capacity: 8, refillPerSecond: 1 },
   // Spotify's limit is an undocumented rolling 30s window.
   spotify: { capacity: 40, refillPerSecond: 8 },
   // Deezer's public catalogue allows roughly 50 requests per 5 seconds.
