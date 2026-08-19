@@ -127,6 +127,35 @@ test("song ids are unique even when two recordings share a dedupe key", () => {
   assert.notEqual(songs[0]!.id, songs[1]!.id);
 });
 
+test("a blank ISRC is not an id, and cannot collide", () => {
+  // Regression: `group.isrc ?? …` falls back only on null, so a provider that sends
+  // an empty string rather than omitting the field passed one straight through — and
+  // every song without an ISRC then shared the same empty id. Audius does exactly this;
+  // three songs in one search reached React with the same key.
+  const songs = mergeTracks([
+    track({ source: "audius", sourceId: "a", title: "One", isrc: "" }),
+    track({ source: "audius", sourceId: "b", title: "Two", isrc: "" }),
+    track({ source: "audius", sourceId: "c", title: "Three", isrc: "" }),
+  ]);
+
+  assert.equal(songs.length, 3);
+  assert.equal(new Set(songs.map((song) => song.id)).size, 3);
+  for (const song of songs) assert.ok(song.id.length > 0, "an id must never be empty");
+});
+
+test("a variant never merges into the original, even with no ISRC anywhere", () => {
+  // The rule the whole Audius integration rests on: it carries no usable ISRC and its
+  // titles are *all* variants, so this is the only thing keeping a remix from being
+  // swallowed by the song it remixes. OmniSource — a shipped multi-source plugin —
+  // strips "remix" as noise and collapses exactly this pair.
+  const songs = mergeTracks([
+    track({ source: "ytmusic", sourceId: "orig", title: "Blinding Lights", durationMs: 200_000 }),
+    track({ source: "audius", sourceId: "rmx", title: "Blinding Lights (Zaza Remix)", durationMs: 200_000 }),
+  ]);
+
+  assert.equal(songs.length, 2, "a remix must not be absorbed by the original");
+});
+
 test("display metadata is filled in from whichever source has it", () => {
   const songs = mergeTracks([
     track({ source: "ytmusic", album: null, artworkUrl: null }),
