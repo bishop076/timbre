@@ -21,6 +21,9 @@ import { createRequester } from "./request.ts";
 const SEARCH = "https://archive.org/advancedsearch.php";
 const METADATA = "https://archive.org/metadata";
 const DOWNLOAD = "https://archive.org/download";
+/** The item tile. One stable host, unlike the per-item content nodes the audio comes from,
+ * which is what lets it go through Timbre's artwork proxy at all. */
+const IMAGE = "https://archive.org/services/img";
 
 /** How many shows to consider. One is usually enough and each costs a second round trip. */
 const SHOWS = 1;
@@ -124,7 +127,9 @@ export function createArchiveProvider(): SearchProvider {
           durationMs: durationMs(file.length),
           isrc: null,
           url: `https://archive.org/details/${show.identifier}`,
-          artworkUrl: null,
+          // Per item rather than per track — a show has one tile and the tracks inside it
+          // have none, which is truer to what a concert recording is than inventing one.
+          artworkUrl: `${IMAGE}/${encodeURIComponent(show.identifier!)}`,
           playback: "queue",
         }));
 

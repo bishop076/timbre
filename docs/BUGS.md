@@ -99,16 +99,26 @@ barred, so this is genuinely long-tail.
 
 ---
 
-## B-5 · Candidate resolution happens after failure, not before `OPEN`
+## B-5 · Candidate resolution happens after failure, not before `FIXED`
 
 **Severity:** low — latency only
 
-`findCandidates()` runs inside `handleError`, so a fall-through costs
+`findCandidates()` ran inside `handleError`, so a fall-through cost
 fail → network round-trip → retry, which the listener hears as a stall mid-song.
 
-**Remedy:** fetch the candidate list during the existing `"resolving"` state in
-`load()` and hold it in `candidates.current`. Fall-through then costs one
+**Fixed in `load()`, not in the `"resolving"` state the remedy first named.** That
+state is only reached when a song has *no* direct YouTube id, and a song with one
+skips straight to `attempt()` — which is exactly the path that later needs the
+fall-through list. So the fetch is started alongside the first attempt instead,
+unawaited, while the first copy is still loading. Fall-through now costs one
 `loadVideoById`.
+
+Two guards, because an unawaited fetch outlives the thing that started it: the
+existing abort signal cancels it on a track change, and `songRef.current === song`
+drops a response that lands after one anyway. `handleError` still fetches on
+demand when the prefetch failed or has not landed, so nothing depends on it
+arriving. Verified in a browser — playing a search result now fires
+`/api/search?q=<title> <artist>&limit=10` immediately, before any error.
 
 ---
 
