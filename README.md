@@ -10,9 +10,11 @@ Spotify, Apple and Tidal serve people who pay. Nobody builds well for people who
 
 YouTube Music's free tier plus SoundCloud is an enormous catalogue — remixes, DJ sets, live rips, indie uploads and unofficial releases that **aren't on Spotify at all** — and there's no good unified player for it.
 
-Timbre is a shell around other services' own players. **It hosts nothing.** Audio always streams from the service it belongs to, through that service's official player, so ads run and artists are paid exactly as they would be otherwise. What belongs to Spotify stays in Spotify.
+Timbre is mostly a shell around other services' own players. **It hosts nothing.** Audio streams from the service it belongs to — for YouTube Music and SoundCloud through that service's official player, so ads run and artists are paid exactly as they would be otherwise. What belongs to Spotify stays in Spotify.
 
-That constraint is the whole design: three services' catalogues can be searched together, but their audio cannot be pooled into one stream without breaking every one of their terms.
+**Audius is the exception, and it is worth stating plainly.** It publishes progressive audio with no player to embed, so Timbre renders its own `<audio>` element pointed at Audius's CDN. Nothing is downloaded or cached and no byte is re-hosted — but it is Timbre's player, not theirs. One consequence is not yet solved: the stream endpoint returns `skip_play_count=true`, so **a listen through Timbre does not currently register as a play on Audius**. That is a gap to close, not a design choice.
+
+That constraint is the whole design: four services' catalogues can be searched together, but their audio cannot be pooled into one stream without breaking every one of their terms.
 
 ## What it does
 
@@ -46,11 +48,11 @@ verified route for self-hosters that needs no approval — see
 
 These aren't missing features — they're rules Timbre respects.
 
-- **No background playback on mobile.** On desktop, Timbre plays in a background tab exactly like YouTube's or Spotify's own web player. On mobile, locking the screen stops playback — the audio lives inside YouTube's iframe, and background play there is the feature YouTube Premium sells. There's no legitimate way around it.
+- **No background playback on mobile**, for anything playing through YouTube. On desktop, Timbre plays in a background tab exactly like YouTube's or Spotify's own web player. On mobile, locking the screen stops playback — the audio lives inside YouTube's iframe, and background play there is the feature YouTube Premium sells. There's no legitimate way around it. Audius is technically different, since that audio is Timbre's own element rather than an iframe, but the behaviour is not built or tested and should not be assumed.
 - **No audio-only YouTube.** The video player stays visible; isolating audio is prohibited.
 - **No downloading or caching audio.** Ever.
 - **No Spotify.** Their Developer Terms §IV.2 forbid integrating Spotify streams with another service's, so it could only ever be a separate, clearly attributed panel — and that panel is not built. Nothing in the app talks to Spotify today.
-- **No gapless cross-source playback.** Handing off between two iframe players always has a small gap. Continuous, not gapless.
+- **No gapless cross-source playback.** Handing off between two players — two iframes, or an iframe and an audio element — always has a small gap. Continuous, not gapless.
 - **No accounts, and no data.** Timbre asks for no email and keeps no user record. Playlists, your profile and your history live in your browser and nowhere else. Nothing to breach, nothing to subpoena, nothing to pay for — and the honest cost is that clearing site data loses them, so **Export** exists on the library page. It covers playlists; your profile and history are not in the file yet. One cookie is set, `timbre-name`, so your own display name is in the first paint rather than arriving a frame later.
 
 ## Status
