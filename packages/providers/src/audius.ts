@@ -99,9 +99,18 @@ const get = <T>(ctx: SearchContext, path: string): Promise<T> => request<T>(ctx,
  * it here would mint a link at search time that may have expired by the time anyone presses
  * play; letting the browser follow the redirect resolves it at the moment of playback and
  * makes expiry impossible by construction.
+ *
+ * **`skip_play_count=false` is why the listen counts.** Without it the redirect arrives
+ * carrying `skip_play_count=true` and the play is never recorded — which for a player whose
+ * whole pitch is that artists are paid as they otherwise would be is not a detail. It is a
+ * leak rather than a policy: `stream_util.go` probes candidate mirrors with that flag set so
+ * the health check is not counted as a listen, and the flag survives into the URL it
+ * returns. `redirectToStream` overrides it with whatever the caller passed, so passing
+ * `false` explicitly is the documented way back. Verified 2026-08-19: the override reaches
+ * the content node and audio still answers `206 audio/mpeg`.
  */
 export function audiusStreamUrl(trackId: string): string {
-  return `${API}/tracks/${encodeURIComponent(trackId)}/stream`;
+  return `${API}/tracks/${encodeURIComponent(trackId)}/stream?skip_play_count=false`;
 }
 
 /** How many versions of the seed to fetch. Small: this list is a garnish on the ranking, not

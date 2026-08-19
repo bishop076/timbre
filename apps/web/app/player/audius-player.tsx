@@ -30,9 +30,11 @@ import { usePlayerControls } from "./player-context";
 
 const API = "https://api.audius.co/v1";
 
-/** Mirrors `audiusStreamUrl` in `packages/providers/src/audius.ts`. */
+/** Mirrors `audiusStreamUrl` in `packages/providers/src/audius.ts`, including
+ * `skip_play_count=false` — without it the listen is never counted for the artist. The
+ * reasoning lives with the provider. */
 function streamUrlFor(trackId: string): string {
-  return `${API}/tracks/${encodeURIComponent(trackId)}/stream`;
+  return `${API}/tracks/${encodeURIComponent(trackId)}/stream?skip_play_count=false`;
 }
 
 export function AudiusPlayer({
