@@ -18,6 +18,10 @@ export const ALLOWED_HOSTS = new Set([
   "is4-ssl.mzstatic.com",
   "is5-ssl.mzstatic.com",
   "i1.sndcdn.com",
+  // The Live Music Archive's item tiles. Safe to name where Audius's are not: this is one
+  // stable host that Archive itself runs, while Audius artwork is served by whichever
+  // operator-run content node holds the track and the set changes.
+  "archive.org",
 ]);
 
 /** Artwork is small. Anything larger is not artwork. */
