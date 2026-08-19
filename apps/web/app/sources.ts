@@ -34,6 +34,12 @@ export const SOURCE_STYLES: Record<string, SourceStyle> = {
     color: "#cc0fe0",
     tint: "rgba(204, 15, 224, 0.12)",
   },
+  archive: {
+    label: "Live Music Archive",
+    short: "Archive",
+    color: "#3ba55c",
+    tint: "rgba(59, 165, 92, 0.12)",
+  },
   spotify: {
     label: "Spotify",
     short: "Spotify",

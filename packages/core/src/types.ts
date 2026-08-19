@@ -7,7 +7,7 @@
  * Every service Timbre knows about. Ordered by how useful each is to the
  * product: sources it can actually play come first.
  */
-export const PROVIDER_IDS = ["ytmusic", "soundcloud", "audius", "spotify", "deezer", "apple"] as const;
+export const PROVIDER_IDS = ["ytmusic", "soundcloud", "audius", "archive", "spotify", "deezer", "apple"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 /** A recording, independent of which service it lives on. */
