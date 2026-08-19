@@ -7,6 +7,23 @@ work, so they are not proposed again.
 *Written 2026-08-19. Companion to [BLOCKED.md](BLOCKED.md), which records what other people
 gate, and [BUGS.md](BUGS.md), which records ours.*
 
+> **Two things here were wrong within the hour, and
+> [RESEARCH-2026-08-19.md](RESEARCH-2026-08-19.md) found both. Re-verified
+> independently before amending:**
+>
+> **Part 2 gives the Spotify track id as the reason search did not ship. It is
+> obtainable, free and keyless** — MetaBrainz runs a resolver nobody had checked.
+> `labs.api.listenbrainz.org/spotify-id-from-mbid` answers `200` with
+> `Access-Control-Allow-Origin: *`, so it is callable from the visitor's browser on
+> the visitor's IP. Measured here end to end: Deezer's ISRC `GBAAW9500189` →
+> MusicBrainz `580f4553-…` → Spotify `1qPbGZqppFwLwcBC1JQ6Vr`. See **R9** below.
+>
+> **R1 says "the cost is the index" and lists four accounts. A public
+> [4get](https://4get.ca) instance answers JSON with no key, no card and no captcha** —
+> `4get.nadeko.net/api/v1/web?s=…`. Verified here: 10 results, first Spotify id
+> `1qPbGZqppFwLwcBC1JQ6Vr`. That id has now been produced by three independent
+> methods, which is the strongest signal in this document.
+
 ---
 
 ## Part 1 — What shipped
@@ -75,6 +92,42 @@ right way to *measure* hit rate before committing to anything.
 
 **Verdict: build when wanted.** One optional env var, the same shape as
 `SOUNDCLOUD_API_BASE`: unset, nothing changes; set, both catalogues become searchable.
+
+### R9 · MetaBrainz's own resolver — WORKS, keyless, browser-callable
+
+**Added 2026-08-19 after `RESEARCH-2026-08-19.md` F-1, and independently re-measured.**
+The route this document said did not exist:
+
+```
+Deezer /search -> /track/{id}.isrc            already a registered provider
+MusicBrainz /ws/2/isrc/{isrc}   -> mbid       13/15 in F-1
+labs.api.listenbrainz.org/spotify-id-from-mbid -> id   10/15, all 10 rendered correctly
+```
+
+Every hop keyless; the last sends `Access-Control-Allow-Origin: *`. There is also a
+**metadata variant** that skips MusicBrainz entirely when the album is known — and Deezer
+supplies the album, so for a merged song it is *one* call rather than two:
+
+```
+/spotify-id-from-metadata/json?artist_name=Oasis&release_name=(What's the Story) Morning Glory?&track_name=Wonderwall
+  -> ["0A6sqSxlqml1wjQLjuM4BH", "1qPbGZqppFwLwcBC1JQ6Vr"]      verified here
+```
+
+It requires all three of artist, release and track — artist plus track alone is a `400`.
+
+**Why it is more trustworthy than a free tier:** it is a non-profit's dataset, published so
+ListenBrainz can export its own playlists. The reason it exists is structural, not generous —
+unlike Odesli's, which went away. But the labs host is **not SLA'd** and neighbouring
+endpoints were seen returning `500` under load, so every call must abstain on failure the way
+the ranker already treats an absent list.
+
+**SoundCloud gets nothing from it — 0/15.** The endpoint exists and answers; the index is
+empty for that material. R1 remains SoundCloud's only route to track URLs.
+
+**Where it goes:** not into search. Two extra calls per *song* is fine; per *result row* is
+not. It belongs on the song being played — resolve the Spotify id for the current track and
+offer the panel, which is what `PLAN.md` always described as "see where else a song lives,
+and hand off".
 
 ### R2 · An api-v2-shaped base the operator runs — SHIPPED, SoundCloud only
 
@@ -162,11 +215,15 @@ Kept here because they are the only routes that reach 100%, not because they are
 
 ## Part 4 — What to do
 
-1. **If Spotify is installed, probe 4370-4380.** Ten minutes, and a live helper beats
-   everything below it.
-2. **Otherwise R1 is the answer for both**, and it is one env var. Measure first with
-   Serper's 2,500 free no-card queries against real songs; ship on Exa or Linkup's recurring
-   free tier if the hit rate holds.
+1. **R9 for Spotify** — keyless, browser-callable, no account anywhere, and variant-aware
+   because neither hop is a fuzzy match. Lazily, on the song being played rather than on
+   every search row.
+2. **R1 for SoundCloud**, which R9 cannot serve, pointed at a public 4get instance rather
+   than a paid tier — same optional-env-var shape as `SOUNDCLOUD_API_BASE`. One trap
+   recorded in F-4 and worth repeating: **the `site:` operator returns zero results there.**
+   Phrase the query (`Oasis Wonderwall spotify track`), do not scope it.
+3. **If Spotify is installed, probe 4370-4380 anyway.** Ten minutes, and a live local helper
+   would still beat both.
 3. **R3 stays a self-host note.** Five seats is a demo, not a feature.
 4. **Nothing else here should be reopened** without new evidence — each was tested, and the
    reasons they fail are structural rather than temporary.
