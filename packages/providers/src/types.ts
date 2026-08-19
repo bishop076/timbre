@@ -40,10 +40,14 @@ export interface Song {
   sources: SourceTrack[];
 }
 
-/** Where to start a radio: YouTube Music continues from an upload, Deezer only from an artist. */
+/** Where to start a radio, carrying every handle a source might need: YouTube Music continues
+ * from an upload, Deezer can only start from an artist, and Audius can only usefully start
+ * from a **title** — its user search matches "The Weeknd" to "Louis The Child", so an
+ * artist seed there is confidently wrong rather than merely empty. */
 export interface RadioSeed {
   sourceId?: string;
   artist?: string;
+  title?: string;
 }
 
 /** One source's suggestions, kept separate because agreement between lists is the signal. */

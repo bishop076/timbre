@@ -42,8 +42,12 @@ interface PlayerState {
   current: Song | null;
   videoId: string | null;
   soundcloudUrl: string | null;
+  /** The Audius track id, not a stream URL — the player builds the URL, exactly as the
+   * YouTube one builds an embed from `videoId`. Holding a resolved link here would be wrong
+   * anyway: `/stream` redirects to a *signed* URL that expires. */
+  audiusTrackId: string | null;
   /** Which player owns the current song. Exactly one is ever mounted — a paused one can be restarted by a stray event. */
-  activeSource: "ytmusic" | "soundcloud" | null;
+  activeSource: "ytmusic" | "soundcloud" | "audius" | null;
   /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
   /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
@@ -146,6 +150,11 @@ function soundcloudUrlOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
 }
 
+/** The Audius copy, if any. Returns `sourceId` — the stream endpoint is keyed by track id. */
+function audiusIdOf(song: Song): string | null {
+  return song.sources.find((source) => source.source === "audius")?.sourceId ?? null;
+}
+
 interface PlayModes {
   shuffle: boolean;
   repeat: RepeatMode;
@@ -188,7 +197,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [index, setIndex] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
-  const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | null>(null);
+  const [audiusTrackId, setAudiusTrackId] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<"ytmusic" | "soundcloud" | "audius" | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -212,6 +222,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
+  /** Whether Audius has already had its turn on this song, so a failure there cannot loop
+   * straight back into it. YouTube copies are tracked individually in `attempted`; Audius
+   * has exactly one copy per song, so one flag is the whole state. */
+  const audiusTried = useRef(false);
   // The song already written to history. Held per id so a pause/resume, or a fall-through to
   // another copy, does not record twice; see `handleStateChange`.
   const recorded = useRef<string | null>(null);
@@ -221,6 +235,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const attempt = useCallback((id: string) => {
     attempted.current.add(id);
     setSoundcloudUrl(null);
+    setAudiusTrackId(null);
     setActiveSource("ytmusic");
     setVideoId(id);
     setProblem(null);
@@ -229,8 +244,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const attemptSoundCloud = useCallback((url: string) => {
     setVideoId(null);
+    setAudiusTrackId(null);
     setActiveSource("soundcloud");
     setSoundcloudUrl(url);
+    setProblem(null);
+    setState("loading");
+  }, []);
+
+  const attemptAudius = useCallback((trackId: string) => {
+    setVideoId(null);
+    setSoundcloudUrl(null);
+    setActiveSource("audius");
+    setAudiusTrackId(trackId);
+    audiusTried.current = true;
     setProblem(null);
     setState("loading");
   }, []);
@@ -252,6 +278,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       songRef.current = song;
       candidates.current = [];
       attempted.current = new Set();
+      audiusTried.current = false;
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
       recorded.current = null;
@@ -259,10 +286,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setActiveSource(null);
       setVideoId(null);
       setSoundcloudUrl(null);
+      setAudiusTrackId(null);
 
       const direct = youtubeIdOf(song);
       if (direct) {
         attempt(direct);
+        return;
+      }
+
+      // Audius before SoundCloud: both play, but Audius is reached by search rather than
+      // only by a pasted URL, so it is the one a listener can actually arrive at.
+      const audius = audiusIdOf(song);
+      if (audius) {
+        attemptAudius(audius);
         return;
       }
 
@@ -292,7 +328,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [attempt, attemptSoundCloud, findCandidates],
+    [attempt, attemptAudius, attemptSoundCloud, findCandidates],
   );
 
   const play = useCallback(
@@ -497,13 +533,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     indexRef.current = index;
   }, [queue, index]);
 
-  // Seeded from the video id actually loaded, so it stays right after a fall-through.
+  // Seeded from the video id actually loaded, so it stays right after a fall-through — and
+  // from the song's own title and artist regardless, because those are all some sources can
+  // use. Requiring a YouTube id here meant an Audius or SoundCloud track fetched no radio at
+  // all, so the queue simply stopped at its end rather than continuing.
   useEffect(() => {
-    const seed = activeSource === "ytmusic" ? videoId : null;
     const song = queue[index];
-    if (!seed || !song) return;
+    if (!song || !activeSource) return;
 
-    const params = new URLSearchParams({ id: seed, title: song.title, limit: "25" });
+    const seed = activeSource === "ytmusic" ? videoId : null;
+
+    const params = new URLSearchParams({ title: song.title, limit: "25" });
+    if (seed) params.set("id", seed);
     const artist = song.artists[0];
     if (artist) params.set("artist", artist);
 
@@ -532,9 +573,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
 
     return () => aborter.abort();
-    // Keyed on the loaded upload alone — see the ref note above.
+    // Keyed on whatever is actually loaded — see the ref note above. All three handles are
+    // listed because only one is ever non-null at a time: with `videoId` alone, a move
+    // between two Audius tracks changed nothing here and the radio stayed seeded on the
+    // song before it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSource, videoId]);
+  }, [activeSource, videoId, audiusTrackId, soundcloudUrl]);
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
@@ -612,6 +656,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
       }
 
+      const audius = audiusIdOf(song);
+      if (audius && !audiusTried.current) {
+        log(
+          "warn",
+          `“${song.title}” fell back to Audius after ${attempted.current.size} YouTube copies refused`,
+        );
+        attemptAudius(audius);
+        return;
+      }
+
       // SoundCloud has its own rights position, and reports not-worth-retrying, so a failure
       // exits above rather than looping back here.
       const soundcloud = soundcloudUrlOf(song);
@@ -631,7 +685,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setState("unplayable");
       setProblem("Every copy of this song blocks playback outside YouTube.");
     },
-    [attempt, attemptSoundCloud, findCandidates],
+    [attempt, attemptAudius, attemptSoundCloud, findCandidates],
   );
 
   const handleEnded = useCallback(() => {
@@ -660,6 +714,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     current,
     videoId,
     soundcloudUrl,
+    audiusTrackId,
     activeSource,
     panelOpen,
     theater,
