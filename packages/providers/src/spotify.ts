@@ -30,6 +30,13 @@ import { createRequester } from "./request.ts";
 const OEMBED = "https://open.spotify.com/oembed";
 const EMBED = "https://open.spotify.com/embed";
 
+/** MetaBrainz's dataset hoster — the resolver that makes a Spotify id free. */
+const LABS = "https://labs.api.listenbrainz.org";
+const MUSICBRAINZ = "https://musicbrainz.org/ws/2";
+
+/** MusicBrainz requires a contactable agent and refuses generic ones. */
+const AGENT = "Timbre/0.1 ( https://github.com/bishop076/timbre )";
+
 /** `/track/{22}`, and the localised `/intl-pt/track/{22}` shape their own share links use. */
 const TRACK_PATH = /^(?:\/intl-[a-z]{2,5})?\/track\/([A-Za-z0-9]{22})\/?$/;
 
@@ -110,6 +117,104 @@ const request = createRequester({
   // A withdrawn or region-locked track is normal, not a provider failure.
   softStatuses: [400, 404],
 });
+
+interface LabsRow {
+  spotify_track_ids?: string[];
+}
+
+/**
+ * Finds the Spotify copy of a recording Timbre already knows about — **free, keyless, and
+ * with no developer app anywhere.**
+ *
+ * `BLOCKED.md` and this file's own header both said the id was the thing that could not be
+ * had. MetaBrainz publishes a resolver: `labs.api.listenbrainz.org` maps a recording onto its
+ * Spotify ids, built so ListenBrainz can export its own playlists. That provenance is the
+ * point — it exists for a structural reason rather than a generous one, unlike Odesli's,
+ * which went away.
+ *
+ * Two routes, cheapest first:
+ *
+ * 1. **By metadata**, when the album is known — one call. Deezer supplies the album for any
+ *    song it merged into, so this is the common path. It needs all three of artist, release
+ *    and track; artist plus track alone is a `400`.
+ * 2. **By ISRC**, otherwise — MusicBrainz turns the ISRC into a recording MBID, then the same
+ *    resolver takes the MBID. Two calls, and the more precise of the two: neither hop is a
+ *    fuzzy match, which is what keeps an instrumental from resolving to the parent recording
+ *    the way MusicBrainz's own *search* does.
+ *
+ * **Server-side only.** The labs host sends `Access-Control-Allow-Origin: *` and would be
+ * callable from the browser, but MusicBrainz sends none and requires a contactable
+ * `User-Agent`, which a browser will not let script set.
+ *
+ * **Abstains on every failure.** The labs host is not SLA'd — neighbouring endpoints have
+ * been seen returning `500` under load — so a miss here must look exactly like "this song is
+ * not on Spotify" rather than an error.
+ */
+export async function findSpotifyTrackId(
+  ctx: SearchContext,
+  lookup: { title: string; artist?: string | null; album?: string | null; isrc?: string | null },
+): Promise<string | null> {
+  const title = lookup.title?.trim();
+  if (!title) return null;
+
+  const artist = lookup.artist?.trim();
+  const album = lookup.album?.trim();
+
+  if (artist && album) {
+    const params = new URLSearchParams({
+      artist_name: artist,
+      release_name: album,
+      track_name: title,
+    });
+    const rows = await labs<LabsRow[]>(ctx, `/spotify-id-from-metadata/json?${params}`);
+    const id = rows?.[0]?.spotify_track_ids?.[0];
+    if (id) return id;
+  }
+
+  const isrc = lookup.isrc?.trim();
+  if (!isrc) return null;
+
+  const mbid = await recordingMbid(ctx, isrc);
+  if (!mbid) return null;
+
+  const rows = await labs<LabsRow[]>(
+    ctx,
+    `/spotify-id-from-mbid/json?recording_mbid=${encodeURIComponent(mbid)}`,
+  );
+  return rows?.[0]?.spotify_track_ids?.[0] ?? null;
+}
+
+/** One keyless GET against the dataset hoster, abstaining on anything unexpected. */
+async function labs<T>(ctx: SearchContext, path: string): Promise<T | null> {
+  try {
+    await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+    const response = await fetch(`${LABS}${path}`, { signal: ctx.signal, cache: "no-store" });
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    return null;
+  }
+}
+
+/** ISRC to recording MBID. The weak hop — measured 13/15, and a miss is simply an ISRC the
+ * database does not carry. */
+async function recordingMbid(ctx: SearchContext, isrc: string): Promise<string | null> {
+  try {
+    await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+    const response = await fetch(`${MUSICBRAINZ}/isrc/${encodeURIComponent(isrc)}?fmt=json`, {
+      signal: ctx.signal,
+      cache: "no-store",
+      headers: { "User-Agent": AGENT, Accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { recordings?: { id?: string }[] };
+    return body.recordings?.[0]?.id ?? null;
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    return null;
+  }
+}
 
 export function createSpotifyProvider(): SearchProvider {
   return {
