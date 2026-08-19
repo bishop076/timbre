@@ -133,9 +133,20 @@ export function SearchResults() {
         {/* No suggestions here — the field shows them on focus, and clearing the box
             leaves it focused, so this would put the same chips on screen twice. */}
         {!hasQuery && (
-          <p className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
-            Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
-          </p>
+          <div className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
+            <p>
+              Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
+            </p>
+            {/* SoundCloud and Spotify are the two sources that play but cannot be searched —
+                their catalogue search is gated behind accounts this project will not buy. A
+                pasted link works and always has, and nothing said so, which made the feature
+                effectively invisible: the placeholder says "or a link" without saying whose. */}
+            <p className="mx-auto mt-3 max-w-md text-[var(--fg-faint)]">
+              Paste a <span className="text-[var(--fg-dim)]">SoundCloud</span> or{" "}
+              <span className="text-[var(--fg-dim)]">Spotify</span> link and it plays here.
+              Neither can be searched — only opened.
+            </p>
+          </div>
         )}
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
