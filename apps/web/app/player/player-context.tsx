@@ -151,6 +151,28 @@ function soundcloudUrlOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
 }
 
+/**
+ * Why a song stopped, in the reader's terms rather than the code's.
+ *
+ * The single message this replaced — "every copy of this song blocks playback outside
+ * YouTube" — was written when YouTube was the only source that could fail. It now fires for
+ * a song with no YouTube copy at all, and for one that failed on Audius or the archive,
+ * where it is simply untrue. A wrong explanation is worse than a vague one: it sends the
+ * reader looking for a cause that is not there.
+ */
+function giveUpReason(youtubeCopies: number, triedProgressive: boolean): string {
+  if (youtubeCopies > 0 && triedProgressive) {
+    return `Nothing here would play — ${youtubeCopies} YouTube ${youtubeCopies === 1 ? "copy" : "copies"} refused, and the other source failed too.`;
+  }
+  if (youtubeCopies > 0) {
+    return youtubeCopies === 1
+      ? "The only copy on YouTube blocks playback outside it."
+      : `All ${youtubeCopies} copies on YouTube block playback outside it.`;
+  }
+  if (triedProgressive) return "This track wouldn't stream, and there's no copy on YouTube.";
+  return "No source here could play this one.";
+}
+
 /** The first copy Timbre can play itself, if any. Sources are already ordered most-playable
  * first by the merger, so this takes whichever progressive one it meets. */
 function progressiveOf(song: Song): { source: ProgressiveSource; sourceId: string } | null {
@@ -715,10 +737,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       log(
         "error",
-        `“${song.title}” is unplayable — all ${attempted.current.size} copies block embedding`,
+        `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${progressiveTried.current ? "tried" : "absent"}`,
       );
       setState("unplayable");
-      setProblem("Every copy of this song blocks playback outside YouTube.");
+      setProblem(giveUpReason(attempted.current.size, progressiveTried.current));
     },
     [attempt, attemptProgressive, attemptSoundCloud, findCandidates],
   );
