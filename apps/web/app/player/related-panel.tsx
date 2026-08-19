@@ -20,17 +20,21 @@ export function RelatedPanel() {
   // Keyed by the seed's own id, so a re-render does not refetch but a track change does.
   const seedId = current?.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null;
   const seedArtist = current?.artists[0] ?? null;
+  // Carried too: it is the only handle Audius can use, since its user search matches
+  // "The Weeknd" to "Louis The Child". Without it that source abstains from this panel.
+  const seedTitle = current?.title ?? null;
 
-  const seed = `${seedId ?? ""}::${seedArtist ?? ""}`;
+  const seed = `${seedId ?? ""}::${seedArtist ?? ""}::${seedTitle ?? ""}`;
 
   useEffect(() => {
-    if (!seedId && !seedArtist) return;
+    if (!seedId && !seedArtist && !seedTitle) return;
 
     const aborter = new AbortController();
 
     const params = new URLSearchParams();
     if (seedId) params.set("id", seedId);
     if (seedArtist) params.set("artist", seedArtist);
+    if (seedTitle) params.set("title", seedTitle);
 
     fetch(`/api/radio?${params}`, { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
@@ -43,7 +47,7 @@ export function RelatedPanel() {
       });
 
     return () => aborter.abort();
-  }, [seed, seedId, seedArtist]);
+  }, [seed, seedId, seedArtist, seedTitle]);
 
   const songs = found?.seed === seed ? found.songs : null;
   const loading = Boolean(current) && songs === null;

@@ -4,5 +4,6 @@ export * from "./merge.ts";
 export * from "./recommend.ts";
 export * from "./ytmusic.ts";
 export * from "./soundcloud.ts";
+export * from "./audius.ts";
 export * from "./deezer.ts";
 export * from "./apple.ts";

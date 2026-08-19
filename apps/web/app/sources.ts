@@ -28,6 +28,12 @@ export const SOURCE_STYLES: Record<string, SourceStyle> = {
     color: "#ff7700",
     tint: "rgba(255, 119, 0, 0.12)",
   },
+  audius: {
+    label: "Audius",
+    short: "Audius",
+    color: "#cc0fe0",
+    tint: "rgba(204, 15, 224, 0.12)",
+  },
   spotify: {
     label: "Spotify",
     short: "Spotify",
