@@ -10,8 +10,8 @@ import { CACHE_CONTROL_HOUR, guard } from "@/lib/api";
 export const revalidate = 3600;
 
 const querySchema = z.object({
-  // Both passed, each provider taking what it can use: YouTube Music continues from
-  // an upload, Deezer can only start from an artist.
+  // All three passed, each provider taking what it can use: YouTube Music continues from
+  // an upload, Deezer can only start from an artist, Audius only from a title.
   id: z.string().min(1).max(64).optional(),
   artist: z.string().min(1).max(200).optional(),
   // So the seed can be excluded from its own results: Deezer's top tracks include it,
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   const { limiter } = getProviderRuntime();
   const songs = await recommendFrom(
     { limiter, signal: request.signal },
-    { sourceId: id, artist },
+    { sourceId: id, artist, title },
     limit,
     title && artist ? [{ title, artists: [artist] }] : undefined,
   );

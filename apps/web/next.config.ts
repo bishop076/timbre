@@ -52,6 +52,12 @@ const CONTENT_SECURITY_POLICY = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   `frame-src ${YOUTUBE} ${SOUNDCLOUD}`,
+  // Audius is the one source Timbre plays itself, so its audio is fetched by an <audio>
+  // element on this origin rather than inside someone's iframe. Without this it falls back
+  // to `default-src 'self'` and every Audius track fails silently. `https:` rather than a
+  // host list because `/stream` 302s to whichever content node holds the track, and that
+  // set is operator-run and changes.
+  "media-src 'self' https: blob:",
   "connect-src 'self' https:",
   "object-src 'none'",
   "base-uri 'self'",
