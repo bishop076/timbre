@@ -17,6 +17,20 @@ export interface PlayedSong {
   artworkUrl: string | null;
   /** The upload that actually played, which is what seeds a radio. */
   videoId: string | null;
+  /**
+   * The source that actually played, and its handle.
+   *
+   * **Optional because the entries already in people's browsers do not have it.** This
+   * struct predates every source but YouTube Music, and stored only `videoId` — so a
+   * Mixcloud show came back from history with nothing to play, the player fell through to a
+   * search for its title, and something entirely different played instead. Absent means a
+   * pre-2026-08-19 row: fall back to `videoId` and the old behaviour.
+   */
+  source?: string;
+  sourceId?: string;
+  /** Needed by the sources whose player takes a link rather than an id — SoundCloud's
+   * widget wants a permalink, not a track number. */
+  url?: string | null;
 }
 
 const HISTORY_KEY = "timbre:history";
