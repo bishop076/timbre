@@ -7,6 +7,7 @@ import {
   createAudiusProvider,
   createDeezerProvider,
   createMixcloudProvider,
+  createClientIdResolver,
   createSoundCloudProvider,
   createSpotifyProvider,
   createYtMusicProvider,
@@ -26,7 +27,17 @@ import { getEnv } from "./env";
 
 const globalForProviders = globalThis as unknown as {
   __timbreLimiter?: RateLimiter;
+  __timbreSoundCloudClientId?: () => Promise<string | null>;
 };
+
+/** One resolver per runtime, cached on `globalThis` for the same reason the limiter is: hot
+ * reload re-evaluates modules, and a fresh resolver has forgotten the id it just spent five
+ * seconds fetching. */
+function clientIdResolver() {
+  return (globalForProviders.__timbreSoundCloudClientId ??= createClientIdResolver(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  ));
+}
 
 function registerAll(): void {
   const env = getEnv();
@@ -44,7 +55,18 @@ function registerAll(): void {
   // exactly what it always did: `resolve`, so a pasted URL still plays. Catalogue search
   // needs a client_id gated behind a paid account, and the only supported alternative moves
   // that to the self-hoster rather than to us. See docs/BLOCKED.md.
-  registerProvider(createSoundCloudProvider({ apiBase: env.SOUNDCLOUD_API_BASE }));
+  //
+  // `SOUNDCLOUD_DIRECT_API` is the second half of that same escape hatch, for operators with
+  // nowhere to run an instance. Timbre is meant to deploy serverless and free, and neither
+  // half of that has room for a long-lived Go process: a scale-to-zero container pays five
+  // seconds a cold start resolving the very `client_id` this resolves once per instance.
+  // Still off unless asked for, and off in the hosted build.
+  registerProvider(
+    createSoundCloudProvider({
+      apiBase: env.SOUNDCLOUD_API_BASE,
+      clientId: env.SOUNDCLOUD_DIRECT_API ? clientIdResolver() : undefined,
+    }),
+  );
   // Audius second: the only other source that can be both searched and played, and the
   // only one Timbre plays itself. Its catalogue is remixes, edits and DJ sets — the
   // derivative layer YouTube Music does not carry — so it widens the catalogue rather

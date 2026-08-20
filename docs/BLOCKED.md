@@ -2,11 +2,15 @@
 
 Things Timbre cannot do because someone else gates them. `docs/BUGS.md` logs
 *our* defects; this logs *their* gates, so the two never get confused.
+[SUGGESTIONS.md](SUGGESTIONS.md) logs things that **might** be true —
+**every claim in this file is measured**, and anything merely read or reasoned
+belongs there instead.
 
 Each entry: what is blocked · what blocks it · what would unblock it · when it was
 last checked.
 
-Status: `BLOCKED` · `DECLINED` · `DEFERRED` · `REGRESSED`
+Status: `BLOCKED` · `DECLINED` · `DEFERRED` · `REGRESSED` ·
+`AVAILABLE (self-host only)`
 
 ---
 
@@ -39,6 +43,104 @@ provider that is playable but not searchable.
 **Free to start now:** the application costs nothing to submit and the latency is
 the whole problem, so filing it early is strictly better than filing it later.
 
+### Update 2026-08-20 — the operator may now unblock it themselves
+
+Two opt-in escape hatches exist, both **off in the hosted build and off for anyone who
+clones this**. Neither changes what shipping means; they change who is allowed to decide.
+
+`SOUNDCLOUD_API_BASE` points at an api-v2-shaped proxy the operator runs — a soundcloak
+instance with `EnableAPI` — so the extraction happens in somebody else's codebase on their
+own IP. That was the original hatch and it is still the cleaner one.
+
+`SOUNDCLOUD_DIRECT_API` lets Timbre resolve a guest `client_id` from soundcloud.com and call
+api-v2 itself. **This is the technique this document declined**, and naming it plainly
+matters more than the reasoning: it is now present in the tree, behind a flag.
+
+The reason it exists is that the first hatch is not reachable for the deployment Timbre is
+built for. soundcloak is a long-lived Go process; a free serverless host has nowhere to put
+one, scale-to-zero containers pay ~5s a cold start resolving the same `client_id`, and the
+free tiers that would host it either want a billing account or spin down for ~30s. "Run your
+own instance" is sound advice that costs money or a second provider account, and Timbre's
+whole premise is that neither should be required.
+
+What has *not* changed: it is off by default, `searchAll` still skips SoundCloud when it is
+off, and playback still needs no credentials at all. What has changed is that an operator
+who wants catalogue search can have it without renting a server — and, exactly as with the
+first hatch, they take on the technique, the IP and the terms exposure by choosing to.
+
+**Independently worth having, on either hatch:** results with `policy: "SNIP"` are now
+dropped. Those are rights-gated uploads whose stream stops after thirty seconds while every
+other field describes the whole song, and they are 3–16% of results depending on the query.
+Listing one adds a second, shorter row for a song already present, and this provider's
+`playback` is `queue`, which promises the song.
+
+**There is a self-host route that does not need approval** — it works, it is
+measured, and it is not a product feature. See the next entry.
+
+---
+
+## SoundCloud catalogue search via a self-hosted proxy `AVAILABLE (self-host only)`
+
+*Verified end to end 2026-08-19. Not shipped, and deliberately not a hosted
+capability.*
+
+**What works.** [soundcloak](https://github.com/maid-zone/soundcloak) (AGPL-3.0,
+Go, Docker) is a privacy frontend for SoundCloud that exposes an allowlisted
+reverse proxy for `api-v2.soundcloud.com` at `/_/api/v2`, injecting the
+`client_id` server-side. Measured against a live instance:
+
+```
+GET /_/api/v2/search/tracks?q=flume+remix
+  200 · total_results 6321 · 47 fields/track · Access-Control-Allow-Origin: *
+  limit=50 → 49 · limit=200 → 199 · limit=500 → 292   (~200/call ceiling)
+  12 rapid searches → 200 ×12, no throttling
+GET /_/api/v2/resolve?url=…/flume/never-be-like-you
+  200 · title, duration, publisher_metadata.isrc = AUFF01500784
+```
+
+Timbre's own `SUGGESTED_SEARCHES` all return real catalogue depth — 27k results
+for *Fred again..*, 21k for *boiler room set*, including 100-minute DJ sets and
+two-hour Boiler Room recordings. This is the long tail the README is about.
+
+**Why it is a self-host capability and not a feature.** The extraction technique
+is the one the entry below `DECLINED`. It lives in someone else's AGPL repo, run
+by the person who chose to run it, on their own residential IP. Timbre's hosted
+deployment must never call `api-v2.soundcloud.com`, directly or through an
+instance it operates.
+
+**The shape, if it is ever built:** one optional `SOUNDCLOUD_API_BASE` in
+`apps/web/lib/env.ts`, `search()` in `packages/providers/src/soundcloud.ts`
+against `{base}/search/tracks`, and `searchable` flipped on **only when the
+variable is set**. Unset by default, so the hosted build ships exactly as today.
+Everything downstream — oEmbed, the Widget player, `resolveUrl` — is already
+written and verified.
+
+**Facts that shape any implementation:**
+
+- **`EnableAPI` defaults to `false`** in soundcloak's config. A self-hoster must
+  set it. Of ten public instances, six serve the API and the three that answer
+  `404` are exactly the three reporting `EnableAPI: false`.
+- **The proxy sets `Access-Control-Allow-Origin: *`**, so this can be a
+  client-side fetch from the visitor's own IP — no serverless invocation, no
+  shared egress IP, no cache. Same property that makes Audius safe to call
+  directly. (`/_/searchSuggestions` does **not** set it; only the `v2` proxy does.)
+- **ISRCs are present on 28% of results** (108/392 sampled) at
+  `publisher_metadata.isrc` — a stronger merge key than Audius, which has none.
+- **soundcloak also exposes playback** (`/_/api/hls/…`, `/_/api/progressive/…`,
+  `/_/api/restream/…`) and autocomplete (`/_/searchSuggestions`). Neither is
+  needed — the Widget already works — but they exist.
+- **The working instance set was stable across re-sampling** (two samples ~2h
+  apart, 2026-08-19): the same six answered `200` both times, the same three
+  `404`ed with `EnableAPI: false`, and `total_results` for the same query agreed
+  within 1% across instances (6242–6321 — they hold independent `client_id`s and
+  caches). One instance (`soundcloak.nadeko.net`) degraded from `404` to a
+  connection failure. Two samples is not an uptime study, but the failure mode
+  looks like ordinary instance churn rather than the technique breaking.
+- **The dependency is one person's project, last pushed 2026-05-30.** The
+  optional-env-var shape is what contains that: if soundcloak dies, the hosted
+  deployment is untouched and a self-hoster loses a capability rather than the
+  product.
+
 ---
 
 ## SoundCloud via extracted `client_id` `DECLINED`
@@ -52,6 +154,26 @@ the whole problem, so filing it early is strictly better than filing it later.
   calls `api-v2.soundcloud.com`. Full `/search/tracks`, `/resolve`, `/tracks/{id}`.
 - **`soundcloud-scraper`** (npm, usable directly in this stack) does the same via
   `SoundCloud.keygen()`, handling rotation automatically.
+
+**Nine implementations were read in full (2026-08-19), and they are the same
+program.** yt-dlp, NewPipe, SearXNG, cobalt, Mopidy-SoundCloud, muffon,
+soundcloak, `nuclear-plugin-soundcloud` and `nuclear-plugin-omnisource` — the last
+two using a byte-identical regex, independently. **`DECLINED` therefore describes a
+universal, not a preference:** there is exactly one technique and everyone uses it.
+Two details worth keeping:
+
+- **The newer ones do not scan bundles at all.** cobalt and soundcloak read the id
+  from the homepage hydration blob and key their cache on `window.__sc_version`,
+  a build number — so extraction costs one conditional homepage `GET` per
+  SoundCloud *frontend deploy*, not per query. It needs no background job and no
+  server.
+- **The Auryo precedent is weaker than this entry treats it.** Auryo had a
+  *registered App ID that SoundCloud could revoke by name*, and that is what made
+  it killable. None of the nine register anything; yt-dlp and NewPipe have run
+  this way for years. The precedent argues against *registering* and then abusing
+  it, which is not quite the route being declined. Recorded because this entry
+  currently reads as stronger evidence than it is — **the terms argument above is
+  the load-bearing one, and it is untouched.**
 
 **Declined because:**
 
@@ -89,7 +211,30 @@ attributed panel, never a queue member. `types.ts` already defines `"manual"` fo
 exactly this.
 
 **The blocker is the track id**, which is no longer obtainable for free (see
-below).
+below). *There is a caveat on this framing — a user's own PKCE token would yield
+the id at no cost, and the real cap is Spotify's five-user app quota rather than
+the id itself. That route is researched but unverified, so it lives in
+[SUGGESTIONS.md](SUGGESTIONS.md#s-2--spotify-via-the-users-own-pkce-token-speculative) rather
+than here.*
+
+**Measured 2026-08-19, and it closes off the route desktop apps take.** Nuclear's
+Spotify plugin does not use a developer app at all — it impersonates the web
+player, minting anonymous tokens at `open.spotify.com/api/token` behind a TOTP
+signature. **A browser cannot follow it:**
+
+| Endpoint | HTTP | `Access-Control-Allow-Origin` |
+|---|---|---|
+| `open.spotify.com/embed/track/{id}` | 200 | none — **iframe only, no key needed** |
+| `open.spotify.com/api/token` | 400 | **none** |
+| `open.spotify.com/api/server-time` | 200 | **none** |
+
+The token endpoints are unreachable from JavaScript, and the request headers the
+technique depends on (`Origin`, `Referer`, `User-Agent`) are
+[forbidden header names](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name)
+that a browser will not let script set. Nuclear can do it because its requests
+come from Rust. Routing it through a Next.js function instead would put *Timbre's*
+server and IP behind the impersonation. **Not a gap to close — a road that is
+closed.**
 
 **Catalogue search is further out of reach than the roadmap assumed.** Feb 2026:
 Premium became mandatory for Development Mode, the test-user cap dropped 25 → 5,
@@ -99,23 +244,58 @@ paying for developer accounts.
 
 ---
 
-## Cross-service discovery `REGRESSED`
+## Cross-service discovery `BLOCKED`
 
-*Checked 2026-08-15.*
+*Checked 2026-08-19. Was `REGRESSED`; the mechanism below is now measured rather
+than reported.*
 
-**Odesli / Songlink shut its public API down on 31 July 2026** — the whole
-`v1-alpha.1` namespace now returns `410 Gone`. It was the one free, keyless way to
-map a song onto its equivalent on another service, by URL or by ISRC.
+**Odesli / Songlink retired its public API on 31 July 2026.** The keyless
+`v1-alpha.1` namespace answers:
+
+```
+GET https://api.song.link/v1-alpha.1/links?url=…   401
+GET https://api.odesli.co/v1-alpha.1/links?url=…   401
+{"statusCode":401,"code":"PUBLIC_API_ACCESS_DEPRECATED"}
+```
+
+Verified deterministic across both hostnames and three seeds (SoundCloud, Spotify,
+YouTube), paced. It was the one free, keyless way to map a song onto its
+equivalent on another service, by URL or by ISRC.
 
 **This is the root cause of both gaps above.** Even with free embeds for SoundCloud
-and Spotify, there is now no free way to learn *which* track to embed.
+and Spotify, there is no free way to learn *which* track to embed.
 
-**Checked and rejected as replacements:** MusicBrainz is genuinely free and
-keyless and is ISRC-indexed, but its SoundCloud and Spotify links are
-predominantly **artist-level profile URLs**, not per-track, so it cannot answer
-"this recording on that service". Commercial replacements exist with free tiers in
-the low hundreds of requests per month — nowhere near enough, and they reintroduce
-a paid dependency.
+**A correction, and a trap for whoever re-checks this.** Through mid-August the
+endpoint answered `200` rather than `410`, which briefly looked like the shutdown
+had been walked back. It had not — that was a grace window, and it has closed.
+Two things made the `200`s misleading and are worth not rediscovering:
+
+- **It never returned SoundCloud or Spotify as *matches*.** Both were *seed-echo
+  only*: they resolved when given and were never returned from another seed. A
+  Flume track seeded from its SoundCloud URL returned a Deezer link; that same
+  Deezer link re-seeded returned seven entities with SoundCloud absent. So even
+  while it worked, it could not answer Timbre's question.
+- **Rate-limited responses soft-failed.** A `429` still rendered links while
+  `entityUniqueId` was `null` — indistinguishable from a genuine non-match unless
+  you check the status code. **Confirm negatives by raw HTTP status, never by an
+  empty result set.** That rule is what caught the `401`.
+
+**Checked and rejected as replacements:**
+
+- **MusicBrainz** is genuinely free, keyless and ISRC-indexed, but measured
+  2026-08-19: `GET /ws/2/url?query=url:soundcloud.com*` returns **`count: 0`** —
+  there is not one SoundCloud URL entity in the entire database. Its Spotify links
+  are predominantly artist-level profile URLs, not per-track. Unusable as a
+  cross-service resolver; fine as an opportunistic identity source.
+- **Songwhip**, the obvious first suggestion, was acquired by Sony Music's The
+  Orchard in mid-2024 and shut down immediately. The rest of the smart-link field
+  (SongPort, SoundLink, Linkfire, ToneDen) are artist link-page builders with no
+  public resolve API.
+- Commercial replacements exist with free tiers in the low hundreds of requests
+  per month — nowhere near enough, and they reintroduce a paid dependency.
+
+**No free cross-service resolver exists.** This is now a settled finding rather
+than a regression to watch.
 
 ---
 
@@ -130,9 +310,84 @@ Each of these cost time to establish.
 - **SoundCloud uploaders can disable embedding per track** via the Permissions
   tab, so it has the same per-track refusal problem as YouTube. `soundcloud.ts`
   returns `null` on 403/404 for this reason.
+- **SoundCloud serves 30-second previews that look like ordinary tracks, and
+  `streamable` does not detect them.** Measured 2026-08-19 across 392 tracks:
+  **16% carry `policy: "SNIP"`**, where `duration` is `30000` and the real length
+  is in **`full_duration`**. `streamable: true` on every one of them. Two
+  consequences for any search integration:
+  - **Read `full_duration`, not `duration`.** A merger comparing a 30 s snippet
+    against YouTube Music's 4-minute recording will never match them. The two
+    fields diverge by more than 5 s on **exactly** the SNIP tracks and nothing
+    else (61/61 — either field detects it).
+  - **Filter or badge `policy: "SNIP"`.** A queue member that plays 30 seconds and
+    stops is a broken track, not a degraded one — the same class of trap as
+    Audius's `stream_conditions`, which `audius.ts` already filters on.
+
+  **The distribution is the interesting part.** SNIP tracked commercial release
+  status almost perfectly: *Fred again..* 39/50, *Blinding Lights* 5/50, *Aphex
+  Twin* 9/48, but **`boiler room set` 0/50** and `flume remix` 1/49. The part of
+  SoundCloud that is preview-gated is the part every other source already has;
+  **the long tail Timbre wants plays in full.** That is an argument for the
+  product, not just a filter requirement.
 - **Plays from third-party embeds count toward the artist** and appear in
   Insights. Embedding is invited, not merely tolerated — SoundCloud ships a
   Share → Embed flow for every public track.
+- **Audius's decentralisation does not extend to the API Timbre calls.** Worth
+  knowing before it is relied on. `/health_check` lists **76 registered nodes**
+  (70 `validator`, 6 `content-node`), which is real — but those are chain
+  consensus and file storage. **None of them serves `/v1`:** asked directly, 10 of
+  10 returned `404` or `502`, and third-party discovery hostnames 404 too. The
+  node-discovery endpoint that exists so a client can pick from many now returns
+  **one entry**:
+
+  ```
+  GET https://api.audius.co  →  {"data":["https://api.audius.co"], …}
+  ```
+
+  **What failover does exist** — four hostnames, all `200`, all `ACAO: *`, all
+  returning identical results, measured 2026-08-19:
+
+  ```
+  api.audius.co · discoveryprovider.audius.co
+  discoveryprovider2.audius.co · discoveryprovider3.audius.co
+  ```
+
+  All four are `audius.co`. **A hardcoded fallback list of those four costs
+  nothing and should exist** — the provider currently hits one hostname with no
+  alternate. But treat Audius as *one vendor with redundancy*, not as a network
+  that cannot be switched off. Audius is still the best free source available; it
+  just does not carry the guarantee the "76 operators" number suggests.
+- **Audius plays *do* count, and `skip_play_count=false` is what makes them.**
+  Measured 2026-08-19 rather than assumed. `/v1/tracks/{id}/stream` answers `302`
+  to a signed content-node URL with **`skip_play_count=true` appended by default**;
+  passing `?skip_play_count=false` is honoured and carries through to the node. A
+  single 256 KB range request with the flag set moved a track's `play_count` from
+  **29,931 → 29,932**. So this *is* verifiable from outside — read `play_count` on
+  `/v1/tracks/{id}` before and after.
+
+  **Unresolved:** the per-request semantics. Three range requests — what an
+  `<audio>` element makes while seeking — produced a delta of more than one, but
+  the track carries live traffic from real listeners, so a clean increment could
+  not be isolated. **Do not assume one listen equals one play**; if inflated counts
+  ever matter, re-measure on a track with no other traffic.
+- **MusicBrainz `403`s a generic User-Agent.** It is a User-Agent policy, not a
+  block or a rate limit — send a descriptive one and the same request answers
+  `200`. Measured 2026-08-19, and it cost time twice. It also sends
+  `Access-Control-Allow-Origin: *` and `X-RateLimit-Limit: 1200`, which is far
+  more generous than the one-request-per-second folklore.
+- **MusicBrainz search ranks variants above the recording you asked for.** A
+  `Never Be Like You` lookup scores the **instrumental at 100** and every real
+  recording at 92 (measured 2026-08-19). A caller taking the top hit gets the
+  wrong recording with maximum confidence. Variant-awareness is a *lookup*
+  concern, not only a merge concern.
+- **ListenBrainz's `/1/metadata/lookup` now requires an `Authorization` header**
+  (`401`, measured 2026-08-19). The keyless path is
+  `labs.api.listenbrainz.org/recording-search/json`, **POST only**, with a JSON
+  array body — `GET` is rejected outright. It returns the MBID directly and keeps
+  remix variants as distinct recordings.
+- **Piped and Invidious are not a usable fallback ladder.** Measured 2026-08-19:
+  Piped **1 of 4** instances alive (`pipedapi.kavin.rocks` still `502`), Invidious
+  **0 of 3** — all three refuse anonymous API access (`403`/`401`).
 - **Embeddability cannot be determined server-side on YouTube.** A barred upload
   still answers oEmbed `200` and reports `playableInEmbed: true`. Only the embedded
   player knows, by trying. See `docs/BUGS.md`.
@@ -174,6 +429,14 @@ than guessing, and the ranker treats a missing list as no evidence rather than a
 evidence against. Apple still contributes charts, artwork and availability.
 
 **Unblocked by:** paying for a developer membership, which is a standing non-goal.
+
+**Not blocked, and worth knowing: the iTunes Search API is browser-callable.**
+Measured 2026-08-19 with `Origin: http://127.0.0.1:3000` — `200` with
+`Access-Control-Allow-Origin: *`, no key. Of the sources Timbre touches, only
+Audius, MusicBrainz, Internet Archive and iTunes send that header; **Deezer does
+not**, so Deezer can only ever be called server-side. That asymmetry decides which
+provider can spend a visitor's IP instead of Timbre's shared egress IP, and it is
+not recorded anywhere else in this repo.
 
 ---
 

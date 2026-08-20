@@ -142,3 +142,28 @@ deployment's requests, and the taste of everyone using it, arrive at a stranger'
 their `client_id` scraping is what makes it work, and their operator carries that. The
 comment in `.env.example` about moving the technique to you assumes you run it. Running your
 own from the AGPL source is the only version where the answer to "who is doing this" is you.
+
+
+## If you are serverless and free, run neither
+
+Everything above assumes somewhere to put a long-lived Go process. Timbre is built to deploy
+serverless and free, and that is precisely where soundcloak does not fit:
+
+- **Cloud Run / Fly / Koyeb scale-to-zero** — the free tiers want a billing account, and the
+  cold start costs about **five seconds**, because `lib/sc/init.go` resolves the `client_id`
+  at boot. Measured 2026-08-20: 1.9s for soundcloud.com, 3.2s for the asset bundle holding it.
+- **Card-free container hosts** (Render's free tier) spin down after idling and take tens of
+  seconds to come back, *before* those five.
+- **Pinning `CLIENT_ID`** avoids the boot fetch, and the refresh ticker sits in the `else`
+  branch of `if cfg.ClientID != ""`, so a pinned id **never refreshes** and everything breaks
+  silently when SoundCloud rotates it.
+- Worse, an unpinned instance that fails the scrape calls `os.Exit(1)`. On a serverless host
+  that is a failed cold start rather than a degraded one.
+
+So for that deployment the answer is `SOUNDCLOUD_DIRECT_API=true`, which does the same
+`client_id` resolve inside Timbre — once per instance, cached four hours, on a 2.5s deadline
+so the first search of a cold instance abstains rather than making everyone wait. Measured:
+the cold search returned 0 SoundCloud results and the next returned 29. No second service, no
+second account, nothing to keep warm.
+
+It is the same bargain, not a smaller one: see `docs/BLOCKED.md` for what turning it on means.
