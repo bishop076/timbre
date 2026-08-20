@@ -20,13 +20,31 @@ const AUTHORIZE = "https://accounts.spotify.com/authorize";
 const TOKEN = "https://accounts.spotify.com/api/token";
 
 /**
- * Read-only, and the narrowest that answers a search: none at all.
+ * The narrowest set that covers what the token is actually used for.
  *
- * Deliberately not `user-read-private`, `user-library-read` or anything about playback. The
- * only thing being asked for is the right to look things up in the catalogue, and a scope
- * that is never used is a permission the reader granted for nothing.
+ * **Search needs none of these** — it was `""` while search was the only use, and that was
+ * right: a scope that is never used is a permission the reader granted for nothing. Playback
+ * changes the arithmetic, because the Web Playback SDK cannot run without them:
+ *
+ * - `streaming` — the SDK refuses to construct without it. This is the one that matters.
+ * - `user-read-email`, `user-read-private` — required alongside `streaming`; Spotify's own
+ *   quick-start asks for both and the SDK reports an auth error without them.
+ * - `user-modify-playback-state` — needed to start a *named track* on the device the SDK
+ *   registers. Without it the device exists and nothing can be put on it.
+ *
+ * Deliberately **not** `user-library-read`, `playlist-read-private` or anything about the
+ * listener's own collection: Timbre does not read it and does not want the right to.
+ *
+ * **Adding these invalidates an existing connection.** A token minted for search carries no
+ * scopes, so the SDK will refuse it — `spotify-sdk-player.tsx` reports that as needing to
+ * reconnect rather than as a failure, because it is one press to fix and confusing otherwise.
  */
-export const SCOPES = "";
+export const SCOPES = [
+  "streaming",
+  "user-read-email",
+  "user-read-private",
+  "user-modify-playback-state",
+].join(" ");
 
 /** The unreserved set RFC 7636 specifies. */
 const VERIFIER_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";

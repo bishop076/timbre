@@ -1,16 +1,16 @@
 "use client";
 
+import { SpotifySection } from "./spotify/spotify-section";
 import { useEffect, useRef, useState } from "react";
 
 import { ArtistLink } from "./artist-link";
-import { SpotifySection } from "./spotify/spotify-section";
-import { ExternalIcon } from "./icons";
 import { log } from "./logs.ts";
 import { AddToQueue } from "./player/add-to-queue";
 import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { useSearchQuery } from "./search-store";
 import { SongRow } from "./song-row";
+import { SourceBadges } from "./source-badges";
 import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
 import { formatDuration } from "./duration";
@@ -226,28 +226,10 @@ function ResultRow({ song }: { song: Song }) {
       }
       trailing={
         <>
-          <div className="hidden shrink-0 items-center gap-1 @xl:flex">
-            {song.sources.map((source) => {
-              const style = sourceStyle(source.source);
-              return (
-                <a
-                  key={source.source}
-                  href={source.url ?? undefined}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  title={`Open on ${style.label}`}
-                  style={{ color: style.color, backgroundColor: style.tint }}
-                  // `focus-visible` alongside the hover reveal: these are real anchors in
-                  // the tab order, so without it a keyboard user lands on a fully
-                  // transparent control. Every other hover-reveal in the app pairs the two.
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90 hover:!opacity-100 focus-visible:!opacity-100"
-                >
-                  {style.short}
-                  <ExternalIcon className="size-2.5" />
-                </a>
-              );
-            })}
-          </div>
+          {/* Each badge is now two controls: the label plays this song *from that source*,
+              the arrow still opens it there. See `source-badges.tsx` for why only some of
+              them can play, and why the ones that cannot say "30s" instead. */}
+          <SourceBadges song={song} className="hidden @xl:flex" />
 
           <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
             {formatDuration(song.durationMs)}

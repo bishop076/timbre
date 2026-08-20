@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { plausiblySameSong } from "./song-match.ts";
+import { plausiblySameSong, sameRecording } from "./song-match.ts";
 import type { Song } from "../types";
 
 function song(title: string, artist = "", durationMs: number | null = null): Song {
@@ -106,4 +106,50 @@ test("the same artist's different song is refused on length", () => {
     ),
     false,
   );
+});
+
+test("a decorated title and its plain one are one recording, either way round", () => {
+  // The reported bug: Related listed "Pandemonium (Visualizer Video)" while the queue held
+  // the same recording, so the panel showed the reader what was already coming.
+  const upload = song("Pandemonium (Visualizer Video)", "NIKI");
+  const plain = song("Pandemonium", "NIKI");
+
+  assert.equal(sameRecording(plain, upload), true);
+  assert.equal(sameRecording(upload, plain), true);
+});
+
+test("two songs sharing only their decoration are not the same recording", () => {
+  // Both were in one NIKI radio, and the word test in `plausiblySameSong` matched them on
+  // *acoustic* and *version*, dropping a real suggestion. The base titles do not agree.
+  const a = song("Strange Land (Acoustic Version)", "NIKI");
+  const b = song("La La Lost You (Acoustic Version)", "NIKI");
+
+  assert.equal(plausiblySameSong(a, b), true);
+  assert.equal(sameRecording(a, b), false);
+});
+
+test("one artist's two songs are kept apart, and two artists' one title is too", () => {
+  assert.equal(sameRecording(song("lowkey", "NIKI"), song("La La Lost You", "NIKI")), false);
+  // Distinct ids, as two different recordings really have — `song()` reuses the title.
+  assert.equal(
+    sameRecording(
+      { ...song("Take Care", "NIKI"), id: "niki-take-care" },
+      { ...song("Take Care", "Drake"), id: "drake-take-care" },
+    ),
+    false,
+  );
+});
+
+test("a guest credit named on only one side still matches", () => {
+  // Catalogues disagree about whether a feature belongs in the title, the artist list, or
+  // neither, and the merge that produced these two lists is not guaranteed to agree either.
+  assert.equal(
+    sameRecording(song("Plans (feat. Vory)", "88rising"), song("Plans", "88rising")),
+    true,
+  );
+});
+
+test("the same entry twice is caught on its id without parsing anything", () => {
+  const a = song("Anything At All", "Someone");
+  assert.equal(sameRecording(a, { ...a, title: "totally different" }), true);
 });

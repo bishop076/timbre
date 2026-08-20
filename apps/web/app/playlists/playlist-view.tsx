@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { ChevronIcon, CloseIcon, PlayIcon, SearchIcon, TrashIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { SongRow } from "../song-row";
-import { sourceStyle } from "../sources";
+import { SourceBadges } from "../source-badges";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
@@ -183,20 +183,13 @@ export function PlaylistView({ id }: { id: string }) {
               subtitle={<ArtistLink artists={song?.artists ?? []} />}
               trailing={
                 <>
-                  <div className="hidden shrink-0 items-center gap-1 @xl:flex">
-                    {song.sources.map((source) => {
-                      const style = sourceStyle(source.source);
-                      return (
-                        <span
-                          key={source.source}
-                          style={{ color: style.color, backgroundColor: style.tint }}
-                          className="rounded-full px-2 py-0.5 text-xs font-medium opacity-0 transition group-hover:opacity-90"
-                        >
-                          {style.short}
-                        </span>
-                      );
-                    })}
-                  </div>
+                  {/* The same control as the search results: the name plays this song from
+                      that service, the arrow opens it there. Shared so a change to either
+                      lands in both — see `source-tag.tsx`. */}
+                  <SourceBadges
+                    song={song}
+                    className="hidden opacity-0 transition group-hover:opacity-100 @xl:flex"
+                  />
 
                   <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
                     {formatDuration(song.durationMs)}
