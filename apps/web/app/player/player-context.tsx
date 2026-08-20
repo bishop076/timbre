@@ -16,6 +16,7 @@ import { createLocalStore, createNotifier, useLocalStore } from "../local-store.
 import { log } from "../logs.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
+import { playedHandle } from "./played-handle";
 import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
 import { plausiblySameSong } from "./song-match";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
@@ -269,6 +270,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
+  /** Songs already re-searched across every source, so a rescue that finds nothing playable
+   * cannot bounce back into `load` forever. Keyed by the original id, which a rescue keeps. */
+  const rescued = useRef<Set<string>>(new Set());
   /** The song the radio was last fetched for. The deps below fire on every load attempt,
    * and only this keeps a fall-through from re-asking for a list already held. */
   const seededFor = useRef<string | null>(null);
@@ -347,16 +351,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setState("loading");
   }, []);
 
-  const findCandidates = useCallback(async (song: Song, signal: AbortSignal) => {
+  /** Everything the search can find that is plausibly this song, on any source. */
+  const findMatches = useCallback(async (song: Song, signal: AbortSignal) => {
     const query = [song.title, song.artists[0]].filter(Boolean).join(" ");
     const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
     if (!response.ok) throw new Error("search failed");
     const data = (await response.json()) as SongsResponse;
-    return data.songs
-      .filter((found) => plausiblySameSong(song, found))
-      .map(youtubeIdOf)
-      .filter((id): id is string => id !== null);
+    return data.songs.filter((found) => plausiblySameSong(song, found));
   }, []);
+
+  const findCandidates = useCallback(
+    async (song: Song, signal: AbortSignal) =>
+      (await findMatches(song, signal)).map(youtubeIdOf).filter((id): id is string => id !== null),
+    [findMatches],
+  );
 
   const load = useCallback(
     async (song: Song) => {
@@ -437,15 +445,68 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setProblem(null);
 
       try {
-        candidates.current = await findCandidates(song, aborter.signal);
+        const matches = await findMatches(song, aborter.signal);
+        candidates.current = matches.map(youtubeIdOf).filter((id): id is string => id !== null);
         const first = candidates.current[0];
-        if (!first) {
-          setVideoId(null);
-          setState("unplayable");
-          setProblem("No copy of this song exists on YouTube Music.");
+        if (first) {
+          attempt(first);
           return;
         }
-        attempt(first);
+
+        // **Nothing on YouTube Music, but the search reaches every source.** Reaching here
+        // means no source on the song could be played — which for a "Recently played" tile
+        // usually means the row was written before histories stored a source at all, not
+        // that the show is gone. Mixcloud shows and Audius uploads are not on YouTube, so
+        // the old message was both wrong and a dead end.
+        //
+        // The match's sources are adopted under the *original* id, so the `recordPlay` that
+        // follows overwrites that history row with a source rather than adding a second one
+        // — the broken tile repairs itself the first time it is played.
+        const elsewhere = matches.find(
+          (match) =>
+            progressiveOf(match) ??
+            mixcloudKeyOf(match) ??
+            soundcloudUrlOf(match) ??
+            spotifyIdOf(match),
+        );
+        if (elsewhere && !rescued.current.has(song.id)) {
+          rescued.current.add(song.id);
+          const repaired: Song = {
+            ...song,
+            sources: elsewhere.sources,
+            durationMs: song.durationMs ?? elsewhere.durationMs,
+          };
+          // The queue entry is replaced, not just played around: `recordPlay` reads the
+          // source off the song it finds there, so leaving the sourceless one in place would
+          // write the same broken row back and the tile would need rescuing again next time.
+          songRef.current = repaired;
+          setQueue((current) => current.map((entry) => (entry.id === song.id ? repaired : entry)));
+
+          const progressiveElsewhere = progressiveOf(repaired);
+          if (progressiveElsewhere) {
+            attemptProgressive(progressiveElsewhere.source, progressiveElsewhere.sourceId);
+            return;
+          }
+          const mixcloudElsewhere = mixcloudKeyOf(repaired);
+          if (mixcloudElsewhere) {
+            attemptMixcloud(mixcloudElsewhere);
+            return;
+          }
+          const soundcloudElsewhere = soundcloudUrlOf(repaired);
+          if (soundcloudElsewhere) {
+            attemptSoundCloud(soundcloudElsewhere);
+            return;
+          }
+          const spotifyElsewhere = spotifyIdOf(repaired);
+          if (spotifyElsewhere) {
+            attemptSpotify(spotifyElsewhere);
+            return;
+          }
+        }
+
+        setVideoId(null);
+        setState("unplayable");
+        setProblem("No copy of this song exists on YouTube Music.");
       } catch (cause) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setVideoId(null);
@@ -453,7 +514,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [attempt, attemptMixcloud, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
+    [
+      attempt,
+      attemptMixcloud,
+      attemptProgressive,
+      attemptSoundCloud,
+      attemptSpotify,
+      findCandidates,
+      findMatches,
+    ],
   );
 
   const play = useCallback(
@@ -754,7 +823,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // The source that actually played, so replaying from history reaches the same place.
       // Recording only `videoId` meant everything else came back as "no source", and the
       // player then searched YouTube Music for the title and played whatever it found.
-      const played = song.sources.find((source) => source.source === activeSource);
+      const handle = playedHandle(song, activeSource, videoId);
 
       recordPlay({
         id: song.id,
@@ -763,9 +832,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         artworkUrl: song.artworkUrl,
         // The upload that played, not the one the song shipped with — only it can seed a radio.
         videoId,
-        source: played?.source,
-        sourceId: played?.sourceId,
-        url: played?.url ?? null,
+        source: handle?.source,
+        sourceId: handle?.sourceId,
+        url: handle?.url ?? null,
       });
     },
     [queue, index, videoId, activeSource],
