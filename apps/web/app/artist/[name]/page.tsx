@@ -1,9 +1,10 @@
-import { normalizeLoose } from "@timbre/core";
 import { mergeTracks, searchAll } from "@timbre/providers";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { fromArtistSlug, titleCase } from "@/app/artist-slug";
+
+import { creditNames } from "../credits";
 import { getProviderRuntime } from "@/lib/providers";
 import { fetchDiscography, findArtist } from "@/lib/discography";
 
@@ -53,15 +54,9 @@ export default async function ArtistPage({ params }: { params: Promise<{ name: s
 
   const songs = mergeTracks(results.tracks);
 
-  /* Searching a name returns their songs *and* everything that merely mentions them —
-   * covers, tributes, "in the style of" uploads — so only rows crediting the name are kept.
-   * Compared loosely, so punctuation and case cannot split an artist from themselves. */
-  const target = normalizeLoose(name);
+  /* Only rows crediting the artist — see `creditNames` for why whole names, not substrings. */
   const theirs = songs.filter((song) =>
-    song.artists.some((credited) => {
-      const other = normalizeLoose(credited);
-      return other === target || other.includes(target) || target.includes(other);
-    }),
+    song.artists.some((credited) => creditNames(name, credited)),
   );
 
   return (
