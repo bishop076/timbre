@@ -33,6 +33,10 @@ interface SoundCloudApiTrack {
   id?: number;
   title?: string;
   duration?: number;
+  /** What the stream will actually give you: `ALLOW` the whole thing, `SNIP` thirty seconds. */
+  policy?: string;
+  /** The real length, which a `SNIP` still reports honestly even as `duration` says 30000. */
+  full_duration?: number;
   permalink_url?: string;
   artwork_url?: string | null;
   user?: SoundCloudUser;
@@ -44,6 +48,19 @@ interface SoundCloudApiTrack {
  * registered, and the uploader is whoever posted it — often a label or a mix channel. */
 function fromApiTrack(raw: SoundCloudApiTrack): SourceTrack | null {
   if (!raw.id || !raw.title) return null;
+
+  // **Dropped, not listed.** A `SNIP` is a rights-gated upload whose stream stops after
+  // thirty seconds while every other field describes the whole song — `duration: 30000`
+  // beside `full_duration: 233744` for Ed Sheeran's *Shape of You*. Measured 3–16% of
+  // results depending on the query, and only an instance carrying someone's account token
+  // sees past them.
+  //
+  // Listing one would be a lie twice over: this provider's `playback` is `queue`, which
+  // promises the song, and a thirty-second copy will not merge with the same recording from
+  // anywhere else, so it appears as a *second*, shorter row of a song already listed.
+  // Timbre has an honest way to offer part of a song — the labelled preview from Deezer and
+  // Apple — and this is not it.
+  if (raw.policy === "SNIP") return null;
 
   const artist = raw.publisher_metadata?.artist?.trim() || raw.user?.username?.trim();
 
@@ -107,29 +124,52 @@ const request = createRequester({
   softStatuses: [403, 404],
 });
 
+/** Where the catalogue actually lives, for the direct path only. */
+const API_V2 = "https://api-v2.soundcloud.com";
+
 export interface SoundCloudOptions {
   /** An `api-v2`-shaped base the operator runs, e.g. `https://<instance>/_/api/v2`.
    * Unset means unsearchable, which is the shipped default. */
   apiBase?: string;
+  /**
+   * Resolves a guest `client_id` so this can call `api-v2` itself, with no second service.
+   *
+   * **The other half of the same opt-in**, for operators who have nowhere to run one — a
+   * free serverless host has no place for a long-lived Go process, and every scale-to-zero
+   * container pays five seconds a cold start to do exactly this. Off unless the operator
+   * asks for it; see `soundcloud-client-id.ts` for the bargain that turning it on accepts.
+   */
+  clientId?: () => Promise<string | null>;
 }
 
 export function createSoundCloudProvider(options: SoundCloudOptions = {}): SearchProvider {
   const apiBase = options.apiBase?.replace(/\/+$/, "");
+  const clientId = options.clientId;
 
   return {
     id: "soundcloud",
     playback: "queue",
-    searchable: Boolean(apiBase),
+    searchable: Boolean(apiBase || clientId),
 
     async search(ctx, query, limit) {
       // Unreachable when unset, since `searchable` gates the fan-out — but a provider that
       // silently returned nothing would be indistinguishable from one whose upstream died.
-      if (!apiBase) return [];
+      if (!apiBase && !clientId) return [];
 
-      const body = await request<{ collection?: SoundCloudApiTrack[] }>(
-        ctx,
-        `${apiBase}/search/tracks?q=${encodeURIComponent(query)}&limit=${Math.min(limit, MAX_PAGE)}`,
-      );
+      const query_ = `q=${encodeURIComponent(query)}&limit=${Math.min(limit, MAX_PAGE)}`;
+      let url: string;
+      if (apiBase) {
+        url = `${apiBase}/search/tracks?${query_}`;
+      } else {
+        // Deliberately empty rather than slow: the resolver answers on a deadline, and a
+        // miss means it is still fetching. This search does without SoundCloud; the next one
+        // has it. See `createClientIdResolver`.
+        const id = await clientId!();
+        if (!id) return [];
+        url = `${API_V2}/search/tracks?${query_}&client_id=${encodeURIComponent(id)}`;
+      }
+
+      const body = await request<{ collection?: SoundCloudApiTrack[] }>(ctx, url);
       return (body?.collection ?? []).map(fromApiTrack).filter((track): track is SourceTrack => track !== null);
     },
 
