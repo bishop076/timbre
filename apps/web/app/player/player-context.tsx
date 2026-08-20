@@ -17,6 +17,7 @@ import { log } from "../logs.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
 import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
+import { plausiblySameSong } from "./song-match";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import {
   getVolumeServerSnapshot,
@@ -351,7 +352,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
     if (!response.ok) throw new Error("search failed");
     const data = (await response.json()) as SongsResponse;
-    return data.songs.map(youtubeIdOf).filter((id): id is string => id !== null);
+    return data.songs
+      .filter((found) => plausiblySameSong(song, found))
+      .map(youtubeIdOf)
+      .filter((id): id is string => id !== null);
   }, []);
 
   const load = useCallback(
@@ -747,6 +751,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!song || recorded.current === song.id) return;
       recorded.current = song.id;
 
+      // The source that actually played, so replaying from history reaches the same place.
+      // Recording only `videoId` meant everything else came back as "no source", and the
+      // player then searched YouTube Music for the title and played whatever it found.
+      const played = song.sources.find((source) => source.source === activeSource);
+
       recordPlay({
         id: song.id,
         title: song.title,
@@ -754,9 +763,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         artworkUrl: song.artworkUrl,
         // The upload that played, not the one the song shipped with — only it can seed a radio.
         videoId,
+        source: played?.source,
+        sourceId: played?.sourceId,
+        url: played?.url ?? null,
       });
     },
-    [queue, index, videoId],
+    [queue, index, videoId, activeSource],
   );
 
   const handleError = useCallback(

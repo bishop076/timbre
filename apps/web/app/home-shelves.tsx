@@ -15,9 +15,38 @@ import type { Song, SongsResponse } from "./types";
 // the fourth cut, which is the cue that says "this scrolls" without an arrow.
 const TILE = "w-[7rem] shrink-0 sm:w-[10.5rem]";
 
-/** History is stored flat, so an entry gets the minimum a card needs. Without an upload id
- * there is nothing to play, and the card falls back to searching. */
+/**
+ * History is stored flat, so an entry is rebuilt into the least a card and the player need.
+ *
+ * **The source it actually played on comes first.** Rebuilding every entry as YouTube Music
+ * was right when that was the only thing Timbre could play and is now wrong: a Mixcloud show
+ * came back with no source at all, the player found nothing to play, and fell through to
+ * searching YouTube for its title — which returned a different song and played it. Entries
+ * written before this carry only `videoId`, so that path is kept for them.
+ */
 export function songFromHistory(entry: PlayedSong): Song {
+  const played =
+    entry.source && entry.sourceId
+      ? [
+          {
+            source: entry.source,
+            sourceId: entry.sourceId,
+            url: entry.url ?? null,
+            // Spotify's embed cannot be started by script; everything else Timbre plays can.
+            playback: entry.source === "spotify" ? ("manual" as const) : ("queue" as const),
+          },
+        ]
+      : entry.videoId
+        ? [
+            {
+              source: "ytmusic",
+              sourceId: entry.videoId,
+              url: `https://music.youtube.com/watch?v=${entry.videoId}`,
+              playback: "queue" as const,
+            },
+          ]
+        : [];
+
   return {
     id: entry.id,
     title: entry.title,
@@ -26,16 +55,7 @@ export function songFromHistory(entry: PlayedSong): Song {
     durationMs: null,
     isrc: null,
     artworkUrl: entry.artworkUrl,
-    sources: entry.videoId
-      ? [
-          {
-            source: "ytmusic",
-            sourceId: entry.videoId,
-            url: `https://music.youtube.com/watch?v=${entry.videoId}`,
-            playback: "queue" as const,
-          },
-        ]
-      : [],
+    sources: played,
   };
 }
 
