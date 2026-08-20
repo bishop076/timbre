@@ -18,6 +18,9 @@ export const ALLOWED_HOSTS = new Set([
   "is4-ssl.mzstatic.com",
   "is5-ssl.mzstatic.com",
   "i1.sndcdn.com",
+  // Spotify serves every cover from this one host, so it can be named outright. Reached only
+  // when the reader has connected their own account — see `app/spotify/`.
+  "i.scdn.co",
   // The Live Music Archive's item tiles. Safe to name where Audius's are not: this is one
   // stable host that Archive itself runs, while Audius artwork is served by whichever
   // operator-run content node holds the track and the set changes.

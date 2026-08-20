@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ArtistLink } from "./artist-link";
+import { SpotifySection } from "./spotify/spotify-section";
 import { ExternalIcon } from "./icons";
 import { log } from "./logs.ts";
 import { AddToQueue } from "./player/add-to-queue";
@@ -186,6 +187,19 @@ export function SearchResults() {
             ))}
           </ul>
         )}
+
+        {/* Below the ranked list and never inside it — see `SpotifySection`. Renders nothing
+            unless the reader has connected their own account. */}
+        <SpotifySection
+          query={query}
+          render={(found) => (
+            <ul className="divide-y divide-[var(--line)]">
+              {found.map((song) => (
+                <ResultRow key={song.id} song={song} />
+              ))}
+            </ul>
+          )}
+        />
       </div>
     </>
   );
