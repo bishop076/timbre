@@ -2,6 +2,7 @@ import { isSourceId, recommendFrom } from "@timbre/providers";
 import { z } from "zod";
 
 import { getProviderRuntime } from "@/lib/providers";
+import { optionalQueryText } from "@/lib/query-text";
 import { CACHE_CONTROL_HOUR, guard } from "@/lib/api";
 
 // What to play next — not a passthrough of YouTube Music's watch queue. Every source that
@@ -12,11 +13,11 @@ export const revalidate = 3600;
 const querySchema = z.object({
   // All three passed, each provider taking what it can use: YouTube Music continues from
   // an upload, Deezer can only start from an artist, Audius only from a title.
-  id: z.string().min(1).max(64).optional(),
-  artist: z.string().min(1).max(200).optional(),
+  id: optionalQueryText(64),
+  artist: optionalQueryText(200),
   // So the seed can be excluded from its own results: Deezer's top tracks include it,
   // so without this the first suggestion is often what just played.
-  title: z.string().min(1).max(300).optional(),
+  title: optionalQueryText(300),
   limit: z.coerce.number().int().min(1).max(50).default(25),
 });
 
