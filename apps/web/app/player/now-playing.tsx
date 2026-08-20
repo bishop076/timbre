@@ -276,7 +276,10 @@ export function NowPlayingPanel() {
           ) : mixcloudKey ? (
             <MixcloudPlayer
               cloudcastKey={mixcloudKey}
-              size={expanded ? "h-full w-full" : "h-[200px] w-full"}
+              // Not the 200px every other player gets: that floor is YouTube's, which stops
+              // below 200x200, and Mixcloud's compact form is a 60px strip. Giving it the
+              // full box only padded it with black.
+              size={expanded ? "h-full w-full" : "h-[60px] w-full"}
             />
           ) : spotifyTrackId ? (
             <SpotifyPlayer
