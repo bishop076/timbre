@@ -131,6 +131,7 @@ export function MixcloudPlayer({
     if (!container || !cloudcastKey) return;
 
     let cancelled = false;
+    const leaked: EventListenerOrEventListenerObject[] = [];
     const blocked = setTimeout(() => {
       if (!cancelled && !readyRef.current) {
         handlers.current.handleError(
@@ -160,7 +161,32 @@ export function MixcloudPlayer({
       .then((Mixcloud) => {
         if (cancelled) return;
 
-        const widget = Mixcloud.PlayerWidget(host);
+        // **Mixcloud's API leaks a window `message` listener per widget**, and that listener
+        // `console.error`s on any message whose origin is not Mixcloud's — a check it runs
+        // *before* asking whether the message was even addressed to it. Nothing detaches it,
+        // so every show played leaves another one behind shouting at whatever else on the
+        // page uses `postMessage`. Measured: three shows, then twenty seconds of a YouTube
+        // track, produced 342 console errors, and the rate grows with each show played.
+        //
+        // The handler is a private field on their instance and is not reachable from the API
+        // they return, so it is caught as it registers instead. `PlayerWidget` is synchronous
+        // and JavaScript is single-threaded, so nothing else can register inside the gap.
+        const nativeAdd = window.addEventListener;
+        window.addEventListener = function (
+          type: string,
+          listener: EventListenerOrEventListenerObject,
+          options?: boolean | AddEventListenerOptions,
+        ) {
+          if (type === "message" && listener) leaked.push(listener);
+          nativeAdd.call(window, type, listener, options);
+        } as typeof window.addEventListener;
+
+        let widget: MixcloudWidget;
+        try {
+          widget = Mixcloud.PlayerWidget(host);
+        } finally {
+          window.addEventListener = nativeAdd;
+        }
         widgetRef.current = widget;
 
         return widget.ready.then(() => {
@@ -168,9 +194,9 @@ export function MixcloudPlayer({
           clearTimeout(blocked);
           readyRef.current = true;
 
-          // Every handler checks `cancelled` first. The widget is discarded with its iframe
-          // on a show change, but its message listener is not something this API lets us
-          // detach — so a late event from the previous show must not be allowed to report a
+          // Every handler still checks `cancelled` first. Teardown now detaches the listener
+          // as well, but these callbacks hang off promises that may already be in flight when
+          // it runs, and a late event from the previous show must not be allowed to report a
           // position against the current one's length.
           widget.events.play.on(() => {
             if (!cancelled) handlers.current.handleStateChange("playing");
@@ -226,6 +252,8 @@ export function MixcloudPlayer({
       clearTimeout(blocked);
       widgetRef.current = null;
       readyRef.current = false;
+      for (const listener of leaked) window.removeEventListener("message", listener);
+      leaked.length = 0;
       container.querySelector("iframe")?.remove();
     };
     // **Keyed on the show, so each one gets its own widget and its own teardown.** The
