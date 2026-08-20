@@ -244,3 +244,19 @@ test("a live take stays apart even when one side also names the guest", () => {
 
   assert.equal(songs.length, 2);
 });
+
+test("a preview clip survives the merge on the source that offered it", () => {
+  // Plumbing, and it has already failed once silently: the field is read in the browser but
+  // set in a workspace package, so nothing in between complains when it stops being carried.
+  const songs = mergeTracks([
+    track({ source: "ytmusic", previewUrl: null }),
+    track({ source: "deezer", previewUrl: "https://cdnt-preview.dzcdn.net/api/1/1/x.mp3" }),
+  ]);
+
+  assert.equal(songs.length, 1);
+  assert.equal(
+    songs[0]!.sources.find((source) => source.source === "deezer")?.previewUrl,
+    "https://cdnt-preview.dzcdn.net/api/1/1/x.mp3",
+  );
+  assert.equal(songs[0]!.sources.find((source) => source.source === "ytmusic")?.previewUrl, null);
+});

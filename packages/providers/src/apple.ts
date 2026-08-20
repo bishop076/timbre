@@ -16,6 +16,8 @@ interface ITunesTrack {
   trackTimeMillis?: number;
   artworkUrl100?: string;
   trackViewUrl?: string;
+  /** A thirty-second clip the Search API publishes for exactly this purpose. */
+  previewUrl?: string;
   trackExplicitness?: string;
 }
 
@@ -46,6 +48,7 @@ function fromSearch(raw: ITunesTrack): SourceTrack | null {
     url: raw.trackViewUrl ?? null,
     artworkUrl: upsizeArtwork(raw.artworkUrl100),
     playback: "link",
+    previewUrl: raw.previewUrl || null,
   };
 }
 

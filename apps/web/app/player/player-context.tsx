@@ -56,7 +56,9 @@ interface PlayerState {
    * whose user segment is the display name and which the widget refuses. */
   mixcloudKey: string | null;
   /** Which player owns the current song. Exactly one is ever mounted — a paused one can be restarted by a stray event. */
-  activeSource: "ytmusic" | "soundcloud" | "spotify" | "mixcloud" | ProgressiveSource | null;
+  activeSource: PlayingSource | null;
+  /** The current audio is a catalogue's thirty-second clip, not the song. */
+  playingPreview: boolean;
   /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
   /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
@@ -199,6 +201,24 @@ function progressiveOf(song: Song): { source: ProgressiveSource; sourceId: strin
   return found && isProgressive(found.source) ? { source: found.source, sourceId: found.sourceId } : null;
 }
 
+/** Every source that can end up in the player, including the two that only ever supply a
+ * preview clip. */
+type PlayingSource =
+  | "ytmusic"
+  | "soundcloud"
+  | "spotify"
+  | "mixcloud"
+  | "deezer"
+  | "apple"
+  | ProgressiveSource;
+
+/** A catalogue's own thirty-second clip, for a song no source will play in full. Sources
+ * are ordered most-playable first, so this takes whichever offers one. */
+function previewOf(song: Song): { source: PlayingSource; url: string } | null {
+  const found = song.sources.find((source) => Boolean(source.previewUrl));
+  return found?.previewUrl ? { source: found.source as PlayingSource, url: found.previewUrl } : null;
+}
+
 interface PlayModes {
   shuffle: boolean;
   repeat: RepeatMode;
@@ -244,9 +264,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
   const [mixcloudKey, setMixcloudKey] = useState<string | null>(null);
-  const [activeSource, setActiveSource] = useState<
-    "ytmusic" | "soundcloud" | "spotify" | "mixcloud" | ProgressiveSource | null
-  >(null);
+  // `deezer` and `apple` appear here only as the source of a **preview** — they have no
+  // player of their own. Naming them is the point: the badge has to say where the thirty
+  // seconds came from, and claiming another source played it would be a lie.
+  const [activeSource, setActiveSource] = useState<PlayingSource | null>(null);
+  const [playingPreview, setPlayingPreview] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -281,6 +303,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    * cannot loop straight back into it. YouTube copies are tracked individually in
    * `attempted`; a song carries at most one progressive copy, so one flag is the whole state. */
   const progressiveTried = useRef(false);
+  /** The preview is the floor of the ladder; without this a clip that fails re-offers itself. */
+  const previewTried = useRef(false);
   /** The Spotify track already offered for this song, so the give-up path cannot loop into
    * the same embed it just showed. */
   const activeSourceRefSpotify = useRef<string | null>(null);
@@ -296,6 +320,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setStreamUrl(null);
     setSpotifyTrackId(null);
     setMixcloudKey(null);
+    setPlayingPreview(false);
     setActiveSource("ytmusic");
     setVideoId(id);
     setProblem(null);
@@ -307,6 +332,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setStreamUrl(null);
     setSpotifyTrackId(null);
     setMixcloudKey(null);
+    setPlayingPreview(false);
     setActiveSource("soundcloud");
     setSoundcloudUrl(url);
     setProblem(null);
@@ -321,6 +347,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setPlayingPreview(false);
     setActiveSource("mixcloud");
     setMixcloudKey(key);
     setProblem(null);
@@ -332,6 +359,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setMixcloudKey(null);
+    setPlayingPreview(false);
     setActiveSource("spotify");
     setSpotifyTrackId(trackId);
     activeSourceRefSpotify.current = trackId;
@@ -339,11 +367,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setState("paused");
   }, []);
 
+  /**
+   * **The floor of the ladder: thirty seconds, honestly labelled.**
+   *
+   * Deezer and Apple publish a preview clip on the very search responses Timbre already
+   * reads. For a song only they carry — an independent single with no YouTube upload, no
+   * Audius copy and an ISRC too obscure for MusicBrainz — that clip is the difference
+   * between hearing something and reading "no copy of this song exists". Reported exactly
+   * that way, on "Just Because of You (feat. Henneysee)": Apple and Deezer both had it, and
+   * every one of YouTube's ten answers was a different song.
+   *
+   * Reached only after everything real has refused, and it says what it is: a clip that
+   * announced itself as the song would be a worse answer than the refusal it replaces.
+   */
+  const attemptPreview = useCallback((source: PlayingSource, url: string) => {
+    setVideoId(null);
+    setSoundcloudUrl(null);
+    setSpotifyTrackId(null);
+    setMixcloudKey(null);
+    setActiveSource(source);
+    setStreamUrl(url);
+    setPlayingPreview(true);
+    previewTried.current = true;
+    setProblem("Only a 30-second preview — nothing can play this one in full.");
+    setState("loading");
+  }, []);
+
   const attemptProgressive = useCallback((source: ProgressiveSource, sourceId: string) => {
     setVideoId(null);
     setSoundcloudUrl(null);
     setSpotifyTrackId(null);
     setMixcloudKey(null);
+    setPlayingPreview(false);
     setActiveSource(source);
     setStreamUrl(streamUrlFor(source, sourceId));
     progressiveTried.current = true;
@@ -376,6 +431,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       candidates.current = [];
       attempted.current = new Set();
       progressiveTried.current = false;
+      previewTried.current = false;
+      setPlayingPreview(false);
       activeSourceRefSpotify.current = null;
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
@@ -504,6 +561,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        const preview = previewOf(song);
+        if (preview) {
+          attemptPreview(preview.source, preview.url);
+          return;
+        }
+
         setVideoId(null);
         setState("unplayable");
         setProblem("No copy of this song exists on YouTube Music.");
@@ -520,6 +583,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       attemptProgressive,
       attemptSoundCloud,
       attemptSpotify,
+      attemptPreview,
       findCandidates,
       findMatches,
     ],
@@ -920,6 +984,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const preview = previewOf(song);
+      if (preview && !previewTried.current) {
+        log("warn", `“${song.title}” fell back to a ${preview.source} preview — nothing plays it in full`);
+        attemptPreview(preview.source, preview.url);
+        return;
+      }
+
       log(
         "error",
         `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${progressiveTried.current ? "tried" : "absent"}`,
@@ -931,7 +1002,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // pick. Its hits are hour-long mixes that merely share a name with the song — falling
     // back from a four-minute track to an 88-minute set called *Wonderwall* would be a worse
     // answer than admitting nothing here can play it.
-    [attempt, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
+    [attempt, attemptPreview, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
   );
 
   const handleEnded = useCallback(() => {
@@ -964,6 +1035,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     spotifyTrackId,
     mixcloudKey,
     activeSource,
+    playingPreview,
     panelOpen,
     theater,
     state,

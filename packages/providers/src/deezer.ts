@@ -21,6 +21,8 @@ interface DeezerTrack {
   duration: number;
   isrc?: string;
   link?: string;
+  /** A thirty-second clip Deezer publishes on the same response. */
+  preview?: string;
   explicit_lyrics?: boolean;
   artist?: { name?: string };
   album?: { title?: string; cover_medium?: string; cover_big?: string };
@@ -49,6 +51,10 @@ function toSourceTrack(raw: DeezerTrack): SourceTrack {
     url: raw.link ?? `https://www.deezer.com/track/${raw.id}`,
     artworkUrl: raw.album?.cover_big ?? raw.album?.cover_medium ?? null,
     playback: "link",
+    // Deezer hands this back on the search response Timbre already reads, so it costs
+    // nothing to keep. `playback` deliberately stays `link`: a clip must not rank or
+    // auto-advance as though it were the song.
+    previewUrl: raw.preview || null,
   };
 }
 

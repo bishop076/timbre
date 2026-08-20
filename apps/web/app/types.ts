@@ -9,6 +9,9 @@ export interface SourceTrack {
   sourceId: string;
   url: string | null;
   playback: "queue" | "manual" | "link";
+  /** A thirty-second clip the catalogue publishes, played only when nothing else will.
+   * Mirrors `SourceTrack.previewUrl` in `@timbre/providers`, which is server-only. */
+  previewUrl?: string | null;
 }
 
 export interface Song {
