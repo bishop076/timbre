@@ -253,19 +253,30 @@ export function MixcloudPlayer({
   }, [registerToggle]);
 
   return (
-    // The cover fills the panel and the widget sits under it as a strip. Mixcloud's full
-    // player is a second transport competing with Timbre's own; its compact one is 60px of
-    // scrubber beside a thumbnail. Neither is nice to look at, and the licence rules out
-    // hiding either — so the artwork is drawn at the size it deserves and the widget keeps
-    // its place beneath, wholly visible, exactly as required.
-    <div className={`flex flex-col overflow-hidden bg-black ${size}`}>
+    // A card holding two rounded tiles: the cover at the size it deserves, and the widget
+    // below it. Mixcloud's full player is a second transport competing with Timbre's own,
+    // and its compact one spends 60px on a scrubber beside a thumbnail — but the licence
+    // forbids hiding, cropping or overlaying either, so the only thing left to change is
+    // what surrounds them. Padding and a gap are what stop the strip reading as bolted on.
+    <div
+      className={`flex flex-col gap-2.5 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] p-3 ${size}`}
+    >
       {artworkUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={artworkUrl} alt="" aria-hidden className="min-h-0 w-full flex-1 object-cover" />
+        <img
+          src={artworkUrl}
+          alt=""
+          aria-hidden
+          className="min-h-0 w-full flex-1 rounded-[var(--r-sm)] object-cover"
+        />
       ) : (
-        <div className="min-h-0 flex-1" />
+        <div className="min-h-0 flex-1 rounded-[var(--r-sm)] bg-[var(--surface-3)]" />
       )}
-      <div ref={containerRef} className="h-[60px] shrink-0" aria-label="Mixcloud player" />
+      <div
+        ref={containerRef}
+        className="h-[60px] shrink-0 overflow-hidden rounded-[var(--r-sm)]"
+        aria-label="Mixcloud player"
+      />
     </div>
   );
 }
