@@ -277,7 +277,10 @@ export function NowPlayingPanel() {
             <MixcloudPlayer
               cloudcastKey={mixcloudKey}
               artworkUrl={current?.artworkUrl ?? null}
-              size={expanded ? "h-full w-full" : "h-[240px] w-full"}
+              // The card spends 94px on padding, gap and the widget, so 280 leaves the cover
+              // 186 — the size it was mocked at, and still the largest this panel can give it
+              // without pushing what sits below it off the shelf.
+              size={expanded ? "h-full w-full" : "h-[280px] w-full"}
             />
           ) : spotifyTrackId ? (
             <SpotifyPlayer
