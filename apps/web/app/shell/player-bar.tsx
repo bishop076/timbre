@@ -2,7 +2,7 @@
 
 import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
-import { formatClock } from "../duration";
+import { formatElapsed } from "../duration";
 import {
   CollapseIcon,
   ExpandIcon,
@@ -303,7 +303,8 @@ export function PlayerBar() {
         {/* Balances the left zone so the transport is optically centred. */}
         <div className="flex flex-1 items-center justify-end gap-1.5">
           <span className="mr-1 hidden font-mono text-[11px] tabular-nums text-[var(--fg-faint)] xl:inline">
-            {formatClock(position)} / {duration > 0 ? formatClock(duration) : "—:—"}
+            {formatElapsed(position, duration)} /{" "}
+            {duration > 0 ? formatElapsed(duration, duration) : "—:—"}
           </span>
           <Volume />
           <span className="mx-1 h-6 w-px bg-[var(--line)]" />

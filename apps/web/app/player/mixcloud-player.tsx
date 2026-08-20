@@ -131,12 +131,16 @@ export function MixcloudPlayer({
         host.height = "180";
         host.frameBorder = "0";
         host.allow = "autoplay";
+        // **`src` before `PlayerWidget`, which is how Mixcloud's own examples do it** — the
+        // documented usage is an iframe that already has its feed, adopted afterwards. An
+        // earlier version set it last, reasoning that the listener should exist before the
+        // frame could speak; that reversed the order the API expects and `ready` then never
+        // resolved, leaving the transport on a spinner over a widget that had loaded fine.
+        host.src = widgetSrc(cloudcastKey);
         container.append(host);
 
         const widget = Mixcloud.PlayerWidget(host);
         widgetRef.current = widget;
-        // Set last: the listener is attached, so the handshake cannot outrun it.
-        host.src = widgetSrc(cloudcastKey);
 
         return widget.ready.then(() => {
           if (cancelled) return;
