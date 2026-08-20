@@ -46,10 +46,16 @@ own, and the current scorer is not visibly failing. Sequencing, not doubt.
 
 ---
 
-## S-2 · Spotify via the user's own PKCE token `SPECULATIVE`
+## S-2 · Spotify via the user's own PKCE token `BUILT 2026-08-20`
 
 *Reasoned from Spotify's developer documentation, 2026-08-16. **Never executed** —
 no app was registered and no token was minted.*
+
+> **Built 2026-08-20.** The reasoning held: the flow runs entirely in the browser, both
+> endpoints answer it with CORS, and no secret is needed. See `docs/BLOCKED.md` for what was
+> measured and what remains unverified without a registered app. The prediction at the foot
+> of this entry — that the ceiling is a panel rather than a source — was correct and is what
+> the implementation does.
 
 `docs/BLOCKED.md` states the Spotify blocker as "the track id, which is no longer
 obtainable for free." That framing may be wrong, and the correction changes what

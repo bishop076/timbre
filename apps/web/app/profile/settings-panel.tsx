@@ -8,12 +8,14 @@ import {
   GithubIcon,
   KeyboardIcon,
   LogsIcon,
+  NoteIcon,
   PaletteIcon,
   SettingsIcon,
   SparkleIcon,
   TrashIcon,
 } from "../icons";
 import { clearLogs, useLogs, type LogLevel } from "../logs.ts";
+import { SpotifyConnect } from "../spotify/connect-panel";
 
 // Fetched when Appearance is first opened; the picker is the largest thing here.
 const ThemePicker = dynamic(() => import("../theme/theme-picker").then((m) => m.ThemePicker));
@@ -42,6 +44,12 @@ const SECTIONS = [
         default.
       </Planned>
     ),
+  },
+  {
+    id: "sources",
+    label: "Sources",
+    Icon: NoteIcon,
+    render: () => <SpotifyConnect />,
   },
   {
     id: "shortcuts",

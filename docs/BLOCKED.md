@@ -242,6 +242,34 @@ and extended quota now requires a registered business with **250k monthly active
 users**. Unblocked only by paying, which collides with the standing non-goal of
 paying for developer accounts.
 
+### Update 2026-08-20 — searchable, on the reader's own account
+
+`SUGGESTIONS.md` S-2 reasoned that a user's own PKCE token would yield the id for free and
+that the real cap is the app quota rather than the id. **Built, and the reasoning held.**
+
+The two facts that decide it were measured rather than read: `accounts.spotify.com/api/token`
+preflights `204` and `api.spotify.com/v1/search` answers with `access-control-allow-origin`
+echoing the page's origin. So the whole flow runs in the browser, needs no client secret, and
+**the token never reaches Timbre's server** — which is not a nicety here, it is what lets an
+app that stores nothing about anyone hold a credential at all.
+
+What has *not* changed, and is not a limitation to route around:
+
+- **Spotify results are a separate attributed section, never merged into the ranked list**,
+  and each row stays `playback: "manual"`. §IV.2 forbids blending, and the embed exposes no
+  play API, so the rule and the surface agree — as this document already said.
+- **Five users per app, owner must hold Premium.** Unchanged, and re-verified 2026-08-20. A
+  copy of Timbre therefore cannot ship a client id; the panel accepts one so that anyone
+  running their own registers their own app without rebuilding.
+- The blocker on the *hosted* build is the same as it ever was. Nothing is shipped enabled.
+
+**What is untested, and by whom.** Everything up to the redirect is verified in a browser —
+the authorize URL carries `response_type=code`, `S256`, a 43-character challenge and a random
+state; a replayed code is refused on the state check and stripped from the address bar;
+Spotify accepts the request and serves its login page. The token exchange and a live search
+are **not** verified, because doing so needs a registered app and a Premium account. Results
+rendering and hand-off to the embed were exercised against a stubbed search response.
+
 ---
 
 ## Cross-service discovery `BLOCKED`

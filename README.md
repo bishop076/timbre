@@ -53,8 +53,14 @@ need no approval — point `SOUNDCLOUD_API_BASE` at an api-v2 proxy you run, or 
 `SOUNDCLOUD_DIRECT_API` and let Timbre resolve a guest id itself. Both are off in the hosted
 build, and turning either on moves the technique and the terms exposure to whoever turned it
 on. See [docs/BLOCKED.md](docs/BLOCKED.md) and
-[docs/SOUNDCLOUD-PROXIES.md](docs/SOUNDCLOUD-PROXIES.md). Spotify is not integrated at all —
-see below.
+[docs/SOUNDCLOUD-PROXIES.md](docs/SOUNDCLOUD-PROXIES.md).
+
+Spotify plays a pasted link with no key, and its catalogue can be **searched on your own
+account**: connect it under Settings → Sources and the token is minted by PKCE and kept in
+your browser, never on the server. Its results stay in their own attributed section and play
+in Spotify's own player rather than joining the queue — Developer Terms §IV.2, and the embed
+has no play API to script anyway. Spotify allows five users per app and the owner must hold
+Premium, so each deployment registers its own; see [docs/BLOCKED.md](docs/BLOCKED.md).
 
 ## What it deliberately doesn't do
 
