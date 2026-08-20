@@ -368,7 +368,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
       recorded.current = null;
-      writeProgress(0, 0);
+      // Seeded with the length the *song* already carries rather than zero. Every source
+      // reports its own duration eventually, but "eventually" is a player handshake away,
+      // and until then a bar left at zero shows `—:—` — or, worse, whatever the last track
+      // put there. A three-hour Mixcloud set showing another song's 3:22 was reported.
+      writeProgress(0, song.durationMs ? song.durationMs / 1000 : 0);
       setActiveSource(null);
       setVideoId(null);
       setSoundcloudUrl(null);
@@ -703,12 +707,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
 
     return () => aborter.abort();
-    // Keyed on whatever is actually loaded — see the ref note above. All three handles are
-    // listed because only one is ever non-null at a time: with `videoId` alone, a move
-    // between two self-played tracks changed nothing here and the radio stayed seeded on
-    // the song before it.
+    // Keyed on whatever is actually loaded — see the ref note above.
+    //
+    // **Every handle, not just some.** Exactly one of these is non-null at a time, so a
+    // missing one means an entire source never re-seeds. `mixcloudKey` was absent: playing a
+    // second Mixcloud show in a row changed nothing here, so no radio was fetched and "up
+    // next" stayed empty. Reported exactly that way. `spotifyTrackId` had the same hole.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSource, videoId, streamUrl, soundcloudUrl]);
+  }, [activeSource, videoId, streamUrl, soundcloudUrl, mixcloudKey, spotifyTrackId]);
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
