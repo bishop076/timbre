@@ -200,6 +200,28 @@ passing it there is unnecessary and is itself a known cause of "Video unavailabl
 Benign. uBlock-class blockers hit these for every user and playback continues —
 they are analytics, not video delivery. Confirmed live with an ad blocker enabled.
 
+**But `ERR_BLOCKED_BY_CLIENT` is not benign everywhere, and this note was being
+read as though it were.** Measured 2026-08-20 with the blocked patterns applied
+by targeted request interception:
+
+| Source | telemetry blocked | outcome |
+|---|---|---|
+| SoundCloud | yes | plays — 0:06 clear, 0:08 blocked |
+| Audius | yes | plays — 0:14 clear, 0:15 blocked |
+| Spotify Web Playback SDK | `spclient.spotify.com` | **never registers a device** |
+
+The SDK talks to `spclient.spotify.com` for playback control, not only for
+telemetry, and uBlock-class lists block `/gabo-receiver-service` and
+`/public/v3/events` by default. So the same console line means "ignore me" on
+YouTube and "this will never start" on Spotify. `spotify-sdk-player.tsx` now arms
+a ten-second device timeout for exactly that, because the failure is silence.
+
+**A note on how that table was produced, because the first attempt was wrong.**
+Routing `**/*` through the test harness and calling `continue()` for everything
+not blocked stalled Mixcloud **5 times out of 5 with nothing blocked at all** —
+the instrument was the finding. Only the blocked URLs may be intercepted; the
+rest of the traffic has to be left alone.
+
 **`Failed to execute 'postMessage' … does not match the recipient window's
 origin`.** Benign race: the widget API messaging the frame before navigation
 completes. Appears on working pages, including ours while audio plays.
@@ -356,3 +378,141 @@ than cancelling it, so every search that gave up waiting left a live 2.5s timer 
 enough to hold a scale-to-zero container awake after it had already answered.
 
 All three now have tests; previously only `assetScripts` and `clientIdFrom` did.
+
+---
+
+## B-14 · The fall-through ladder could not leave the song's own sources `FIXED`
+
+**Severity:** high — a song with a full-length copy on screen was declared unplayable
+
+Every rung of `handleError` below the first read `song.sources`:
+
+| rung | reads | for a YouTube-only merge |
+|---|---|---|
+| another YouTube candidate | `candidates.current` | all barred |
+| `progressiveOf(song)` | `song.sources` | absent |
+| `spotifyIdOf(song)` | `song.sources` | absent |
+| `soundcloudUrlOf(song)` | `song.sources` | absent |
+| `previewOf(song)` | `song.sources` | absent |
+
+So for a merge that carries only YouTube uploads, **every rung after the first is
+empty by construction**, and the ladder had nowhere to go the moment those uploads
+refused. Not a rare shape: the search's own top row for *Blinding Lights*,
+*Wonderwall* and *Shape of You* is a YouTube-only merge in each case, verified
+against a live index — while the same search returns the SoundCloud copy as a
+separate row that did not merge. The copy was on screen and the ladder could not
+reach it.
+
+**The rescue already existed and was wired to the wrong path.** `load()` has
+searched every source and adopted a plausible match since `5e66598` — that is what
+repairs a history row with nothing to play. `handleError()` never called it, so
+Timbre could recover a song that arrived with *no* playable source and could not
+recover one whose only source turned out to be barred, which is the harder and
+commoner case.
+
+**Fix:** the selection was extracted to `adoptElsewhere` and both paths now call
+it. Deliberately shared rather than copied — `advance` and B-8 are what two
+hand-written copies of one sequence already cost this file. Placed above the
+preview rung, since a copy that plays in full beats thirty seconds, and bounded to
+one search per song by `rescued`.
+
+The one difference between the callers is Mixcloud, and it is not a preference:
+`handleError` arrives from a song that played as a *track*, so an hour-long set
+sharing its name is the wrong answer — the failure `plausiblySameSong` exists to
+stop, and which it catches on duration only when the show reports one, since
+Mixcloud's `audio_length` is optional. `load` arrives from a song with nothing
+playable at all, which is usually a pre-2026-08-19 history row for a show.
+
+Measured beforehand from a Swiss VPN exit: 6 of 12 songs had every YouTube copy
+barred, and all 6 had a full-length SoundCloud copy passing `plausiblySameSong`.
+See `docs/RESEARCH-VPN-FALLTHROUGH.md`. This is B-4's named remedy finally
+reaching the rung B-4 skipped.
+
+---
+
+## B-15 · IFrame error `153` counted as not worth retrying `FIXED`
+
+**Severity:** medium — in the contexts that report it, the ladder stopped at the
+first copy
+
+`blockedUpload` listed `[100, 101, 150]`. Code `153` is undocumented and was in
+none of them, so `worthRetrying` came back false and `handleError` returned at the
+top — no second copy, no other source, no preview.
+
+Measured 2026-08-20 from a Swiss exit: all six candidates for a territorially
+barred song returned **153** from a bare page. In-app the same song reported a
+retryable code and walked five candidates, which is the important half of the
+finding: **the code depends on the embedding context**, so it can never be used to
+*detect* a territorial block. It is added to the retry set and nothing reads it as
+a cause.
+
+`153` also got its own sentence rather than sharing 101/150's *"The owner disabled
+playback on other sites"*. Those two are the owner's setting; 153 measurably is
+not — it arrived on a video whose owner had left embedding on, advertising
+`playableInEmbed: true` and 246 available countries. See B-6.
+
+---
+
+## B-16 · Two user-facing claims outlived the code they described `FIXED`
+
+**Severity:** low impact, and the same class as B-6 — text asserting something
+nobody re-checked
+
+**"All 5 copies on YouTube block playback outside it."** Names a cause — an
+uploader disabling embedding — that nothing measured. Shown, measurably, for a
+song barred by territory; an ad blocker produces it too. Now reports the
+observation: the copies would not play here, and nothing else could either. That
+weaker second clause is deliberate — it says the ladder ran out, which is true by
+construction, and not that no other source *has* a copy, which `adoptElsewhere`
+may not have been in a position to establish.
+
+**"Plays from YouTube Music, which is the only one Timbre can drive."** True when
+only YouTube had a player. `PlayingSource` now has eight members.
+
+**The About page still said SoundCloud could not be searched.** `9fe5c0d`
+de-staled the README's version of this claim and missed the honesty page, which is
+the one place it matters most. It is genuinely deployment-dependent — off in the
+shipped default, on wherever `SOUNDCLOUD_DIRECT_API` or `SOUNDCLOUD_API_BASE` is
+set — so it is now a branch on `hasSoundCloud`, the same test `/api/health`
+reports, rather than a re-corrected constant.
+
+That forced `/about` to `force-dynamic`. The Dockerfile builds with no SoundCloud
+variables set and `next start` receives them afterwards, so a prerendered page
+would have baked "the operator has not turned it on" into the HTML and gone stale
+again the moment they did — the same bug moved from the source to the build.
+
+---
+
+## B-17 · The two ladders disagreed about where Spotify's embed ranks `FIXED`
+
+**Severity:** medium — a full-length copy traded for a thirty-second clip
+
+`load` and `handleError` are the same ladder reached from two directions, and they
+had drifted on one rung. `load` holds Spotify to the bottom, below the song's own
+SoundCloud copy and below the cross-source rescue, and says why at length:
+
+> So Spotify is held rather than taken, and the search runs first. If it turns up a
+> copy something can actually play, that wins. If it turns up nothing, Spotify's
+> embed is still there at the bottom — which is what "last resort" was always
+> supposed to mean.
+
+`handleError` ranked it **second**, above both. So a song whose YouTube copies
+refused went to the embed while a SoundCloud copy sat unread on the same song, and
+B-14's rescue — which sits below — was never reached either. Both rungs are
+terminal, since Spotify and SoundCloud each report not-worth-retrying, so whichever
+came first got the only attempt.
+
+**What settles it is `spotify/preview-mode.ts`.** Both orderings were arguable while
+the embed was assumed to be a full song. It measurably is not: in a browser that
+does not send `sp_dc` to a third-party frame — a blocker, shields, or a setting —
+the embed serves **thirty seconds** to a Premium subscriber as readily as to a
+stranger, and nothing on this side can change it. A rung that is sometimes a clip
+cannot outrank one that is always the whole track.
+
+Deliberately **not** gated on `spotifyPreviewsOnly()`. That flag only becomes true
+after a clip has already been served once, so the first Spotify track of every
+session would still be ranked as a full song and still be a clip. The order has to
+be right before the evidence arrives.
+
+`handleError` now reads: YouTube candidates → progressive → SoundCloud → rescue
+(B-14) → Spotify → preview → give up, which is `load`'s order.

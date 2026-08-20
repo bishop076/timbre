@@ -240,6 +240,26 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
+        {/*
+         * The hosts a player reaches for the moment someone presses play.
+         *
+         * **This does not fix the wait, and it is worth saying which wait.** Measured
+         * 2026-08-20: SoundCloud's `widget.load()` takes ~2.3s to resolve a track inside its
+         * own iframe, and audio is audible 24ms after its callback — so the gap between
+         * tracks is the widget's resolve, not anything on this side, and no hint can remove
+         * it. What a hint *can* remove is the DNS lookup and TLS handshake in front of it,
+         * which the same measurement put at ~1.9s for the widget's own `api.js` on a cold
+         * connection.
+         *
+         * Hints only, so nothing is fetched for a reader who never plays that source.
+         */}
+        <link rel="preconnect" href="https://w.soundcloud.com" />
+        <link rel="dns-prefetch" href="https://w.soundcloud.com" />
+        <link rel="preconnect" href="https://widget.sndcdn.com" />
+        <link rel="dns-prefetch" href="https://api-widget.soundcloud.com" />
+        <link rel="dns-prefetch" href="https://player-widget.mixcloud.com" />
+        <link rel="dns-prefetch" href="https://www.youtube.com" />
+
         {/* One tag, not two: React warns about every script it meets while
             rendering, so a second doubles a message that is already noise. */}
         <script

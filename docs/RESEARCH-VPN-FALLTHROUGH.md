@@ -106,14 +106,17 @@ territory*, `loc` says *which*.
 
 ## Recommended, in order
 
-1. **Call the `load()` rescue from `handleError()` when candidates exhaust.** Fixes 6 of 6,
-   at full length. Smallest change, largest effect, and it is B-4's own named remedy.
-2. **Add `153` to `blockedUpload`.** One line; without it, any context that reports 153 gets
-   no fall-through at all.
-3. **Say what actually happened.** `loc` plus G-16's control load, so the message stops
-   asserting an unverified cause - the mistake B-6 exists to record.
+1. ~~**Call the `load()` rescue from `handleError()` when candidates exhaust.**~~ **DONE** -
+   the selection was extracted to `adoptElsewhere` and both paths call it. See B-14.
+2. ~~**Add `153` to `blockedUpload`.**~~ **DONE**, and it was given its own message rather
+   than 101/150's, which asserts the owner's setting. See B-15.
+3. **Partly done.** The sentence no longer asserts a cause - it reports that the copies would
+   not play *here* and that nothing else could either (B-16). What is **not** built is naming
+   *which* territory: that needs the `loc` read below, which is a new outbound dependency on
+   cloudflare.com on every give-up, and is a product call rather than a bug fix. The message
+   is now silent about the cause rather than wrong about it, which is what B-6 asks for.
 4. Do **not** build a pre-filter on `availableCountries` or `playableInEmbed`. Both say this
-   video is fine. It is not.
+   video is fine. It is not. **Still not built, still do not build it.**
 
 ## Unsettled
 

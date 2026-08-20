@@ -250,15 +250,28 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             // 101 and 150 are embedding barred reported two ways, 100 a removed upload —
             // all three belong to *this* upload, so another copy is worth trying. Code 2 is
             // ours to fix, and retrying it only loops.
-            const blockedUpload = [100, 101, 150].includes(event.data);
+            //
+            // **153 is undocumented and belongs here too.** Measured 2026-08-20 from a Swiss
+            // exit: all six candidates for a territorially barred song returned 153 from a
+            // bare page, and it was in none of the lists above — so `worthRetrying` came back
+            // false and the ladder stopped dead at the *first* copy, with no fall-through at
+            // all. In-app the same song reported a retryable code instead, which is the point:
+            // the code depends on the embedding context, so it can never be used to *detect*
+            // a territorial block. That is why it is only added to the retry set and nothing
+            // reads it as a cause. See docs/RESEARCH-VPN-FALLTHROUGH.md.
+            const blockedUpload = [100, 101, 150, 153].includes(event.data);
             const reason =
               event.data === 100
                 ? "That upload has been removed."
-                : blockedUpload
-                  ? "The owner disabled playback on other sites."
-                  : event.data === 5
-                    ? "The player couldn't load this track."
-                    : "Playback was blocked.";
+                // Not folded in with 101/150: those two *are* the owner's setting, and 153
+                // measurably is not — it arrived on a video the owner had left embeddable.
+                : event.data === 153
+                  ? "YouTube wouldn't play this copy here."
+                  : blockedUpload
+                    ? "The owner disabled playback on other sites."
+                    : event.data === 5
+                      ? "The player couldn't load this track."
+                      : "Playback was blocked.";
             handlers.current.handleError(reason, blockedUpload || event.data === 5);
           },
         },

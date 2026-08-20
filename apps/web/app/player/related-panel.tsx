@@ -1,19 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import type { Song, SongsResponse } from "../types";
 import { QueueRow } from "./now-playing";
 import { Empty } from "./panel-tabs";
 import { usePlayerControls } from "./player-context";
+import { sameRecording } from "./song-match";
+
+/**
+ * How deep a radio to ask for. **Not the number shown** — the queue has already absorbed
+ * this seed's first 25 (see the seeding effect in `player-context`), and this panel then
+ * subtracts everything the queue holds, so asking for 25 here left nothing behind. Reported
+ * as Related listing exactly what Up Next listed. 50 is the endpoint's ceiling, and each
+ * source is asked for the full depth before fusion, so it genuinely widens the pool rather
+ * than re-ranking the same songs.
+ */
+const RADIO_DEPTH = 50;
+
+/** How many survivors to show. A panel, not a catalogue. */
+const SHOWN = 25;
 
 /**
  * What else sounds like this. Distinct from Up Next — the queue is what *will* play, this
  * is what *could*, and nothing is queued until picked. See docs/RECOMMENDATIONS.md.
  */
 export function RelatedPanel() {
-  const { current, play, queue } = usePlayerControls();
+  const { current, play, queue, radio } = usePlayerControls();
   // Stored with its seed, so "loading" is derived rather than a second state.
   const [found, setFound] = useState<{ seed: string; songs: Song[] } | null>(null);
 
@@ -31,7 +45,7 @@ export function RelatedPanel() {
 
     const aborter = new AbortController();
 
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ limit: String(RADIO_DEPTH) });
     if (seedId) params.set("id", seedId);
     if (seedArtist) params.set("artist", seedArtist);
     if (seedTitle) params.set("title", seedTitle);
@@ -49,7 +63,21 @@ export function RelatedPanel() {
     return () => aborter.abort();
   }, [seed, seedId, seedArtist, seedTitle]);
 
-  const songs = found?.seed === seed ? found.songs : null;
+  const fetched = found?.seed === seed ? found.songs : null;
+
+  // Filtered here rather than in the fetch: the queue changes on every append and every
+  // skip, and re-running the request for that would spend a fan-out to receive the same
+  // songs. The seed is what the answer depends on; the queue only decides what to hide.
+  const songs = useMemo(() => {
+    if (!fetched) return null;
+    // Everything the reader can already see coming — the whole queue, since the Up Next
+    // pane also shows the parked recommendations it will step into at the end.
+    const coming = [...queue, ...radio];
+    return fetched
+      .filter((song) => !coming.some((other) => sameRecording(other, song)))
+      .slice(0, SHOWN);
+  }, [fetched, queue, radio]);
+
   const loading = Boolean(current) && songs === null;
 
   if (loading) {
@@ -57,7 +85,13 @@ export function RelatedPanel() {
   }
 
   if (!songs || songs.length === 0) {
-    return <Empty>Nothing similar found for this track.</Empty>;
+    // Two different outcomes, and telling them apart is the whole point of this panel:
+    // a radio that found nothing is a dead end, a radio already queued is a full one.
+    return fetched && fetched.length > 0 ? (
+      <Empty>Everything similar to this is already in your queue.</Empty>
+    ) : (
+      <Empty>Nothing similar found for this track.</Empty>
+    );
   }
 
   return (

@@ -18,9 +18,16 @@ export const ALLOWED_HOSTS = new Set([
   "is4-ssl.mzstatic.com",
   "is5-ssl.mzstatic.com",
   "i1.sndcdn.com",
-  // Spotify serves every cover from this one host, so it can be named outright. Reached only
-  // when the reader has connected their own account — see `app/spotify/`.
+  // **Spotify serves covers from three hosts, not one.** This said "every cover from this one
+  // host" and named only `i.scdn.co`, which was wrong and silently 403'd every Spotify cover:
+  // measured 2026-08-20, a connected account returns
+  // `image-cdn-ak.spotifycdn.com/image/ab67616d…`, and `/api/art` refused it as an unlisted
+  // host while the reader saw a blank tile. All three answer `200 image/jpeg` for the same
+  // path, so which one appears is Spotify's routing rather than anything about the image.
+  // Reached only when the reader has connected their own account — see `app/spotify/`.
   "i.scdn.co",
+  "image-cdn-ak.spotifycdn.com",
+  "image-cdn-fa.spotifycdn.com",
   // The Live Music Archive's item tiles. Safe to name where Audius's are not: this is one
   // stable host that Archive itself runs, while Audius artwork is served by whichever
   // operator-run content node holds the track and the set changes.

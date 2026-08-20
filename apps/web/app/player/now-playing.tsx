@@ -25,6 +25,9 @@ const ProgressiveAudioPlayer = dynamic(() =>
   import("./progressive-audio-player").then((m) => m.ProgressiveAudioPlayer),
 );
 const SpotifyPlayer = dynamic(() => import("./spotify-player").then((m) => m.SpotifyPlayer));
+const SubscriptionPlayer = dynamic(() =>
+  import("./subscription-player").then((m) => m.SubscriptionPlayer),
+);
 const SpotifyPanel = dynamic(() => import("./spotify-panel").then((m) => m.SpotifyPanel));
 const MixcloudPlayer = dynamic(() => import("./mixcloud-player").then((m) => m.MixcloudPlayer));
 const MobileTransport = dynamic(() => import("./mobile-transport").then((m) => m.MobileTransport));
@@ -146,6 +149,7 @@ export function NowPlayingPanel() {
     soundcloudUrl,
     streamUrl,
     spotifyTrackId,
+    subscriptionTrack,
     mixcloudKey,
     panelOpen,
     theater,
@@ -169,7 +173,6 @@ export function NowPlayingPanel() {
   const known = new Set(queue.map((song) => song.id));
   const suggested = radio.filter((song) => !known.has(song.id));
   const upcoming = [...queued, ...suggested];
-  const source = sourceStyle(activeSource ?? "ytmusic");
 
   // Where to send someone whose track will not play here. The song's own most-playable
   // source first — `sources` is already ordered that way — because a track that exists only
@@ -271,7 +274,10 @@ export function NowPlayingPanel() {
           {activeSource === "soundcloud" ? (
             <SoundCloudPlayer
               trackUrl={soundcloudUrl}
-              size={expanded ? "h-full w-full" : "h-[200px] w-full"}
+              artworkUrl={current?.artworkUrl ?? null}
+              expanded={expanded}
+              // Docked, the box is exactly the widget — nothing else is drawn there.
+              size={expanded ? "h-full w-full" : "h-[166px] w-full"}
             />
           ) : mixcloudKey ? (
             <MixcloudPlayer
@@ -286,6 +292,20 @@ export function NowPlayingPanel() {
             <SpotifyPlayer
               trackId={spotifyTrackId}
               size={expanded ? "h-full w-full" : "h-[200px] w-full"}
+            />
+          ) : subscriptionTrack ? (
+            // Apple's and Deezer's own players, reached only when the reader names them —
+            // the whole song for a subscriber, a clip for everyone else. See
+            // `subscription-player.tsx`; Deezer's widget is the taller of the two.
+            <SubscriptionPlayer
+              track={subscriptionTrack}
+              size={
+                expanded
+                  ? "h-full w-full"
+                  : subscriptionTrack.source === "deezer"
+                    ? "h-[300px] w-full"
+                    : "h-[200px] w-full"
+              }
             />
           ) : streamUrl ? (
             <ProgressiveAudioPlayer
@@ -305,6 +325,11 @@ export function NowPlayingPanel() {
         <div className={listBox}>
           {expanded ? (
             <>
+              {/* No source name here. Attribution is a terms requirement for every service
+                  Timbre embeds, and it is met by the transport — `PlayerBar` renders
+                  whenever anything is playing (`app-shell.tsx`), and its source label is the
+                  copyable one. Naming it twice on the same screen was noise, not compliance.
+                  If the bar ever becomes conditional, this has to come back. */}
               <div className="flex items-start gap-3 border-b-[length:var(--edge)] border-[var(--ink)] px-4 pb-3 pt-3.5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-bold">{current?.title ?? "Nothing playing"}</p>
@@ -312,12 +337,6 @@ export function NowPlayingPanel() {
                     <ArtistLink artists={current?.artists ?? []} />
                   </p>
                 </div>
-                <span
-                  className="mt-0.5 shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold"
-                  style={{ color: source.color, backgroundColor: source.tint }}
-                >
-                  {source.short}
-                </span>
               </div>
 
               {/* The queue stays here; in <PanelTabs> two places would have an opinion
@@ -401,13 +420,6 @@ export function NowPlayingPanel() {
                       <ArtistLink artists={current?.artists ?? []} />
                     </p>
                   </div>
-                  {/* Attribution — every service Timbre embeds requires it. */}
-                  <span
-                    className="mt-0.5 shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold"
-                    style={{ color: source.color, backgroundColor: source.tint }}
-                  >
-                    {source.short}
-                  </span>
                 </div>
 
                 <ArtistCard name={current?.artists[0] ?? null} />

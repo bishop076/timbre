@@ -52,6 +52,9 @@ interface PlayerState {
   /** The Spotify track whose embed is showing, if any. Nothing can start it — the embed has
    * no play API — so this is a panel the reader taps, never a queue member. */
   spotifyTrackId: string | null;
+  /** The subscription embed on screen, if any — Apple Music or Deezer. Their own players,
+   * which play the whole song for someone signed in and a clip for everyone else. */
+  subscriptionTrack: { source: "apple" | "deezer"; id: string } | null;
   /** The Mixcloud show the widget holds. Its `key` — `/user/slug/` — not the display URL,
    * whose user segment is the display name and which the widget refuses. */
   mixcloudKey: string | null;
@@ -84,8 +87,12 @@ interface PlayerProgress {
 }
 
 interface PlayerActions {
-  /** Plays a song, optionally queueing the list it came from behind it. */
-  play: (song: Song, rest?: Song[]) => void;
+  /** Plays a song, optionally queueing the list it came from behind it.
+   *
+   * `prefer` names a source to try before the usual ladder — what a source badge passes when
+   * the reader picks one. It is a preference, not a constraint: a source that cannot be
+   * started falls through to the normal order. */
+  play: (song: Song, rest?: Song[], prefer?: string) => void;
   enqueue: (songs: Song[]) => void;
   removeAt: (position: number) => void;
   move: (from: number, to: number) => void;
@@ -170,14 +177,29 @@ function soundcloudUrlOf(song: Song): string | null {
  * where it is simply untrue. A wrong explanation is worse than a vague one: it sends the
  * reader looking for a cause that is not there.
  */
+/**
+ * What to say when every rung has refused.
+ *
+ * **Reports the observation, never the cause.** This used to read *"All 5 copies on YouTube
+ * block playback outside it"*, which names a cause — an uploader disabling embedding —
+ * that nothing here measured. Measured 2026-08-20 from a Swiss exit, that exact sentence was
+ * shown for a song barred by **territory**, on a video advertising `playableInEmbed: true`
+ * and 246 available countries. An ad blocker produces the same sentence again. B-6 is on
+ * record for this mistake and its remedy was the same: say what was seen.
+ *
+ * "nothing else could either" is safe where a stronger claim would not be — it reports that
+ * the ladder ran out, which is true by construction here. It deliberately does not say no
+ * other source *has* a copy: `adoptElsewhere` may have been spent on this song already, or
+ * its search may have failed outright, and neither is a search that came back empty.
+ */
 function giveUpReason(youtubeCopies: number, triedProgressive: boolean): string {
   if (youtubeCopies > 0 && triedProgressive) {
-    return `Nothing here would play — ${youtubeCopies} YouTube ${youtubeCopies === 1 ? "copy" : "copies"} refused, and the other source failed too.`;
+    return `Nothing here would play — ${youtubeCopies} YouTube ${youtubeCopies === 1 ? "copy" : "copies"} refused, and the other sources failed too.`;
   }
   if (youtubeCopies > 0) {
     return youtubeCopies === 1
-      ? "The only copy on YouTube blocks playback outside it."
-      : `All ${youtubeCopies} copies on YouTube block playback outside it.`;
+      ? "The only copy on YouTube wouldn't play here, and nothing else could either."
+      : `None of the ${youtubeCopies} copies on YouTube would play here, and nothing else could either.`;
   }
   if (triedProgressive) return "This track wouldn't stream, and there's no copy on YouTube.";
   return "No source here could play this one.";
@@ -219,6 +241,64 @@ function previewOf(song: Song): { source: PlayingSource; url: string } | null {
   return found?.previewUrl ? { source: found.source as PlayingSource, url: found.previewUrl } : null;
 }
 
+/** What `load` would do for a source the reader named, or `null` when this song has no copy
+ * there that can be started. Described rather than performed, so the badge offering the
+ * choice and the player honouring it read the same answer from one place. */
+type ChosenSource =
+  | { kind: "youtube"; id: string }
+  | { kind: "progressive"; source: ProgressiveSource; sourceId: string }
+  | { kind: "mixcloud"; key: string }
+  | { kind: "soundcloud"; url: string }
+  | { kind: "spotify"; id: string }
+  | { kind: "subscription"; source: "apple" | "deezer"; id: string }
+  | { kind: "preview"; source: PlayingSource; url: string };
+
+function chosenSource(song: Song, source: string): ChosenSource | null {
+  const track = song.sources.find((entry) => entry.source === source);
+  if (!track) return null;
+
+  if (source === "ytmusic") return track.sourceId ? { kind: "youtube", id: track.sourceId } : null;
+  if (source === "soundcloud") return track.url ? { kind: "soundcloud", url: track.url } : null;
+  if (source === "mixcloud") return track.sourceId ? { kind: "mixcloud", key: track.sourceId } : null;
+  if (source === "spotify") return track.sourceId ? { kind: "spotify", id: track.sourceId } : null;
+  if (isProgressive(source)) {
+    return track.sourceId ? { kind: "progressive", source, sourceId: track.sourceId } : null;
+  }
+
+  // **Apple and Deezer get their own player here, not their preview clip.**
+  //
+  // The ladder still falls to the thirty-second file — that is `previewOf`, untouched, and
+  // it is the right floor because it starts by script and advances the queue. But a reader
+  // who *names* one of these is asking for that service, and the service can do better than
+  // a clip: both embeds play the whole song for someone signed in. Offering the file to
+  // someone with a subscription would be the worse answer to a question they asked
+  // deliberately.
+  //
+  // Falls back to the clip when there is no id to embed, so the badge never goes dead.
+  if (source === "apple" || source === "deezer") {
+    if (track.sourceId) return { kind: "subscription", source, id: track.sourceId };
+  }
+
+  return track.previewUrl ? { kind: "preview", source: source as PlayingSource, url: track.previewUrl } : null;
+}
+
+/** How a named source would play, for a control deciding what to offer.
+ *
+ * `queue` is the song; `manual` embeds but rests until pressed; `preview` is thirty seconds
+ * and must be labelled as such; `null` means this song cannot be started there at all.
+ *
+ * **This mirrors the ladder in `load` and has to stay in step with it.** A badge that offers
+ * to play and then does nothing is worse than one that only links out, and the two live far
+ * enough apart to drift — which is why both read `chosenSource` rather than each testing the
+ * song themselves. */
+export function playbackFrom(song: Song, source: string): "queue" | "manual" | "preview" | null {
+  const chosen = chosenSource(song, source);
+  if (!chosen) return null;
+  if (chosen.kind === "spotify" || chosen.kind === "subscription") return "manual";
+  if (chosen.kind === "preview") return "preview";
+  return "queue";
+}
+
 interface PlayModes {
   shuffle: boolean;
   repeat: RepeatMode;
@@ -258,11 +338,29 @@ const modeStore = createLocalStore<PlayModes>({
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<Song[]>([]);
+  /**
+   * The queue, readable synchronously — every write goes through {@link writeQueue}.
+   *
+   * **This exists because `goTo` needs the queue as it *will be*, not as it was when the
+   * callback closed over it.** `advance` appends the radio and immediately calls
+   * `goTo(queue.length)` (see `docs/BUGS.md` B-8), so the closure's copy is one item short.
+   *
+   * That used to be solved by reading inside a `setQueue` updater and calling `load` from
+   * within it — and React runs updaters during the **render** phase. `load` writes progress,
+   * `writeProgress` notifies the progress store synchronously, and a subscriber set state
+   * while `PlayerProvider` was rendering: *"Cannot update a component (`PlayerBar`) while
+   * rendering a different component (`PlayerProvider`)"*. Reported as a console error.
+   *
+   * A ref kept in step at every write gives `goTo` the same freshness with no work inside
+   * render at all.
+   */
+  const queueRef = useRef<Song[]>([]);
   const [index, setIndex] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
+  const [subscriptionTrack, setSubscriptionTrack] = useState<{ source: "apple" | "deezer"; id: string } | null>(null);
   const [mixcloudKey, setMixcloudKey] = useState<string | null>(null);
   // `deezer` and `apple` appear here only as the source of a **preview** — they have no
   // player of their own. Naming them is the point: the badge has to say where the thirty
@@ -312,6 +410,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // another copy, does not record twice; see `handleStateChange`.
   const recorded = useRef<string | null>(null);
 
+  /** The only way the queue is written. Keeps {@link queueRef} in step in the same tick, so
+   * a caller that appends and then navigates sees what it just added. */
+  const writeQueue = useCallback((next: Song[] | ((current: Song[]) => Song[])) => {
+    const value = typeof next === "function" ? next(queueRef.current) : next;
+    queueRef.current = value;
+    setQueue(value);
+  }, []);
+
   const current = queue[index] ?? null;
 
   const attempt = useCallback((id: string) => {
@@ -319,6 +425,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setSubscriptionTrack(null);
     setMixcloudKey(null);
     setPlayingPreview(false);
     setActiveSource("ytmusic");
@@ -331,6 +438,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVideoId(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setSubscriptionTrack(null);
     setMixcloudKey(null);
     setPlayingPreview(false);
     setActiveSource("soundcloud");
@@ -347,6 +455,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setSubscriptionTrack(null);
     setPlayingPreview(false);
     setActiveSource("mixcloud");
     setMixcloudKey(key);
@@ -359,11 +468,50 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setMixcloudKey(null);
+    setSubscriptionTrack(null);
     setPlayingPreview(false);
     setActiveSource("spotify");
     setSpotifyTrackId(trackId);
     activeSourceRefSpotify.current = trackId;
-    setProblem("Spotify plays this one — press it to start.");
+    // No "press it to start" any more: Spotify's Embed iFrame API can be script-started, so
+    // `spotify-player.tsx` calls `play()` on ready like every other player here. See that
+    // file for what changed and for the §IV.2 judgement it now rests on.
+    setProblem(null);
+    setState("loading");
+  }, []);
+
+  /**
+   * **Apple Music and Deezer, through their own players rather than their preview clips.**
+   *
+   * These two are `link` sources: they cannot be searched into the queue and Timbre plays
+   * them as the thirty-second file each catalogue publishes. That clip is the right floor
+   * for the fall-through ladder — it starts by script and advances the queue — but it is
+   * *not* the best either service can do for the reader in front of it.
+   *
+   * Both publish an embeddable player, and both play **the whole song for someone signed
+   * in** — Apple's own marketing-tools documentation says so outright, and its embed carries
+   * a Sign In button. Measured 2026-08-20: `embed.music.apple.com/us/song/{id}` and
+   * `widget.deezer.com/widget/dark/track/{id}` both render a working player with no key, no
+   * account of ours and no `X-Frame-Options`.
+   *
+   * It is `manual`, exactly like Spotify, and for the same reason: no play API, so nothing
+   * here can start it or hear it end. That is why this is reached only when the reader names
+   * the source — the ladder must never *land* on a panel that cannot advance.
+   */
+  const attemptSubscription = useCallback((source: "apple" | "deezer", id: string) => {
+    setVideoId(null);
+    setSoundcloudUrl(null);
+    setStreamUrl(null);
+    setMixcloudKey(null);
+    setSpotifyTrackId(null);
+    setPlayingPreview(false);
+    setActiveSource(source);
+    setSubscriptionTrack({ source, id });
+    setProblem(
+      source === "apple"
+        ? "Apple Music plays this one — press it to start. Signed-in subscribers get the whole song."
+        : "Deezer plays this one — press it to start. Signed-in subscribers get the whole song.",
+    );
     setState("paused");
   }, []);
 
@@ -384,6 +532,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVideoId(null);
     setSoundcloudUrl(null);
     setSpotifyTrackId(null);
+    setSubscriptionTrack(null);
     setMixcloudKey(null);
     setActiveSource(source);
     setStreamUrl(url);
@@ -397,6 +546,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVideoId(null);
     setSoundcloudUrl(null);
     setSpotifyTrackId(null);
+    setSubscriptionTrack(null);
     setMixcloudKey(null);
     setPlayingPreview(false);
     setActiveSource(source);
@@ -421,8 +571,88 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [findMatches],
   );
 
+  /**
+   * **The rung that lets the ladder leave the song's own sources.**
+   *
+   * Searches every source for another copy of this recording and adopts the first one
+   * something can actually play, rewriting the queue entry so the repair sticks. Returns
+   * whether it started a player.
+   *
+   * Every other rung — `progressiveOf`, `soundcloudUrlOf`, `spotifyIdOf`, `previewOf` —
+   * reads `song.sources`, so for a merge that carries only YouTube uploads they are all
+   * empty *by construction*: when those uploads turn out to be barred there is nothing
+   * below to fall to, and the song is declared unplayable while a playable copy sits on
+   * screen as a separate search row. Measured 2026-08-20 from a Swiss exit — 6 of 12 songs
+   * had every YouTube copy barred, and all 6 had a full-length SoundCloud copy the ladder
+   * could not reach. See `docs/RESEARCH-VPN-FALLTHROUGH.md`, and B-4, whose named remedy
+   * this is.
+   *
+   * Shared by `load` and `handleError` rather than written twice. They are the two halves of
+   * one ladder and this file has already paid for hand-copied sequences once — see `advance`
+   * and B-8, where a skip and a track ending drifted apart.
+   *
+   * **Once per song.** `rescued` is keyed on the original id, which a repair keeps, so a
+   * rescue that lands on something equally dead cannot send the ladder round again.
+   *
+   * `mixcloud` is the one difference between the callers, and it is not a preference.
+   * `handleError` arrives from a song that played as a *track*, so an hour-long set sharing
+   * its name is the wrong answer — the failure `plausiblySameSong` exists to stop, which it
+   * catches on duration only when the show reports one, and Mixcloud's `audio_length` is
+   * optional. `load` arrives from a song with nothing playable at all, where a show usually
+   * is the answer.
+   */
+  const adoptElsewhere = useCallback(
+    (song: Song, matches: Song[], { mixcloud }: { mixcloud: boolean }): boolean => {
+      if (rescued.current.has(song.id)) return false;
+
+      const keyOf = (match: Song) => (mixcloud ? mixcloudKeyOf(match) : null);
+      const elsewhere = matches.find(
+        (match) =>
+          progressiveOf(match) ?? keyOf(match) ?? soundcloudUrlOf(match) ?? spotifyIdOf(match),
+      );
+      if (!elsewhere) return false;
+
+      rescued.current.add(song.id);
+      const repaired: Song = {
+        ...song,
+        sources: elsewhere.sources,
+        durationMs: song.durationMs ?? elsewhere.durationMs,
+      };
+      // The match's sources are adopted under the *original* id, and the queue entry is
+      // replaced rather than played around: `recordPlay` reads the source off the song it
+      // finds there, so leaving the old one in place would write the same broken row back
+      // and the tile would need rescuing again next time.
+      songRef.current = repaired;
+      writeQueue((current) => current.map((entry) => (entry.id === song.id ? repaired : entry)));
+
+      const progressive = progressiveOf(repaired);
+      if (progressive) {
+        attemptProgressive(progressive.source, progressive.sourceId);
+        return true;
+      }
+      const key = keyOf(repaired);
+      if (key) {
+        attemptMixcloud(key);
+        return true;
+      }
+      const soundcloud = soundcloudUrlOf(repaired);
+      if (soundcloud) {
+        attemptSoundCloud(soundcloud);
+        return true;
+      }
+      const spotify = spotifyIdOf(repaired);
+      if (spotify) {
+        attemptSpotify(spotify);
+        return true;
+      }
+      // Unreachable: `elsewhere` was chosen by the same four tests against the same sources.
+      return false;
+    },
+    [attemptMixcloud, attemptProgressive, attemptSoundCloud, attemptSpotify, writeQueue],
+  );
+
   const load = useCallback(
-    async (song: Song) => {
+    async (song: Song, prefer?: string) => {
       resolving.current?.abort();
       const aborter = new AbortController();
       resolving.current = aborter;
@@ -447,7 +677,46 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSoundcloudUrl(null);
       setStreamUrl(null);
       setSpotifyTrackId(null);
+      setSubscriptionTrack(null);
       setMixcloudKey(null);
+
+      // **What the reader asked for beats what the ladder guesses.** The order below is an
+      // estimate of which source is most likely to work; a named source is not an estimate,
+      // and the person naming it can usually see that the default is failing — which is the
+      // whole point of the control, since a territory can bar YouTube's copies while
+      // SoundCloud plays the same song in full.
+      //
+      // `ytmusic` is deliberately not handled here: it is what the ladder already tries
+      // first, and that path also warms the fall-through list, so intercepting it would
+      // trade a behaviour for nothing. Anything the named source cannot start falls through
+      // to the usual order rather than stranding a song something else could have played.
+      if (prefer && prefer !== "ytmusic") {
+        const chosen = chosenSource(song, prefer);
+        if (chosen) {
+          switch (chosen.kind) {
+            case "progressive":
+              attemptProgressive(chosen.source, chosen.sourceId);
+              return;
+            case "mixcloud":
+              attemptMixcloud(chosen.key);
+              return;
+            case "soundcloud":
+              attemptSoundCloud(chosen.url);
+              return;
+            case "spotify":
+              attemptSpotify(chosen.id);
+              return;
+            case "subscription":
+              attemptSubscription(chosen.source, chosen.id);
+              return;
+            case "preview":
+              attemptPreview(chosen.source, chosen.url);
+              return;
+            case "youtube":
+              break;
+          }
+        }
+      }
 
       const direct = youtubeIdOf(song);
       if (direct) {
@@ -490,13 +759,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Last, and only when nothing else here can play it: a Spotify embed cannot be
-      // started by script, so reaching it means the queue rests until the reader presses it.
+      /*
+       * **Spotify used to return here, and that was the whole bug.**
+       *
+       * The comment said "last, and only when nothing else here can play it" — and it was
+       * true of the sources already *on* the song, which is not the same thing. A pasted
+       * Spotify link resolves to a Spotify-only song, because `resolveUrl` asks the one
+       * provider that owns the URL and no other. So the ladder reached Spotify with nothing
+       * beside it, showed the embed, and the reader got thirty seconds.
+       *
+       * Measured: *never stay* by almogfx — the track this was found on — is on **SoundCloud,
+       * YouTube Music, Deezer and Apple**. Two of those play it whole. The search below finds
+       * them in one request; it simply was never reached.
+       *
+       * So Spotify is held rather than taken, and the search runs first. If it turns up a copy
+       * something can actually play, that wins. If it turns up nothing, Spotify's embed is
+       * still there at the bottom — which is what "last resort" was always supposed to mean.
+       *
+       * A reader who *names* Spotify on a badge still gets Spotify: that path returns above,
+       * before any of this.
+       */
       const spotify = spotifyIdOf(song);
-      if (spotify) {
-        attemptSpotify(spotify);
-        return;
-      }
 
       setState("resolving");
       setProblem(null);
@@ -516,49 +799,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // that the show is gone. Mixcloud shows and Audius uploads are not on YouTube, so
         // the old message was both wrong and a dead end.
         //
-        // The match's sources are adopted under the *original* id, so the `recordPlay` that
-        // follows overwrites that history row with a source rather than adding a second one
-        // — the broken tile repairs itself the first time it is played.
-        const elsewhere = matches.find(
-          (match) =>
-            progressiveOf(match) ??
-            mixcloudKeyOf(match) ??
-            soundcloudUrlOf(match) ??
-            spotifyIdOf(match),
-        );
-        if (elsewhere && !rescued.current.has(song.id)) {
-          rescued.current.add(song.id);
-          const repaired: Song = {
-            ...song,
-            sources: elsewhere.sources,
-            durationMs: song.durationMs ?? elsewhere.durationMs,
-          };
-          // The queue entry is replaced, not just played around: `recordPlay` reads the
-          // source off the song it finds there, so leaving the sourceless one in place would
-          // write the same broken row back and the tile would need rescuing again next time.
-          songRef.current = repaired;
-          setQueue((current) => current.map((entry) => (entry.id === song.id ? repaired : entry)));
+        // Mixcloud is allowed here and refused in `handleError`: a song that arrives with no
+        // sources at all is very often a pre-2026-08-19 history row for a show, so a show is
+        // the likely right answer. See `adoptElsewhere`.
+        if (adoptElsewhere(song, matches, { mixcloud: true })) return;
 
-          const progressiveElsewhere = progressiveOf(repaired);
-          if (progressiveElsewhere) {
-            attemptProgressive(progressiveElsewhere.source, progressiveElsewhere.sourceId);
-            return;
-          }
-          const mixcloudElsewhere = mixcloudKeyOf(repaired);
-          if (mixcloudElsewhere) {
-            attemptMixcloud(mixcloudElsewhere);
-            return;
-          }
-          const soundcloudElsewhere = soundcloudUrlOf(repaired);
-          if (soundcloudElsewhere) {
-            attemptSoundCloud(soundcloudElsewhere);
-            return;
-          }
-          const spotifyElsewhere = spotifyIdOf(repaired);
-          if (spotifyElsewhere) {
-            attemptSpotify(spotifyElsewhere);
-            return;
-          }
+        // Nothing playable was found, so the embed is genuinely the last resort now.
+        if (spotify) {
+          log("warn", `“${song.title}” fell back to Spotify's embed — nothing else could play it`);
+          attemptSpotify(spotify);
+          return;
         }
 
         const preview = previewOf(song);
@@ -578,10 +828,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
     },
     [
+      adoptElsewhere,
       attempt,
       attemptMixcloud,
       attemptProgressive,
       attemptSoundCloud,
+      attemptSubscription,
       attemptSpotify,
       attemptPreview,
       findCandidates,
@@ -590,24 +842,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const play = useCallback(
-    (song: Song, rest: Song[] = []) => {
+    (song: Song, rest: Song[] = [], prefer?: string) => {
       const others = rest.filter((candidate) => candidate.id !== song.id);
-      setQueue([song, ...others]);
+      writeQueue([song, ...others]);
       setIndex(0);
-      void load(song);
+      void load(song, prefer);
     },
-    [load],
+    [load, writeQueue],
   );
 
   const goTo = useCallback(
     (nextIndex: number) => {
-      setQueue((currentQueue) => {
-        const target = currentQueue[nextIndex];
-        if (!target) return currentQueue;
-        setIndex(nextIndex);
-        void load(target);
-        return currentQueue;
-      });
+      // Reads the ref, not a `setQueue` updater — see `queueRef` for what that cost.
+      const target = queueRef.current[nextIndex];
+      if (!target) return;
+      setIndex(nextIndex);
+      void load(target);
     },
     [load],
   );
@@ -693,14 +943,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setQueue((current) => [...current, ...fresh]);
+      writeQueue((current) => [...current, ...fresh]);
       setRadio([]);
       // Where the old queue ended, *not* `index + 1`. Those match only when the
       // current song is last — in shuffle a spent pass returns null from any
       // position, so `index + 1` landed on a played song and left the radio unplayed.
       goTo(queue.length);
     },
-    [goTo, index, nextIndex, queue, radio, unqueued],
+    [goTo, index, nextIndex, queue, radio, unqueued, writeQueue],
   );
 
   const next = useCallback(() => advance(false), [advance]);
@@ -738,6 +988,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setSoundcloudUrl(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
+    setSubscriptionTrack(null);
     setMixcloudKey(null);
     setPlayingPreview(false);
     setActiveSource(null);
@@ -753,27 +1004,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       // Adding to an empty queue must start playback, or nothing loads the song.
       if (queue.length === 0) {
-        setQueue(fresh);
+        writeQueue(fresh);
         setIndex(0);
         void load(fresh[0]!);
         return;
       }
 
-      setQueue([...queue, ...fresh]);
+      writeQueue([...queue, ...fresh]);
     },
-    [load, queue, unqueued],
+    [load, queue, unqueued, writeQueue],
   );
 
   /** Applies an edit from `queue-ops`, which owns the index arithmetic. */
   const applyEdit = useCallback(
     (edit: QueueEdit | null) => {
       if (!edit) return;
-      setQueue(edit.queue);
+      writeQueue(edit.queue);
       setIndex(edit.index);
       if (edit.stopped) stop();
       else if (edit.play) void load(edit.play);
     },
-    [load, stop],
+    [load, stop, writeQueue],
   );
 
   const removeAt = useCallback(
@@ -793,17 +1044,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const clearQueue = useCallback(() => {
-    setQueue((current) => current.slice(0, index + 1));
-  }, [index]);
+    writeQueue((current) => current.slice(0, index + 1));
+  }, [index, writeQueue]);
 
-  // Read by the radio effect but not depended on — as deps they refetch on every append.
-  const queueRef = useRef<Song[]>(queue);
+  // Read by the radio effect but not depended on — as a dep it refetches on every append.
+  // `queueRef` is declared at the top and kept in step by `writeQueue`, so only the index
+  // needs syncing here.
   const indexRef = useRef(index);
 
   useEffect(() => {
-    queueRef.current = queue;
     indexRef.current = index;
-  }, [queue, index]);
+  }, [index]);
 
   // Seeded from the copy that actually **played**, and from the song's own title and artist
   // regardless, because those are all some sources can use. Requiring a YouTube id here meant
@@ -851,7 +1102,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const known = new Set(queued.map((song) => song.id));
         const fresh = songs.filter((song) => !known.has(song.id));
         setRadio([]);
-        if (fresh.length > 0) setQueue((current) => [...current, ...fresh]);
+        if (fresh.length > 0) writeQueue((current) => [...current, ...fresh]);
       })
       .catch(() => {
         // No recommendations is not worth surfacing: the queue still plays.
@@ -979,13 +1230,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const spotifyLast = spotifyIdOf(song);
-      if (spotifyLast && activeSourceRefSpotify.current !== spotifyLast) {
-        log("warn", `“${song.title}” fell back to Spotify's embed — nothing else would play it`);
-        attemptSpotify(spotifyLast);
-        return;
-      }
-
       // SoundCloud has its own rights position, and reports not-worth-retrying, so a failure
       // exits above rather than looping back here.
       const soundcloud = soundcloudUrlOf(song);
@@ -995,6 +1239,67 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           `“${song.title}” fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`,
         );
         attemptSoundCloud(soundcloud);
+        return;
+      }
+
+      // **Everything the song carries has now refused, so leave the song.** Below this point
+      // the ladder used to hold only a thirty-second clip and a give-up, both read off the
+      // same exhausted `sources` — so a YouTube-only merge whose copies were barred died
+      // here with a full-length copy of the same recording one search away. `load` has run
+      // this rescue since `5e66598`; the failure path never called it, which is the whole of
+      // `docs/RESEARCH-VPN-FALLTHROUGH.md`.
+      //
+      // Above the preview deliberately: a copy that plays in full beats thirty seconds. The
+      // search is bounded to one per song by `rescued`, and every candidate has to pass
+      // `plausiblySameSong` — without that guard this is the cat-video failure again, which
+      // is why it is a filtered search and not a search.
+      // The spent-rescue test is `adoptElsewhere`'s own, repeated here only so a second
+      // failure on an already-rescued song does not pay for a search whose answer is dropped.
+      if (!rescued.current.has(song.id)) {
+        try {
+          resolving.current?.abort();
+          const rescuing = new AbortController();
+          resolving.current = rescuing;
+          const matches = await findMatches(song, rescuing.signal);
+          if (adoptElsewhere(song, matches, { mixcloud: false })) {
+            log(
+              "warn",
+              `“${song.title}” was rescued onto another source — nothing it shipped with would play`,
+            );
+            return;
+          }
+        } catch (cause) {
+          // A failed rescue is not a failure of its own: the preview and the give-up below
+          // are still the right answer. An abort means a track change already took over.
+          if (cause instanceof DOMException && cause.name === "AbortError") return;
+        }
+      }
+
+      /*
+       * **Spotify last, which is where `load` already keeps it.**
+       *
+       * This rung used to sit second, above the song's own SoundCloud copy and above the
+       * rescue. `load` holds it to the bottom and says why at length: the embed is what you
+       * take when nothing can play the song, and reaching it early means taking it while
+       * something still could. The two ladders are the same ladder and had drifted — the
+       * failure this file has already paid for once in `advance`, B-8.
+       *
+       * Both orderings were defensible until `spotify/preview-mode.ts` measured the thing
+       * that settles it: in a browser that does not send `sp_dc` to a third-party frame —
+       * a blocker, shields, or a setting — Spotify's embed serves **thirty seconds** to a
+       * Premium subscriber as readily as to a stranger, and nothing on this side can change
+       * it. So this rung is not reliably a full song at all, and ranking it above a
+       * SoundCloud copy that is one traded the whole track for a clip.
+       *
+       * Not gated on `spotifyPreviewsOnly()`, though it is tempting. That flag is only true
+       * *after* a clip has been served once, so the first Spotify track of every session
+       * would still be ranked as a full song and still be a clip. The ordering has to be
+       * right before the evidence arrives, not after.
+       */
+      const spotifyLast = spotifyIdOf(song);
+      if (spotifyLast && activeSourceRefSpotify.current !== spotifyLast) {
+        log("warn", `“${song.title}” fell back to Spotify's embed — nothing else would play it`);
+        attemptSpotify(spotifyLast);
         return;
       }
 
@@ -1016,7 +1321,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // pick. Its hits are hour-long mixes that merely share a name with the song — falling
     // back from a four-minute track to an 88-minute set called *Wonderwall* would be a worse
     // answer than admitting nothing here can play it.
-    [attempt, attemptPreview, attemptProgressive, attemptSoundCloud, attemptSpotify, findCandidates],
+    [
+      adoptElsewhere,
+      attempt,
+      attemptPreview,
+      attemptProgressive,
+      attemptSoundCloud,
+      attemptSpotify,
+      findCandidates,
+      findMatches,
+    ],
   );
 
   const handleEnded = useCallback(() => {
@@ -1047,6 +1361,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     soundcloudUrl,
     streamUrl,
     spotifyTrackId,
+    subscriptionTrack,
     mixcloudKey,
     activeSource,
     playingPreview,

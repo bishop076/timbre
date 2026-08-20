@@ -44,7 +44,16 @@ test("the authorize URL asks for S256 and carries the state back", () => {
   assert.equal(url.searchParams.get("code_challenge"), "CHALLENGE");
   assert.equal(url.searchParams.get("state"), "STATE");
   assert.equal(url.searchParams.get("client_id"), "abc123");
-  // No scope is requested. Searching the catalogue needs none, and an unused permission is
-  // one the reader granted for nothing.
-  assert.equal(url.searchParams.get("scope"), null);
+  // **Exactly the scopes playback needs, and nothing beyond them.** Search needs none of
+  // these and this asserted `null` while search was the only use; the Web Playback SDK
+  // refuses to construct without `streaming`, and cannot be told what to play without
+  // `user-modify-playback-state`. Pinned as an explicit list rather than "is not empty" so
+  // that widening it later is a deliberate edit to this line — a scope nobody uses is a
+  // permission the reader granted for nothing, and that is the thing worth guarding.
+  assert.deepEqual((url.searchParams.get("scope") ?? "").split(" ").sort(), [
+    "streaming",
+    "user-modify-playback-state",
+    "user-read-email",
+    "user-read-private",
+  ]);
 });
