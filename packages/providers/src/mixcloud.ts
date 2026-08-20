@@ -74,7 +74,7 @@ const request = createRequester({
 
 /** The widget's feed parameter. Mirrored in `app/player/mixcloud-player.tsx`. */
 export function mixcloudWidgetUrl(key: string): string {
-  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&hide_cover=1&light=0`;
+  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&hide_cover=1&light=0&autoplay=1`;
 }
 
 export function createMixcloudProvider(): SearchProvider {
