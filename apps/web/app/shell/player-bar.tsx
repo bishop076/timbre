@@ -22,6 +22,7 @@ import { Volume } from "../player/volume";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { Scrub } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
+import { SourceLink } from "./source-link";
 
 /**
  * A transport mode toggle. Plain tinted icons rather than slabs, so a mode does not carry
@@ -94,6 +95,7 @@ export function PlayerBar() {
     problem,
     playingPreview,
     activeSource,
+    subscriptionTrack,
     streamUrl,
     panelOpen,
     theater,
@@ -183,20 +185,24 @@ export function PlayerBar() {
             <ArtistLink artists={current.artists} className="truncate" />
             {state === "unplayable" ? (
               <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
-            ) : activeSource === "spotify" ? (
-              // The one source nothing here can start. Saying so is not decoration: the
-              // queue rests on this entry until the reader presses Spotify's own player,
-              // and a transport that looks broken is worse than one that explains itself.
-              <span className="shrink-0 text-[var(--accent)]">press Spotify&rsquo;s player to start</span>
+            ) : subscriptionTrack ? (
+              // Apple and Deezer are the same shape as Spotify — their embeds have no play
+              // API — so the transport is inert here too and has to say why. It also says
+              // what the press is worth, because that is the whole reason to choose one of
+              // these over the thirty-second clip the ladder would otherwise reach.
+              <span className="shrink-0 text-[var(--accent)]">
+                press to start — full song if you&rsquo;re signed in
+              </span>
             ) : (
               // Names the source actually playing, never a hardcoded one — a terms
-              // requirement for every service Timbre embeds.
-              <span
-                className="hidden shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium sm:inline"
-                style={{ color: source.color, backgroundColor: source.tint }}
-              >
-                {state === "resolving" ? "finding a copy…" : source.short}
-              </span>
+              // requirement for every service Timbre embeds — and pressing it copies that
+              // service's link for this song. See `source-link.tsx`.
+              <SourceLink
+                song={current}
+                activeSource={activeSource}
+                label={state === "resolving" ? "finding a copy…" : source.short}
+                className="hidden sm:inline"
+              />
             )}
             {/* Beside the source badge rather than instead of it: which catalogue supplied
                 the clip is a terms requirement, and how much of the song it is, is the part

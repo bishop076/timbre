@@ -41,8 +41,8 @@ export function SpotifyConnect() {
 
       <p className="mt-1.5 text-sm text-[var(--fg-dim)]">
         {connected
-          ? "Search shows a Spotify section, using your own account. Tracks play in Spotify\u2019s own player."
-          : "Connect your own Spotify account to search its catalogue. Timbre never sees the token \u2014 it stays in this browser."}
+          ? "Search shows a Spotify section, and tracks play in full here \u2014 Premium only, through Spotify\u2019s Web Playback SDK. Without Premium, Spotify\u2019s own player gives a 30-second preview instead."
+          : "Connect your own Spotify account to search its catalogue, and to play tracks in full if you have Premium. Timbre never sees the token \u2014 it stays in this browser."}
       </p>
 
       {!connected && !configured && (

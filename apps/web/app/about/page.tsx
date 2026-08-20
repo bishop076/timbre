@@ -1,6 +1,17 @@
 import Link from "next/link";
 
+import { getEnv, hasSoundCloud } from "@/lib/env";
 import { SOURCE_STYLES } from "../sources";
+
+/**
+ * **Rendered per request, not prerendered.** This page now reports whether SoundCloud's
+ * catalogue search is on, and that is a runtime fact: the Dockerfile builds with no
+ * SoundCloud variables set and `next start` receives them from the environment afterwards.
+ * Left static, the build would bake "the operator has not turned it on" into the HTML and
+ * the honesty page would keep saying it after the operator turned it on — the same staleness
+ * this branch exists to end, just moved from the source to the build.
+ */
+export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "About Timbre",
@@ -23,12 +34,12 @@ const SOURCES = [
   {
     id: "audius",
     href: "https://audius.co",
-    role: "Search and playback, and the only source Timbre plays itself — Audius publishes audio with no player to embed, so the sound comes out of Timbre's own audio element rather than someone else's window. Nothing is downloaded or copied; the audio streams from Audius, and the listen is counted for the artist. Its catalogue is the unsigned half of music: remixes, edits, bootlegs and DJ sets that were never released anywhere else.",
+    role: "Search and playback, and one of the two sources Timbre plays itself — Audius publishes audio with no player to embed, so the sound comes out of Timbre's own audio element rather than someone else's window. Nothing is downloaded or copied; the audio streams from Audius, and the listen is counted for the artist. Its catalogue is the unsigned half of music: remixes, edits, bootlegs and DJ sets that were never released anywhere else.",
   },
   {
     id: "archive",
     href: "https://archive.org/details/etree",
-    role: "Live recordings, suggested rather than searched. The Live Music Archive holds concert tapes uploaded with the performing band's permission — the clearest licensing of anything here. It only answers for bands that allow taping, so it stays quiet unless what you are playing is one of them.",
+    role: "Live recordings, suggested rather than searched, and the other source Timbre plays itself. The Live Music Archive holds concert tapes uploaded with the performing band's permission — the clearest licensing of anything here. It only answers for bands that allow taping, so it stays quiet unless what you are playing is one of them.",
   },
   {
     id: "deezer",
@@ -43,9 +54,30 @@ const SOURCES = [
   {
     id: "soundcloud",
     href: "https://soundcloud.com",
-    role: "Playback only. Paste a SoundCloud link into the search box and it plays, in SoundCloud's own player. What is missing is the catalogue search, which needs credentials that are not available without a paid subscription and a manual review — so Timbre can play a SoundCloud track you already found, but cannot find one for you.",
+    // Filled in per deployment — see `soundcloudRole`.
+    role: "",
   },
 ] as const;
+
+/**
+ * **SoundCloud's entry is the one that depends on the deployment, so it is not a constant.**
+ *
+ * This page's whole job is to be accurate about who serves the music, and this line had gone
+ * stale: it still read *"Timbre can play a SoundCloud track you already found, but cannot
+ * find one for you"*, which stopped being true when `SOUNDCLOUD_DIRECT_API` and
+ * `SOUNDCLOUD_API_BASE` arrived. The README was corrected for exactly this and the About page
+ * was not, so the honesty page was the last place still carrying the wrong claim.
+ *
+ * Written as a branch rather than re-corrected, because both sentences are true somewhere:
+ * search is off in the shipped default and on here, and `hasSoundCloud` is the same test
+ * `/api/health` reports.
+ */
+function soundcloudRole(searchable: boolean): string {
+  if (!searchable) {
+    return "Playback only, on this deployment. Paste a SoundCloud link into the search box and it plays, in SoundCloud's own player. What is missing is the catalogue search, which the operator has not turned on — so Timbre can play a SoundCloud track you already found, but cannot find one for you.";
+  }
+  return "Search and playback. Tracks play in SoundCloud's own player, so the play is counted for the uploader exactly as it would be on soundcloud.com. Catalogue search is on for this deployment; it is off by default, because it needs a client_id the operator has to supply.";
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -59,6 +91,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function AboutPage() {
+  // A server component, so the page can report what this deployment actually does rather
+  // than what the default does.
+  const searchable = hasSoundCloud(getEnv());
+
   return (
     <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-6 sm:px-7">
       <h1 className="text-2xl font-extrabold tracking-tight">About Timbre</h1>
@@ -158,7 +194,7 @@ export default function AboutPage() {
                   {style?.label ?? source.id}
                 </a>
                 <p className="mt-1 text-[13px] leading-relaxed text-[var(--fg-dim)]">
-                  {source.role}
+                  {source.id === "soundcloud" ? soundcloudRole(searchable) : source.role}
                 </p>
               </li>
             );

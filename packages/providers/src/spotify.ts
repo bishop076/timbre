@@ -37,8 +37,17 @@ const MUSICBRAINZ = "https://musicbrainz.org/ws/2";
 /** MusicBrainz requires a contactable agent and refuses generic ones. */
 const AGENT = "Timbre/0.1 ( https://github.com/bishop076/timbre )";
 
-/** `/track/{22}`, and the localised `/intl-pt/track/{22}` shape their own share links use. */
-const TRACK_PATH = /^(?:\/intl-[a-z]{2,5})?\/track\/([A-Za-z0-9]{22})\/?$/;
+/**
+ * `/track/{22}`, the localised `/intl-pt/track/{22}` shape their own share links use, and
+ * `/embed/track/{22}`.
+ *
+ * **The embed form was missing and it is not an exotic one.** It is what Spotify's own Share
+ * → Embed dialog produces, what every copied iframe `src` contains, and — measured — what a
+ * reader ends up with after opening the embed directly to check something. Pasting one
+ * returned *"That link isn't from a service Timbre can play"* while the track id sat in plain
+ * sight in the path.
+ */
+const TRACK_PATH = /^(?:\/intl-[a-z]{2,5})?(?:\/embed)?\/track\/([A-Za-z0-9]{22})\/?$/;
 
 interface SpotifyOEmbed {
   title?: string;
