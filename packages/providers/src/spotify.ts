@@ -174,9 +174,14 @@ export async function findSpotifyTrackId(
   const isrc = lookup.isrc?.trim();
   if (!isrc) return null;
 
-  const mbid = await recordingMbid(ctx, isrc);
+  // One request, and usually the answer: the streaming links ride along with the ISRC
+  // lookup that was being made anyway. See `isrcLookup`.
+  const { mbid, spotifyId } = await isrcLookup(ctx, isrc);
+  if (spotifyId) return spotifyId;
   if (!mbid) return null;
 
+  // Only when MusicBrainz carries the recording but nobody has linked it: the dataset is
+  // sparse where the relations are absent, and the reverse, so it is worth the second hop.
   const rows = await labs<LabsRow[]>(
     ctx,
     `/spotify-id-from-mbid/json?recording_mbid=${encodeURIComponent(mbid)}`,
@@ -197,22 +202,57 @@ async function labs<T>(ctx: SearchContext, path: string): Promise<T | null> {
   }
 }
 
-/** ISRC to recording MBID. The weak hop — measured 13/15, and a miss is simply an ISRC the
- * database does not carry. */
-async function recordingMbid(ctx: SearchContext, isrc: string): Promise<string | null> {
+interface MusicBrainzRecording {
+  id?: string;
+  relations?: { url?: { resource?: string } }[];
+}
+
+/** A Spotify track id sitting in a `open.spotify.com/track/…` URL. */
+const SPOTIFY_TRACK_URL = /open\.spotify\.com\/track\/([A-Za-z0-9]+)/;
+
+/**
+ * One ISRC lookup, asking for the streaming links at the same time.
+ *
+ * **`inc=url-rels` is the whole trick.** MusicBrainz records where a recording can be
+ * streamed as ordinary URL relationships, and asking for them costs nothing extra — it is
+ * the same request that was already being made for the MBID. Measured 2026-08-20 against
+ * the songs the labs dataset misses: *Get Lucky*, *Starboy* and *Blinding Lights* all
+ * resolve here in **one request**, and all three return nothing from
+ * `spotify-id-from-mbid`.
+ *
+ * Both are returned because the two are complementary rather than ranked: the relation is
+ * present when an editor added it, the dataset when MetaBrainz's mapping found it.
+ */
+async function isrcLookup(
+  ctx: SearchContext,
+  isrc: string,
+): Promise<{ mbid: string | null; spotifyId: string | null }> {
+  const empty = { mbid: null, spotifyId: null };
   try {
     await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
-    const response = await fetch(`${MUSICBRAINZ}/isrc/${encodeURIComponent(isrc)}?fmt=json`, {
-      signal: ctx.signal,
-      cache: "no-store",
-      headers: { "User-Agent": AGENT, Accept: "application/json" },
-    });
-    if (!response.ok) return null;
-    const body = (await response.json()) as { recordings?: { id?: string }[] };
-    return body.recordings?.[0]?.id ?? null;
+    const response = await fetch(
+      `${MUSICBRAINZ}/isrc/${encodeURIComponent(isrc)}?inc=url-rels&fmt=json`,
+      {
+        signal: ctx.signal,
+        cache: "no-store",
+        headers: { "User-Agent": AGENT, Accept: "application/json" },
+      },
+    );
+    if (!response.ok) return empty;
+
+    const body = (await response.json()) as { recordings?: MusicBrainzRecording[] };
+    const recordings = body.recordings ?? [];
+
+    for (const recording of recordings) {
+      for (const relation of recording.relations ?? []) {
+        const found = SPOTIFY_TRACK_URL.exec(relation.url?.resource ?? "")?.[1];
+        if (found) return { mbid: recordings[0]?.id ?? null, spotifyId: found };
+      }
+    }
+    return { mbid: recordings[0]?.id ?? null, spotifyId: null };
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
-    return null;
+    return empty;
   }
 }
 
