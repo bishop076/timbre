@@ -762,6 +762,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const handleError = useCallback(
     async (reason: string, worthRetrying: boolean) => {
       const song = songRef.current;
+
+      // **Falling through means trying another copy of this song, not another song.**
+      // `findCandidates` searches YouTube Music by title and artist, which is a *fall-through*
+      // only when the song is on YouTube Music to begin with — every candidate is then another
+      // upload of the same recording. For a song that lives somewhere else it is a guess, and
+      // a guess played as if it were the thing asked for.
+      //
+      // A Mixcloud show failed and the search for *"I'm laughing, but I just might cry"*
+      // returned a cat video, which then played, badged YT Music. Reported exactly that way.
+      // Long-form and independent uploads have no YouTube equivalent to find, and their titles
+      // are ordinary sentences that match anything.
+      const onYouTube = song?.sources.some((source) => source.source === "ytmusic") ?? false;
+
       if (!worthRetrying || !song) {
         log("error", `Gave up on ${song ? `“${song.title}”` : "playback"}: ${reason}`);
         setState("unplayable");
@@ -771,7 +784,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       setState("resolving");
       try {
-        if (candidates.current.length === 0) {
+        // Skipped entirely for a song YouTube Music does not carry — the *other* sources
+        // below are still offered, because those are real copies of this recording rather
+        // than a search for its name.
+        if (onYouTube && candidates.current.length === 0) {
           // Cancel the previous, or a fall-through mid-`load` leaves it running and its
           // response overwrites `candidates` for a song no longer playing.
           resolving.current?.abort();
@@ -779,7 +795,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           resolving.current = aborter;
           candidates.current = await findCandidates(song, aborter.signal);
         }
-        const alternative = candidates.current.find((id) => !attempted.current.has(id));
+        const alternative = onYouTube
+          ? candidates.current.find((id) => !attempted.current.has(id))
+          : undefined;
         if (alternative) {
           log(
             "warn",
