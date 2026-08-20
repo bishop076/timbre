@@ -81,7 +81,19 @@ function widgetSrc(key: string): string {
   // started it is long spent and the browser refuses — so the reader pressed a row, got a
   // paused player, and had to press again. The parameter is read while the frame loads, and
   // the frame is created inside the click, so the page's user activation still covers it.
-  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&hide_cover=1&light=0&autoplay=1`;
+  //
+  // **No `hide_cover`, which helps only before it starts.** Idle, the compact form is a
+  // control strip with a subscribe badge and follower counts while the cover form is the
+  // artwork with a title and one play circle — so the cover form is the better of the two to
+  // look at while a show is loading.
+  //
+  // **Once playing they are byte-identical**, both showing Mixcloud's own transport: pause,
+  // scrubber, listener and favourite counts, beside the artwork. Compared directly at the
+  // size Timbre renders it. No parameter removes that, and none should — the embed licence
+  // requires the widget stay fully visible with its logo clickable, which is the same bargain
+  // the YouTube iframe already makes. A second transport beside Timbre's own is the cost of
+  // playing somebody else's audio in their player rather than extracting it.
+  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&light=0&autoplay=1`;
 }
 
 export function MixcloudPlayer({
@@ -123,26 +135,23 @@ export function MixcloudPlayer({
       }
     }, 8000);
 
-    // **Script first, then the frame.** Creating the iframe before the API has loaded means
-    // the widget completes its handshake with nothing listening, and `ready` then never
-    // resolves — the transport sits on a spinner over a player that is perfectly fine.
-    // `PlayerWidget` installs the message listener, so it has to exist before the frame does.
+    // **The frame starts loading now, not after the script.** Waiting for `widgetApi.js`
+    // before creating the iframe put a whole download in front of the first byte of audio,
+    // which is most of why starting a show felt slow. They are independent: the frame can
+    // load while the script does, and `PlayerWidget` only has to be called on an iframe that
+    // already carries its feed — which is how Mixcloud's own examples do it, and the order an
+    // earlier version got backwards, leaving `ready` unresolved and the transport spinning.
+    const host = document.createElement("iframe");
+    host.width = "100%";
+    host.height = "100%";
+    host.frameBorder = "0";
+    host.allow = "autoplay";
+    host.src = widgetSrc(cloudcastKey);
+    container.append(host);
+
     loadApi()
       .then((Mixcloud) => {
         if (cancelled) return;
-
-        const host = document.createElement("iframe");
-        host.width = "100%";
-        host.height = "180";
-        host.frameBorder = "0";
-        host.allow = "autoplay";
-        // **`src` before `PlayerWidget`, which is how Mixcloud's own examples do it** — the
-        // documented usage is an iframe that already has its feed, adopted afterwards. An
-        // earlier version set it last, reasoning that the listener should exist before the
-        // frame could speak; that reversed the order the API expects and `ready` then never
-        // resolved, leaving the transport on a spinner over a widget that had loaded fine.
-        host.src = widgetSrc(cloudcastKey);
-        container.append(host);
 
         const widget = Mixcloud.PlayerWidget(host);
         widgetRef.current = widget;
