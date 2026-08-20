@@ -139,12 +139,26 @@ export function normalizeArtists(artists: string[]): string[] {
   return dedupe(artists.flatMap(splitArtists).map(normalizeLoose).filter(Boolean)).sort();
 }
 
-/** Stable identity for local deduplication: same base title, variants and primary artist.
+/** The pieces a dedupe key is built from, for callers that need to compare them separately.
+ * Merging has to tell "same song, one catalogue also names the guest" apart from "different
+ * song", and a joined string cannot say which part differed. */
+export function dedupeParts(
+  title: string,
+  artists: string[],
+): { base: string; variants: string[]; artists: string[] } {
+  const parsed = parseTitle(title);
+  return {
+    base: parsed.base,
+    variants: parsed.variants,
+    artists: normalizeArtists([...artists, ...parsed.featured]),
+  };
+}
+
+/** Stable identity for local deduplication: same base title, variants and artists.
  * The fallback when a provider gives no ISRC, which is most of YouTube Music. */
 export function dedupeKey(title: string, artists: string[]): string {
-  const parsed = parseTitle(title);
-  const allArtists = normalizeArtists([...artists, ...parsed.featured]);
-  return [parsed.base, parsed.variants.join("+"), allArtists.join("+")].join("|");
+  const parts = dedupeParts(title, artists);
+  return [parts.base, parts.variants.join("+"), parts.artists.join("+")].join("|");
 }
 
 /** Durations agree within a tolerance. Providers disagree by a second or two. */
