@@ -56,6 +56,74 @@ Zero failures across 320 parsed tracks on the five that work. Set it as, for exa
 SOUNDCLOUD_API_BASE=https://soundcloak.tijn.dev/_/api/v2
 ```
 
+## Is it maintained?
+
+Re-checked 2026-08-20.
+
+| | Latest commit | Signals |
+|---|---|---|
+| soundcloak (upstream `git.maid.zone`, HEAD `d51e7c7`) | **2026-05-30** | One maintainer, AGPL-3.0, 22 stars, 6 forks, 1 open issue, first commit 2024-08. Quiet for ~12 weeks, not abandoned. |
+| `tijnjh/sc.tijn.dev` (the fork behind `soundcloak.tijn.dev`) | 2026-06-18 | 21 ahead, 0 behind. |
+| [SearXNG](https://github.com/searxng/searxng) | **2026-08-19** | 35.7k stars, AGPL-3.0, active daily. |
+
+**The GitHub repo is a mirror and it lags.** The instances report commit `196746f`, which
+returns *404 from the GitHub API* — it exists only upstream, as a mirror-sync merge. Judge
+freshness at `git.maid.zone`, never at GitHub.
+
+**SearXNG is far better maintained and still cannot be used as this variable.** Its
+`searx/engines/soundcloud.py` scrapes and caches a guest `client_id` and queries
+`api-v2.soundcloud.com/search` — the same technique — but returns SearXNG's own JSON, so it
+needs a *provider*, not a base URL. Worse for this purpose, public instances refuse the JSON
+API outright: of six of the fastest on searx.space, four answered `429`, one `403` and one
+served HTML. Viable self-hosted only. A Codeberg sweep found nothing else of this shape;
+`Tubular/NewPipeExtractor` is active but a Java library, and `saxist` needs your own OAuth.
+
+## Is it safe?
+
+**The software, read rather than assumed.** In `lib/api/init.go` the destination is
+hardcoded — `SetScheme("https")`, `SetHost("api-v2.soundcloud.com")` — so it cannot be
+turned into an open proxy, and the path must clear the allowlist before anything is sent.
+It calls `req.Header.Reset()` and `req.ResetBody()`, so **headers and body you send are
+discarded rather than forwarded**; only the method, path and query survive. GET only.
+
+**The fork is cosmetic.** `tijnjh/sc.tijn.dev` differs from upstream in six files: README, a
+JPEG of a cat with a boombox, one CSS file and two templates. `lib/api/init.go` is
+byte-identical. No Go code changed — no logging, no rewriting, no extra hop.
+
+**Measured on the live instances:**
+
+- TLS verifies on all five (Let's Encrypt, or Google Trust for `sc.monochrome.tf`), no
+  redirects, and **not one `Set-Cookie`**. All send `Referrer-Policy: no-referrer`.
+- **No tampering.** Resolving the same track on every instance returns an identical `id`,
+  `title`, `isrc` and the same 47 fields — no injected keys — and the title and artist match
+  `soundcloud.com/oembed`, which is an independent source needing no proxy.
+- **None publishes a privacy policy.** `/privacy` answers `200` on all of them, which is a
+  false positive: soundcloak reads the path as a *SoundCloud username* and renders the
+  profile of a user called "privacy" (36 followers). There is no stated logging or retention
+  anywhere. Every query, and your listeners' taste, is visible to whoever runs the box.
+- `sc.monochrome.tf` sits behind **Cloudflare**, so that traffic is visible to Cloudflare too.
+- `soundcloak.tijn.dev` throttles bursts — it returned `429` during a five-instance sweep,
+  then answered eight sequential requests without complaint. Timbre has no cache in front of
+  this and soundcloak's own docs say the proxy does not cache, so a busy deployment will meet
+  that limit.
+
+**The thing that actually decides which to use is duration.** `sc.monochrome.tf` returns Ed
+Sheeran's *Shape of You* as `233759` ms; every maid.zone instance returns `30000`. soundcloak
+gained `UseTokensInAPI` in May 2026, so an instance may attach **its operator's SoundCloud
+account** to your requests, which is what lifts the preview gate. So the choice is:
+
+- **maid.zone** — anonymous, no one's account involved, but 10–18% of results arrive as
+  30-second previews wearing a full track's metadata. In Timbre those are actively harmful:
+  a 30-second *Shape of You* will not merge with Deezer's 3:53 one, so it lists twice, and
+  the length gate in `plausiblySameSong` will refuse it as a fall-through.
+- **sc.monochrome.tf** — correct durations, because your listeners' searches ride on a
+  stranger's SoundCloud account, through Cloudflare.
+
+Neither is a good answer for a deployment other people use. **Run your own** — it is AGPL Go
+with a Dockerfile and a `compose.example.yaml`, set `EnableAPI: true`, and then the operator,
+the token and the logs are all you. That is the only configuration where the honest answer to
+"who is doing this, and who sees the queries" is a name you already trust.
+
 ## Three things the table does not say
 
 **`sc.maid.zone` is a trap.** It answers `/_/info` with `EnableAPI: true` and then returns a
