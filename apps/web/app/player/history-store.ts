@@ -86,7 +86,14 @@ export function useHistory(): PlayedSong[] {
  * than adding a row, or a track on loop fills the whole shelf. */
 export function recordPlay(song: PlayedSong): void {
   const current = getHistorySnapshot();
-  if (current[0]?.id === song.id) return;
+  // Already at the front *and* saying the same thing. The `source` comparison matters: rows
+  // written before it existed carry none, and skipping on id alone meant replaying the song
+  // at the top of the shelf returned early and left that row stale forever — so the one
+  // entry most likely to be played again was the one that could never repair itself.
+  const front = current[0];
+  if (front?.id === song.id && front.source === song.source && front.sourceId === song.sourceId) {
+    return;
+  }
 
   store.save([song, ...current.filter((entry) => entry.id !== song.id)].slice(0, LIMIT));
 }
