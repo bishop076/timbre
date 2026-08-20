@@ -75,6 +75,10 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
       durationMs: firstDefined(sources, (track) => track.durationMs),
       isrc: group.isrc,
       artworkUrl: firstDefined(sources, (track) => track.artworkUrl),
+      // From the same source as the cover, never a different one: these are mirrors of *that*
+      // image, and pairing them with another source's URL would point at bytes that are not
+      // there.
+      artworkFallbacks: sources.find((track) => track.artworkUrl)?.artworkFallbacks,
       sources,
     } satisfies Song;
   });

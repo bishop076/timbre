@@ -10,7 +10,11 @@
 //
 // **Its catalogue is the derivative layer, and nothing else.** Searching Timbre's own
 // suggested queries returned remixes, edits, mashups, covers and Boiler Room sets — not one
-// original. That makes Audius complementary to YouTube Music rather than overlapping, and it
+// original. Note the complementarity is *not* "YouTube Music has originals, Audius has
+// remixes" — YouTube Music returns remixes and hour-long DJ sets on the same queries. The
+// axis is **released versus unreleased**: asked for the exact artist and title of twelve
+// Audius results, YouTube Music had ten of them nowhere (measured 2026-08-19). Audius is the
+// unsigned-upload source. That makes Audius complementary to YouTube Music rather than overlapping, and it
 // makes the variant rule in `@timbre/core` load-bearing here: these titles are *all*
 // variants, and `isrc` is present in the schema but was empty on every track sampled, so the
 // merger falls to title+artist+duration with nothing to backstop it.
@@ -26,6 +30,9 @@ interface AudiusArtwork {
   "150x150"?: string;
   "480x480"?: string;
   "1000x1000"?: string;
+  /** Hosts serving the same content-addressed image. Audius publishes these because its
+   * content nodes are independently operated and go down independently. */
+  mirrors?: string[];
 }
 
 interface AudiusTrack {
@@ -60,6 +67,21 @@ function playable(raw: AudiusTrack): boolean {
   return raw.stream_conditions === null || raw.stream_conditions === undefined;
 }
 
+/** The same image on the other nodes that hold it. The path is content-addressed, so only
+ * the host changes. */
+function artworkMirrors(artwork: AudiusArtwork | null | undefined): string[] | undefined {
+  const primary = artwork?.["480x480"] ?? artwork?.["1000x1000"] ?? artwork?.["150x150"];
+  const mirrors = artwork?.mirrors;
+  if (!primary || !mirrors?.length) return undefined;
+
+  try {
+    const path = new URL(primary).pathname;
+    return mirrors.map((host) => `${host.replace(/\/+$/, "")}${path}`);
+  } catch {
+    return undefined;
+  }
+}
+
 function toSourceTrack(raw: AudiusTrack): SourceTrack {
   const artist = raw.user?.name?.trim() || raw.user?.handle?.trim();
 
@@ -80,6 +102,7 @@ function toSourceTrack(raw: AudiusTrack): SourceTrack {
     isrc: raw.isrc?.trim() || null,
     url: raw.permalink ? `${WEB}${raw.permalink}` : null,
     artworkUrl: raw.artwork?.["480x480"] ?? raw.artwork?.["1000x1000"] ?? raw.artwork?.["150x150"] ?? null,
+    artworkFallbacks: artworkMirrors(raw.artwork),
     playback: "queue",
   };
 }

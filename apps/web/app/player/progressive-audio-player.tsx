@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { usePlayerControls } from "./player-context";
 
@@ -32,11 +32,14 @@ import { usePlayerControls } from "./player-context";
 export function ProgressiveAudioPlayer({
   streamUrl,
   artworkUrl,
+  artworkFallbacks,
   title,
   size = "w-full",
 }: {
   /** Built by `stream-url.ts` from the active source and its id. */
   streamUrl: string | null;
+  /** Mirrors of the cover, walked in order when one refuses. */
+  artworkFallbacks?: string[];
   artworkUrl?: string | null;
   title?: string;
   /** Sizing only, so the player area does not collapse when the source has no video. */
@@ -54,6 +57,18 @@ export function ProgressiveAudioPlayer({
   } = usePlayerControls();
 
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Audius artwork lives on whichever content node holds the track, and those go down
+  // independently — one measured `200`, another `503`, another `502` for the *same* image.
+  // The path is content-addressed so any mirror will do; walking them beats a broken frame.
+  const covers = [artworkUrl, ...(artworkFallbacks ?? [])].filter(
+    (url): url is string => Boolean(url),
+  );
+  // Held with the cover it belongs to, so a track change resets the walk without an effect —
+  // clearing state at the top of one is a synchronous setState and cascades a render.
+  const [skipped, setSkipped] = useState<{ key: string; count: number }>({ key: "", count: 0 });
+  const coverKey = artworkUrl ?? "";
+  const cover = covers[skipped.key === coverKey ? skipped.count : 0] ?? null;
 
   const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
@@ -137,9 +152,23 @@ export function ProgressiveAudioPlayer({
       {/* The player area is sized for YouTube's 200×200 minimum and is a hole without a
           video in it, so the cover fills it. Not proxied: Audius artwork is served by the
           same operator-run content nodes as the audio — see `app/artwork-url.ts`. */}
-      {artworkUrl ? (
+      {cover ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={artworkUrl} alt="" aria-hidden className="h-full w-full object-cover" />
+        <img
+          key={cover}
+          src={cover}
+          alt=""
+          aria-hidden
+          className="h-full w-full object-cover"
+          // Past the last mirror the element is dropped entirely — a black panel is honest,
+          // a broken-image glyph is not.
+          onError={() =>
+            setSkipped((previous) => ({
+              key: coverKey,
+              count: (previous.key === coverKey ? previous.count : 0) + 1,
+            }))
+          }
+        />
       ) : null}
       <audio ref={audioRef} src={streamUrl ?? undefined} preload="auto" className="sr-only">
         {title ? <track kind="metadata" label={title} /> : null}
