@@ -98,7 +98,6 @@ export function MixcloudPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<MixcloudWidget | null>(null);
   const readyRef = useRef(false);
-  const loadedKey = useRef<string | null>(null);
 
   const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
@@ -107,7 +106,7 @@ export function MixcloudPlayer({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || widgetRef.current || !cloudcastKey) return;
+    if (!container || !cloudcastKey) return;
 
     let cancelled = false;
     const blocked = setTimeout(() => {
@@ -132,7 +131,6 @@ export function MixcloudPlayer({
         host.height = "180";
         host.frameBorder = "0";
         host.allow = "autoplay";
-        loadedKey.current = cloudcastKey;
         container.append(host);
 
         const widget = Mixcloud.PlayerWidget(host);
@@ -145,25 +143,28 @@ export function MixcloudPlayer({
           clearTimeout(blocked);
           readyRef.current = true;
 
-          widget.events.play.on(() => handlers.current.handleStateChange("playing"));
-          widget.events.pause.on(() => handlers.current.handleStateChange("paused"));
-          widget.events.ended.on(() => handlers.current.handleEnded());
+          // Every handler checks `cancelled` first. The widget is discarded with its iframe
+          // on a show change, but its message listener is not something this API lets us
+          // detach — so a late event from the previous show must not be allowed to report a
+          // position against the current one's length.
+          widget.events.play.on(() => {
+            if (!cancelled) handlers.current.handleStateChange("playing");
+          });
+          widget.events.pause.on(() => {
+            if (!cancelled) handlers.current.handleStateChange("paused");
+          });
+          widget.events.ended.on(() => {
+            if (!cancelled) handlers.current.handleEnded();
+          });
           widget.events.progress.on((position, duration) => {
-            if (duration > 0) handlers.current.handleProgress(position, duration);
+            if (!cancelled && duration > 0) handlers.current.handleProgress(position, duration);
           });
           // Exclusives and rights-restricted uploads fail here with no code, exactly like a
           // YouTube upload that refuses to embed. Retryable: the controller can look the same
           // thing up elsewhere.
-          widget.events.error.on(() =>
-            handlers.current.handleError("Mixcloud couldn't play this one.", true),
-          );
-
-          // **Ready means playable, so say so before trying to play.** The widget reports
-          // `play` only once audio actually starts, and a browser that refuses autoplay
-          // never gets there — leaving the transport on a spinner with a perfectly good
-          // player sitting under it. Settling to `paused` first means the worst case is a
-          // player waiting to be pressed, which is true, rather than one that looks broken.
-          handlers.current.handleStateChange("paused");
+          widget.events.error.on(() => {
+            if (!cancelled) handlers.current.handleError("Mixcloud couldn't play this one.", true);
+          });
 
           // Duration is known at ready and does not need a `progress` tick to arrive, so the
           // bar can show the length immediately rather than `-:-` until the first event.
@@ -174,10 +175,19 @@ export function MixcloudPlayer({
             })
             .catch(() => undefined);
 
-          void widget.play().catch(() => {
-            // A refused autoplay is a paused player, not a failure — and it is already
-            // paused, so there is nothing further to say.
-          });
+          // **Ask, never assert.** An earlier version reported `paused` here so a refused
+          // autoplay would not leave the transport on a spinner. When autoplay *succeeded*
+          // that was a lie: the bar showed a play button over a playing track, and pressing
+          // it called `togglePlay()` and stopped the music. Reported symptom, and exactly
+          // this line. The widget knows which it is, so it is asked.
+          void widget
+            .play()
+            .catch(() => undefined)
+            .then(() => widget.getIsPaused())
+            .then((paused) => {
+              if (!cancelled) handlers.current.handleStateChange(paused ? "paused" : "playing");
+            })
+            .catch(() => undefined);
         });
       })
       .catch(() => {
@@ -193,20 +203,12 @@ export function MixcloudPlayer({
       readyRef.current = false;
       container.querySelector("iframe")?.remove();
     };
-    // Seeds the iframe's initial src only; a change is handled below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // A different show means a different feed, and the widget takes it in the URL rather than
-  // through a load() call, so the frame is re-pointed.
-  useEffect(() => {
-    if (!cloudcastKey) return;
-    if (loadedKey.current === cloudcastKey) return;
-    const frame = containerRef.current?.querySelector("iframe");
-    if (!frame) return;
-    loadedKey.current = cloudcastKey;
-    readyRef.current = false;
-    frame.src = widgetSrc(cloudcastKey);
+    // **Keyed on the show, so each one gets its own widget and its own teardown.** The
+    // SoundCloud widget takes a new track through `load()`; Mixcloud's takes the feed in the
+    // iframe URL, and re-pointing `src` under a live widget leaves the old instance bound and
+    // still emitting. Two sets of `progress` events then interleave and the transport reports
+    // one show's position against another's length — reported as "it lags when I switch",
+    // and visible as a bar reading 22:59 / 74:57 beside a widget showing 1:02:10.
   }, [cloudcastKey]);
 
   useEffect(() => {
