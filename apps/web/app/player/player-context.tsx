@@ -721,11 +721,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     modeStore.save({ ...modes, repeat: mode });
   }, []);
 
+  /**
+   * Tears the players down — `queue-ops` asks for this when an edit empties the queue.
+   *
+   * **Every handle, not the two the queue started with.** `now-playing.tsx` chooses its
+   * player from these fields, so one left set keeps that player mounted and playing a song
+   * that is no longer in the queue. Clearing `videoId` and `soundcloudUrl` alone meant
+   * removing the last entry while an Audius track played left the `<audio>` element running
+   * — and with `current` now null the bar unmounts, so there was not even a pause button to
+   * reach for. Mixcloud's widget did the same.
+   */
   const stop = useCallback(() => {
     resolving.current?.abort();
     songRef.current = null;
     setVideoId(null);
     setSoundcloudUrl(null);
+    setStreamUrl(null);
+    setSpotifyTrackId(null);
+    setMixcloudKey(null);
+    setPlayingPreview(false);
     setActiveSource(null);
     setState("idle");
     setProblem(null);

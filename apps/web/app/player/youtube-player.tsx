@@ -21,6 +21,8 @@ interface YTPlayer {
   getOptions?(): string[];
   playVideo(): void;
   pauseVideo(): void;
+  /** Stops and unloads, unlike `pauseVideo`. Used when the controller lets a song go. */
+  stopVideo(): void;
   setVolume(level: number): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
@@ -210,6 +212,13 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             unloadCaptions(playerRef.current);
           },
           onStateChange: (event: { data: number }) => {
+            // Nothing the iframe says once the controller has let the id go is about the
+            // song on screen. `stopVideo()` below reports a state of its own, and an upload
+            // cancelled mid-load can still emit one after; either would be read as the new
+            // song pausing, or — if it arrives as ENDED — advance the queue past a track
+            // that never played.
+            if (!videoIdRef.current) return;
+
             const { ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
             // Backstop for players that never fire `onApiChange`. Clear pending timers
             // first: `PLAYING` fires on every resume, so the array grew by three each time.
@@ -227,6 +236,10 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             else if (event.data === CUED) handlers.current.handleStateChange("paused");
           },
           onError: (event: { data: number }) => {
+            // Same reason as `onStateChange`: an error for an upload already let go would
+            // start a fall-through hunt for a song nobody is waiting on any more.
+            if (!videoIdRef.current) return;
+
             // Log the raw code, never just the sentence (BUGS.md B-6): a player under
             // 200×200 (B-1) and a barred embed (B-2) produce the same friendly text, so
             // the message alone asserts a cause nobody checked.
@@ -270,7 +283,36 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
   }, []);
 
   useEffect(() => {
-    if (!videoId) return;
+    /*
+     * **A null id has to stop the player, not merely be ignored.**
+     *
+     * Every other source stops by disappearing: `now-playing.tsx` picks its player from
+     * `soundcloudUrl`, `mixcloudKey`, `spotifyTrackId` and `streamUrl`, so clearing one
+     * unmounts the component and takes the audio with it. This player is the *fallback* of
+     * that chain — mounted whenever nothing else claims the slot, including before anything
+     * has ever played — so it is never unmounted and cannot stop itself that way.
+     *
+     * Returning early on null therefore left the previous upload audible. `load()` clears
+     * the id at the top of every track change, and the two ways out of its search branch
+     * both end with the id still null: a song that resolves to nothing shows *"No copy of
+     * this song exists"* while the song before it plays on, and the round trip in between
+     * plays it under the new track's name. `stop()` is the same fault at queue end.
+     *
+     * The queued id goes too, or a player that only becomes ready after this starts the
+     * upload that was just cancelled.
+     */
+    if (!videoId) {
+      pendingId.current = null;
+      if (readyRef.current) {
+        try {
+          playerRef.current?.stopVideo();
+        } catch {
+          // Mid-teardown, or a build without it. Nothing is left to stop either way.
+        }
+      }
+      return;
+    }
+
     if (readyRef.current && playerRef.current) {
       playerRef.current.loadVideoById(videoId);
       // A new video brings its own caption module back with it.

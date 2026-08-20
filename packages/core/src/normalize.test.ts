@@ -89,3 +89,32 @@ test("duration tolerance absorbs provider disagreement but not real differences"
   assert.ok(!durationsMatch(201_000, 260_000), "a minute apart is not");
   assert.ok(durationsMatch(201_000, null), "unknown duration is not evidence against a match");
 });
+
+test("a bare 'with' mid-title is part of the title, not a guest credit", () => {
+  // Regression: `with` was read as a feature marker anywhere, so an ordinary preposition
+  // truncated the title and invented a credit out of the words after it. The base is what
+  // the lyrics route asks LRCLIB for and what a merge is keyed on, so both were wrong.
+  for (const [title, base] of [
+    ["Stay With Me", "stay with me"],
+    ["Dancing With Myself", "dancing with myself"],
+    ["The Girl With The Faraway Eyes", "the girl with the faraway eyes"],
+  ] as const) {
+    const parsed = parseTitle(title);
+    assert.equal(parsed.base, base);
+    assert.deepEqual(parsed.featured, [], `${title} credits nobody`);
+  }
+});
+
+test("a bracketed 'with' is still the guest credit it plainly is", () => {
+  const parsed = parseTitle("Save Your Tears (with Ariana Grande)");
+  assert.equal(parsed.base, "save your tears");
+  assert.deepEqual(parsed.featured, ["ariana grande"]);
+  // And the trailing-dash form Spotify uses for the same thing.
+  assert.deepEqual(parseTitle("Save Your Tears - with Ariana Grande").featured, ["ariana grande"]);
+});
+
+test("two songs sharing a prefix stay apart once 'with' stops truncating them", () => {
+  // "Stay" and "Stay With Me" both reduced to base "stay", and containment made the
+  // credits agree, so one three-minute pair could merge into a single row.
+  assert.notEqual(dedupeKey("Stay", ["Sam Smith"]), dedupeKey("Stay With Me", ["Sam Smith"]));
+});
