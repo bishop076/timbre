@@ -10,6 +10,67 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.2.0 — 21 August 2026
+
+### Added
+
+- **player** — the source badges and Apple/Deezer/Spotify players, and a ladder that can leave YouTube
+- **spotify** — search Spotify on the reader's own account, via PKCE in the browser
+- **spotify** — read the track id from MusicBrainz's own streaming links
+- **soundcloud** — let the operator unblock catalogue search without renting a server
+- **player** — play the catalogue's own 30-second preview when nothing plays the song
+- **player** — draw the Mixcloud cover full size, widget as a strip beneath
+- **mixcloud** — the compact player, so its chrome stops competing with Timbre's
+- **providers** — add Mixcloud — the long form, and the inverse of every other source
+- **spotify** — find the track without an account, and offer it beside the song
+- **spotify** — playable — as a panel the reader presses, which is the only way it can be
+- **providers** — add the Live Music Archive, and give the two self-played sources one player
+- **soundcloud** — searchable when the operator points it somewhere, and always resolvable
+- **providers** — add Audius, the first source Timbre plays itself
+- **search** — order results by playability, not by registry position
+
+### Fixed
+
+- **soundcloud** — read the client_id from the homepage, and make the resolver recoverable
+- **player** — stop the iframe on a null id, tear down every player, and stop reading "with" as a credit
+- **profile** — let Escape cancel the name editor, and keep a heading while it is open
+- **api** — refuse a blank query instead of searching every source for it
+- **artist** — stop printing the title again as the album under it
+- **artist** — keep only whole-name credits, not fragments of the name
+- **merge** — stop a guest credit splitting one recording into two rows
+- **player** — require the same artist before playing a fall-through copy
+- **player** — let a history row with no source repair itself instead of dead-ending
+- **player** — detach the message listener Mixcloud's widget leaks per show
+- **player** — remember which source played, and never substitute a stranger
+- **player** — never substitute a different song when one will not play
+- **mixcloud** — one click, not two — autoplay belongs in the frame URL
+- **mixcloud** — set the feed before adopting the frame, and size the clock to the track
+- **player** — re-seed the radio for every source, and show the song's own length
+- **audius** — walk the artwork mirrors instead of showing a broken frame
+- **mixcloud** — stop pausing what it just started, and drop the previous show's widget
+- **search** — say "you're offline" instead of "Failed to fetch"
+- **search** — say which links can be pasted, because two sources were invisible
+- **a11y** — say the time, reach both ends, and give two pages a heading
+- **mobile** — no floating video card for a source that has no video
+- **player** — say what actually failed, and offer a way out that exists
+- **player** — fetch the radio once per song, not once per attempt
+- **player** — warm the fall-through list, and give archive tracks a cover
+- **audius** — ask for the listen to be counted
+- **merge** — a blank ISRC is not a song id
+- **art** — only proxy and resize hosts that can actually serve it
+- **web** — stop sending HSTS from the dev server
+- **profile** — mark the display-name cookie Secure
+- **ytmusic** — accept a list of shared secrets, so rotation is not an outage
+- **web** — security headers, and make the charts route actually static
+- **art** — re-check the allowlist on every redirect, and meter the route
+- **playlists** — a bad song record can no longer brick every route
+
+### Faster
+
+- **mixcloud** — start the frame before the script, and use the cover form while idle
+
+22 further changes under the hood — refactoring, docs and tests.
+
 ## 0.1.3 — 18 August 2026
 
 ### Fixed
