@@ -12,6 +12,7 @@ import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
 import { sourceStyle } from "./sources";
+import { SOURCE_TAG } from "./source-tag";
 
 // Fetched when a tab opens. The genre chart is not here at all — the server page renders
 // it and passes it in, so it costs no JavaScript. The split
@@ -187,11 +188,13 @@ function SongsView({ rankings }: { rankings: Rankings }) {
                   {song.charts.map((chart) => {
                     const style = sourceStyle(chart);
                     return (
+                      // Same tone as every other source name — see `source-tag.tsx`. The
+                      // chart position rides along, which is what makes this one different
+                      // from a plain `<SourceTag>`.
                       <span
                         key={chart}
                         title={`#${song.positions[chart]} on ${style.label}`}
-                        style={{ color: style.color, backgroundColor: style.tint }}
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums"
+                        className={`${SOURCE_TAG} shrink-0 tabular-nums`}
                       >
                         {style.short} #{song.positions[chart]}
                       </span>

@@ -5,6 +5,8 @@
  * fall-through plays another copy of your song or something else entirely.
  */
 
+import { dedupeParts } from "@timbre/core";
+
 import type { Song } from "../types";
 
 /** Words that carry meaning, lowercased. Punctuation and case differ constantly between
@@ -87,4 +89,40 @@ export function plausiblySameSong(seed: Song, found: Song): boolean {
   const hits = wanted.filter((word) => haystack.has(word)).length;
 
   return hits >= Math.max(2, Math.ceil(wanted.length / 2)) || hits === wanted.length;
+}
+
+/**
+ * Whether two rows are the same recording — for deciding a **duplicate**, not for deciding
+ * what to play.
+ *
+ * A separate question from {@link plausiblySameSong}, and deliberately not built on it. That
+ * one scores shared words across the whole raw title, which is right when the alternative is
+ * playing nothing, but here decoration is shared between unrelated songs: `Strange Land
+ * (Acoustic Version)` and `La La Lost You (Acoustic Version)` clear its threshold on
+ * *acoustic* and *version* alone, so a real suggestion disappeared as a duplicate. Measured
+ * against a live NIKI radio, which is where that pair came from.
+ *
+ * `parseTitle` already separates a title's name from its packaging, so this compares the
+ * names: `Pandemonium` and `Pandemonium (Visualizer Video)` share a base, `Strange Land` and
+ * `La La Lost You` do not, and no threshold has to be guessed at.
+ *
+ * **Variants are ignored, unlike the merger's own key.** An acoustic take is a different
+ * recording — which is why `dedupeKey` keeps them apart, and why the radio may legitimately
+ * list both — but offering the acoustic of a song already queued is a weak suggestion, and
+ * this panel would rather be short than repeat itself.
+ */
+export function sameRecording(a: Song, b: Song): boolean {
+  // Settles the ordinary case for nothing: both lists come from the same merge, which
+  // derives an id from the ISRC or the dedupe key, so a repeat arrives already identical.
+  if (a.id === b.id) return true;
+  if (a.isrc && b.isrc) return a.isrc === b.isrc;
+
+  const left = dedupeParts(a.title, a.artists);
+  const right = dedupeParts(b.title, b.artists);
+  if (!left.base || left.base !== right.base) return false;
+
+  // Same name is not enough — NIKI and Drake both have a *Take Care*. Skipped rather than
+  // failed when either side credits nobody, since a row can arrive with no artist at all.
+  if (left.artists.length === 0 || right.artists.length === 0) return true;
+  return left.artists.some((name) => right.artists.includes(name));
 }
