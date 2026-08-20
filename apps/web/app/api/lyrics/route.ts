@@ -2,6 +2,7 @@ import { parseTitle } from "@timbre/core";
 import { z } from "zod";
 
 import { guard } from "@/lib/api";
+import { optionalQueryText, queryText } from "@/lib/query-text";
 
 /*
  * Lyrics, from LRCLIB — the only keyless source licensing synced lines. Proxied rather
@@ -14,9 +15,9 @@ export const revalidate = 86_400;
 const USER_AGENT = "Timbre (https://github.com/bishop076/timbre)";
 
 const querySchema = z.object({
-  title: z.string().min(1).max(300),
-  artist: z.string().min(1).max(300),
-  album: z.string().max(300).optional(),
+  title: queryText(300),
+  artist: queryText(300),
+  album: optionalQueryText(300),
   /** Seconds. Used to pick between several matches of the same name. */
   duration: z.coerce.number().int().positive().max(86_400).optional(),
   /** A specific LRCLIB record, when the automatic match was wrong — one song routinely has a dozen entries. */

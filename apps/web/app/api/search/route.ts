@@ -2,6 +2,7 @@ import { mergeTracks, searchAll } from "@timbre/providers";
 import { z } from "zod";
 
 import { cached, guard } from "@/lib/api";
+import { queryText } from "@/lib/query-text";
 import { getProviderRuntime } from "@/lib/providers";
 
 /** Cross-source search. Public and unauthenticated by design — Timbre is meant to be
@@ -9,7 +10,7 @@ import { getProviderRuntime } from "@/lib/providers";
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
-  q: z.string().min(1).max(200),
+  q: queryText(200),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
