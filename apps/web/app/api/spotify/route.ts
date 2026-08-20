@@ -2,6 +2,7 @@ import { findSpotifyTrackId } from "@timbre/providers";
 import { z } from "zod";
 
 import { getProviderRuntime } from "@/lib/providers";
+import { optionalQueryText, queryText } from "@/lib/query-text";
 import { guard, CACHE_CONTROL_DAY } from "@/lib/api";
 
 // Where else this song lives. Answers the one question that kept Spotify out of Timbre —
@@ -23,10 +24,10 @@ import { guard, CACHE_CONTROL_DAY } from "@/lib/api";
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
-  title: z.string().min(1).max(300),
-  artist: z.string().max(200).optional(),
-  album: z.string().max(300).optional(),
-  isrc: z.string().max(24).optional(),
+  title: queryText(300),
+  artist: optionalQueryText(200),
+  album: optionalQueryText(300),
+  isrc: optionalQueryText(24),
 });
 
 /**
