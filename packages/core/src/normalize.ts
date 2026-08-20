@@ -37,7 +37,29 @@ const VARIANT_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /\bradio\s+(?:edit|version)\b/i, tag: "edit" },
 ];
 
-const FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?|with)\s+(.+)$/i;
+/**
+ * A guest credit, by a marker that can only ever mean one. Safe to look for anywhere in a
+ * title, because none of these words is ordinary English in this position.
+ */
+const FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?)\s+(.+)$/i;
+
+/**
+ * The same, plus a bare `with` — and **only** for a bracketed segment or a trailing
+ * `- suffix`, which is already known to be an aside rather than part of the sentence.
+ *
+ * `with` is an ordinary preposition, so looking for it inline read the middle of a title as
+ * a credit list: *Stay With Me* parsed to base `stay` featuring `me`, *Dancing With Myself*
+ * to `dancing` featuring `myself`, and *The Girl With The Faraway Eyes* to `the girl`
+ * featuring `the faraway eyes`. That is wrong in three places at once — it is the title the
+ * lyrics route asks LRCLIB for, so those songs looked up the wrong words entirely; it puts
+ * a noun into the credits that `normalizeArtists` then compares against real names; and it
+ * truncates the base a merge is keyed on, so a song and a longer song starting with it
+ * could collapse into one row.
+ *
+ * `(with Ariana Grande)` — the form that actually means a guest — is bracketed, and is
+ * unaffected.
+ */
+const SEGMENT_FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?|with)\s+(.+)$/i;
 
 export interface ParsedTitle {
   /** Title with noise and variant markers removed, normalized for comparison. */
@@ -82,7 +104,7 @@ export function parseTitle(raw: string): ParsedTitle {
   }
 
   const classify = (text: string): void => {
-    const feature = FEATURE_PATTERN.exec(text);
+    const feature = SEGMENT_FEATURE_PATTERN.exec(text);
     if (feature?.[1]) {
       featured.push(...splitArtists(feature[1]));
       return;
@@ -109,7 +131,8 @@ export function parseTitle(raw: string): ParsedTitle {
 
   for (const segment of segments) classify(segment);
 
-  // A "feat." clause can also sit inline in the main title with no brackets.
+  // A "feat." clause can also sit inline in the main title with no brackets. Only the
+  // unambiguous markers here — see `SEGMENT_FEATURE_PATTERN` for why `with` is not one.
   const inlineFeature = FEATURE_PATTERN.exec(main);
   if (inlineFeature?.[1]) {
     featured.push(...splitArtists(inlineFeature[1]));
