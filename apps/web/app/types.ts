@@ -19,6 +19,9 @@ export interface Song {
   durationMs: number | null;
   isrc: string | null;
   artworkUrl: string | null;
+  /** Other hosts serving the same image — Audius content nodes flap individually, so the
+   * cover falls through them rather than showing a broken frame. */
+  artworkFallbacks?: string[];
   sources: SourceTrack[];
 }
 
