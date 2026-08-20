@@ -19,6 +19,13 @@ export interface SourceTrack extends CanonicalTrack {
   sourceId: string;
   url: string | null;
   artworkUrl: string | null;
+  /** Other hosts serving the *same* image, tried in order when `artworkUrl` fails.
+   *
+   * Only Audius populates this, and it is not defensiveness: its artwork lives on whichever
+   * content node holds the track, and those flap individually. Measured — of the three
+   * mirrors one track advertised, one answered `200`, one `503` and one `502`. The image is
+   * content-addressed, so every mirror serves byte-identical bytes and any of them will do. */
+  artworkFallbacks?: string[];
   playback: Playback;
   /** YouTube Music's upload kind — `_ATV` (Topic art track), `_OMV`, `_UGC`. Art tracks
    * measured barred from embedding ~7% of the time, official videos never, hence the ranker. */
@@ -36,6 +43,8 @@ export interface Song {
   durationMs: number | null;
   isrc: string | null;
   artworkUrl: string | null;
+  /** Mirrors for {@link artworkUrl}, from whichever source supplied it. */
+  artworkFallbacks?: string[];
   /** Every source carrying this recording, best playback option first. */
   sources: SourceTrack[];
 }
