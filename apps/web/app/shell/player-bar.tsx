@@ -92,6 +92,7 @@ export function PlayerBar() {
     current,
     state,
     problem,
+    playingPreview,
     activeSource,
     streamUrl,
     panelOpen,
@@ -196,6 +197,13 @@ export function PlayerBar() {
               >
                 {state === "resolving" ? "finding a copy…" : source.short}
               </span>
+            )}
+            {/* Beside the source badge rather than instead of it: which catalogue supplied
+                the clip is a terms requirement, and how much of the song it is, is the part
+                the listener needs. Only reached when everything that could play the whole
+                thing has refused. */}
+            {playingPreview && state !== "unplayable" && (
+              <span className="shrink-0 text-amber-500">30-second preview</span>
             )}
           </p>
         </>
