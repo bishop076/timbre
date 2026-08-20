@@ -287,6 +287,7 @@ export function NowPlayingPanel() {
             <ProgressiveAudioPlayer
               streamUrl={streamUrl}
               artworkUrl={current?.artworkUrl ?? null}
+              artworkFallbacks={current?.artworkFallbacks}
               title={current?.title}
               size={expanded ? "h-full w-full" : "h-[200px] w-full"}
             />
