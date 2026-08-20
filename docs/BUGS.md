@@ -75,7 +75,7 @@ fixed, B-2's merged video results were appended and then cut straight back off.
 
 ---
 
-## B-4 · Fall-through candidates restricted to one source `OPEN`
+## B-4 · Fall-through candidates restricted to one source `FIXED`
 
 **Severity:** low — residual after B-2
 
@@ -96,6 +96,24 @@ all, there is no second source to fall back to.
 SoundCloud widget → iTunes/Deezer preview). Already a TODO at
 the roadmap. Measured need: **0 of 15 songs** had every candidate
 barred, so this is genuinely long-tail.
+
+**Fixed 2026-08-20 (`57af890`), by the last rung of that same ladder.** The long tail
+arrived: *Just Because of You (feat. Henneysee)* is on Apple and Deezer only, its ISRC is
+too obscure for MusicBrainz so the Spotify resolver returns nothing, and all ten of YouTube
+Music's answers for its title are different songs — Mark Ronson, Lloyd, YNW Melly — which
+the guard correctly refuses. Everything behaved and the listener got silence.
+
+Deezer answers `preview` and Apple answers `previewUrl` on the very search responses Timbre
+already reads, so the clip costs no key and no extra request. It is the floor of the ladder
+and stays there: `playback` remains `link`, so nothing about ranking or auto-advance changes
+and a clip never displaces a full copy, and it is reached only after YouTube's candidates,
+the progressive sources, Spotify's embed and SoundCloud have all refused. The bar reads
+"30-second preview" beside the source badge — announcing a clip as the song would be a worse
+answer than the refusal it replaces.
+
+What remains true from the entry above: every *YouTube* candidate still comes from the
+`ytmusic` source. What is no longer true is that a song YouTube Music does not carry has
+nowhere left to go.
 
 ---
 
@@ -237,3 +255,104 @@ set is cleared before the new one is scheduled.
 **B-1 and B-2 were separate faults presenting identically.** B-1 broke everything
 and was fixed first; B-2 broke ~7% and was masked underneath it. Fixing one
 without the other would have looked like a partial fix in both directions.
+
+---
+
+## B-10 · Clearing the video id never stopped the iframe `FIXED`
+
+**Severity:** high — the previous song kept playing over the next one
+
+| | |
+|---|---|
+| **Symptom** | Pick a song that has to be looked up, and the one before it keeps playing while the bar shows the new one. If the lookup finds nothing, the old song plays on for ever under a panel reading *"No copy of this song exists on YouTube Music."* |
+| **Cause** | `youtube-player.tsx` returned early on a null `videoId`. Every other source stops by *disappearing* — `now-playing.tsx` picks its player from `soundcloudUrl`, `mixcloudKey`, `spotifyTrackId` and `streamUrl`, so clearing one unmounts the component and takes the audio with it. The YouTube player is the **fallback** of that chain, mounted whenever nothing else claims the slot and therefore never unmounted, so it was the one source that could not stop itself that way. |
+| **Fix** | A null id now stops the player and drops any queued id. `onStateChange` and `onError` ignore events that arrive once the id is gone. |
+
+`load()` clears the id at the top of every track change, so the window is open on
+every song that reaches the search branch — one that carries no directly playable
+source. Both exits from that branch leave the id null, which is why the "for ever"
+case is reachable rather than theoretical: a *Recently played* row written before
+histories stored a source has no source **and no preview**, so it cannot fall to
+the thirty-second clip that rescues a Deezer- or Apple-only track.
+
+The event guards are not decoration. `stopVideo()` reports a state of its own, and
+an upload cancelled mid-load can emit one after; either would have been read as the
+*new* song pausing, and an `ENDED` would have advanced the queue past a track that
+never played.
+
+---
+
+## B-11 · `stop()` tore down two players out of five `FIXED`
+
+**Severity:** medium — latent, and only because no caller reaches it yet
+
+`queue-ops.ts` documents `stopped` as *"the queue is now empty and the players
+should be torn down"*. `stop()` cleared `videoId` and `soundcloudUrl` and left
+`streamUrl`, `spotifyTrackId`, `mixcloudKey` and `playingPreview` set — and those
+are the very fields `now-playing.tsx` chooses a player from, so the player stayed
+mounted and playing a song no longer in the queue.
+
+Worse where it bites: `current` is null by then, so `PlayerBar` unmounts and there
+is **no transport at all** — an Audius track would simply play itself out.
+
+Not reachable from the UI today: the queue panel only lists `queue.slice(index + 1)`,
+so every `removeAt` it can issue is above the playhead and `stopped` is never
+returned. It is one call site away from being reachable, and the function was wrong
+on its own terms regardless.
+
+---
+
+## B-12 · A bare "with" in a title was read as a guest credit `FIXED`
+
+**Severity:** medium — wrong lyrics, and a merge key that could collapse two songs
+
+`normalize.ts` looked for `feat.|featuring|ft.|with` anywhere in a title. The first
+three can only ever mean a credit; `with` is an ordinary preposition, so the middle
+of a title parsed as a credit list:
+
+| Title | Base | "Featured" |
+|---|---|---|
+| Stay With Me | `stay` | `me` |
+| Dancing With Myself | `dancing` | `myself` |
+| The Girl With The Faraway Eyes | `the girl` | `the faraway eyes` |
+
+Three faults at once. The base is what `/api/lyrics` sends LRCLIB as `track_name`,
+so those songs looked up the wrong words entirely. The noun lands in the credits,
+where `normalizeArtists` compares it against real names. And the base is what a
+merge is keyed on, so *Stay* and *Stay With Me* by one artist reduced to the same
+key — with containment making the credits agree, three seconds of duration
+tolerance was all that stood between them.
+
+**Fix:** two patterns. The unambiguous markers are looked for anywhere; `with`
+only inside a bracket or after a trailing `- `, where the segment is already known
+to be an aside. `(with Ariana Grande)` — the form that does mean a guest — was
+never the problem and is unaffected.
+
+---
+
+## B-13 · The SoundCloud `client_id` resolver could not recover, and would not stop asking `FIXED`
+
+**Severity:** medium — opt-in path only (`SOUNDCLOUD_DIRECT_API`), off by default
+
+Three faults in `createClientIdResolver`, all in the caching and the deadline
+rather than the parsers, which were the only part under test.
+
+**A hung upstream killed it permanently.** `fetch` has no timeout, and `inFlight`
+is only cleared when the promise settles. One socket that accepted the connection
+and then said nothing left it pending for ever; every later search joined the same
+dead crawl, waited out the deadline and abstained. Measured: three calls, one
+request, and never another. Now the whole crawl shares one `AbortSignal.timeout`,
+so it always settles.
+
+**A refusal was retried by every search.** No negative caching, and a crawl is up
+to ten requests to soundcloud.com. The likeliest failure is exactly the one that
+must not loop — a datacentre IP being refused, which is the normal answer for a
+free serverless host — so an instance that could not resolve asked the host that
+had already said no once per search for as long as it ran. Measured five requests
+for five searches; now one, then a five-minute back-off.
+
+**The deadline leaked a timer per miss.** `Promise.race` abandons the loser rather
+than cancelling it, so every search that gave up waiting left a live 2.5s timer —
+enough to hold a scale-to-zero container awake after it had already answered.
+
+All three now have tests; previously only `assetScripts` and `clientIdFrom` did.
