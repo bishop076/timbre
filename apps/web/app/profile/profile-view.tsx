@@ -211,11 +211,26 @@ export function ProfileView({
 
               {editing ? (
                 <form onSubmit={save} className="flex max-w-sm flex-col gap-2">
+                  {/* The heading *is* the name, so editing it replaced the page's only `h1`
+                      with an input and left the document with no heading at all for as long
+                      as the field was open. Kept for the outline while the visible one is
+                      gone, the same way `page.tsx` and `search/page.tsx` carry a heading for
+                      pages whose title is a picture. */}
+                  <h1 className="sr-only">{displayName}</h1>
                   <input
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
+                    // Escape cancels. Every other dismissible thing here binds it — both
+                    // playlist menus and the search box — and this editor was the one place
+                    // where the Cancel button was the only way out.
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") setEditing(false);
+                    }}
                     maxLength={60}
                     autoFocus
+                    // Otherwise the field's only name is its placeholder, which a screen
+                    // reader stops announcing as soon as there is anything typed in it.
+                    aria-label="Display name"
                     placeholder="What should we call you?"
                     className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-2)] px-3.5 py-2.5 text-xl font-extrabold outline-none placeholder:font-medium placeholder:text-[var(--fg-faint)]"
                   />
