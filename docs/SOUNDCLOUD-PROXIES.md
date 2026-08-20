@@ -107,42 +107,40 @@ byte-identical. No Go code changed — no logging, no rewriting, no extra hop.
   this and soundcloak's own docs say the proxy does not cache, so a busy deployment will meet
   that limit.
 
-**The thing that actually decides which to use is duration.** `sc.monochrome.tf` returns Ed
-Sheeran's *Shape of You* as `233759` ms; every maid.zone instance returns `30000`. soundcloak
-gained `UseTokensInAPI` in May 2026, so an instance may attach **its operator's SoundCloud
-account** to your requests, which is what lifts the preview gate. So the choice is:
+**The thing that actually decides which to use is duration — but not for the reason first
+given here.** `sc.monochrome.tf` returns Ed Sheeran's *Shape of You* as `233759` ms; both
+maid.zone instances return `30000`.
 
-- **maid.zone** — anonymous, no one's account involved, but 10–18% of results arrive as
-  30-second previews wearing a full track's metadata. In Timbre those are actively harmful:
-  a 30-second *Shape of You* will not merge with Deezer's 3:53 one, so it lists twice, and
-  the length gate in `plausiblySameSong` will refuse it as a fall-through.
-- **sc.monochrome.tf** — correct durations, because your listeners' searches ride on a
-  stranger's SoundCloud account, through Cloudflare.
+> **Correction, 2026-08-20.** This section originally attributed that to
+> `UseTokensInAPI` attaching the operator's SoundCloud account. **That was wrong**, and the
+> measurement that refutes it is one line of the same table: `soundcloak.tijn.dev` returns
+> the full duration too, and it is neither the Cloudflare instance nor a plausible
+> account-carrying one — it is the *fastest and least gated* of the five. Asking every
+> instance for the same track id, within one minute:
+>
+> | route | policy | duration | `snipped` |
+> |---|---|---|---|
+> | direct api-v2, fresh anonymous id | `MONETIZE` | 233759 | false |
+> | `sc.monochrome.tf` | `MONETIZE` | 233759 | false |
+> | `soundcloak.tijn.dev` | `MONETIZE` | 233759 | false |
+> | `sc1.maid.zone` | `SNIP` | 30000 | true |
+> | `sc3.maid.zone` | `SNIP` | 30000 | true |
+>
+> **A fresh anonymous `client_id`, with no account of any kind, returns the full duration.**
+> So a token is not what lifts the gate; the gate is not there when the credential is fresh.
+> `/_/info` does not expose `UseTokensInAPI` at all, so the original claim was inference from
+> a setting that cannot be observed from outside. The explanation that fits every row is
+> simpler: **the maid.zone instances are serving a stale or degraded `client_id`.**
 
-Neither is a good answer for a deployment other people use. **Run your own** — it is AGPL Go
-with a Dockerfile and a `compose.example.yaml`, set `EnableAPI: true`, and then the operator,
-the token and the logs are all you. That is the only configuration where the honest answer to
-"who is doing this, and who sees the queries" is a name you already trust.
+Since `aa5a5ca` drops `policy: "SNIP"` rows rather than listing them, that rate is no longer
+a measure of bad rows — it is a measure of **catalogue silently thrown away**: 15–18% on
+`sc1`/`sc3`, 8% on `sc.monochrome.tf`, 4% on `soundcloak.tijn.dev`, 3% direct. Choosing a
+maid.zone instance now costs about one result in six, with no error and nothing in a log.
 
-## Three things the table does not say
-
-**`sc.maid.zone` is a trap.** It answers `/_/info` with `EnableAPI: true` and then returns a
-0-byte `404` from **Caddy** for every `/_/api/v2/*` path — the edge blocks what the app
-advertises. It is also not on the official instance list; the real ones are `sc1`/`sc2`/`sc3`.
-Trust the request, never the capability flag.
-
-**Some results are previews, and how many depends on the instance.** SoundCloud serves
-preview-gated tracks that look like ordinary ones and report `duration: 30000` — the hazard
-`docs/BLOCKED.md` already names. It ranges from 4% to 18% *for identical queries*, which
-means it is a property of how the instance authenticates rather than of the catalogue.
-Timbre does not currently mark them, so a 3-minute song can arrive as a 30-second one.
-
-**Pointing at someone else's instance moves the exposure, it does not remove it.** Your
-deployment's requests, and the taste of everyone using it, arrive at a stranger's server;
-their `client_id` scraping is what makes it work, and their operator carries that. The
-comment in `.env.example` about moving the technique to you assumes you run it. Running your
-own from the AGPL source is the only version where the answer to "who is doing this" is you.
-
+That failure is invisible by construction — a degraded credential answers `200`, so nothing
+retries and nothing warns. The cheap detection is one request per credential: ask api-v2 for
+a known `AD_SUPPORTED` track and look at `policy`; `SNIP` means the credential is the
+degraded kind. Not built yet.
 
 ## If you are serverless and free, run neither
 
