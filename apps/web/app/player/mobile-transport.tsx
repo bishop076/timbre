@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { formatClock } from "../duration";
+import { formatElapsed } from "../duration";
 import {
   ChevronIcon,
   NextIcon,
@@ -87,8 +87,8 @@ export function MobileTransport() {
       <div>
         <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
         <div className="mt-0.5 flex justify-between font-mono text-[11px] tabular-nums text-[var(--fg-faint)]">
-          <span>{formatClock(position)}</span>
-          <span>{formatClock(duration)}</span>
+          <span>{formatElapsed(position, duration)}</span>
+          <span>{formatElapsed(duration, duration)}</span>
         </div>
       </div>
 
