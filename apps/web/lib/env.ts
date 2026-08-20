@@ -25,6 +25,12 @@ const schema = z.object({
    * Setting it moves the technique, the IP and the terms exposure to whoever set it.
    */
   SOUNDCLOUD_API_BASE: z.url().optional(),
+  /** Lets Timbre call `api-v2` itself, resolving a guest `client_id` from soundcloud.com.
+   * Off everywhere by default — see `soundcloud-client-id.ts` for what turning it on means. */
+  SOUNDCLOUD_DIRECT_API: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((value) => value === "true" || value === "1"),
 
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 });
@@ -53,6 +59,7 @@ export function getEnv(): Env {
 /** Whether SoundCloud's catalogue can be searched at all — by either route. Playback
  * never needed either and is always available through `resolve`. */
 export function hasSoundCloud(env: Env): boolean {
+  if (env.SOUNDCLOUD_DIRECT_API) return true;
   if (env.SOUNDCLOUD_API_BASE) return true;
   return Boolean(env.SOUNDCLOUD_CLIENT_ID && env.SOUNDCLOUD_CLIENT_SECRET);
 }
