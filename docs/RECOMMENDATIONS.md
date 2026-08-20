@@ -32,8 +32,35 @@ Implementation: `packages/providers/src/recommend.ts`, tested in
 | `ytmusic:related` | `get_song_related(browseId)` → *You might also like* | derived differently by YouTube, and it disagrees |
 | `deezer:artist-top` | `/artist/{id}/top` | the seed artist's canonical hits |
 | `deezer:similar-artists` | `/artist/{id}/related` → each artist's `/top` | the only list that reaches *away* from the seed's own catalogue |
+| `audius:versions` | `/v1/tracks/search?query={title} {artist}` | other people's takes on the song that just played — remixes, edits, mashups |
 
-All four are keyless and unauthenticated.
+All five are keyless and unauthenticated.
+
+### Audius contributes a different *kind* of evidence
+
+`audius:versions` is deliberately unlike the other four, and it is ranked near the
+tail for a reason.
+
+**It is seeded by title, never by artist.** Audius has no usable artist lookup for
+the music Timbre plays — measured 2026-08-19, `/users/search` matched *The Weeknd*
+to "Louis The Child", *Harry Styles* to a user called "Harry", and *Flume* to three
+empty accounts squatting the name. That is not merely unhelpful in the way Deezer's
+artist radio is below; it is confidently **wrong**, and would feed a stranger's
+catalogue into the ranking wearing the seed artist's name.
+
+**It scores low on consensus by construction, and that is correct.** Audius's
+catalogue is the derivative layer — every result for Timbre's own suggested
+searches was a remix, edit, mashup or DJ set, and **not one original**. So it
+agrees with nobody almost by definition, and the consensus multiplier will keep it
+where it belongs: "and here are six remixes of that" is a garnish on the ranking,
+not the body of it. One list, capped at 8 versions.
+
+**`/tracks/trending` is verified working and deliberately unused.** Explore fuses
+Deezer and Apple so that agreeing on two beats charting higher on one. Audius
+trending is a disjoint population — independent uploads that by construction agree
+with neither — so adding it would dilute that consensus rather than enrich it. If
+it is wanted, it belongs in its own shelf, which is a product decision rather than
+a provider one.
 
 **Apple contributes nothing.** The iTunes Search API has no related, similar or
 radio endpoint at any price, and Apple has the tightest budget of any source
@@ -41,7 +68,8 @@ radio endpoint at any price, and Apple has the tightest budget of any source
 **SoundCloud contributes nothing** either: its catalogue cannot be searched
 without a paid account (see `BLOCKED.md`). Both abstain rather than guess, and
 the ranker treats an absent list as *no evidence* rather than as evidence
-against.
+against. Audius abstains the same way — `radio()` returns `[]` rather than an
+empty list, because pushing one would tell the ranker Audius answered.
 
 ### Deezer: `/top`, not `/radio` — and that was measured
 

@@ -44,6 +44,36 @@ The container is still here. [`apps/ytmusic/Dockerfile`](../apps/ytmusic/Dockerf
 is built by CI on every release so it cannot rot, and it is the escape hatch if
 this tier is the next one to change.
 
+### The cold cost that remains, measured
+
+Serverless removes the 30–60 second sleep, but not everything. **`ytmusicapi`
+pays a one-off warm-up on the first search of every client instance**, measured
+2026-08-19 against `ytmusicapi 1.12.2`:
+
+```
+YTMusic() construction   0.0024s   (20 instances in 0.048s — no network call)
+first  .search()         3.1–3.4s  (consistent across fresh processes)
+second .search()         0.9s
+```
+
+Three things follow, and none of them is obvious from the code:
+
+- **Construction is free; the cost is on the first search.** So deferring
+  construction — which `app/client.py` does — does not avoid the wait, it only
+  moves where it is paid. Nothing can avoid it on a genuinely cold container.
+- **The warm-up is per `YTMusic` instance, not per process.** A second client
+  created in the same process pays the full 3.1s again. That makes the `_clients`
+  cache in `app/client.py` load-bearing for latency, not just tidiness, and it is
+  why the slot count should stay small and fixed. Anything that clears it —
+  including `reset_client()` — re-pays the warm-up per slot.
+- **Budget ~3.3s for the first search after a cold start, and ~0.9s after.** Two
+  concurrent upstream searches on two slots warm in parallel, so a cold container
+  pays roughly one warm-up, not two.
+
+This is a real number to hold against the container option rather than a reason to
+change course: a 3.3-second first search still beats a 30–60 second cold boot by
+an order of magnitude.
+
 ## 1. The sidecar
 
 New Vercel project → this repository → **Root Directory `apps/ytmusic`**.
