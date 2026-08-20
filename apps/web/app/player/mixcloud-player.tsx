@@ -76,7 +76,12 @@ function loadApi(): Promise<NonNullable<Window["Mixcloud"]>> {
 /** Mirrors `mixcloudWidgetUrl` in `packages/providers/src/mixcloud.ts` — a client component
  * must not import a server-only package, see `app/types.ts`. */
 function widgetSrc(key: string): string {
-  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&hide_cover=1&light=0`;
+  // **`autoplay=1` is the only thing that makes one click enough.** Asking the widget to
+  // play over postMessage happens after `ready` resolves, by which point the click that
+  // started it is long spent and the browser refuses — so the reader pressed a row, got a
+  // paused player, and had to press again. The parameter is read while the frame loads, and
+  // the frame is created inside the click, so the page's user activation still covers it.
+  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&hide_cover=1&light=0&autoplay=1`;
 }
 
 export function MixcloudPlayer({
