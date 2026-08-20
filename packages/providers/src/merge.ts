@@ -2,28 +2,58 @@
  * Merging results from several sources into one song per recording. Getting it wrong is
  * worse than not merging: collapsing a live take into the studio version means the user
  * queues one song and hears another. An exact ISRC match is decisive; otherwise
- * `dedupeKey` guarded by duration agreement, which carries most of the weight since most
+ * the dedupe parts guarded by duration agreement, which carries most of the weight since most
  * of YouTube Music has no ISRC, and which keeps variant markers so "(Live)" never merges.
  */
 
-import { dedupeKey, durationsMatch } from "@timbre/core";
+import { dedupeParts, durationsMatch } from "@timbre/core";
 
 import { byPlayability, type Song, type SourceTrack } from "./types.ts";
 
+interface Parts {
+  base: string;
+  variants: string[];
+  artists: string[];
+}
+
 interface Group {
   key: string;
+  parts: Parts;
   isrc: string | null;
   tracks: SourceTrack[];
 }
 
-function matches(group: Group, track: SourceTrack, key: string): boolean {
+/**
+ * Whether two credit lists describe the same billing.
+ *
+ * **Equal, or one contained in the other.** Catalogues disagree about guests constantly:
+ * Deezer billed "This Was Your Song" to Lé Real while Apple billed the same recording to
+ * "Lé Real & Jordan Maxwell", so the two never shared a key and the song listed twice.
+ * Containment rather than a shared primary artist, because `normalizeArtists` sorts and
+ * leaves no primary to compare — and containment is the stricter of the two anyway.
+ *
+ * Two empty lists agree; one empty against one credited does not, or a track naming nobody
+ * would swallow every other recording that shares its title.
+ */
+function creditsAgree(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return a.length === b.length;
+  return a.every((name) => b.includes(name)) || b.every((name) => a.includes(name));
+}
+
+function matches(group: Group, track: SourceTrack, parts: Parts): boolean {
   // Decisive both ways: two different ISRCs are different recordings, identical titles or not.
   if (group.isrc && track.isrc) {
     return group.isrc === track.isrc;
   }
-  if (group.key !== key) return false;
 
-  // Durations must still agree — that separates a radio edit from an extended mix.
+  if (group.parts.base !== parts.base) return false;
+  // Variants are the whole point of keeping them: "(Live)" must never merge into the studio
+  // take, however well the credits and the length agree.
+  if (group.parts.variants.join("+") !== parts.variants.join("+")) return false;
+  if (!creditsAgree(group.parts.artists, parts.artists)) return false;
+
+  // Durations must still agree — that separates a radio edit from an extended mix, and it is
+  // what stops the relaxed credit test collapsing two different recordings.
   return group.tracks.every((existing) => durationsMatch(existing.durationMs, track.durationMs));
 }
 
@@ -42,8 +72,9 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
   const groups: Group[] = [];
 
   for (const track of tracks) {
-    const key = dedupeKey(track.title, track.artists);
-    const existing = groups.find((group) => matches(group, track, key));
+    const parts = dedupeParts(track.title, track.artists);
+    const key = [parts.base, parts.variants.join("+"), parts.artists.join("+")].join("|");
+    const existing = groups.find((group) => matches(group, track, parts));
 
     if (existing) {
       // Never list one source twice; its first result is its most relevant.
@@ -54,7 +85,7 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
       continue;
     }
 
-    groups.push({ key, isrc: track.isrc, tracks: [track] });
+    groups.push({ key, parts, isrc: track.isrc, tracks: [track] });
   }
 
   return groups.map((group) => {
