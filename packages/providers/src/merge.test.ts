@@ -182,3 +182,65 @@ test("input order is preserved so the primary source drives relevance", () => {
 test("an empty result set produces no songs", () => {
   assert.deepEqual(mergeTracks([]), []);
 });
+
+test("one catalogue naming the guest does not split the recording in two", () => {
+  // Reported as the same song listed three times on an artist page. Deezer billed it to the
+  // artist alone and Apple to "artist & guest", so the two never shared a key.
+  const songs = mergeTracks([
+    track({
+      source: "deezer",
+      title: "This Was Your Song",
+      artists: ["Lé Real"],
+      durationMs: 93_000,
+      isrc: "QM42K1730629",
+    }),
+    track({
+      source: "apple",
+      title: "This Was Your Song",
+      artists: ["Lé Real & Jordan Maxwell"],
+      durationMs: 92_004,
+    }),
+  ]);
+
+  assert.equal(songs.length, 1);
+  assert.deepEqual(
+    songs[0]!.sources.map((source) => source.source),
+    ["deezer", "apple"],
+  );
+});
+
+test("a different edit still stands apart, however the credits are written", () => {
+  // The third of those three rows: same title, same artist, five seconds shorter. Duration is
+  // what keeps the relaxed credit test honest, so this one must not be swept in.
+  const songs = mergeTracks([
+    track({ source: "deezer", title: "This Was Your Song", artists: ["Lé Real"], durationMs: 93_000 }),
+    track({
+      source: "apple",
+      title: "This Was Your Song",
+      artists: ["Lé Real & Jordan Maxwell"],
+      durationMs: 88_050,
+    }),
+  ]);
+
+  assert.equal(songs.length, 2);
+});
+
+test("a track crediting nobody does not swallow every song of the same name", () => {
+  const songs = mergeTracks([
+    track({ source: "ytmusic", title: "Halo", artists: [] }),
+    track({ source: "deezer", title: "Halo", artists: ["Beyoncé"] }),
+  ]);
+
+  assert.equal(songs.length, 2);
+});
+
+test("a live take stays apart even when one side also names the guest", () => {
+  // Containment must not reach across a variant marker: that is the failure this whole file
+  // exists to prevent.
+  const songs = mergeTracks([
+    track({ source: "deezer", title: "Wonderwall", artists: ["Oasis"] }),
+    track({ source: "apple", title: "Wonderwall (Live)", artists: ["Oasis & Noel Gallagher"] }),
+  ]);
+
+  assert.equal(songs.length, 2);
+});
