@@ -82,18 +82,18 @@ function widgetSrc(key: string): string {
   // paused player, and had to press again. The parameter is read while the frame loads, and
   // the frame is created inside the click, so the page's user activation still covers it.
   //
-  // **No `hide_cover`, which helps only before it starts.** Idle, the compact form is a
-  // control strip with a subscribe badge and follower counts while the cover form is the
-  // artwork with a title and one play circle — so the cover form is the better of the two to
-  // look at while a show is loading.
+  // **`mini=1` is the smallest honest form.** Mixcloud's full player is a second transport
+  // beside Timbre's own — pause, scrubber, subscribe badge, and listener, favourite and
+  // repost counters — and the licence rules out hiding, cropping or overlaying it. What it
+  // does not rule out is asking for the compact player Mixcloud themselves publish a
+  // parameter for: `mini` drops the badge and all three counters and collapses to a ~60px
+  // strip of artwork, pause, scrubber and time. Compared side by side at the size Timbre
+  // renders, playing, that is the whole difference — the cover and default forms are
+  // identical to each other once a show starts.
   //
-  // **Once playing they are byte-identical**, both showing Mixcloud's own transport: pause,
-  // scrubber, listener and favourite counts, beside the artwork. Compared directly at the
-  // size Timbre renders it. No parameter removes that, and none should — the embed licence
-  // requires the widget stay fully visible with its logo clickable, which is the same bargain
-  // the YouTube iframe already makes. A second transport beside Timbre's own is the cost of
-  // playing somebody else's audio in their player rather than extracting it.
-  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&light=0&autoplay=1`;
+  // Only this player is affected. `mini` is a Mixcloud widget parameter and reaches nothing
+  // else; YouTube and SoundCloud keep their own embeds unchanged.
+  return `https://player-widget.mixcloud.com/widget/iframe/?feed=${encodeURIComponent(key)}&mini=1&light=0&autoplay=1`;
 }
 
 export function MixcloudPlayer({
@@ -143,7 +143,9 @@ export function MixcloudPlayer({
     // earlier version got backwards, leaving `ready` unresolved and the transport spinning.
     const host = document.createElement("iframe");
     host.width = "100%";
-    host.height = "100%";
+    // The mini form is a fixed ~60px strip; stretching the frame past it only adds dead
+    // black, so the frame is sized to the player rather than to the box.
+    host.height = "60";
     host.frameBorder = "0";
     host.allow = "autoplay";
     host.src = widgetSrc(cloudcastKey);
@@ -248,7 +250,7 @@ export function MixcloudPlayer({
   return (
     <div
       ref={containerRef}
-      className={`overflow-hidden bg-black ${size}`}
+      className={`flex items-center justify-center overflow-hidden bg-black ${size}`}
       aria-label="Mixcloud player"
     />
   );
