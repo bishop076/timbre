@@ -35,14 +35,26 @@ the product is, not a drift. Nothing is downloaded or cached; the bytes still co
 Audius's own CDN.
 
 Its catalogue is worth knowing about: searching for chart songs returns **remixes, edits,
-mashups and hour-long DJ sets, not the originals**. That makes it complementary to YouTube
-Music rather than overlapping — YouTube Music has *Blinding Lights*, Audius has three
-remixes of it — and it is why the variant rule below is load-bearing rather than a nicety.
+mashups and hour-long DJ sets, not the originals** — which is why the variant rule below is
+load-bearing rather than a nicety.
 
-SoundCloud has a working player and provider, but is **not** registered: catalogue search
-needs a `client_id` behind a paid account, so nothing surfaces its tracks yet. There *is* a
-verified route for self-hosters that needs no approval — see
-[docs/BLOCKED.md](docs/BLOCKED.md). Spotify is not integrated at all — see below.
+**What makes it complementary is narrower than "it has the remixes", and worth stating
+accurately.** YouTube Music has remixes too — asked for `flume remix` it returns the Lorde
+and Disclosure ones, and `boiler room set` returns hour-long DJ sets. The difference is
+*whose* remixes. Taking Audius results and searching YouTube Music for that exact artist and
+title, **10 of 12 were not there at all** (measured 2026-08-19): YouTube Music carries the
+derivatives that were licensed and distributed, Audius carries the ones uploaded by the
+person who made them. Audius is the unsigned-upload source, not the remix source.
+
+SoundCloud is registered and its player works, but **catalogue search is off unless the
+operator turns it on**: searching needs a `client_id` behind a paid account, so by default
+nothing surfaces its tracks and a pasted URL is the only way one arrives. Two opt-in routes
+need no approval — point `SOUNDCLOUD_API_BASE` at an api-v2 proxy you run, or set
+`SOUNDCLOUD_DIRECT_API` and let Timbre resolve a guest id itself. Both are off in the hosted
+build, and turning either on moves the technique and the terms exposure to whoever turned it
+on. See [docs/BLOCKED.md](docs/BLOCKED.md) and
+[docs/SOUNDCLOUD-PROXIES.md](docs/SOUNDCLOUD-PROXIES.md). Spotify is not integrated at all —
+see below.
 
 ## What it deliberately doesn't do
 
