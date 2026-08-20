@@ -23,6 +23,10 @@ Two processes and one `.env`. **No database, no Docker, no accounts, no API keys
 ```bash
 pnpm install
 
+# Hooks are versioned rather than installed, so this is opt-in per clone. It refuses a
+# commit whose files import something git does not have — see below.
+git config core.hooksPath .githooks
+
 cp .env.example .env
 # then set YTMUSIC_SHARED_SECRET — see below
 
@@ -153,3 +157,33 @@ cd apps/ytmusic && .venv/Scripts/python.exe -m pytest -q
 
 Changing a Python dependency means re-running `uv lock` and committing the result, or CI
 fails on `--locked`.
+
+## The pre-commit hook, and what it is for
+
+`git config core.hooksPath .githooks` turns on one check: **a staged file may not import
+something git will not have after the commit.**
+
+It exists because that happened twice on 2026-08-20, both times the same way. Two agents
+share this working directory, so `git add <path>` stages the *whole* file including whatever
+the other one was midway through writing. The second time it swept in a `search-results.tsx`
+that imported a brand-new `./source-badges` — a file still untracked — so the commit
+referenced something it did not contain. **HEAD did not build, and nothing local said so**,
+because the working tree had the file and every check passed.
+
+A hook cannot tell whose hunk is whose. It can tell that the commit is missing a file it
+depends on, which is the consequence that matters and the shape both incidents took.
+
+If it fires, do not stage the missing file to silence it — check whether you have just
+staged a whole file you only partly wrote. Rebuild the staged copy from `HEAD` plus your own
+change instead:
+
+```bash
+cp path/to/file.tsx /tmp/theirs           # keep the working version
+git show HEAD:path/to/file.tsx > path/to/file.tsx
+#   re-apply only your change, then:
+git add path/to/file.tsx && git commit
+cp /tmp/theirs path/to/file.tsx           # give their work back, uncommitted
+```
+
+Verified against every tracked file in the repo: 181 scanned, 370 relative imports, zero
+false positives.
