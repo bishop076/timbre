@@ -30,6 +30,16 @@ export interface SourceTrack extends CanonicalTrack {
   /** YouTube Music's upload kind — `_ATV` (Topic art track), `_OMV`, `_UGC`. Art tracks
    * measured barred from embedding ~7% of the time, official videos never, hence the ranker. */
   videoType?: string | null;
+  /**
+   * A thirty-second clip the catalogue publishes itself, for songs nothing else can play.
+   *
+   * Deezer answers `preview` and Apple answers `previewUrl` on the same search responses
+   * Timbre already reads for metadata — no key, no second request, and a field whose entire
+   * purpose is to be played. It is the last rung of the fall-through ladder and never
+   * competes with a full copy: `playback` stays `link`, so nothing about ranking or
+   * auto-advance changes, and it is reached only when every real source has refused.
+   */
+  previewUrl?: string | null;
 }
 
 /** A recording with every source that has it — what the queue holds, so the controller can
