@@ -98,9 +98,14 @@ function widgetSrc(key: string): string {
 
 export function MixcloudPlayer({
   cloudcastKey,
+  artworkUrl,
   size = "w-full",
 }: {
   cloudcastKey: string | null;
+  /** The show's cover, drawn at full size above the strip. Mixcloud publishes 640px art and
+   * the compact widget renders it as a thumbnail, which is a waste of the only picture a
+   * radio show has. */
+  artworkUrl?: string | null;
   size?: string;
 }) {
   const {
@@ -248,10 +253,19 @@ export function MixcloudPlayer({
   }, [registerToggle]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`flex items-center justify-center overflow-hidden bg-black ${size}`}
-      aria-label="Mixcloud player"
-    />
+    // The cover fills the panel and the widget sits under it as a strip. Mixcloud's full
+    // player is a second transport competing with Timbre's own; its compact one is 60px of
+    // scrubber beside a thumbnail. Neither is nice to look at, and the licence rules out
+    // hiding either — so the artwork is drawn at the size it deserves and the widget keeps
+    // its place beneath, wholly visible, exactly as required.
+    <div className={`flex flex-col overflow-hidden bg-black ${size}`}>
+      {artworkUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={artworkUrl} alt="" aria-hidden className="min-h-0 w-full flex-1 object-cover" />
+      ) : (
+        <div className="min-h-0 flex-1" />
+      )}
+      <div ref={containerRef} className="h-[60px] shrink-0" aria-label="Mixcloud player" />
+    </div>
   );
 }
