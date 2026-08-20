@@ -32,3 +32,24 @@ export function formatClock(seconds: number): string {
   const total = Math.floor(seconds);
   return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, "0")}`;
 }
+
+/**
+ * A playhead sized to the track it is inside — `m:ss` for a song, `h:mm:ss` for anything an
+ * hour or longer, and the same shape for both halves of the readout.
+ *
+ * {@link formatClock} refuses hours so a running clock cannot gain a field mid-track and
+ * shift the row. That reasoning holds for the *position* and not for the *total*, which is
+ * fixed — and applying it to both rendered a two-hour Mixcloud set as **`120:33`** while the
+ * credits beside it correctly said `2:00:33`.
+ *
+ * Choosing the shape from the total rather than from the position keeps the original promise:
+ * the field count is decided once, when the track loads, so nothing shifts while it plays.
+ */
+export function formatElapsed(seconds: number, totalSeconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return totalSeconds >= 3600 ? "0:00:00" : "0:00";
+  if (totalSeconds < 3600) return formatClock(seconds);
+
+  const total = Math.floor(seconds);
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${Math.floor(total / 3600)}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+}
