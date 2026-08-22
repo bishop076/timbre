@@ -61,6 +61,22 @@ def test_anything_else_is_refused(monkeypatch):
         assert not security.matches(wrong), wrong
 
 
+def test_a_non_ascii_secret_is_refused_rather_than_raising(monkeypatch):
+    """A header byte >= 0x80 must be a 401, not a 500.
+
+    `hmac.compare_digest` raises `TypeError` on `str` holding anything outside ASCII, and
+    ASGI hands header values over as latin-1 — so `X-Timbre-Secret: caf\\xe9` used to reach
+    `matches` as a non-ASCII `str` and take the request down. An unhandled exception is a
+    refusal too, but it is a billed invocation and it answers 500 where every other wrong
+    secret answers 401. See docs/SECURITY.md, S-7.
+    """
+    security = build(monkeypatch, f"{OLD},{NEW}")("app.security")
+
+    for wrong in ["café", "\xe9", "🎵", NEW[:-1] + "é", "\udce9"]:
+        # The assertion is that this returns at all: before the fix each of these raised.
+        assert not security.matches(wrong), wrong
+
+
 def test_a_missing_secret_refuses_to_boot(monkeypatch):
     load = build(monkeypatch, None)
     with pytest.raises(Exception, match="refuses to start"):
