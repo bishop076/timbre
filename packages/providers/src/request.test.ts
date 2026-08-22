@@ -254,7 +254,10 @@ test("deezer: an error object in a 200 body still throws", async () => {
   );
 });
 
-test("the caller's abort signal is passed to fetch", async () => {
+test("the caller's abort still aborts, now that a deadline rides alongside it", async () => {
+  // Was `assert.equal(init.signal, controller.signal)` — identity, which stopped holding
+  // the moment a deadline had to be composed in. What matters was never which object
+  // arrives, it is that the caller's abort still reaches fetch, so that is what is asserted.
   const controller = new AbortController();
   const acquired: string[] = [];
   const limiter = {
@@ -269,7 +272,82 @@ test("the caller's abort signal is passed to fetch", async () => {
     async () => json({ data: [] }),
     async (calls) => {
       await get(ctx, "https://api.deezer.com/chart");
-      assert.equal(calls[0]!.init!.signal, controller.signal);
+      const passed = calls[0]!.init!.signal!;
+      assert.ok(passed, "a signal must reach fetch even when the caller supplied one");
+      assert.equal(passed.aborted, false);
+      controller.abort();
+      assert.equal(passed.aborted, true, "the caller's abort must still propagate");
+    },
+  );
+});
+
+test("a request with no caller signal still carries a deadline", async () => {
+  // The shape `/api/search` actually uses: no signal, deliberately, because a cached call
+  // is shared. Before this there was nothing to stop a silent host holding the search open
+  // until the platform killed the function.
+  const { ctx } = stubContext();
+  const get = createRequester({ id: "audius", label: "Audius", init: () => ({}) });
+
+  await withFetch(
+    async () => json({ data: [] }),
+    async (calls) => {
+      await get(ctx, "https://api.audius.co/v1/tracks/search");
+      assert.ok(calls[0]!.init!.signal, "no signal reached fetch, so nothing bounds the call");
+    },
+  );
+});
+
+test("a host that never answers becomes a timeout naming the source, not a hang", async () => {
+  const { ctx } = stubContext();
+  // 20ms rather than the real six seconds: the behaviour under test is that the deadline
+  // fires at all, and a test suite must not wait out a production timeout to prove it.
+  const get = createRequester({
+    id: "mixcloud",
+    label: "Mixcloud",
+    init: () => ({}),
+    deadlineMs: 20,
+  });
+
+  await withFetch(
+    // Accepts the connection and then says nothing — the failure mode that motivated this,
+    // and the one an unreachable host does *not* reproduce.
+    (_target, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      }),
+    async () => {
+      await assert.rejects(
+        () => get(ctx, "https://api.mixcloud.com/search"),
+        (error: unknown) => {
+          assert.ok(error instanceof ProviderError);
+          assert.equal(error.kind, "transient");
+          assert.equal(error.message, "Mixcloud did not answer within 0.02s.");
+          return true;
+        },
+      );
+    },
+  );
+});
+
+test("a 200 that is not JSON is this source's error, not a raw SyntaxError", async () => {
+  // An upstream serving an HTML error page with a 200 used to throw straight past every
+  // caller that catches ProviderError — including searchAll, which would have reported it
+  // as an unlabelled failure.
+  const { ctx } = stubContext();
+  const get = createRequester({ id: "deezer", label: "Deezer", init: () => ({}) });
+
+  await withFetch(
+    async () => new Response("<html>502 Bad Gateway</html>", { status: 200 }),
+    async () => {
+      await assert.rejects(
+        () => get(ctx, "https://api.deezer.com/chart"),
+        (error: unknown) => {
+          assert.ok(error instanceof ProviderError, "must not escape as a bare SyntaxError");
+          assert.equal(error.kind, "transient");
+          assert.equal(error.message, "Deezer returned an unreadable body.");
+          return true;
+        },
+      );
     },
   );
 });
