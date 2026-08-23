@@ -16,6 +16,7 @@ const globalForApi = globalThis as unknown as {
   __timbreResponseCache?: ReturnType<typeof createCache<unknown>>;
   __timbreInboundLimiter?: ReturnType<typeof createRateLimiter>;
   __timbreArtworkLimiter?: ReturnType<typeof createRateLimiter>;
+  __timbreHealthLimiter?: ReturnType<typeof createRateLimiter>;
 };
 
 /** Two minutes: absorbs a debounced search box and a room looking up the same song. */
@@ -42,6 +43,22 @@ const RATE_WINDOW_MS = 60_000;
  * docs/EXPOSURE.md, E-7.
  */
 const ARTWORK_RATE_LIMIT = 300;
+
+/**
+ * 30/minute/client, for `/api/health` alone.
+ *
+ * The route stays **open** — uptime monitoring that needs a credential is monitoring
+ * nobody sets up, and the response says nothing an attacker wants. What it does say is
+ * expensive: `/api/health` is the only route where one inbound request is *two*
+ * invocations, because it asks the sidecar in turn. That made it the cheapest way to spend
+ * the deployment's allowance. See docs/EXPOSURE.md, E-10.
+ *
+ * Its own budget rather than `guard`'s, for the reason artwork has one: a monitor and a
+ * reader routinely share an address behind NAT, and a probe refused because somebody
+ * searched a lot reads as an outage. Thirty a minute is a probe every two seconds — far
+ * above any monitor's interval and far below a loop.
+ */
+const HEALTH_RATE_LIMIT = 30;
 
 function responseCache() {
   return (globalForApi.__timbreResponseCache ??= createCache<unknown>({
@@ -71,6 +88,17 @@ export function guardArtwork(request: Request): Response | null {
     request,
     (globalForApi.__timbreArtworkLimiter ??= createRateLimiter({
       limit: ARTWORK_RATE_LIMIT,
+      windowMs: RATE_WINDOW_MS,
+    })),
+  );
+}
+
+/** The liveness probe's own budget. Open to everyone, metered like everything else. */
+export function guardHealth(request: Request): Response | null {
+  return meter(
+    request,
+    (globalForApi.__timbreHealthLimiter ??= createRateLimiter({
+      limit: HEALTH_RATE_LIMIT,
       windowMs: RATE_WINDOW_MS,
     })),
   );
