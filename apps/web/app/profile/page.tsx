@@ -16,7 +16,11 @@ export const metadata = { title: "Your profile — Timbre" };
 function readName(raw: string | undefined): string | null {
   if (!raw) return null;
   try {
-    return decodeURIComponent(raw) || null;
+    // Capped on the way in as well as on the way out. `setDisplayName` bounds what Timbre
+    // writes, but a cookie is a value the client sends, so the writer is not the only thing
+    // that can put one there — the same reason `playlists/store.ts` revalidates storage it
+    // wrote itself. React escapes this either way; the cap is about size, not safety.
+    return decodeURIComponent(raw).slice(0, 64) || null;
   } catch {
     return null;
   }
