@@ -1,3 +1,4 @@
+import { guardHealth } from "@/lib/api";
 import { getEnv, hasSoundCloud } from "@/lib/env";
 
 /**
@@ -29,7 +30,12 @@ async function checkYtMusic(url: string): Promise<Check> {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Metered, not closed. Every hit here costs a sidecar invocation as well as this one, so
+  // it was the cheapest route to spend the deployment's allowance from. See EXPOSURE.md E-10.
+  const refusal = guardHealth(request);
+  if (refusal) return refusal;
+
   const env = getEnv();
   const ytmusic = await checkYtMusic(env.YTMUSIC_SERVICE_URL);
   const healthy = ytmusic.status === "ok";

@@ -101,9 +101,24 @@ function writeNameCookie(name: string | null): void {
 // each of the three destinations.
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 
+/**
+ * A ceiling on the name, for the same reason the control characters go: it is written to a
+ * cookie, and `path=/` means that cookie rides on **every** request to the origin —
+ * including each `/api/art` fetch, of which one Explore page makes about thirty.
+ *
+ * Nothing enforced a length, so a pasted wall of text became kilobytes on the hot path,
+ * permanently, with nothing to notice it by. 64 is past any real display name and far under
+ * the ~4KB a browser will carry, so the cap is invisible to everyone it is not protecting.
+ *
+ * Truncated rather than refused: this runs as the name editor is used, and rejecting the
+ * change outright would freeze the field mid-word.
+ */
+const MAX_NAME_LENGTH = 64;
+
 /** Sets the display name. Empty clears it, since "no name" is a real state. */
 export function setDisplayName(name: string): void {
-  const trimmed = name.replace(CONTROL, "").trim();
+  // Trimmed again after slicing, or a cut landing on a space stores a trailing one.
+  const trimmed = name.replace(CONTROL, "").trim().slice(0, MAX_NAME_LENGTH).trim();
   try {
     if (trimmed) window.localStorage.setItem(NAME_KEY, trimmed);
     else window.localStorage.removeItem(NAME_KEY);
