@@ -304,7 +304,7 @@ answered rather than by the code whose job it is.
 **Fixed in `1e2e536`.** Always wrapped in `capped()`; the header check stays as the
 early-out it should always have been.
 
-## E-10 · `/api/health` is unguarded and doubles every hit `OPEN`
+## E-10 · `/api/health` is unguarded and doubles every hit `FIXED`
 
 **Severity:** low.
 
@@ -317,6 +317,15 @@ returns nothing an attacker wants.
 **Deliberately open** so uptime monitoring works without a credential, which is
 the right call. Rate-limit it well above a monitor's interval rather than
 closing it.
+
+**Fixed 2026-08-21, exactly as that says.** The route stays open and now goes
+through `guardHealth` — 30/minute/client, a probe every two seconds, far above any
+monitor's interval and far below a loop.
+
+Its **own** budget rather than `guard`'s, for the reason artwork has one: a
+monitor and a reader routinely share an address behind NAT, and a probe refused
+because somebody searched a lot reads as an outage — which is the one thing a
+liveness endpoint must never invent.
 
 ---
 
@@ -425,6 +434,32 @@ finish this:** open the console on a page that plays something, a page with an
 avatar, and Explore. If nothing is reported, rename the header key in
 `next.config.ts` to `Content-Security-Policy`.
 
+### Re-rated 2026-08-21: `medium` → `high`, because Spotify changed what an XSS wins
+
+Everything above still holds — the nonce argument, the prerendering cost, the
+reason `Report-Only` was the honest setting. **What changed is the other side of
+the trade, and the entry was scored before it changed.**
+
+When this was written the browser held playlists, a display name and a theme. A
+successful XSS could deface a page and read a stranger's music taste. Since
+`a73395e` it also holds a **Spotify refresh token** in `localStorage`
+(`app/spotify/token-store.ts`) — a long-lived credential to a third party's
+account, carrying `streaming` and `user-modify-playback-state`.
+
+So the policy that ships is `'unsafe-inline'` **and** unenforced: neither half of
+the defence is active, against a browser that now stores something worth taking.
+Confirmed on the live deployment 2026-08-21 — `Content-Security-Policy-Report-Only`
+is the only CSP header present; `X-Frame-Options`, HSTS, `nosniff`,
+`Referrer-Policy` and `Permissions-Policy` are all enforced.
+
+This is **not** a claim that an XSS exists. S-7's neighbours in
+[SECURITY.md](SECURITY.md) — one interpolation-free `dangerouslySetInnerHTML`, no
+`postMessage` listeners, no `innerHTML`, no `eval` — say the surface is genuinely
+clean, and that has been checked twice. It is a claim that the *consequence* of
+one moved, and that the ten minutes of browser work this entry already prescribes
+is now worth more than it was. **Do that before adding any further credential to
+the browser**, which is the decision this rating exists to inform.
+
 `frame-src` permits `www.youtube.com` and `w.soundcloud.com`, which is the point
 of the app rather than a weakening of the policy — they are the only two external
 origins in the codebase.
@@ -472,7 +507,34 @@ This is not legal advice and this file cannot give any. It is a flag that the
 question exists, is different from the one the README answers, and should be
 answered deliberately rather than by default.
 
-## E-17 · Whether YouTube serves search from a datacenter IP is still unmeasured `OPEN`
+## E-17 · Whether YouTube serves search from a datacenter IP `MEASURED — it does`
+
+**Settled 2026-08-21, on the first real deployment.** The `POST /search` call
+below, run against the live sidecar on Vercel with the shared secret, returned
+results:
+
+```
+As It Was (Official Video) · H5v3kku4y6Q · MUSIC_VIDEO_TYPE_OMV
+```
+
+That is the exact fixture `RUNNING.md` names for a healthy local run —
+`_OMV` rather than an `_ATV` art track, so the ranking in `BUGS.md` B-2/B-3 holds
+from a datacenter address too. End to end through the web app, `/api/search`
+answered **200 in 2.77s** with five sources attempted and zero failures, which
+also lands inside `DEPLOY.md`'s predicted ~3.3s cold warm-up for `ytmusicapi`.
+
+**The reasoning was right.** The blocking that killed Invidious is on *video
+delivery*, which Timbre never performs; search is a lighter path and it is served.
+
+The caveat below survives the measurement and is now the whole of this entry:
+
+> Note the interaction with E-3: the answer is a property of the address Vercel
+> happened to use, not a permanent one. It can change without any deploy.
+
+One address, one day. If search goes quiet across the board later, re-run the same
+call before assuming anything in this repository broke.
+
+*Original entry, kept because the method is what settled it:*
 
 **`unmeasured`, and it is the single fact the entire deployment rests on.**
 
@@ -510,7 +572,7 @@ worth stating plainly rather than discovering later.
 | Finding | Evidence |
 |---|---|
 | **No YouTube quota exists.** `apps/ytmusic/app/client.py:44` constructs `YTMusic()` with no credentials, and there is no YouTube Data API key anywhere in the repository. There is no quota to exhaust and no account to suspend. What is at risk is rate-limiting of the address and Vercel's allowances — not a Google quota. | `read` |
-| **Constant-time secret comparison.** `security.py:20` uses `hmac.compare_digest`. Correct. | `read` |
+| **Constant-time secret comparison.** `security.py` uses `hmac.compare_digest`, and accumulates rather than short-circuits so a rotation cannot leak which secret matched. Correct — though reading it *for timing* is what let it raise on a non-ASCII header for a week. See [SECURITY.md](SECURITY.md) **S-7**, fixed 2026-08-21. | `read` |
 | **`x-forwarded-for` handling is right on Vercel.** `lib/rate-limit.ts:84-88` takes the first entry, and Vercel's docs state: *"we currently overwrite the X-Forwarded-For header and do not forward external IPs. This restriction is in place to prevent IP spoofing."* So the first entry is the real client. **This becomes spoofable the moment Timbre runs anywhere else** — behind nginx, Caddy, or the Dockerfile — where the header is attacker-controlled and a rotating value defeats the limiter entirely. Conditional on the deployment, not on the code. | `vendor` + `read` |
 | **The art proxy's SSRF control.** HTTPS-only, explicit 13-host allowlist, `image/*` enforced, `nosniff` set. Sound as far as it goes; E-8 is about the redirect hop, not this. | `read` |
 | **No audio ever transits Timbre.** Every player is an embed. Bandwidth is HTML and JSON — which is what makes 100 GB a generous allowance rather than a day's traffic. | `read` |
@@ -521,22 +583,24 @@ worth stating plainly rather than discovering later.
 
 # What to do first
 
-**E-5 through E-11 and most of E-14 are fixed** — see each entry. What is left,
-ordered by consequence over effort:
+**E-5 through E-11 and most of E-14 are fixed** — see each entry. **E-17 is
+measured and settled**, on the deployment of 2026-08-21: YouTube does serve search
+from a Vercel address. What is left, ordered by consequence over effort:
 
-1. **E-17** — run the `POST /search` check against the deployed sidecar.
-   Everything else is conditional on it, and it is still unmeasured.
-2. **E-1** — decide about donation and sponsor links *before* adding one. This is
-   the one that can end the deployment with no technical warning.
-3. **E-14** — flip the CSP from `Report-Only` to enforcing, once a browser has
-   confirmed it breaks nothing. Three pages to check.
-4. **E-7** — sign the `u` parameter, so the art proxy has a boundary rather than
+1. **E-1** — decide about donation and sponsor links *before* adding one. This is
+   the one that can end the deployment with no technical warning, and it is now
+   first because the question E-17 asked has an answer.
+2. **E-14** — flip the CSP from `Report-Only` to enforcing, once a browser has
+   confirmed it breaks nothing. Three pages to check, and it moved up: the browser
+   now holds a Spotify refresh token, so an XSS wins a credential rather than a
+   defacement. See the re-rating on that entry.
+3. **E-7** — sign the `u` parameter, so the art proxy has a boundary rather than
    a bound. The rate limit stops the bleeding; this closes it.
-5. **E-12** — log the sidecar's 401s, so a brute-force attempt stops looking
+4. **E-12** — log the sidecar's 401s, so a brute-force attempt stops looking
    exactly like a misconfigured deploy.
-6. **E-6** — drop the inert `revalidate` from the three routes that cannot be
+5. **E-6** — drop the inert `revalidate` from the three routes that cannot be
    static, so nothing advertises a cache it does not have.
-7. **E-3 / E-4** — measure before acting. Log upstream status codes for a week;
+6. **E-3 / E-4** — measure before acting. Log upstream status codes for a week;
    if Apple is not 403ing, the per-instance limiters are a trade worth keeping,
    and shared state is the thing this project is built to avoid.
 

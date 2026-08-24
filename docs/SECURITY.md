@@ -2,7 +2,9 @@
 
 A vulnerability pass over Timbre, mapped to the **OWASP Top 10:2025**.
 
-*Reviewed 2026-08-18, against `1b90b08`.*
+*Reviewed 2026-08-18, against `1b90b08`. **Second pass 2026-08-21**, against
+`daf4756` — the first one run against a live deployment rather than a working
+tree, which is how S-7 was caught.*
 
 This is a different question from [EXPOSURE.md](EXPOSURE.md). That file asks what
 a public deployment *spends* and what it *risks by policy*. This one asks whether
@@ -31,6 +33,14 @@ app that embeds third-party players, is genuinely clean: there is exactly one
 `postMessage` listener in the codebase.
 
 One finding is serious, is proven, and is not on the server.
+
+**The second pass added two, and neither is a disclosure.** Both are the same
+shape — a failure path nobody had walked. S-7 is an unauthenticated 500 on the
+sidecar from a single non-ASCII header byte; S-8 is that no upstream request had
+a deadline, so one silent host could hold a search open until the platform killed
+it. Both were fixed the same day they were found. Notably, S-8's lesson was
+already written down *in this repository*, in the one file that had hit it — and
+had not been generalised to the path every adapter uses.
 
 ---
 
@@ -295,6 +305,123 @@ would have left every already-affected browser broken.
 
 ---
 
+# S-7 · A non-ASCII secret header crashes the sidecar `FIXED`
+
+**Severity:** `LOW` — A10:2025, Mishandling of Exceptional Conditions.
+
+**Found in the second pass, 2026-08-21. Measured, not read** — reproduced locally
+*and* against the live deployment before the fix:
+
+```
+X-Timbre-Secret: wrong    → 401 Unauthorized
+X-Timbre-Secret: café     → 500 Internal Server Error
+```
+
+`hmac.compare_digest` raises `TypeError` when either `str` argument holds a
+character outside ASCII, and ASGI decodes header bytes as latin-1 — so **one byte
+`>= 0x80` in that header** arrived as a non-ASCII `str` and took the request down
+with an unhandled exception.
+
+This is the entry directly above's blind spot. "Timing attacks — correct" was
+right about the thing it looked at: the comparison *is* constant-time, and the
+accumulate-don't-short-circuit loop above it is a genuinely careful piece of work
+that stops a rotation leaking which secret matched. The defect was one layer
+under that care, in the argument type, and reading the function for timing is
+what made it invisible.
+
+**Nothing was ever let through** — a raise is a refusal. What it cost:
+
+- An **unauthenticated crash path** anyone could hold open, at one billed
+  invocation per request on a serverless host.
+- A **401-vs-500 split** that fingerprints the service to an unauthenticated
+  caller, and makes a log unable to tell a wrong secret from a broken one.
+
+## Fix
+
+Compare **bytes**, not `str`:
+
+```python
+candidate = presented.encode("utf-8", "surrogateescape")
+found = False
+for secret in SHARED_SECRETS:
+    found |= hmac.compare_digest(candidate, secret.encode("utf-8"))
+```
+
+`surrogateescape` is what makes the encode total — latin-1 decoding can yield
+lone surrogates, and a plain `.encode()` would itself raise for exactly the
+inputs this must survive. Every timing property is unchanged: `compare_digest`
+on bytes is the same primitive.
+
+Covered by `test_a_non_ascii_secret_is_refused_rather_than_raising`, which asserts
+the five shapes that used to raise — `café`, a bare `\xe9`, an emoji, a valid
+secret with one accented character appended, and a lone surrogate — now return
+`False`. Re-verified against the running service: **401, not 500.**
+
+---
+
+# S-8 · No upstream request has a deadline `FIXED`
+
+**Severity:** `MEDIUM` — A06:2025, Insecure Design. Availability, not disclosure.
+
+**Found in the second pass, 2026-08-21. `read`,** and it is a three-file
+conclusion rather than a line:
+
+- `providers/request.ts` called `fetch` with `signal: ctx.signal` and **no
+  timeout of its own**.
+- `/api/search` passes **no signal at all** — deliberately, and correctly: a
+  cached call is shared, so one subscriber navigating away must not cancel the
+  answer everyone else is waiting on.
+- `searchAll` fans out under `Promise.allSettled`, which waits for the slowest.
+
+Each of those is defensible alone. Together they meant **nothing in the search
+path could time out**. A source that accepted the connection and then said
+nothing held the whole search open until the platform's own limit — 300s on
+Vercel — and because `cached()` keys its in-flight promise by query, every
+concurrent search for that query waited on the same hang.
+
+**This exact failure was already understood in this codebase.**
+`soundcloud-client-id.ts:29` says it outright — *"`fetch` has no timeout of its
+own, and a crawl that never settles is never retried"* — and records the
+measurement: three calls against a host that accepts and then goes silent made
+one request and never made another. It was fixed there, in that file, and never
+generalised to the requester every adapter actually goes through.
+`lib/deezer.ts`, `/api/lyrics` and `/api/health` had each independently chosen a
+6-second `AbortSignal.timeout`. The shared path had nothing.
+
+## Fix
+
+A default 6s deadline in `createRequester`, composed with the caller's signal
+rather than replacing it:
+
+```ts
+const timeout = AbortSignal.timeout(ms);
+return caller ? AbortSignal.any([caller, timeout]) : timeout;
+```
+
+Composed, because honouring only the deadline would ignore a caller that did
+abort, and honouring only the caller leaves the hang. Per call, because
+`AbortSignal.timeout` starts counting when it is constructed — a module-level one
+would expire six seconds after boot. `init`/`extra` still override it, which is
+the existing contract.
+
+Two things fall out of the same change:
+
+- **A timeout is reported as a timeout.** `${label} did not answer within 6s.`
+  rather than `${label} unreachable.` — both `transient`, both retried the same
+  way, but a log that cannot tell "the host is gone" from "the host is slow"
+  sends you to the wrong place.
+- **A 200 that is not JSON is now this source's error.** `await response.json()`
+  sat outside the `try`, so an upstream serving an HTML error page with a 200
+  threw a bare `SyntaxError` past every caller that catches `ProviderError` —
+  including `searchAll`, which would have shown it as an unlabelled failure.
+
+A slow source is now dropped from *that* search and reported as a failure, which
+the UI already renders. Four tests cover it, including one that stubs a host
+which accepts and never answers — the failure mode an unreachable host does not
+reproduce.
+
+---
+
 # Verified correct — do not re-investigate
 
 Each of these is a place a vulnerability would normally be, and is not.
@@ -309,7 +436,7 @@ Each of these is a place a vulnerability would normally be, and is not.
 | **ReDoS** | No nested-quantifier patterns in any regex in `core`, `providers`, `lib` or `app`. The LRC timestamp parser — the one regex applied to untrusted upstream text on the server — is `\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]`, linear. | pattern scan across the tree |
 | **JS dependencies** | `pnpm audit` — **no known vulnerabilities**, at every severity level. | ran it |
 | **Secrets in history** | `.env` has never been committed on any branch. Every commit matching `YTMUSIC_SHARED_SECRET=` is `.env.example`, documentation, or the CI placeholder `ci-placeholder`. | `git log --all` pickaxe |
-| **Timing attacks** | `hmac.compare_digest` on the shared secret (`security.py:20`). Correct. | read |
+| **Timing attacks** | `hmac.compare_digest` on the shared secret, results accumulated rather than short-circuited so a rotation cannot leak *which* secret matched. Correct — but this row read the comparison for timing and missed that its arguments could raise. See **S-7**. | read |
 | **Input bounds** | Enforced at both edges. Pydantic: query ≤ 500 chars, `limit` 1–50, `video_id` regex-pinned, URL ≤ 2000. Zod on every web route: same shape. Profile images are capped at 25 MB (5 MB animated) before decode. | read `models.py`, all 8 routes, `image-resize.ts` |
 | **Error disclosure** | The sidecar maps every upstream failure to a flat `502 "YouTube Music <action> failed."` and logs the detail server-side rather than returning it (`errors.py:14-22`). No stack traces, no upstream text, no version. FastAPI's `/docs`, `/redoc` and `/openapi.json` are all explicitly disabled. | read `errors.py`, `main.py` |
 | **Access control & CSRF** | Largely inapplicable **by design**, and that is worth stating: there are no accounts, no sessions, no server-side user state, and no authenticated state-changing endpoint. Every mutation happens in the visitor's own browser against their own storage. There is nothing for a forged cross-site request to accomplish. | architecture |
@@ -322,6 +449,11 @@ Each of these is a place a vulnerability would normally be, and is not.
 The suite went from 71 to 86 tests on the web side and 49 to 55 on the sidecar; the
 four that cover S-1 fail against the previous store, which was checked by running
 them against it.
+
+**S-7 and S-8 are fixed too**, from the second pass. The sidecar suite is 55 → 56
+and the providers suite 65 → 69; `pnpm test` is 223 across the workspace, with
+`typecheck`, `lint`, `ruff` and a production build all clean. EXPOSURE **E-10** was
+closed in the same pass, and the display name gained the length cap E-15 implies.
 
 What that leaves, none of it a vulnerability:
 
