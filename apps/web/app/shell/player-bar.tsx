@@ -260,7 +260,12 @@ export function PlayerBar() {
         put two full-width lines two pixels apart, invisible on a dark ground and a
         doubled rule across the window on a light one.
       */}
-      <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 py-2 lg:flex">
+      {/*
+        `pb` carries the home indicator's inset because this bar is the bottom-most thing on
+        a wide screen — an iPad in landscape is the case that has one. The phone bar above
+        does not need it: <BottomNav> sits under it and pads for both.
+      */}
+      <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:flex">
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
           <Scrub position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
         </div>
