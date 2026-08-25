@@ -10,6 +10,7 @@ import { useTransportKeys } from "../player/use-transport-keys";
 import { TopBar } from "../top-bar";
 import { PlayerBar } from "./player-bar";
 import { BottomNav, Sidebar } from "./sidebar";
+import { TabTitle } from "./tab-title";
 
 // Whether this document has navigated at least once. Module scope because reading a ref
 // during render and `setState` in an effect are both lint errors here; safe on the shared
@@ -74,6 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      <TabTitle />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         {/*
