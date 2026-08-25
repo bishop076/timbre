@@ -18,7 +18,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Timbre — one search across free music",
+  // The tab, before <TabTitle> takes it over on hydration. Bare on purpose: the tagline
+  // belongs on the page, not in twenty characters of tab.
+  title: "Timbre",
   description:
     "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
   applicationName: "Timbre",
