@@ -206,7 +206,11 @@ export function NowPlayingPanel() {
 
   const shell = expanded
     ? "flex min-h-0 min-w-0 flex-1 p-2 lg:pl-0"
-    : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+0.75rem)] right-3 z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] ${
+    : // Both offsets carry the safe-area insets themselves. `position: fixed` resolves
+      // against the viewport, not the padded <body>, so the horizontal inset applied there
+      // does not reach this card — in landscape it parked under the notch ear — and the
+      // bars it clears are each taller than their `--*-h` by the bottom inset.
+      `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+var(--safe-b)+0.75rem)] right-[calc(0.75rem+var(--safe-r))] z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+var(--safe-b)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] ${
         audioOnly ? "hidden xl:block" : ""
       } ${
         open

@@ -441,7 +441,12 @@ export function SettingsPanel() {
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-2 sm:px-6">
+              {/* The sheet is flush to the bottom of the screen on a phone, so the home
+                  indicator lies over the end of this pane — the inset goes on the padding
+                  rather than on the sheet, which would leave a strip of blurred backdrop
+                  under a panel that is meant to look anchored. From `sm` the dialog is
+                  centred and floating, where the inset is simply wrong. */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+var(--safe-b))] pt-2 sm:px-6 sm:pb-5">
                 {active.render()}
               </div>
             </div>
