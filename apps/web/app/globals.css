@@ -28,6 +28,24 @@
   --bar-h: 6rem;
   --nav-h: 4rem;
 
+  /*
+   * The notch, the home indicator and the landscape ears.
+   *
+   * `layout.tsx` asks for `viewport-fit=cover` and an `appleWebApp.statusBarStyle` of
+   * `black-translucent`, which together hand the app the whole screen — including the
+   * parts of it the hardware covers. That is only an improvement if the chrome then keeps
+   * out of them, and nothing did: an installed Timbre drew its bottom nav underneath the
+   * home indicator, so the labels sat behind the bar and the tap target was a third
+   * shorter than it measured.
+   *
+   * The fallbacks are what a desktop browser gets, where `env()` resolves to nothing and
+   * a bare `var(--safe-b)` in a `calc()` would invalidate the whole declaration.
+   */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+
   /* The hard edge: solid border plus unblurred offset shadow, which survives being
      recoloured by the artwork. Light defaults — over near-black the ink goes black. */
   --edge: 2px;
@@ -196,6 +214,24 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior: none;
+
+  /*
+   * Three of the four insets. `html` keeps painting `--bg` behind them, so each reads as
+   * the app's own margin rather than a gap — which is the whole reason `layout.tsx` asks
+   * for a `black-translucent` status bar: the ground shows through it instead of a white
+   * band. Nothing was inset before, so the status bar simply sat on top of the first row.
+   *
+   * The *bottom* is deliberately not here. That edge belongs to <BottomNav> and the
+   * desktop player bar, which have to keep their own backgrounds bleeding down into the
+   * home indicator while their contents stay above it; a padding here would float both
+   * off the edge and show a strip of page under them.
+   *
+   * `box-sizing` is border-box under Tailwind's preflight, so this narrows the content box
+   * and nothing below has to know: `h-full` still resolves against it.
+   */
+  padding-top: var(--safe-t);
+  padding-left: var(--safe-l);
+  padding-right: var(--safe-r);
 }
 
 /** The routed content fades in — never the shell. Opacity only; a transform would move

@@ -245,7 +245,13 @@ export function BottomNav() {
   const { exitTheater } = usePlayerControls();
 
   return (
-    <nav className="flex h-[var(--nav-h)] shrink-0 items-stretch border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] lg:hidden">
+    /*
+      The home indicator sits over the bottom of this bar on an installed phone, so the
+      height is the nav's own plus the inset and the padding hands that strip back. Growing
+      the box rather than shrinking the row is deliberate: padding alone would have taken
+      the space out of a 64px target that is already the smallest one in the app.
+    */
+    <nav className="flex h-[calc(var(--nav-h)+var(--safe-b))] shrink-0 items-stretch border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] pb-[var(--safe-b)] lg:hidden">
       {NAV.map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
