@@ -53,10 +53,33 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
         window.innerWidth - WIDTH - MARGIN,
       );
 
+      /*
+       * Measured, not guessed. The menu is rendered before it is placed precisely so this
+       * can read a real box: its height is the playlist list — shorter than its `max-h-56`
+       * until there are enough playlists to fill it — plus the create form, so the old
+       * constant of 260 described only the full case.
+       */
+      const height = menu.current?.offsetHeight ?? 260;
       const below = window.innerHeight - rect.bottom;
-      const top = below < 260 && rect.top > below ? rect.top - 8 - 260 : rect.bottom + 6;
 
-      setAt({ left, top: Math.max(MARGIN, top) });
+      /*
+       * Above only when it genuinely fits better there. The old test compared the *gap*
+       * below against 260 and then flipped on `rect.top > below`, which left the case that
+       * matters unhandled: a trigger in the upper half of a short window has a below-gap
+       * under 260 and a smaller top-gap, so the menu opened downwards and ran off the
+       * bottom edge. Being `position: fixed`, what hangs off cannot be scrolled to — the
+       * last playlists in the list were simply unreachable.
+       */
+      const fitsBelow = height + MARGIN <= below;
+      const top = fitsBelow || below >= rect.top ? rect.bottom + 6 : rect.top - 6 - height;
+
+      // The clamp is the backstop for the window that is too short for either side.
+      const maxTop = Math.max(MARGIN, window.innerHeight - height - MARGIN);
+      const next = { left, top: Math.min(Math.max(MARGIN, top), maxTop) };
+
+      // Identity-stable, because this runs again the moment it has a height to measure and
+      // a fresh object every time would re-render for as long as the menu stayed open.
+      setAt((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
     };
 
     place();
@@ -133,14 +156,22 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
       </button>
 
       {open &&
-        at &&
         createPortal(
           <div
             ref={menu}
             role="menu"
             aria-label={`Playlists for ${song.title}`}
             tabIndex={-1}
-            style={{ left: at.left, top: at.top }}
+            /*
+             * Rendered before it is placed, which is what lets the layout effect above
+             * measure a real box instead of assuming one — it used to be gated on `at` too,
+             * so on the pass that decided the position there was no element to read.
+             *
+             * `visibility` rather than `display: none` for that single pre-paint frame: a
+             * `display: none` element has no height either. Both effects run before the
+             * browser paints, so this position is never seen.
+             */
+            style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
             className="slab fixed z-[100] w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)] outline-none"
           >
           <div className="scroller max-h-56 overflow-y-auto p-1.5">
