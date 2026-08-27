@@ -74,7 +74,32 @@ export function AppShell({ children }: { children: ReactNode }) {
   useTransportKeys();
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div
+      className="flex h-full flex-col overflow-hidden"
+      /*
+       * The height of everything pinned below the scrolling panel, published for the pages
+       * that have to be at least as tall as that panel — `mt-auto` needs a column taller
+       * than its content to push against, and `min-h-full` cannot supply one, because a
+       * percentage min-height wants a definite height on every ancestor and the panel
+       * offers none.
+       *
+       * Set here rather than in the stylesheet because only this component knows the
+       * answer: the player bar is rendered by the line below and does not exist until
+       * something has been played, so a page that hardcoded the subtraction was wrong in
+       * one of the two states whichever number it picked. It was `--nav-h` alone, which
+       * left `--bar-h` of dead scroll under the library for anyone listening to anything.
+       *
+       * Phone value. From `lg` the nav is hidden and the bar is a different height, so
+       * every consumer stops using this at that breakpoint.
+       */
+      style={
+        {
+          "--chrome-b": current
+            ? "calc(var(--bar-h) + var(--nav-h) + var(--safe-b))"
+            : "calc(var(--nav-h) + var(--safe-b))",
+        } as React.CSSProperties
+      }
+    >
       <TabTitle />
       <div className="flex min-h-0 flex-1">
         <Sidebar />

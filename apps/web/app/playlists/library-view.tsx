@@ -70,8 +70,15 @@ export function LibraryView() {
         `min-h-full` does not work — a percentage min-height needs a definite height on
         every ancestor, which the scrolling panel does not offer. `dvh` rather than
         `vh` so a phone's collapsing address bar leaves no strip of dead space.
+
+        `--chrome-b` is the bar and the nav together, published by <AppShell> because their
+        combined height depends on whether anything is playing. Subtracting `--nav-h` alone
+        was right only with the player bar absent; with it, this column ran `--bar-h` past
+        the bottom of the panel and the library scrolled into 96px of nothing. `--safe-t`
+        goes with it because `dvh` is the whole screen while the panel starts below the
+        status bar — see the `body` padding in globals.css.
       */
-      className="@container mx-auto flex min-h-[calc(100dvh-var(--nav-h))] w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6 lg:min-h-0">
+      className="@container mx-auto flex min-h-[calc(100dvh-var(--safe-t)-var(--chrome-b))] w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6 lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your library</h1>
 
