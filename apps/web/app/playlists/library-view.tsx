@@ -145,7 +145,13 @@ export function LibraryView() {
           No playlists yet.
         </p>
       ) : (
-        <ul className="mt-6 grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
+        /* Two up until the container is wide enough for three. `@md:grid-cols-3` was
+           already here and already dead, repeating the base — which is the tell: three
+           across a phone leaves each tile about 88px, and the cover loses another 20px to
+           the link's padding, so a playlist called anything at all truncated to roughly six
+           characters. The breakpoint that was meant to introduce the third column now
+           does. */
+        <ul className="mt-6 grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
           {playlists?.map((playlist) => (
             <li key={playlist.id} className="group relative">
               {/* Outside the <Link>: a button in an anchor is invalid, and clicking it

@@ -338,9 +338,12 @@ export function ProfileView({
             <p className="saved-none rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
               Nothing saved yet.
             </p>
+            {/* Must stay column-for-column identical to the real grid below — this is the
+                stand-in drawn from CSS before storage is read, and a different track count
+                would reflow the page the moment React took over. */}
             <ul
               aria-hidden
-              className="saved-some grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5"
+              className="saved-some grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5"
             >
               {Array.from({ length: 5 }, (_, index) => (
                 <li key={index} className="p-2.5">
@@ -356,7 +359,7 @@ export function ProfileView({
             Nothing saved yet.
           </p>
         ) : (
-          <ul className="grid grid-cols-3 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
+          <ul className="grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
             {playlists.map((playlist) => (
               <li key={playlist.id}>
                 <Link
