@@ -220,7 +220,13 @@ export function NowPlayingPanel() {
 
   const card = expanded
     ? "flex min-h-0 w-full flex-1 flex-col gap-2 xl:flex-row"
-    : "slab flex w-[19rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-[22.5rem] xl:max-w-none";
+    : // The ceiling counts the landscape ears, for the same reason the offsets above do:
+      // the card's ancestor is `position: fixed`, so the `body` padding that insets
+      // everything else never reaches it and `100dvw` here is the whole screen, notch
+      // included. Portrait with no insets computes exactly what it always did, so the
+      // 200px floor the YouTube embed needs (docs/BUGS.md B-1) is untouched — 320px is
+      // the narrowest phone there is and still leaves 296.
+      "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-[22.5rem] xl:max-w-none";
 
   // `min-h-[200px]` is a compliance floor: YouTube's IFrame API refuses to play below
   // 200×200, reporting only "Video unavailable" (docs/BUGS.md B-1), and `aspect-video` on
