@@ -13,7 +13,9 @@ import type { ChartTrack } from "@/lib/discover";
 /** Plot chrome, in pixels. Left is wide enough for a `1.0M` tick. */
 const PAD = { left: 42, right: 14, top: 14, bottom: 20 };
 
-/** The tooltip's widest, matching its `max-w-[15rem]`. Kept in step by hand. */
+/** The tooltip's widest. The only statement of it — it used to be here *and* as a
+ * `max-w-[15rem]` class on the box, kept in step by hand, with the clamp below trusting
+ * this copy to describe the other one. */
 const TIP_MAX_W = 240;
 
 // Between render and paint: after paint the first frame is an empty box and the view
@@ -187,8 +189,13 @@ export function ChartGraph({
 
       {active && (
         <div
-          className="slab pointer-events-none absolute z-20 max-w-[15rem] rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 shadow-[var(--drop-lg)]"
+          className="slab pointer-events-none absolute z-20 rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 shadow-[var(--drop-lg)]"
           style={{
+            // The plot is the tighter limit on a narrow phone, and the `left` clamp below
+            // has always assumed the box would honour it: once the chart is under 240px
+            // there is nowhere left to slide to, so a box still 240px wide simply hung out
+            // of the panel.
+            maxWidth: Math.min(TIP_MAX_W, width),
             // Clamped by the width the box can reach (`TIP_MAX_W`), never a guess.
             left: Math.min(Math.max(x(hover ?? 0) - 80, 0), Math.max(0, width - TIP_MAX_W)),
             // Above a low dot, below otherwise. Anchoring the *bottom* edge when flipped
