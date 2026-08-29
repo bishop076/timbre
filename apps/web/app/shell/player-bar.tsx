@@ -179,10 +179,17 @@ export function PlayerBar() {
                 <span />
               </span>
             )}
-            <span className="truncate">{current.title}</span>
+            {/*
+             * `min-w-0` is what makes the ellipsis appear. Both these lines are flex
+             * containers, and `truncate` on a container does nothing for its items — a flex
+             * item's `min-width` is `auto`, so it refuses to shrink under its own text and
+             * simply overflowed, which the container's `overflow: hidden` then cut mid-
+             * character. A long title looked chopped rather than shortened.
+             */}
+            <span className="min-w-0 truncate">{current.title}</span>
           </p>
           <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
-            <ArtistLink artists={current.artists} className="truncate" />
+            <ArtistLink artists={current.artists} className="min-w-0 truncate" />
             {state === "unplayable" ? (
               <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
             ) : subscriptionTrack ? (
