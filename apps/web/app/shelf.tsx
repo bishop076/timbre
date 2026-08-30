@@ -136,7 +136,10 @@ export function Shelf({
           first tile to the raw origin inside the padding. */}
       <div
         ref={row}
-        className="shelf flex snap-x snap-proximity gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4"
+        /* No `snap-x snap-proximity` here: `.shelf` sets `scroll-snap-type` itself and wins
+           outright, so the pair that used to sit in this list could not affect anything.
+           See the rule in globals.css. */
+        className="shelf flex gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4"
       >
         {children}
       </div>
