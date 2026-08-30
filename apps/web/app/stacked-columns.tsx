@@ -83,7 +83,7 @@ export function StackedColumns({
               ))}
 
               <div className="flex h-full items-end gap-1.5 sm:gap-2">
-                {columns.map((column) => (
+                {columns.map((column, index) => (
                   /*
                    * Hover and focus in CSS, not state.
                    *
@@ -116,10 +116,28 @@ export function StackedColumns({
                         ),
                       )}
 
-                    {/* `max-w` in viewport units on the tooltip: centred on a ~28px
-                        column it hangs well outside it, and at a fixed 10rem the
-                        first and last ran past the card on a phone. */}
-                    <div className="pointer-events-none invisible absolute bottom-full left-1/2 z-20 mb-1 w-40 max-w-[60vw] -translate-x-1/2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 opacity-0 shadow-[var(--drop-lg)] transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+                    {/*
+                      `max-w` in viewport units on the tooltip: centred on a ~28px column it
+                      hangs well outside it, and at a fixed 10rem the first and last ran past
+                      the card on a phone.
+
+                      Narrowing was only half of it, because it never moved the box. Centred
+                      on the first column, 160px of tooltip still reaches some 66px past the
+                      left edge of the chart, and the panel clips whatever spills — so the
+                      two end columns lost a side of their tooltip at every width. The ends
+                      anchor to the chart's edge instead of to their own centre; every column
+                      between them is still centred, which is what reads as pointing at the
+                      right bar.
+                    */}
+                    <div
+                      className={`pointer-events-none invisible absolute bottom-full z-20 mb-1 w-40 max-w-[60vw] rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 opacity-0 shadow-[var(--drop-lg)] transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100 ${
+                        index === 0
+                          ? "left-0"
+                          : index === columns.length - 1
+                            ? "right-0"
+                            : "left-1/2 -translate-x-1/2"
+                      }`}
+                    >
                         <p className="truncate text-[12px] font-semibold">{column.label}</p>
                         <p className="text-[11px] tabular-nums text-[var(--fg-dim)]">
                           {column.total} {column.total === 1 ? unit : `${unit}s`}
