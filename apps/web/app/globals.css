@@ -386,7 +386,16 @@ input[type="search"]::-webkit-search-results-decoration {
   display: grid;
 }
 
-/* Snapped, so cards never come to rest half-cut. */
+/*
+ * Snapped, so cards never come to rest half-cut.
+ *
+ * **This rule is the only thing that decides the snapping, and it cannot be overridden from
+ * a class list.** Everything in this file sits outside `@layer`, and unlayered CSS beats
+ * every layered rule whatever the source order — so Tailwind's `snap-x` and
+ * `snap-proximity`, which live in `@layer utilities`, lose to it. A shelf carried that pair
+ * for a while and it did nothing; the trap is that swapping it for `snap-mandatory` would
+ * also do nothing, silently. Change the axis or the strictness here.
+ */
 .shelf {
   scrollbar-width: none;
   scroll-snap-type: x proximity;
