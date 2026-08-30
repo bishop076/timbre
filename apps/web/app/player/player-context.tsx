@@ -105,7 +105,9 @@ interface PlayerActions {
   handleStateChange: (state: PlayState) => void;
   handleProgress: (position: number, duration: number) => void;
   /** Reports a playback failure. `worthRetrying` means the fault is this upload's, so another copy stands a chance. */
-  handleError: (reason: string, worthRetrying: boolean) => void;
+  /** `stalled` marks a YouTube copy that loaded and never delivered media — a refusal of
+   * the address, not the upload — so the ladder leaves YouTube instead of walking its copies. */
+  handleError: (reason: string, worthRetrying: boolean, options?: { stalled?: boolean }) => void;
   seek: (seconds: number) => void;
   setVolume: (level: number) => void;
   toggleMute: () => void;
@@ -1170,7 +1172,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const handleError = useCallback(
-    async (reason: string, worthRetrying: boolean) => {
+    async (reason: string, worthRetrying: boolean, options: { stalled?: boolean } = {}) => {
       const song = songRef.current;
 
       // **Falling through means trying another copy of this song, not another song.**
@@ -1197,7 +1199,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Skipped entirely for a song YouTube Music does not carry — the *other* sources
         // below are still offered, because those are real copies of this recording rather
         // than a search for its name.
-        if (onYouTube && candidates.current.length === 0) {
+        // **A stall is not this upload's fault, so the other uploads are not tried.** Every
+        // copy is served by the same googlevideo.com edge to the same address, and a 403
+        // there answers the address, not the video — measured 2026-08-30, two songs, both
+        // stalled identically (B-18). Walking five candidates at `STALL_MS` each would be
+        // fifty seconds of spinner before the ladder reached a source that could play. A
+        // coded error still walks them, because 100/101/150 genuinely are per-upload.
+        const tryAnotherCopy = onYouTube && !options.stalled;
+        if (tryAnotherCopy && candidates.current.length === 0) {
           // Cancel the previous, or a fall-through mid-`load` leaves it running and its
           // response overwrites `candidates` for a song no longer playing.
           resolving.current?.abort();
@@ -1205,7 +1214,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           resolving.current = aborter;
           candidates.current = await findCandidates(song, aborter.signal);
         }
-        const alternative = onYouTube
+        const alternative = tryAnotherCopy
           ? candidates.current.find((id) => !attempted.current.has(id))
           : undefined;
         if (alternative) {
