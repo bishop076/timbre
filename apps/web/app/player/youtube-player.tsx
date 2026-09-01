@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import { log } from "../logs.ts";
 import { usePlayerControls } from "./player-context";
+import { stalledAt } from "./youtube-stall.ts";
 
 /**
  * The YouTube IFrame player, deliberately visible — the policies forbid hiding it. Three
@@ -28,6 +29,8 @@ interface YTPlayer {
   getCurrentTime(): number;
   getDuration(): number;
   getPlayerState(): number;
+  /** How much of the video is buffered, 0–1. Still zero after {@link STALL_MS} is the stall. */
+  getVideoLoadedFraction(): number;
   destroy(): void;
 }
 
@@ -84,6 +87,27 @@ function unloadCaptions(player: YTPlayer | null): void {
 /** Retry delays in ms after playback starts, covering the window a late caption module can appear in. */
 const CAPTION_RETRIES = [0, 500, 1500];
 
+/**
+ * How long a freshly loaded upload may sit at 0:00 with nothing buffered before it is
+ * treated as refused.
+ *
+ * **There is a failure YouTube never reports.** Measured 2026-08-30 from a Datacamp VPN
+ * exit against the hosted build: the player accepts the video — `playabilityStatus: OK`,
+ * 24 formats — and then every `videoplayback` request to googlevideo.com answers **403**.
+ * The player re-fetches its config every 1.5s and alternates UNSTARTED and BUFFERING with
+ * `videoLoadedFraction` at exactly zero for as long as anyone waits. No `onError` ever
+ * fires, so the ladder never runs, and the bar shows a spinner at 0:00 until the reader
+ * gives up. Two songs, two browsers, one with an ad blocker and one without: identical.
+ *
+ * The same address gets a clean error `150` on a plain-http origin, which is why this was
+ * invisible in local development and why B-1's advice to log the numeric code found
+ * nothing here — there is no code. Like SoundCloud's `STALL_MS`, this is a timeout rather
+ * than a detection: nothing on this side can tell a refused media server from a slow one,
+ * so `stalledAt` also requires that *nothing* has buffered, which a merely slow start
+ * stops being true of within a second or two. See docs/BUGS.md B-18.
+ */
+const STALL_MS = 10_000;
+
 const API_SRC = "https://www.youtube.com/iframe_api";
 
 let apiPromise: Promise<YTNamespace> | null = null;
@@ -136,6 +160,8 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
   const readyRef = useRef(false);
   const pendingId = useRef<string | null>(null);
   const captionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /** The pending stall check, if any. One at a time: every load restarts the clock. */
+  const stallTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
@@ -147,6 +173,55 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
   useEffect(() => {
     videoIdRef.current = videoId;
   }, [videoId]);
+
+  const clearStall = useCallback(() => {
+    if (stallTimer.current) clearTimeout(stallTimer.current);
+    stallTimer.current = null;
+  }, []);
+
+  /**
+   * Gives one upload {@link STALL_MS} to buffer anything at all, and reports a refusal if
+   * it does not. Cleared by the first state that proves the player is running — or that
+   * the reader stopped it — and by `onError`, which is the failure that *does* announce
+   * itself and needs no timer.
+   *
+   * Reported as `worthRetrying` with `stalled` set: the ladder should leave the song's
+   * YouTube copies rather than walk them, because the refusal measured here answers the
+   * address and not the upload — see `handleError` in `player-context.tsx`.
+   */
+  const watchForStall = useCallback(
+    (id: string) => {
+      clearStall();
+      stallTimer.current = setTimeout(() => {
+        stallTimer.current = null;
+        const player = playerRef.current;
+        // The controller has moved on, or the player is gone: nothing left to judge.
+        if (!player || !readyRef.current || videoIdRef.current !== id) return;
+
+        let state: number;
+        let loaded: number;
+        let position: number;
+        try {
+          state = player.getPlayerState();
+          loaded = player.getVideoLoadedFraction?.() ?? 0;
+          position = player.getCurrentTime();
+        } catch {
+          // Mid-teardown. The next load arms a fresh check.
+          return;
+        }
+        if (!stalledAt(state, loaded, position)) return;
+
+        // Logged like an error code would be (B-6): the state is the only number there is.
+        const note = `YouTube stalled on video ${id}: player state ${state}, nothing buffered after ${STALL_MS / 1000}s`;
+        console.warn(`[timbre] ${note}`);
+        log("error", note);
+        handlers.current.handleError("YouTube accepted this copy but never delivered it.", true, {
+          stalled: true,
+        });
+      }, STALL_MS);
+    },
+    [clearStall],
+  );
 
   // Mute is a level of zero, not YouTube's mute() — the two can't then disagree.
   const level = muted ? 0 : volume;
@@ -205,6 +280,7 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             if (pendingId.current) {
               playerRef.current?.loadVideoById(pendingId.current);
               unloadCaptions(playerRef.current);
+              watchForStall(pendingId.current);
               pendingId.current = null;
             }
           },
@@ -219,7 +295,11 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             // that never played.
             if (!videoIdRef.current) return;
 
-            const { ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
+            const { UNSTARTED, ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
+            // Anything but the two "trying" states settles the stall question: PLAYING and
+            // ENDED mean media arrived, PAUSED and CUED mean the reader or the browser
+            // stopped it, and neither is a refusal.
+            if (event.data !== UNSTARTED && event.data !== BUFFERING) clearStall();
             // Backstop for players that never fire `onApiChange`. Clear pending timers
             // first: `PLAYING` fires on every resume, so the array grew by three each time.
             if (event.data === PLAYING) {
@@ -239,6 +319,8 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             // Same reason as `onStateChange`: an error for an upload already let go would
             // start a fall-through hunt for a song nobody is waiting on any more.
             if (!videoIdRef.current) return;
+            // A reported failure supersedes the timer that exists for the unreported one.
+            clearStall();
 
             // Log the raw code, never just the sentence (BUGS.md B-6): a player under
             // 200×200 (B-1) and a barred embed (B-2) produce the same friendly text, so
@@ -290,10 +372,11 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
       playerRef.current = null;
       for (const timer of captionTimers.current) clearTimeout(timer);
       captionTimers.current = [];
+      clearStall();
       readyRef.current = false;
       host.remove();
     };
-  }, []);
+  }, [clearStall, watchForStall]);
 
   useEffect(() => {
     /*
@@ -316,6 +399,7 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
      */
     if (!videoId) {
       pendingId.current = null;
+      clearStall();
       if (readyRef.current) {
         try {
           playerRef.current?.stopVideo();
@@ -330,9 +414,10 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
       playerRef.current.loadVideoById(videoId);
       // A new video brings its own caption module back with it.
       unloadCaptions(playerRef.current);
+      watchForStall(videoId);
     }
     else pendingId.current = videoId;
-  }, [videoId]);
+  }, [videoId, clearStall, watchForStall]);
 
   // The IFrame API reports state but not progress, so a progress bar needs polling.
   useEffect(() => {
