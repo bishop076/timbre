@@ -167,7 +167,7 @@ One integer would have identified B-1 versus B-2 immediately.
 
 ---
 
-## B-7 · Orphaned uvicorn children serve stale code `OPEN` (tooling)
+## B-7 · Orphaned uvicorn children serve stale code `FIXED` (tooling)
 
 **Severity:** medium for local development
 
@@ -177,8 +177,16 @@ One integer would have identified B-1 versus B-2 immediately.
 | **Cause** | `pnpm dev:ytmusic` runs uvicorn `--reload`: a reloader parent plus a worker child. Killing the parent orphans the child, which **keeps port 8787 bound and serves the old module**. `taskkill` reports "process not found" for the dead parent while the child keeps answering, and multiple stale listeners can accumulate. |
 | **Workaround** | `powershell -NoProfile -Command "Get-Process python* \| Select-Object Id,StartTime"` then kill anything older than the current run. |
 
-**Remedy worth considering:** a `predev` step that clears port 8787, or drop
-`--reload` in favour of an explicit restart.
+**Fixed 2026-08-27, by the first of those.** `pnpm dev:ytmusic` (and the posix
+variant) now runs `scripts/free-port.mjs 8787` before uvicorn. It lists *listening*
+sockets on the port — `netstat -ano` on Windows, `lsof -sTCP:LISTEN` elsewhere — and
+kills each holder with its process tree, so a reloader and its worker go together
+rather than the worker being re-orphaned by the script meant to clear it. It then
+waits up to three seconds for the socket to be released before uvicorn asks for it,
+and fails loudly if something it could not stop still holds the port. Nothing else
+in the project binds 8787, so anything found there is a leftover of the previous
+run by construction. `--reload` is kept: the fix is to stop losing the bind race,
+not to give up hot reload.
 
 ---
 
@@ -516,3 +524,4 @@ be right before the evidence arrives.
 
 `handleError` now reads: YouTube candidates → progressive → SoundCloud → rescue
 (B-14) → Spotify → preview → give up, which is `load`'s order.
+

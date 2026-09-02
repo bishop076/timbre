@@ -5,8 +5,9 @@
   "description": "One search across free music. Nothing stored, nothing hosted.",
   "scripts": {
     "dev": "pnpm --filter @timbre/web dev",
-    "dev:ytmusic": "dotenv -e .env -- apps/ytmusic/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
-    "dev:ytmusic:posix": "dotenv -e .env -- apps/ytmusic/.venv/bin/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
+    "_comment_dev_ytmusic": "free-port first: uvicorn --reload leaves an orphaned worker on 8787 when its parent dies, and the orphan serves stale code while the new run silently loses the bind — docs/BUGS.md B-7.",
+    "dev:ytmusic": "node scripts/free-port.mjs 8787 && dotenv -e .env -- apps/ytmusic/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
+    "dev:ytmusic:posix": "node scripts/free-port.mjs 8787 && dotenv -e .env -- apps/ytmusic/.venv/bin/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
     "build": "pnpm --filter @timbre/web build",
     "start": "pnpm --filter @timbre/web start",
     "lint": "pnpm -r lint",
