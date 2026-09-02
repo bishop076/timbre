@@ -121,11 +121,15 @@ dev:ytmusic` wraps the command in `dotenv-cli`, which is what supplies it. Use t
 
 **500s from the sidecar with nothing in the log, or code changes having no effect.**
 `pnpm dev:ytmusic` spawns a uvicorn reloader *and* a child. Killing the parent orphans the
-child, which keeps 8787 bound and serves stale code.
+child, which keeps 8787 bound and serves stale code. The script now clears the port before
+it starts — you will see `[free-port] port 8787 held by pid …` when that happened — so a
+plain restart is the fix. If you started uvicorn some other way, the manual route still
+works:
 
 ```bash
-powershell -NoProfile -Command "Get-Process python* | Select-Object Id,StartTime"
-# kill anything older than the run you just started
+node scripts/free-port.mjs 8787
+# or: powershell -NoProfile -Command "Get-Process python* | Select-Object Id,StartTime"
+#     and kill anything older than the run you just started
 ```
 
 **"Video unavailable" on every track, in every browser.**
