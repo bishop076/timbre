@@ -525,3 +525,32 @@ be right before the evidence arrives.
 `handleError` now reads: YouTube candidates → progressive → SoundCloud → rescue
 (B-14) → Spotify → preview → give up, which is `load`'s order.
 
+---
+
+## B-18 · A refused media server is a stall, not an error, and the ladder never ran `FIXED`
+
+**Severity:** critical from an affected network — a spinner at 0:00 on every YouTube track, for ever
+
+| | |
+|---|---|
+| **Symptom** | Hosted build, any YouTube Music track: the bar shows a spinner at `0:00`, the embed shows YouTube's own loading ring, and nothing changes for as long as the tab is open. No error in the log, no fall-through, no preview. Reported as "not adblocker friendly" — and the ad blocker was innocent: plain Chrome with no extensions did exactly the same. |
+| **Cause** | From a Datacamp VPN exit, YouTube's player accepts the video (`playabilityStatus: OK`, 24 formats) and then **googlevideo.com answers every `videoplayback` request with 403**. The player re-fetches its config every 1.5s and alternates `UNSTARTED` and `BUFFERING` with `videoLoadedFraction` exactly zero. **`onError` never fires.** Every rung of the ladder hangs off `handleError`, so a failure without an error left the whole ladder unreachable. |
+| **Fix** | `youtube-player.tsx` arms a ten-second stall check on every load, cancelled by any settled state (`PLAYING`, `PAUSED`, `CUED`, `ENDED`) or by `onError`. If the player is still `UNSTARTED`/`BUFFERING` with nothing buffered and the position at zero, it reports `handleError(…, true, { stalled: true })`. `handleError` treats a stall as a refusal of the *address* rather than the upload and skips the song's other YouTube copies — they are served by the same edge — going straight to progressive, SoundCloud, the rescue, Spotify and the preview. The decision itself is `youtube-stall.ts`, tested. |
+
+**Why it hid.** The same address on a plain-http origin gets a clean error `150` at
+once (`UNPLAYABLE, "This video is unavailable"`), so local development showed a coded,
+retryable failure and the ladder worked. Only the https deployment got as far as the
+media server, and only there did the failure lose its code. B-6's rule — log the
+number, never the sentence — could not help; there was no number. The stall log line
+carries the player state instead.
+
+**What it cannot do.** Ten seconds is a timeout, not a detection: a very slow start
+that has buffered nothing at all in ten seconds is abandoned too, the same bargain
+SoundCloud's `STALL_MS` makes at seven. And on the hosted build, where
+`SOUNDCLOUD_DIRECT_API` is off by design, leaving YouTube lands on the catalogue's
+thirty-second preview — a clip with a badge saying so, rather than a spinner saying
+nothing. The whole song from such a network needs SoundCloud search turned on or a
+different exit; see RUNNING.md.
+
+Measured 2026-08-30: *As It Was* and *Blinding Lights*, hosted build, Chrome headless
+and Brave with uBlock Origin — 7 × 403 on `videoplayback` each, no `onError` in 45s.
