@@ -313,7 +313,17 @@ test("a host that never answers becomes a timeout naming the source, not a hang"
     // and the one an unreachable host does *not* reproduce.
     (_target, init) =>
       new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        // A real socket holds the event loop open while it waits; a bare promise does not,
+        // and `AbortSignal.timeout` counts on an unreferenced timer. On Node 22 the loop
+        // therefore drained before the deadline fired and the runner cancelled this test —
+        // and the one after it — with "Promise resolution is still pending but the event
+        // loop has already resolved". Node 26 happened to keep the loop alive. The stand-in
+        // holds it the way the socket would, for longer than any deadline under test.
+        const held = setTimeout(() => {}, 1000);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(held);
+          reject(init.signal!.reason);
+        });
       }),
     async () => {
       await assert.rejects(
