@@ -1,0 +1,20 @@
+{
+  // The service worker alone. It cannot share the app's tsconfig: that one loads
+  // `lib.dom`, this needs `lib.webworker`, and TypeScript refuses to load both —
+  // they each declare `self`, `location` and friends. So the app's config excludes
+  // `sw/`, and this one covers it.
+  //
+  // Check only. The file that ships, `public/sw.js`, is written by `next.config.ts`
+  // when Next starts, so the transpile lives where every way of running Next goes
+  // through — this config is how `pnpm typecheck` gets to say whether it is right.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "WebWorker"],
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.ts"]
+}

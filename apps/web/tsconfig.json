@@ -33,5 +33,7 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  // `sw/` is the service worker: it needs lib.webworker, which cannot be loaded
+  // alongside lib.dom, so it has its own tsconfig and `pnpm typecheck` runs both.
+  "exclude": ["node_modules", "sw"]
 }

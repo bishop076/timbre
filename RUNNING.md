@@ -172,7 +172,7 @@ ignores unknown keys — so they are harmless, just misleading about what the ap
 
 ```bash
 pnpm test          # every workspace package, plus scripts/*.test.mts
-pnpm typecheck     # runs next typegen first; a fresh clone fails without it
+pnpm typecheck     # runs next typegen first; a fresh clone fails without it. Also scripts/ and the service worker
 pnpm lint
 
 cd apps/ytmusic && .venv/Scripts/python.exe -m pytest -q
