@@ -476,6 +476,29 @@ input[type="search"]::-webkit-search-results-decoration {
   .ambient::before {
     transition: none;
   }
+
+  /*
+   * Tailwind's two animations, which this block had never reached: the file has always been
+   * careful about its own keyframes and silent about the ones the utilities bring. Fifteen
+   * skeletons pulse on a cold page and four spinners turn, and neither asked whether the
+   * reader wanted them to.
+   *
+   * They are not treated alike. A skeleton is decoration, so it stops dead, held at the
+   * opacity its pulse averages so it still reads as a placeholder rather than as content
+   * that failed to arrive. The spinner does not stop — it is the only thing saying a track
+   * is still being resolved, and a frozen spinner reads as a hung app. It slows instead,
+   * which is what the preference actually asks for: less motion, not less information.
+   *
+   * Unlayered, so these win over the utilities in `@layer utilities` whatever the order —
+   * the same reason `.shelf` above owns its own scroll snapping.
+   */
+  .animate-pulse {
+    animation: none;
+    opacity: 0.75;
+  }
+  .animate-spin {
+    animation-duration: 3s;
+  }
 }
 
 /** Softens the panel's bottom edge so a row at the fold is not sliced through; bottom
