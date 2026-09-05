@@ -70,6 +70,12 @@ function loadApi(): Promise<SCNamespace> {
     }
   });
 
+  // A rejection is not memoised. The script being blocked once — a flaky network, an
+  // extension toggled mid-session — must not read as blocked for as long as the tab lives.
+  apiPromise = apiPromise.catch((cause: unknown) => {
+    apiPromise = null;
+    throw cause;
+  });
   return apiPromise;
 }
 
@@ -204,7 +210,7 @@ export function SoundCloudPlayer({
           if (position > 0 || !paused) return;
           handlers.current.handleError(
             "SoundCloud wouldn't start this track. It plays on soundcloud.com but refuses to start here — pick another source from the badges to hear it.",
-            false,
+            true,
           );
         });
       });
@@ -243,7 +249,7 @@ export function SoundCloudPlayer({
       if (!cancelled && !readyRef.current) {
         handlers.current.handleError(
           "Couldn't load SoundCloud's player. An ad blocker or network filter may be blocking it.",
-          false,
+          true,
         );
       }
     }, 8000);
@@ -277,13 +283,13 @@ export function SoundCloudPlayer({
         // Errors arrive without a code, so a private track cannot be told from a geo-blocked
         // one. Not retryable — there is no second upload to fall through to.
         widget.bind(SC.Widget.Events.ERROR, () =>
-          handlers.current.handleError("SoundCloud couldn't play this track.", false),
+          handlers.current.handleError("SoundCloud couldn't play this track.", true),
         );
       })
       .catch(() => {
         if (cancelled) return;
         clearTimeout(blocked);
-        handlers.current.handleError("Couldn't load SoundCloud's player.", false);
+        handlers.current.handleError("Couldn't load SoundCloud's player.", true);
       });
 
     return () => {

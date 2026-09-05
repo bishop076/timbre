@@ -416,6 +416,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const progressiveTried = useRef(false);
   /** The preview is the floor of the ladder; without this a clip that fails re-offers itself. */
   const previewTried = useRef(false);
+  // The same once-per-song guard for SoundCloud. `soundcloud-player.tsx` describes it as
+  // already existing, and reported its refusals as final because it did not: the ladder
+  // gave up on a song listed on four sources because the one that refused was SoundCloud.
+  const soundcloudTried = useRef(false);
   /** The Spotify track already offered for this song, so the give-up path cannot loop into
    * the same embed it just showed. */
   const activeSourceRefSpotify = useRef<string | null>(null);
@@ -448,6 +452,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const attemptSoundCloud = useCallback((url: string) => {
+    soundcloudTried.current = true;
     setVideoId(null);
     setStreamUrl(null);
     setSpotifyTrackId(null);
@@ -675,6 +680,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       attempted.current = new Set();
       progressiveTried.current = false;
       previewTried.current = false;
+      soundcloudTried.current = false;
       setPlayingPreview(false);
       activeSourceRefSpotify.current = null;
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
@@ -1285,10 +1291,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // SoundCloud has its own rights position, and reports not-worth-retrying, so a failure
-      // exits above rather than looping back here.
+      // Once per song, like `progressiveTried`. SoundCloud's player reports its refusals as
+      // worth retrying, so a song it shares with YouTube Music, Deezer and Apple is not given
+      // up on because the one source that refused was the one being tried — and without
+      // this guard that report would walk straight back in here and restart the track that
+      // had just refused, for ever.
       const soundcloud = soundcloudUrlOf(song);
-      if (soundcloud) {
+      if (soundcloud && !soundcloudTried.current) {
         log(
           "warn",
           `“${song.title}” fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`,
