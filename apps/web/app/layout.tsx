@@ -261,6 +261,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <link rel="dns-prefetch" href="https://api-widget.soundcloud.com" />
         <link rel="dns-prefetch" href="https://player-widget.mixcloud.com" />
         <link rel="dns-prefetch" href="https://www.youtube.com" />
+        <link rel="dns-prefetch" href="https://www.youtube-nocookie.com" />
 
         {/* One tag, not two: React warns about every script it meets while
             rendering, so a second doubles a message that is already noise. */}

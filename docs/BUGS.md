@@ -554,3 +554,29 @@ different exit; see RUNNING.md.
 
 Measured 2026-08-30: *As It Was* and *Blinding Lights*, hosted build, Chrome headless
 and Brave with uBlock Origin — 7 × 403 on `videoplayback` each, no `onError` in 45s.
+
+---
+
+## B-19 · The embed host decides whether a distrusted network gets media at all `FIXED`
+
+**Severity:** critical from an affected network — every YouTube track fell through to a clip
+
+B-18 made the failure visible and bounded; this is what the failure was.
+
+| | |
+|---|---|
+| **Symptom** | From a VPN exit, every YouTube track in the hosted build stalled (B-18) and fell through to a preview — while **youtube.com itself played in the next tab**, same VPN, same ad blocker. |
+| **Cause** | Not the address. An anonymous, cookie-less first-party watch page played from the same exit in headless Chrome. What was refused was the *embedded player* on `www.youtube.com`: `playabilityStatus: OK`, then googlevideo.com answering 403 to the media, in the app, in a bare `<iframe>`, and through the IFrame API alike. |
+| **Fix** | `youtube-player.tsx` passes `host: "https://www.youtube-nocookie.com"` to `YT.Player`. Measured under the real hosted origin with the component's exact sequence: `www.youtube.com` → UNSTARTED/BUFFERING for ever, 5–6 × 403; `youtube-nocookie.com` → PLAYING, fourteen seconds in after sixteen, every media request 200. `frame-src` names both hosts because the API script still loads from `www.youtube.com`. |
+
+**How it was found.** The reader's report that a plain YouTube tab worked on the same
+network ruled out the address, so the contexts were compared one variable at a time from
+the same exit: first-party watch page (plays), embed under the hosted origin (stalls),
+the same embed on the privacy-enhanced host (plays), a plain iframe on each host (same
+split). Four variants, one difference.
+
+**What is still true.** A `127.0.0.1` origin gets error `150` on *both* hosts, so this
+cannot be seen in local development at all — the probe has to run under a public origin,
+which a Playwright route can fulfil without deploying. And the media servers' judgement is
+YouTube's and can change; if the stall returns on the new host, B-18's fall-through is
+still underneath it.
