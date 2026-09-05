@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MoreIcon, PencilIcon, TrashIcon } from "../icons";
 import { deletePlaylist, renamePlaylist } from "./store";
+import { useAnchoredMenu } from "./use-anchored-menu";
 
 /** Rename and delete, for one playlist. An overflow menu, because a delete control beside
  * "Play" at the same weight eventually gets hit by accident; the destructive button is
@@ -25,10 +26,16 @@ export function PlaylistActions({
   const root = useRef<HTMLDivElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
 
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"menu" | "rename" | "confirm">("menu");
   const [draft, setDraft] = useState(name);
+
+  // `mode` is in the deps because it changes the menu's height — the list, a rename field
+  // and a delete confirmation are three different boxes, and a menu that flipped above its
+  // trigger to fit the first would hang off the edge on the third without re-measuring.
+  const at = useAnchoredMenu(open, root, menu, 240, mode);
 
   // Escape and both forms remove the node holding focus, and the next Tab would restart at
   // the top of the document. An outside click is left alone, having moved focus itself.
@@ -105,9 +112,26 @@ export function PlaylistActions({
       </button>
 
       {open && (
+        /*
+         * Fixed and measured, not `absolute left-0 top-full`.
+         *
+         * This trigger's main home is the corner of a playlist card, and on a phone that
+         * card is about 173px wide against a 240px menu — so hanging the menu off the
+         * trigger's left ran three quarters of it off the right of the screen in the second
+         * column, where `main`'s `overflow-x: hidden` clipped it away. Flipping to `right-0`
+         * would only have moved the same problem to the left edge in the first column: no
+         * fixed alignment works when the menu is wider than what it hangs off.
+         *
+         * `useAnchoredMenu` measures against the window instead, and is shared with
+         * <AddToPlaylist>, which had grown the same logic for its own reasons. Fixed is what
+         * escapes the clipping — `overflow: hidden` does not clip a fixed descendant — so
+         * this still needs no portal.
+         */
         <div
+          ref={menu}
           role="menu"
-          className="slab absolute left-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
+          style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
+          className="slab fixed z-50 w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
         >
           {mode === "menu" && (
             <div className="p-1.5">
