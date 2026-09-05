@@ -18,7 +18,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+const git = (...args: string[]): string => execFileSync("git", args, { encoding: "utf8" });
 
 /** Staged, and still present — a rename's old path is not something to resolve against. */
 const staged = git("diff", "--cached", "--name-only", "--diff-filter=ACM")
@@ -40,7 +40,14 @@ const RELATIVE = /(?:from|import)\s*\(?\s*["'](\.[^"']+)["']/g;
 /** What TypeScript will try, in order, for a specifier with no extension. */
 const CANDIDATES = ["", ".ts", ".tsx", ".mts", ".js", ".jsx", "/index.ts", "/index.tsx"];
 
-const problems = [];
+interface Problem {
+  file: string;
+  specifier: string;
+  /** The candidate that exists in the working tree but not in git, if that is the failure. */
+  onDisk: string | undefined;
+}
+
+const problems: Problem[] = [];
 
 for (const file of staged) {
   const source = git("show", `:${file}`);
@@ -48,6 +55,7 @@ for (const file of staged) {
 
   for (const match of source.matchAll(RELATIVE)) {
     const specifier = match[1];
+    if (specifier === undefined) continue;
     // `./x.ts` is how this repo imports some modules; the resolver tries the literal first.
     const base = path.posix.normalize(path.posix.join(dir, specifier));
     const resolved = CANDIDATES.map((suffix) => base + suffix).find((candidate) =>

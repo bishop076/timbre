@@ -1,0 +1,25 @@
+{
+  // The repo's own tooling: run directly by Node, which strips the types itself
+  // (`node scripts/release.mts`), so nothing here is ever emitted. This file exists
+  // so `pnpm typecheck` checks the scripts with the same strictness as packages/.
+  //
+  // Type stripping has two rules the settings below enforce: type-only imports must
+  // say `import type` (verbatimModuleSyntax), and imports name the real file with its
+  // extension (allowImportingTsExtensions), because Node will not guess one.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "types": ["node"]
+  },
+  "include": ["*.mts"]
+}

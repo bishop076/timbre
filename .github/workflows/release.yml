@@ -1,9 +1,12 @@
 # Cuts a release from the commit log, with nobody choosing a version number.
 #
 # Timbre's commits are strict conventional commits, so the types since the last tag
-# already say what kind of release this is. `scripts/release.mjs` reads them, works
+# already say what kind of release this is. `scripts/release.mts` reads them, works
 # out the next version, rewrites both manifests and CHANGELOG.md, and this pushes the
-# result and publishes the Release. The arithmetic is tested — see release.test.mjs.
+# result and publishes the Release. The arithmetic is tested — see release.test.mts.
+#
+# The script is TypeScript run by Node directly. `setup-node` with `22` resolves to
+# the newest 22.x, which strips types without a flag (22.18 and later do).
 #
 # A push that contains no `feat`, `fix` or `perf` releases nothing, so a day of
 # refactoring and docs does not mint a version.
@@ -87,7 +90,7 @@ jobs:
         env:
           # Fixed, so a re-run of the same commit writes the same date.
           RELEASE_DATE: ${{ github.event.head_commit.timestamp }}
-        run: node scripts/release.mjs
+        run: node scripts/release.mts
 
       - name: Commit, tag and push
         if: steps.version.outputs.released == 'true'

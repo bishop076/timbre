@@ -6,20 +6,24 @@
   "scripts": {
     "dev": "pnpm --filter @timbre/web dev",
     "_comment_dev_ytmusic": "free-port first: uvicorn --reload leaves an orphaned worker on 8787 when its parent dies, and the orphan serves stale code while the new run silently loses the bind — docs/BUGS.md B-7.",
-    "dev:ytmusic": "node scripts/free-port.mjs 8787 && dotenv -e .env -- apps/ytmusic/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
-    "dev:ytmusic:posix": "node scripts/free-port.mjs 8787 && dotenv -e .env -- apps/ytmusic/.venv/bin/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
+    "dev:ytmusic": "node scripts/free-port.mts 8787 && dotenv -e .env -- apps/ytmusic/.venv/Scripts/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
+    "dev:ytmusic:posix": "node scripts/free-port.mts 8787 && dotenv -e .env -- apps/ytmusic/.venv/bin/python -m uvicorn app.main:app --reload --port 8787 --app-dir apps/ytmusic",
     "build": "pnpm --filter @timbre/web build",
     "start": "pnpm --filter @timbre/web start",
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
-    "_comment_test": "The scripts tests are not in a workspace, so -r would miss them — and scripts/release.mjs is what chooses version numbers unattended.",
-    "test": "pnpm -r test && node --test \"scripts/*.test.mjs\""
+    "_comment_typecheck": "scripts/ is not a workspace, so -r would miss it; tsc -p scripts checks the release and hook scripts that Node otherwise runs unchecked.",
+    "typecheck": "pnpm -r typecheck && tsc -p scripts",
+    "_comment_test": "The scripts tests are not in a workspace, so -r would miss them — and scripts/release.mts is what chooses version numbers unattended.",
+    "test": "pnpm -r test && node --test \"scripts/*.test.mts\""
   },
+  "_comment_engines": "22.18 rather than 22: scripts/ is TypeScript that Node runs directly, and that is the first 22.x where type stripping is on without a flag.",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "packageManager": "pnpm@11.10.0",
   "devDependencies": {
-    "dotenv-cli": "^11.0.0"
+    "@types/node": "^20",
+    "dotenv-cli": "^11.0.0",
+    "typescript": "^5"
   }
 }

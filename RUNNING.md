@@ -127,7 +127,7 @@ plain restart is the fix. If you started uvicorn some other way, the manual rout
 works:
 
 ```bash
-node scripts/free-port.mjs 8787
+node scripts/free-port.mts 8787
 # or: powershell -NoProfile -Command "Get-Process python* | Select-Object Id,StartTime"
 #     and kill anything older than the run you just started
 ```
@@ -171,7 +171,7 @@ ignores unknown keys — so they are harmless, just misleading about what the ap
 ## Tests
 
 ```bash
-pnpm test          # every workspace package, plus scripts/*.test.mjs
+pnpm test          # every workspace package, plus scripts/*.test.mts
 pnpm typecheck     # runs next typegen first; a fresh clone fails without it
 pnpm lint
 

@@ -1,4 +1,4 @@
 #!/bin/sh
 # Versioned so both agents get it. Enable with:
 #   git config core.hooksPath .githooks
-exec node scripts/check-staged-imports.mjs
+exec node scripts/check-staged-imports.mts

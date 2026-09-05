@@ -12,7 +12,7 @@
  *
  * Deliberately a script rather than a pile of YAML: the interesting part is the
  * version arithmetic, and that belongs somewhere it can be read and tested. See
- * release.test.mjs.
+ * release.test.mts.
  */
 
 import { execFileSync } from "node:child_process";
@@ -23,8 +23,19 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const MANIFESTS = ["package.json", "apps/web/package.json"];
 const CHANGELOG = "CHANGELOG.md";
 
+/** One conventional commit, parsed. */
+export interface Commit {
+  type: string;
+  scope: string | null;
+  description: string;
+  breaking: boolean;
+}
+
+/** Which part of the version moves. */
+export type Bump = "major" | "minor" | "patch";
+
 /** Types that make a release, and the heading each gets in the notes. */
-const RELEASING = {
+const RELEASING: Readonly<Record<string, string>> = {
   feat: "Added",
   fix: "Fixed",
   perf: "Faster",
@@ -36,10 +47,11 @@ const RELEASING = {
  */
 const SILENT = ["docs", "chore", "refactor", "test", "ci", "build", "style", "revert"];
 
-const git = (...args) => execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+const git = (...args: string[]): string =>
+  execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 
 /** The most recent version tag, or null on a repository that has never released. */
-export function lastTag() {
+export function lastTag(): string | null {
   try {
     return git("describe", "--tags", "--abbrev=0", "--match", "v*") || null;
   } catch {
@@ -51,12 +63,12 @@ export function lastTag() {
  * One commit, parsed. Returns null for anything that is not a conventional commit —
  * a merge, or a message written by hand — so it neither bumps nor appears.
  */
-export function parseCommit(message) {
+export function parseCommit(message: string): Commit | null {
   const [subject, ...rest] = message.split("\n");
   const match = /^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)$/.exec(subject ?? "");
   if (!match) return null;
 
-  const [, type, scope, bang, description] = match;
+  const [, type = "", scope, bang, description = ""] = match;
   // Either marker counts: `feat!:` in the subject, or a footer in the body.
   const breaking = bang === "!" || /^BREAKING[ -]CHANGE:/m.test(rest.join("\n"));
   return { type, scope: scope ?? null, description, breaking };
@@ -69,8 +81,10 @@ export function parseCommit(message) {
  * conventional reading of a 0.x line: 0.x is where the shape is still moving, and
  * promoting every break to 1.0.0 would say the opposite.
  */
-export function bumpFor(commits, currentVersion) {
-  const releasing = commits.filter((c) => c && (RELEASING[c.type] || c.breaking));
+export function bumpFor(commits: readonly (Commit | null)[], currentVersion: string): Bump | null {
+  const releasing = commits.filter(
+    (c): c is Commit => c !== null && (RELEASING[c.type] !== undefined || c.breaking),
+  );
   if (releasing.length === 0) return null;
 
   const preMajor = currentVersion.startsWith("0.");
@@ -80,9 +94,16 @@ export function bumpFor(commits, currentVersion) {
 }
 
 /** Applies a bump to a semver string. */
-export function nextVersion(current, bump) {
-  const [major, minor, patch] = current.split(".").map(Number);
-  if ([major, minor, patch].some((n) => !Number.isInteger(n))) {
+export function nextVersion(current: string, bump: Bump): string {
+  const parts = current.split(".").map(Number);
+  const [major, minor, patch] = parts;
+  if (
+    parts.length !== 3 ||
+    major === undefined ||
+    minor === undefined ||
+    patch === undefined ||
+    parts.some((n) => !Number.isInteger(n))
+  ) {
     throw new Error(`not a semver version: ${current}`);
   }
   if (bump === "major") return `${major + 1}.0.0`;
@@ -105,7 +126,7 @@ const MONTHS = [
  * was going to be wrong more often than right. The calendar date somebody was living
  * in when they committed is the one that belongs in a changelog.
  */
-export function humanDate(when) {
+export function humanDate(when?: string | Date): string {
   const iso = typeof when === "string" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(when) : null;
   if (iso) {
     const [, year, month, day] = iso;
@@ -123,10 +144,15 @@ export function humanDate(when) {
  * changelog does not want thirty refactor subjects, but "and 30 changes under the
  * hood" is honest about the release not being empty.
  */
-export function notesFor(commits, version, now) {
-  const parsed = commits.filter(Boolean);
+export function notesFor(
+  commits: readonly (Commit | null)[],
+  version: string,
+  now?: string | Date,
+): string {
+  const parsed = commits.filter((c): c is Commit => c !== null);
   const lines = [`## ${version} — ${humanDate(now)}`, ""];
-  const entry = (commit) => `- ${commit.scope ? `**${commit.scope}** — ` : ""}${commit.description}`;
+  const entry = (commit: Commit) =>
+    `- ${commit.scope ? `**${commit.scope}** — ` : ""}${commit.description}`;
 
   /*
    * Breaking changes lead, and are listed whatever their type.
@@ -165,7 +191,7 @@ export function notesFor(commits, version, now) {
 }
 
 /** Inserts a section directly after the changelog's preamble, newest first. */
-export function prependToChangelog(existing, section) {
+export function prependToChangelog(existing: string, section: string): string {
   const firstRelease = existing.indexOf("\n## ");
   if (firstRelease === -1) return `${existing.trimEnd()}\n\n${section}`;
   const head = existing.slice(0, firstRelease + 1);
@@ -173,7 +199,7 @@ export function prependToChangelog(existing, section) {
   return `${head}${section}\n${tail}`;
 }
 
-function main() {
+function main(): void {
   const dryRun = process.argv.includes("--dry-run");
   const tag = lastTag();
   const range = tag ? `${tag}..HEAD` : "HEAD";
@@ -186,8 +212,15 @@ function main() {
     .filter(Boolean);
   const commits = messages.map(parseCommit);
 
-  const manifestPath = path.join(ROOT, MANIFESTS[0]);
-  const current = JSON.parse(readFileSync(manifestPath, "utf8")).version;
+  const manifestPath = path.join(ROOT, MANIFESTS[0] ?? "package.json");
+  const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const current =
+    typeof manifest === "object" && manifest !== null && "version" in manifest
+      ? manifest.version
+      : undefined;
+  if (typeof current !== "string") {
+    throw new Error(`no "version" string in ${manifestPath}`);
+  }
   const bump = bumpFor(commits, current);
 
   console.log(`last tag       ${tag ?? "(none)"}`);
@@ -241,6 +274,7 @@ function main() {
 }
 
 // Importable for the tests without running.
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)) {
+const entryPoint = process.argv[1];
+if (entryPoint && path.resolve(entryPoint) === path.resolve(import.meta.filename)) {
   main();
 }

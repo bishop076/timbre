@@ -178,7 +178,7 @@ One integer would have identified B-1 versus B-2 immediately.
 | **Workaround** | `powershell -NoProfile -Command "Get-Process python* \| Select-Object Id,StartTime"` then kill anything older than the current run. |
 
 **Fixed 2026-08-27, by the first of those.** `pnpm dev:ytmusic` (and the posix
-variant) now runs `scripts/free-port.mjs 8787` before uvicorn. It lists *listening*
+variant) now runs `scripts/free-port.mts 8787` before uvicorn. It lists *listening*
 sockets on the port — `netstat -ano` on Windows, `lsof -sTCP:LISTEN` elsewhere — and
 kills each holder with its process tree, so a reloader and its worker go together
 rather than the worker being re-orphaned by the script meant to clear it. It then

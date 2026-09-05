@@ -8,7 +8,7 @@ import {
   notesFor,
   parseCommit,
   prependToChangelog,
-} from "./release.mjs";
+} from "./release.mts";
 
 /*
  * The version number is chosen by a machine and pushed to a tag nobody reviews, so
@@ -16,7 +16,7 @@ import {
  */
 
 const at = new Date("2026-08-18T09:00:00Z");
-const parse = (...messages) => messages.map(parseCommit);
+const parse = (...messages: string[]) => messages.map(parseCommit);
 
 test("a conventional subject parses into its parts", () => {
   assert.deepEqual(parseCommit("feat(player): add a queue"), {
@@ -41,13 +41,13 @@ test("anything that is not a conventional commit is ignored, not guessed at", ()
 });
 
 test("both breaking-change markers are recognised", () => {
-  assert.equal(parseCommit("feat!: drop the old store").breaking, true);
-  assert.equal(parseCommit("feat(api)!: rename a field").breaking, true);
+  assert.equal(parseCommit("feat!: drop the old store")?.breaking, true);
+  assert.equal(parseCommit("feat(api)!: rename a field")?.breaking, true);
   assert.equal(
-    parseCommit("refactor: move a module\n\nBREAKING CHANGE: the export moved").breaking,
+    parseCommit("refactor: move a module\n\nBREAKING CHANGE: the export moved")?.breaking,
     true,
   );
-  assert.equal(parseCommit("feat: a normal feature").breaking, false);
+  assert.equal(parseCommit("feat: a normal feature")?.breaking, false);
 });
 
 test("silent types alone do not cut a release", () => {
