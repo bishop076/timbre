@@ -109,6 +109,14 @@ function useSmoothPosition(position: number, duration: number, playing: boolean)
     anchor.current = { position, at: performance.now() };
   }
 
+  // Anchored again whenever playback starts. The anchor's clock began at 0 — page load —
+  // and `position` stays 0 from mount until the first poll, so the first frames of the first
+  // song extrapolated from seconds-since-load and the wave flashed full. The same on resume:
+  // time spent paused counted as time played until the next poll corrected it.
+  useEffect(() => {
+    if (playing) anchor.current = { position: anchor.current.position, at: performance.now() };
+  }, [playing]);
+
   useEffect(() => {
     if (!playing) return;
 
