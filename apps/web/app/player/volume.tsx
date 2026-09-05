@@ -95,6 +95,10 @@ export function Volume() {
           event.currentTarget.releasePointerCapture(event.pointerId);
           setDragging(false);
         }}
+        // A touch that turns into a scroll, or an OS gesture, ends with `pointercancel` and
+        // never `pointerup`. Without this the drag stayed armed, and every later hover over
+        // the track changed the volume with no button held.
+        onPointerCancel={() => setDragging(false)}
         /*
          * Every key here is also a scroll key, and this slider is focusable, so the page
          * moved underneath the reader on each press: Up and Down scrolled a line, Home and
