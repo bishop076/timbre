@@ -1162,7 +1162,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // No recommendations is not worth surfacing: the queue still plays.
       });
 
-    return () => aborter.abort();
+    return () => {
+      // Every fall-through re-runs this effect for the *same* song, and `seededFor` then
+      // stops the re-run from asking again — so cancelling here on each one left a song
+      // whose first copy refused with no radio at all, and the queue died at its end. Only
+      // a change of song makes this request stale. `songRef` rather than the index ref:
+      // `load` sets it synchronously, before any state this cleanup could observe.
+      if (songRef.current?.id !== song.id) aborter.abort();
+    };
     // Keyed on whatever is actually loaded — see the ref note above.
     //
     // **Every handle, not just some.** Exactly one of these is non-null at a time, so a
