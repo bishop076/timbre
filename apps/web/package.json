@@ -12,6 +12,12 @@
     "_comment_typecheck": "next typegen first: layout.tsx uses LayoutProps<\"/\">, a global Next generates into .next/types. On a machine that has built before, the folder is already there and tsc passes; on a fresh clone or in CI it is not, and tsc fails with 'Cannot find name LayoutProps'. Generating it here keeps one command correct everywhere.",
     "typecheck": "next typegen && tsc --noEmit"
   },
+  "_comment_postcss": "PostCSS config lives here rather than in a postcss.config.* file so the repo has no JavaScript in it. Next only loads that file as .js/.mjs/.cjs/.json — not .ts — and reads this key first when it is present.",
+  "postcss": {
+    "plugins": {
+      "@tailwindcss/postcss": {}
+    }
+  },
   "dependencies": {
     "@timbre/core": "workspace:*",
     "@timbre/providers": "workspace:*",
