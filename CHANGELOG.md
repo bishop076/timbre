@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.4.1 — 5 September 2026
+
+### Fixed
+
+- **player** — serve the embed from youtube-nocookie.com, which is what plays from a distrusted network
+
 ## 0.4.0 — 5 September 2026
 
 ### Added
