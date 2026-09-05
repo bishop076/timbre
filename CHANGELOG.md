@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.4.0 — 5 September 2026
+
+### Added
+
+- **web** — an original mark — the waveform timbre actually describes
+
 ## 0.3.0 — 5 September 2026
 
 ### Added
