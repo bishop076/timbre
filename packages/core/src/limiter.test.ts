@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  MemoryBucketStore,
-  RateLimiter,
-  refill,
-  tryConsume,
-  type BucketPolicy,
-} from "./limiter.ts";
+import { MemoryBucketStore, RateLimiter, refill, tryConsume, type BucketPolicy } from "./limiter.ts";
 
 const policy: BucketPolicy = { capacity: 10, refillPerSecond: 5 };
 
@@ -44,4 +38,33 @@ test("acquire spends from a persisted bucket", async () => {
   // Bucket is empty; advancing the clock is what lets the next call through.
   now = 1_000;
   await limiter.acquire(key, policy, 5);
+});
+
+test("concurrent acquisitions on one key are paced, not all admitted at once", async () => {
+  const limiter = new RateLimiter(new MemoryBucketStore());
+  const policy = { capacity: 2, refillPerSecond: 10 };
+
+  let admitted = 0;
+  const all = Promise.all(
+    [1, 2, 3].map(() =>
+      limiter.acquire("apple", policy).then(() => {
+        admitted += 1;
+      }),
+    ),
+  );
+
+  // Every microtask settles here, and no timer fires: the third caller must be waiting.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(admitted, 2, "a two-token bucket admitted more than two callers at once");
+
+  await all;
+  assert.equal(admitted, 3);
+});
+
+test("a failed acquisition does not stall the callers queued behind it", async () => {
+  const limiter = new RateLimiter(new MemoryBucketStore());
+  const policy = { capacity: 2, refillPerSecond: 10 };
+
+  await assert.rejects(limiter.acquire("k", policy, 3), RangeError);
+  await limiter.acquire("k", policy);
 });
