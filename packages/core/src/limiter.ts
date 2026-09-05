@@ -110,8 +110,30 @@ export class RateLimiter {
     this.#now = now;
   }
 
+  /** In-flight acquisitions per key, so this process touches a bucket one caller at a time. */
+  readonly #queues = new Map<string, Promise<void>>();
+
   /** Blocks until `cost` tokens are available, then spends them. */
-  async acquire(key: string, policy: BucketPolicy, cost = 1): Promise<void> {
+  acquire(key: string, policy: BucketPolicy, cost = 1): Promise<void> {
+    // Serialised per key. `load → consume → save` is not atomic, and without this every
+    // concurrent caller read the same state before any of them wrote, so all of them
+    // "succeeded": twenty acquisitions against a five-token bucket resolved at once. Apple
+    // answers exactly that with 403, which is the throttle this class exists to stay under.
+    const previous = this.#queues.get(key) ?? Promise.resolve();
+    const turn = previous.then(() => this.#acquire(key, policy, cost));
+    // The chain holds only settled links, so one caller's failure cannot stall the next.
+    const link = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#queues.set(key, link);
+    void link.then(() => {
+      if (this.#queues.get(key) === link) this.#queues.delete(key);
+    });
+    return turn;
+  }
+
+  async #acquire(key: string, policy: BucketPolicy, cost: number): Promise<void> {
     // Loop rather than sleep-once: another process on this key may take the tokens.
     for (;;) {
       const stored = await this.#store.load(key);
