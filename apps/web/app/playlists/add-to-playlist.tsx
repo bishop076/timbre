@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { CheckIcon, PlaylistAddIcon, PlusIcon } from "../icons";
 import type { Song } from "../types";
 import { addSongToPlaylist, createPlaylist, loadPlaylists, usePlaylists } from "./store";
+import { useAnchoredMenu } from "./use-anchored-menu";
 
 /** Saves a song to a playlist. A menu rather than a heart, since there is no single
  * "liked songs" list. Playlists are local, so the interaction is synchronous. */
@@ -22,7 +23,10 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   // Portalled into `document.body`, not rendered beside its button: shelves are
   // `overflow-x-auto`, and an absolutely positioned child of a scroll container is clipped
   // by it. Fixed coordinates also let it flip to whichever side has room.
-  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
+  //
+  // The placement itself now lives in `useAnchoredMenu`, shared with <PlaylistActions>,
+  // which had none of it and needed all of it.
+  const at = useAnchoredMenu(open, root, menu, 240);
 
   // Focus has to come back with the menu: it is portalled to the end of <body>, so the node
   // being dropped is nowhere near the row and the next Tab would restart at the top of the
@@ -36,60 +40,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     if (open) loadPlaylists();
   }, [open]);
 
-  // `useLayoutEffect` so the menu never appears at the wrong place first.
-  useLayoutEffect(() => {
-    if (!open) return;
-
-    const place = () => {
-      // `rect`, not `trigger`: that name is the button's ref one scope up.
-      const rect = root.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const WIDTH = 240;
-      const MARGIN = 8;
-      const wantLeft = rect.right - WIDTH;
-      const left = Math.min(
-        Math.max(MARGIN, wantLeft < MARGIN ? rect.left : wantLeft),
-        window.innerWidth - WIDTH - MARGIN,
-      );
-
-      /*
-       * Measured, not guessed. The menu is rendered before it is placed precisely so this
-       * can read a real box: its height is the playlist list — shorter than its `max-h-56`
-       * until there are enough playlists to fill it — plus the create form, so the old
-       * constant of 260 described only the full case.
-       */
-      const height = menu.current?.offsetHeight ?? 260;
-      const below = window.innerHeight - rect.bottom;
-
-      /*
-       * Above only when it genuinely fits better there. The old test compared the *gap*
-       * below against 260 and then flipped on `rect.top > below`, which left the case that
-       * matters unhandled: a trigger in the upper half of a short window has a below-gap
-       * under 260 and a smaller top-gap, so the menu opened downwards and ran off the
-       * bottom edge. Being `position: fixed`, what hangs off cannot be scrolled to — the
-       * last playlists in the list were simply unreachable.
-       */
-      const fitsBelow = height + MARGIN <= below;
-      const top = fitsBelow || below >= rect.top ? rect.bottom + 6 : rect.top - 6 - height;
-
-      // The clamp is the backstop for the window that is too short for either side.
-      const maxTop = Math.max(MARGIN, window.innerHeight - height - MARGIN);
-      const next = { left, top: Math.min(Math.max(MARGIN, top), maxTop) };
-
-      // Identity-stable, because this runs again the moment it has a height to measure and
-      // a fresh object every time would re-render for as long as the menu stayed open.
-      setAt((prev) => (prev && prev.left === next.left && prev.top === next.top ? prev : next));
-    };
-
-    place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
