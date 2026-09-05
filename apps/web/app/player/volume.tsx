@@ -95,11 +95,29 @@ export function Volume() {
           event.currentTarget.releasePointerCapture(event.pointerId);
           setDragging(false);
         }}
+        /*
+         * Every key here is also a scroll key, and this slider is focusable, so the page
+         * moved underneath the reader on each press: Up and Down scrolled a line, Home and
+         * End threw the panel to its ends. Handling a key now means consuming it.
+         *
+         * Structured as one decision rather than four independent `if`s so there is exactly
+         * one place that knows whether the press was ours.
+         */
         onKeyDown={(event) => {
-          if (event.key === "ArrowRight" || event.key === "ArrowUp") setVolume(level + 5);
-          if (event.key === "ArrowLeft" || event.key === "ArrowDown") setVolume(level - 5);
-          if (event.key === "Home") setVolume(0);
-          if (event.key === "End") setVolume(100);
+          const to =
+            event.key === "ArrowRight" || event.key === "ArrowUp"
+              ? level + 5
+              : event.key === "ArrowLeft" || event.key === "ArrowDown"
+                ? level - 5
+                : event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? 100
+                    : null;
+
+          if (to === null) return;
+          event.preventDefault();
+          setVolume(to);
         }}
         // Taller than the visible bar — a 10px target is unusable.
         className="group flex h-8 w-16 cursor-pointer touch-none items-center xl:w-24"
