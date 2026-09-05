@@ -155,6 +155,12 @@ function loadApi(): Promise<SpotifyIFrameApi> {
     document.body.append(script);
   });
 
+  // A rejection is not memoised. The script being blocked once — a flaky network, an
+  // extension toggled mid-session — must not read as blocked for as long as the tab lives.
+  apiPromise = apiPromise.catch((cause: unknown) => {
+    apiPromise = null;
+    throw cause;
+  });
   return apiPromise;
 }
 

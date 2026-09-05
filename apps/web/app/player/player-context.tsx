@@ -1061,20 +1061,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const enqueue = useCallback(
     (songs: Song[]) => {
-      const fresh = unqueued(songs);
+      // Against the ref rather than `unqueued`, which reads the render-time queue for
+      // `hasNext`: two additions in one tick would each see the queue without the other.
+      const known = new Set(queueRef.current.map((song) => song.id));
+      const fresh = songs.filter((song) => !known.has(song.id));
       if (fresh.length === 0) return;
 
       // Adding to an empty queue must start playback, or nothing loads the song.
-      if (queue.length === 0) {
+      if (queueRef.current.length === 0) {
         writeQueue(fresh);
         setIndex(0);
         void load(fresh[0]!);
         return;
       }
 
-      writeQueue([...queue, ...fresh]);
+      // Through the ref, like every other writer: the render-time `queue` is stale the
+      // moment another write lands in the same tick, and appending to it dropped that write.
+      writeQueue((current) => [...current, ...fresh]);
     },
-    [load, queue, unqueued, writeQueue],
+    [load, writeQueue],
   );
 
   /** Applies an edit from `queue-ops`, which owns the index arithmetic. */
@@ -1272,8 +1277,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // stalled identically (B-18). Walking five candidates at `STALL_MS` each would be
         // fifty seconds of spinner before the ladder reached a source that could play. A
         // coded error still walks them, because 100/101/150 genuinely are per-upload.
-        const tryAnotherCopy = onYouTube && !options.stalled;
-        if (tryAnotherCopy && candidates.current.length === 0) {
+        const searchForCopies = onYouTube && !options.stalled;
+        // Copies `load` already found for a song that is not on YouTube Music itself — a
+        // history row with nothing playable, repaired by search — are walked too. They passed
+        // `plausiblySameSong` to get onto the list, and skipping them meant one barred upload
+        // sent the ladder straight past two that would have played. The *search* stays
+        // gated on `onYouTube`; only the list already in hand is not.
+        const tryAnotherCopy = searchForCopies || (!options.stalled && candidates.current.length > 0);
+        if (searchForCopies && candidates.current.length === 0) {
           // Cancel the previous, or a fall-through mid-`load` leaves it running and its
           // response overwrites `candidates` for a song no longer playing.
           resolving.current?.abort();

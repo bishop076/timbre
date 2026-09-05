@@ -112,6 +112,12 @@ function loadSdk(): Promise<void> {
     script.addEventListener("error", () => reject(new Error("Spotify SDK blocked.")));
     document.body.append(script);
   });
+  // A rejection is not memoised. The script being blocked once — a flaky network, an
+  // extension toggled mid-session — must not read as blocked for as long as the tab lives.
+  sdkPromise = sdkPromise.catch((cause: unknown) => {
+    sdkPromise = null;
+    throw cause;
+  });
   return sdkPromise;
 }
 
