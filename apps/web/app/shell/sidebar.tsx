@@ -13,7 +13,6 @@ import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/
 import { Avatar } from "../profile/avatar";
 import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
-import { Brand } from "./brand";
 import { SiteLinks } from "./site-links";
 
 /** Primary navigation and library: a nav block, then a titled region of artwork rows that
@@ -49,7 +48,6 @@ export function Sidebar() {
   // a dozen pixels decides whether the last row is cut in half.
   return (
     <aside className="hidden w-64 shrink-0 flex-col gap-1.5 p-2 pb-1.5 lg:flex">
-      <Brand />
       <Link
         href="/profile"
         onClick={exitTheater}
