@@ -15,6 +15,9 @@ const COMMIT =
  * fonts are self-hosted by `next/font` at build time and artwork comes through `/api/art`.
  */
 const YOUTUBE = "https://www.youtube.com";
+/** Where the player iframe itself points — `PLAYER_HOST` in `youtube-player.tsx`, and the
+ * reason is there. The IFrame API script still comes from www.youtube.com. */
+const YOUTUBE_NOCOOKIE = "https://www.youtube-nocookie.com";
 const SOUNDCLOUD = "https://w.soundcloud.com";
 /** Spotify's embed is an iframe and nothing else — there is no script and no API. */
 /** Spotify needs three hosts, and they do different jobs.
@@ -67,7 +70,7 @@ const CONTENT_SECURITY_POLICY = [
   // from object URLs. `https:` covers the artwork that `proxied()` passes through untouched.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `frame-src ${YOUTUBE} ${SOUNDCLOUD} ${SPOTIFY} ${SPOTIFY_SDK} ${MIXCLOUD}`,
+  `frame-src ${YOUTUBE} ${YOUTUBE_NOCOOKIE} ${SOUNDCLOUD} ${SPOTIFY} ${SPOTIFY_SDK} ${MIXCLOUD}`,
   // Audius is the one source Timbre plays itself, so its audio is fetched by an <audio>
   // element on this origin rather than inside someone's iframe. Without this it falls back
   // to `default-src 'self'` and every Audius track fails silently. `https:` rather than a
