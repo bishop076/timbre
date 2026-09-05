@@ -10,6 +10,29 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.3.0 — 5 September 2026
+
+### Added
+
+- **web** — a new mark, in the icons and at the head of the rail
+
+### Fixed
+
+- **tooling** — clear port 8787 before the sidecar starts, so an orphaned worker cannot serve stale code
+- **player** — treat a YouTube upload that buffers nothing for ten seconds as refused
+- **player** — let a player report a copy that loaded and never delivered, and leave YouTube when one does
+- **web** — drop two shelf utilities that could never have applied
+- **web** — stop the end columns losing a side of their tooltip
+- **web** — let a long title in the player bar end in an ellipsis
+- **web** — three boxes that outgrew the screen holding them
+- **web** — measure the chrome instead of guessing at it
+- **web** — keep the chrome out of the notch and the home indicator
+- **api** — meter /api/health, and stop the display name growing without bound
+- **providers** — give every upstream call a deadline
+- **sidecar** — compare the shared secret as bytes, so a non-ASCII header is a 401
+
+4 further changes under the hood — refactoring, docs and tests.
+
 ## 0.2.0 — 21 August 2026
 
 ### Added
