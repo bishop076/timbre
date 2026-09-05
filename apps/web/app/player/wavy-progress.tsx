@@ -167,16 +167,36 @@ export function Scrub({
         const box = event.currentTarget.getBoundingClientRect();
         onSeek(((event.clientX - box.left) / box.width) * duration);
       }}
+      /*
+       * `Home`, `End`, `PageUp` and `PageDown` are all scroll keys, and this slider is
+       * focusable — so seeking with the keyboard also threw the panel behind it to the top,
+       * to the bottom, or a page in either direction. Handling a key now consumes it.
+       *
+       * One decision rather than six independent `if`s, so a single place knows whether the
+       * press was ours. Home and End are expected of any slider, and are the only way to
+       * reach either end without holding an arrow down for the length of the track.
+       */
       onKeyDown={(event) => {
         if (duration <= 0) return;
-        if (event.key === "ArrowRight") onSeek(Math.min(duration, position + 5));
-        if (event.key === "ArrowLeft") onSeek(Math.max(0, position - 5));
-        // Expected of any slider, and the only way to reach either end without holding an
-        // arrow key for the length of the track.
-        if (event.key === "Home") onSeek(0);
-        if (event.key === "End") onSeek(duration);
-        if (event.key === "PageUp") onSeek(Math.min(duration, position + 30));
-        if (event.key === "PageDown") onSeek(Math.max(0, position - 30));
+
+        const to =
+          event.key === "ArrowRight"
+            ? Math.min(duration, position + 5)
+            : event.key === "ArrowLeft"
+              ? Math.max(0, position - 5)
+              : event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? duration
+                  : event.key === "PageUp"
+                    ? Math.min(duration, position + 30)
+                    : event.key === "PageDown"
+                      ? Math.max(0, position - 30)
+                      : null;
+
+        if (to === null) return;
+        event.preventDefault();
+        onSeek(to);
       }}
       // Taller than the visible line: 4px is impossible with a thumb.
       className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
