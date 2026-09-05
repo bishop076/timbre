@@ -1,6 +1,12 @@
 /**
  * Timbre's service worker.
  *
+ * **This is the source; the browser gets `public/sw.js`.** A service worker is a
+ * plain script fetched by URL, so it cannot be TypeScript on the wire. `next.config.ts`
+ * transpiles this file to `public/sw.js` every time Next starts — dev, build, or start
+ * — and that output is git-ignored. Edit here; never edit the generated file. Types
+ * are checked by `tsc -p sw` as part of `pnpm typecheck`.
+ *
  * **What this can and cannot do, stated plainly.** Timbre plays audio it does
  * not own, out of a YouTube iframe, over the network. So there is no version of
  * this that lets you listen offline — no amount of caching changes that, and a
@@ -26,6 +32,15 @@
  *
  * One page is excluded from all of it — see `PERSONAL`.
  */
+
+/*
+ * The worker's global, typed as what it is. `lib.webworker` types `self` as a generic
+ * `WorkerGlobalScope`, which has no `skipWaiting` or `clients`; the service-worker
+ * scope is a subtype it cannot know this file runs in. The cast is the one place that
+ * knowledge is stated, and every listener below gets its event type from it —
+ * `install` is an ExtendableEvent, `fetch` a FetchEvent — with no annotations.
+ */
+const sw = self as unknown as ServiceWorkerGlobalScope;
 
 /*
  * Bumped from v2. `activate` deletes every cache whose name does not start with
@@ -54,11 +69,11 @@ const PRECACHE = ["/", "/explore", "/library"];
  */
 const PERSONAL = "/profile";
 
-self.addEventListener("install", (event) => {
+sw.addEventListener("install", (event) => {
   // The new worker takes over on the next load rather than waiting for every
   // tab to close — an app whose update lands "sometime later" is one that gets
   // bug reports about behaviour that was fixed a week ago.
-  self.skipWaiting();
+  void sw.skipWaiting();
   event.waitUntil(
     caches.open(SHELL).then((cache) =>
       // `reload` so an install never re-caches a stale copy the HTTP cache is
@@ -68,19 +83,19 @@ self.addEventListener("install", (event) => {
   );
 });
 
-self.addEventListener("activate", (event) => {
+sw.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const names = await caches.keys();
       await Promise.all(
         names.filter((name) => !name.startsWith(VERSION)).map((name) => caches.delete(name)),
       );
-      await self.clients.claim();
+      await sw.clients.claim();
     })(),
   );
 });
 
-self.addEventListener("fetch", (event) => {
+sw.addEventListener("fetch", (event) => {
   const { request } = event;
 
   // Only GET is cacheable, and only this origin is ours to cache. Artwork and
@@ -88,7 +103,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== sw.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
   if (url.pathname === PERSONAL || url.pathname.startsWith(`${PERSONAL}/`)) return;
 
@@ -102,24 +117,24 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-async function cacheFirst(request) {
+async function cacheFirst(request: Request): Promise<Response> {
   const cached = await caches.match(request);
   if (cached) return cached;
 
   const response = await fetch(request);
   if (response.ok) {
     const cache = await caches.open(ASSETS);
-    cache.put(request, response.clone());
+    void cache.put(request, response.clone());
   }
   return response;
 }
 
-async function networkFirst(request) {
+async function networkFirst(request: Request): Promise<Response> {
   try {
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(SHELL);
-      cache.put(request, response.clone());
+      void cache.put(request, response.clone());
     }
     return response;
   } catch {

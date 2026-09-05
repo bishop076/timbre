@@ -21,6 +21,9 @@ const eslintConfig = defineConfig([
     // `.next-prod` alone meant the next name anybody picked — `.next-ci` — got
     // linted, and the run failed on Turbopack's `require()` calls.
     ".next-*/**",
+    // Generated from `sw/sw.ts` by `next.config.ts` on every start. Linting it
+    // would report the transpiler's output, not anything anybody wrote.
+    "public/sw.js",
   ]),
 ]);
 
