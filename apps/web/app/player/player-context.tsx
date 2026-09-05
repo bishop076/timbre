@@ -36,6 +36,11 @@ import {
 
 export type PlayState = "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
 
+/** A player is mounted and holds the song: it can be started over rather than re-loaded. */
+function settled(state: PlayState): boolean {
+  return state === "playing" || state === "paused";
+}
+
 /** `off` continues into the recommendations at queue end; `all` loops the queue; `one` repeats a track. */
 export type RepeatMode = "off" | "all" | "one";
 
@@ -372,6 +377,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
+  // Read by `restart`, which runs from event handlers and needs the committed state rather
+  // than whatever was closed over when the handler was created.
+  const stateRef = useRef<PlayState>("idle");
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   const [problem, setProblem] = useState<string | null>(null);
   const [radio, setRadio] = useState<Song[]>([]);
   // Remembered across reloads, like the volume: a listener who shuffles expects to still be
@@ -843,14 +854,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  /**
+   * Plays the loaded song again from the top, without reloading it.
+   *
+   * `load` clears every player handle and the `attempt*` that follows sets one back — in the
+   * same synchronous batch. For the song already loaded that is the value the handle already
+   * had, so React reconciles nothing and no player's load effect re-runs: nothing called
+   * `loadVideoById` or `audio.play()`, and the bar sat on a spinner at 0:00 until the reader
+   * pressed play. Repeat-one reached it at the end of every song, repeat-all on a one-song
+   * queue, Previous on the first song, and picking the playing song again.
+   *
+   * `ended` is passed by the callers that know the player has stopped: YouTube's `ENDED`
+   * never reaches `handleStateChange`, so the context still reads "playing" at that moment
+   * and would otherwise leave a finished video sitting at its first frame.
+   */
+  const restart = useCallback((ended: boolean) => {
+    // A deliberate replay is a play, and history should say so — as `load` does.
+    recorded.current = null;
+    seekRef.current?.(0);
+    if (ended || stateRef.current !== "playing") toggleRef.current?.();
+  }, []);
+
   const play = useCallback(
     (song: Song, rest: Song[] = [], prefer?: string) => {
       const others = rest.filter((candidate) => candidate.id !== song.id);
+      const loaded = songRef.current;
+
       writeQueue([song, ...others]);
       setIndex(0);
+      if (!prefer && loaded?.id === song.id && settled(stateRef.current)) {
+        restart(false);
+        return;
+      }
       void load(song, prefer);
     },
-    [load, writeQueue],
+    [load, restart, writeQueue],
   );
 
   const goTo = useCallback(
@@ -859,9 +897,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const target = queueRef.current[nextIndex];
       if (!target) return;
       setIndex(nextIndex);
+      // The song a player already holds is started over, not re-loaded — see `restart`.
+      if (target.id === songRef.current?.id && settled(stateRef.current)) {
+        restart(false);
+        return;
+      }
       void load(target);
     },
-    [load],
+    [load, restart],
   );
 
   // Entry points overlap, and a duplicate breaks shuffle's "played once" bookkeeping.
@@ -935,7 +978,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       const target = nextIndex();
       if (target !== null) {
-        goTo(target);
+        // The same position again — repeat-all on a one-song queue — is a restart, and at a
+        // song's end the player has stopped in a way the context cannot see (`restart`).
+        if (target === index && fromEnd) restart(true);
+        else goTo(target);
         return;
       }
 
@@ -952,7 +998,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // position, so `index + 1` landed on a played song and left the radio unplayed.
       goTo(queue.length);
     },
-    [goTo, index, nextIndex, queue, radio, unqueued, writeQueue],
+    [goTo, index, nextIndex, queue, radio, restart, unqueued, writeQueue],
   );
 
   const next = useCallback(() => advance(false), [advance]);
@@ -1346,11 +1392,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // Repeat-one ignores the queue entirely; everything else is `advance`, which also
     // continues into the recommendations at queue end.
     if (repeat === "one") {
-      goTo(index);
+      restart(true);
       return;
     }
     advance(true);
-  }, [advance, goTo, index, repeat]);
+  }, [advance, repeat, restart]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
