@@ -118,3 +118,49 @@ test("two songs sharing a prefix stay apart once 'with' stops truncating them", 
   // credits agree, so one three-minute pair could merge into a single row.
   assert.notEqual(dedupeKey("Stay", ["Sam Smith"]), dedupeKey("Stay With Me", ["Sam Smith"]));
 });
+
+test("a guest credit inside a bracket does not erase the variant beside it", () => {
+  const live = parseTitle("Wonderwall (Live with Orchestra)");
+  assert.deepEqual(live.variants, ["live"]);
+  assert.deepEqual(live.featured, ["orchestra"]);
+  assert.deepEqual(parseTitle("Blinding Lights (Remix feat. Rosalía)").variants, ["remix"]);
+  assert.notEqual(
+    dedupeKey("Wonderwall", ["Oasis"]),
+    dedupeKey("Wonderwall (Live with Orchestra)", ["Oasis"]),
+    "a live cut with a guest is still a live cut",
+  );
+});
+
+test("a soundtrack credit is noise, in quotes of either kind", () => {
+  const plain = dedupeKey("Let It Go", ["Idina Menzel"]);
+  for (const title of [
+    'Let It Go (From "Frozen")',
+    'Let It Go - From "Frozen"',
+    "Let It Go (From “Frozen”)",
+  ]) {
+    assert.equal(dedupeKey(title, ["Idina Menzel"]), plain, title);
+  }
+});
+
+test("reissue wording leaves no residue that reads as a variant", () => {
+  for (const title of [
+    "Wonderwall (Remastered Version)",
+    "Wonderwall - Remastered Version",
+    "Wonderwall (Deluxe Version)",
+    "Wonderwall (30th Anniversary Edition)",
+    "Wonderwall (25th Anniversary Remaster)",
+  ]) {
+    assert.deepEqual(parseTitle(title).variants, [], title);
+    assert.equal(parseTitle(title).base, "wonderwall", title);
+  }
+});
+
+test("a title that is itself a noise word is a title, not decoration", () => {
+  assert.equal(parseTitle("Clean").base, "clean");
+  assert.equal(parseTitle("Special").base, "special");
+  assert.equal(parseTitle("Stereo Hearts").base, "stereo hearts");
+  assert.notEqual(dedupeKey("Clean", ["Taylor Swift"]), dedupeKey("Special", ["Taylor Swift"]));
+  // Decoration at the end of an unbracketed title still goes.
+  assert.equal(parseTitle("Bohemian Rhapsody Official Video").base, "bohemian rhapsody");
+  assert.equal(parseTitle("Bohemian Rhapsody HD").base, "bohemian rhapsody");
+});

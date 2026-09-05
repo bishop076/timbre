@@ -8,17 +8,25 @@
 
 /** Decorations safe to remove: same recording either way. */
 const NOISE_PATTERNS: RegExp[] = [
-  /\b(?:\d{4}\s+)?remaster(?:ed)?(?:\s+\d{4})?\b/i,
-  /\bremastered\s+version\b/i,
-  /\b(?:deluxe|expanded|special|anniversary)(?:\s+edition)?\b/i,
+  // One pattern for the whole reissue vocabulary, because two overlapping ones left residue:
+  // the first ate "Remastered" out of "Remastered Version" before the second could see it,
+  // and "(Deluxe Version)" and "(30th Anniversary Edition)" kept a "version" or a "30th"
+  // that then counted as a variant — so none of them merged with the plain title.
+  /\b(?:\d{4}\s+|\d+(?:st|nd|rd|th)\s+)?(?:remaster(?:ed)?|deluxe|expanded|special|anniversary)(?:\s+\d{4})?(?:\s+(?:version|edition|remaster(?:ed)?))?\b/i,
   /\bbonus\s+track\b/i,
   /\b(?:mono|stereo)(?:\s+version)?\b/i,
   /\bofficial\s+(?:music\s+)?(?:video|audio|visualizer|lyric\s+video)\b/i,
   /\b(?:lyrics?|lyric\s+video|audio|visualizer)\b/i,
   /\bhq\b|\bhd\b|\b4k\b/i,
   /\bexplicit\b|\bclean\b/i,
-  /\bfrom\s+["“].+?["”]\b/i,
+  /\bfrom\s+["“][^"”]+["”]/i,
 ];
+
+/** The same words, as a run at the end of a title. See `parseTitle` for why only there. */
+const TRAILING_NOISE = new RegExp(
+  `(?:\\s+(?:${NOISE_PATTERNS.map((pattern) => pattern.source).join("|")}))+\\s*$`,
+  "i",
+);
 
 /** Markers that mean "a different recording of this song". Never discarded. */
 const VARIANT_PATTERNS: { pattern: RegExp; tag: string }[] = [
@@ -107,7 +115,12 @@ export function parseTitle(raw: string): ParsedTitle {
     const feature = SEGMENT_FEATURE_PATTERN.exec(text);
     if (feature?.[1]) {
       featured.push(...splitArtists(feature[1]));
-      return;
+      // The credit is the tail of the segment, not the whole of it: "(Live with Orchestra)"
+      // and "(Remix feat. Rosalía)" name a guest *and* a different recording. Returning here
+      // discarded the variant, and the live cut merged into the studio take with nothing but
+      // the duration guard in the way — the one thing this module exists to prevent.
+      text = text.slice(0, feature.index);
+      if (!text.trim()) return;
     }
 
     let recognized = false;
@@ -139,8 +152,12 @@ export function parseTitle(raw: string): ParsedTitle {
     main = main.slice(0, inlineFeature.index);
   }
 
-  let base = main;
-  for (const pattern of NOISE_PATTERNS) base = base.replace(pattern, " ");
+  // Only a *trailing* run of noise comes off the main title. Stripping it anywhere hollowed
+  // out a title that is itself a noise word — "Clean", "Audio", "Special" reduced to nothing,
+  // so every such song by one artist shared a key and LRCLIB was asked for an empty track
+  // name — and took the front off "Stereo Hearts". Decoration on an unbracketed title
+  // ("Wonderwall Official Video") is at the end, which is where this looks.
+  const base = main.replace(TRAILING_NOISE, "");
 
   return {
     base: normalizeLoose(base),
