@@ -143,22 +143,28 @@ tracks — and the player falls through to another upload of the same song. Log 
 **numeric** `onError` code, never the message.
 
 **Every YouTube track fails, the player is the right size, and it is not the ad blocker.**
-Locally that is error `150` on every copy and a fall to the 30-second preview. On the
-hosted build it was a spinner at 0:00 for ever: the player said OK and the media server
-then answered 403, with no error to report — `docs/BUGS.md` B-18, now a ten-second stall
-check that falls through instead. Either way YouTube is refusing your *network*, not the
-upload. A VPN or datacentre exit gets
-`playabilityStatus: UNPLAYABLE, "This video is unavailable"` on every video, including
-ones that are never barred. Confirm it outside the app — a bare IFrame API page served
-from any `http://` origin (not `about:blank`, which reports `153` for everything) should
-play `dQw4w9WgXcQ`; if it returns `150`, nothing in Timbre can change that. Measured
-2026-09-05 from a Datacamp exit in Singapore: 3 of 3 ids refused.
+Two different faults wore this face, and only one of them was ours.
 
-Two remedies, and they stack. Take the browser off the VPN, or pick a residential exit,
-and YouTube comes back. And set `SOUNDCLOUD_DIRECT_API=true` in `.env`, which is what
-lets the ladder leave YouTube for a full-length SoundCloud copy — without it every rung
-below YouTube reads the song's own sources, finds nothing, and the preview is all that is
-left. `/api/health` reports `"soundcloud":true` once it is on. Note the bargain in
+On a `127.0.0.1` origin, http or https, a VPN or datacentre exit gets error `150`
+(`UNPLAYABLE, "This video is unavailable"`) on every video, including ones never barred,
+on both embed hosts. Local development from such an exit cannot play YouTube at all; the
+ladder falls to SoundCloud or the preview, and that is the expected shape. Confirm it
+outside the app with a bare IFrame API page served from an `http://` origin (not
+`about:blank`, which reports `153` for everything). Measured 2026-09-05 from a Datacamp
+exit in Singapore: 3 of 3 ids refused.
+
+The hosted build from the same exit used to *stall* instead: the player said OK, the media
+server answered 403, and with no error to report the bar spun at 0:00 for ever
+(`docs/BUGS.md` B-18). That was the embed **host**, not the network — youtube.com itself
+played in the next tab, and the identical player served from `youtube-nocookie.com` plays.
+Fixed in B-19. If a deployed build shows the B-18 spinner again, YouTube's judgement of
+that host has changed; the ten-second stall check still falls through underneath it.
+
+Two remedies still stack for a song whose YouTube copies genuinely refuse. Take the browser
+off the VPN, or pick a residential exit. And set `SOUNDCLOUD_DIRECT_API=true` in `.env`,
+which lets the ladder leave YouTube for a full-length SoundCloud copy — without it every
+rung below YouTube reads the song's own sources, finds nothing, and the preview is all that
+is left. `/api/health` reports `"soundcloud":true` once it is on. Note the bargain in
 `.env.example`: this is a local opt-in, off in the hosted build.
 
 **Your `.env` mentions `DATABASE_URL`, `AUTH_SECRET`, `TIMBRE_ENCRYPTION_KEY` or
