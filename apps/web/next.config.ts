@@ -1,6 +1,55 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
 import type { NextConfig } from "next";
+import ts from "typescript";
 
 import pkg from "./package.json" with { type: "json" };
+
+/**
+ * Writes `public/sw.js` from `sw/sw.ts`.
+ *
+ * A service worker is fetched by URL as a plain script, so the file the browser gets
+ * cannot be TypeScript. It used to be hand-written JavaScript in `public/`; now the
+ * source is typed and this is the transpile. It runs here, at config load, rather than
+ * in a `build` script because this is the one place every way of starting Next passes
+ * through: `pnpm dev`, `pnpm build`, the Dockerfile's bare `next build`, and Vercel,
+ * which may run `next build` directly rather than the package script. A step that only
+ * ran in some of those would ship a deployment with a 404 where the worker should be.
+ *
+ * Strip-only — no type checking, so this is a few milliseconds. Types are checked by
+ * `tsc -p sw` in `pnpm typecheck`, where a mistake fails the build loudly instead of
+ * being quietly emitted. The output is git-ignored; edit `sw/sw.ts`, never `sw.js`.
+ *
+ * Not re-run on edit under `next dev`. It does not need to be: the worker is only
+ * registered in production builds (see `app/service-worker.tsx`), so a dev session never
+ * runs it, and the next `next dev` or `next build` regenerates it anyway.
+ *
+ * `__dirname` rather than `process.cwd()`: Next compiles this file to CommonJS and
+ * requires it from `apps/web`, so `__dirname` is this directory whatever the shell's cwd
+ * was — and `next build apps/web` from the repo root is a real thing to type.
+ */
+function writeServiceWorker(): void {
+  const source = path.join(__dirname, "sw", "sw.ts");
+  const target = path.join(__dirname, "public", "sw.js");
+  const { outputText } = ts.transpileModule(readFileSync(source, "utf8"), {
+    fileName: source,
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      // The worker is a classic script with no imports, so this only names a syntax;
+      // nothing module-shaped is emitted.
+      module: ts.ModuleKind.ESNext,
+      newLine: ts.NewLineKind.LineFeed,
+    },
+  });
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(
+    target,
+    `// Generated from sw/sw.ts by next.config.ts. Do not edit; edit the source.\n${outputText}`,
+  );
+}
+
+writeServiceWorker();
 
 // What build this is, for the settings panel. Read here rather than imported into a
 // component, which would carry every dependency name into the browser for one string.
