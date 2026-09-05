@@ -886,6 +886,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const others = rest.filter((candidate) => candidate.id !== song.id);
       const loaded = songRef.current;
 
+      // The song already playing, asked for by name from a source badge: keep the queue it
+      // is in and only change where it plays from. Replacing the queue with `[song]` threw
+      // away everything queued after it — and the radio continuation — to switch source.
+      if (prefer && rest.length === 0 && loaded?.id === song.id) {
+        void load(song, prefer);
+        return;
+      }
+
       writeQueue([song, ...others]);
       setIndex(0);
       if (!prefer && loaded?.id === song.id && settled(stateRef.current)) {
