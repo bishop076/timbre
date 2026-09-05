@@ -110,6 +110,28 @@ const STALL_MS = 10_000;
 
 const API_SRC = "https://www.youtube.com/iframe_api";
 
+/**
+ * The embed itself is served from youtube-nocookie.com — and this is not the privacy
+ * gesture it looks like. It is what makes playback work at all from a network YouTube
+ * distrusts.
+ *
+ * Measured 2026-09-05 from a Datacamp VPN exit, under the real hosted origin, with this
+ * component's exact sequence (player constructed empty, `loadVideoById` on ready,
+ * `controls: 0`): on www.youtube.com the player reported OK and googlevideo.com then
+ * answered 403 to the media — the B-18 stall — every time, UNSTARTED and BUFFERING for
+ * ever. The same sequence with `host` set here went UNSTARTED → BUFFERING → PLAYING and
+ * was fourteen seconds in after sixteen, every media request 200. A plain `<iframe>` on
+ * each host behaved the same way, so it is the host and not the API. What pointed here
+ * was the reader: youtube.com itself played in a first-party tab from the same exit and
+ * the same browser, so the address was not simply barred. See docs/BUGS.md B-19.
+ *
+ * Why the two hosts are judged differently is YouTube's to know; what is measurable is
+ * that the privacy-enhanced embed is treated more leniently by the media servers. `host`
+ * changes only where the iframe points — the API script above still comes from
+ * www.youtube.com — so `frame-src` in next.config.ts names both.
+ */
+const PLAYER_HOST = "https://www.youtube-nocookie.com";
+
 let apiPromise: Promise<YTNamespace> | null = null;
 
 function loadApi(): Promise<YTNamespace> {
@@ -259,6 +281,7 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
       playerRef.current = new YT.Player(host, {
         width: "100%",
         height: "100%",
+        host: PLAYER_HOST,
         playerVars: {
           enablejsapi: 1,
           rel: 0,
