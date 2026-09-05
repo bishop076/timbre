@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 // Fetched when their tab is first opened: a static import would bundle both, and this
 // panel is in the root shell, so that cost lands on every route. The default tab is
@@ -33,12 +33,46 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function PanelTabs({ queue }: { queue: ReactNode }) {
   const [active, setActive] = useState<TabId>("queue");
+  const list = useRef<HTMLDivElement>(null);
+
+  /**
+   * Arrow keys move between the tabs, which is the half of `role="tab"` that was missing.
+   *
+   * The roles were here already and the behaviour behind them was not, which is worse than
+   * having neither: a screen reader announced "tab, 1 of 3", the reader pressed Right
+   * expecting the next one, and nothing happened. Three plain buttons would at least have
+   * promised nothing. Home and End go to the ends, as the tabs pattern specifies.
+   *
+   * Selection follows focus — correct here because switching costs nothing to undo, and
+   * every pane is already mounted lazily on demand.
+   */
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const from = TABS.findIndex((tab) => tab.id === active);
+    const to =
+      event.key === "ArrowRight"
+        ? (from + 1) % TABS.length
+        : event.key === "ArrowLeft"
+          ? (from - 1 + TABS.length) % TABS.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? TABS.length - 1
+              : null;
+
+    if (to === null) return;
+    // Or Left/Right would also scroll the pane underneath, and Home would jump it.
+    event.preventDefault();
+    setActive(TABS[to]!.id);
+    list.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[to]?.focus();
+  }
 
   return (
     <>
       <div
+        ref={list}
         role="tablist"
         aria-label="Now playing"
+        onKeyDown={onKeyDown}
         className="flex shrink-0 gap-1 border-b-[length:var(--edge)] border-[var(--ink)] px-2"
       >
         {TABS.map((tab) => {
@@ -46,9 +80,14 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
           return (
             <button
               key={tab.id}
+              id={`panel-tab-${tab.id}`}
               role="tab"
               type="button"
               aria-selected={selected}
+              aria-controls={`panel-pane-${tab.id}`}
+              /* One tab stop for the whole set, not three: Tab should carry on past the
+                 tablist, and the arrows above are what walks it. */
+              tabIndex={selected ? 0 : -1}
               onClick={() => setActive(tab.id)}
               className={`relative px-3 py-3 text-[11px] font-bold uppercase tracking-wider transition-colors ${
                 selected ? "text-[var(--fg)]" : "text-[var(--fg-faint)] hover:text-[var(--fg-dim)]"
@@ -67,11 +106,26 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
         })}
       </div>
 
-      {/* Only the selected pane is mounted: the other two fetch on mount, so keeping
-          them alive fires two requests per track change. */}
-      {active === "queue" && queue}
-      {active === "lyrics" && <LyricsPanel />}
-      {active === "related" && <RelatedPanel />}
+      {/*
+        The pane the tab above points at. It has to exist as an element for `aria-controls`
+        to name, and every pane was previously a bare fragment sitting directly in this
+        column — so the wrapper carries exactly the flex classes those fragments were
+        relying on from the parent, and their `shrink-0` headers and `min-h-0 flex-1`
+        scrollers lay out against it unchanged.
+
+        Only the selected pane is mounted: the other two fetch on mount, so keeping them
+        alive fires two requests per track change.
+      */}
+      <div
+        role="tabpanel"
+        id={`panel-pane-${active}`}
+        aria-labelledby={`panel-tab-${active}`}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {active === "queue" && queue}
+        {active === "lyrics" && <LyricsPanel />}
+        {active === "related" && <RelatedPanel />}
+      </div>
     </>
   );
 }
