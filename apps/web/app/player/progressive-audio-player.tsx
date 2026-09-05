@@ -107,7 +107,14 @@ export function ProgressiveAudioPlayer({
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
 
+    let cancelled = false;
     audio.play().catch((cause: unknown) => {
+      // A `play()` interrupted by a new `src`, a pause or the element going away rejects
+      // with `AbortError`. The track changed under it — and by now `songRef` is the *next*
+      // song, so reporting this walked that song's ladder for a failure it never had:
+      // skipping away from a buffering Audius track switched the YouTube song after it to
+      // another copy mid-load, or declared it unplayable.
+      if (cancelled || (cause instanceof DOMException && cause.name === "AbortError")) return;
       if (cause instanceof DOMException && cause.name === "NotAllowedError") {
         handlers.current.handleStateChange("paused");
         return;
@@ -116,6 +123,7 @@ export function ProgressiveAudioPlayer({
     });
 
     return () => {
+      cancelled = true;
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("durationchange", onTime);
       audio.removeEventListener("play", onPlay);
