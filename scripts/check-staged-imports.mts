@@ -20,8 +20,12 @@ import path from "node:path";
 
 const git = (...args: string[]): string => execFileSync("git", args, { encoding: "utf8" });
 
-/** Staged, and still present — a rename's old path is not something to resolve against. */
-const staged = git("diff", "--cached", "--name-only", "--diff-filter=ACM")
+/**
+ * Staged, and still present — a rename's old path is not something to resolve against, and
+ * omitting `D` is what keeps it out. `R` is *in*: `--name-only` prints a rename's new path,
+ * and a file renamed and edited in one commit is exactly one that may import something new.
+ */
+const staged = git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
   .split("\n")
   .map((line) => line.trim())
   .filter((line) => /\.(ts|tsx|mts|js|jsx)$/.test(line));
@@ -53,7 +57,11 @@ for (const file of staged) {
   const source = git("show", `:${file}`);
   const dir = path.posix.dirname(file);
 
-  for (const match of source.matchAll(RELATIVE)) {
+  // Comments are not imports: a commented-out `from "./old-module"` or a JSDoc example would
+  // otherwise refuse a commit that builds. `://` and a quoted `//` are left alone.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+
+  for (const match of code.matchAll(RELATIVE)) {
     const specifier = match[1];
     if (specifier === undefined) continue;
     // `./x.ts` is how this repo imports some modules; the resolver tries the literal first.
