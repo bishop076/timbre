@@ -30,10 +30,13 @@ export async function generateMetadata({
   const parsed = parse(kind);
   if (!parsed) return { title: "Not found — Timbre" };
 
-  const collection = await fetchCollection(parsed, decodeURIComponent(id));
+  const collection = await fetchCollection(parsed, id);
   return { title: collection ? `${collection.title} — Timbre` : "Not found — Timbre" };
 }
 
+// `id` arrives decoded — the route matcher has already done it, and `artist/[name]` relies on
+// the same — so decoding it again double-decoded a `%25` and threw a `URIError` on a bare
+// `%`, which is a 500 where a 404 belongs.
 export default async function CollectionPage({
   params,
 }: {
@@ -43,7 +46,7 @@ export default async function CollectionPage({
   const parsed = parse(kind);
   if (!parsed) notFound();
 
-  const collection = await fetchCollection(parsed, decodeURIComponent(id));
+  const collection = await fetchCollection(parsed, id);
   // A genre with an empty chart and a playlist that has been deleted are the
   // same thing to a reader: this address has nothing behind it.
   if (!collection) notFound();
