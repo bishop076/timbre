@@ -52,7 +52,7 @@ export interface RequesterOptions {
  * of the closure so each call gets its own timer — `AbortSignal.timeout` starts counting
  * when it is created, so a module-level one would expire six seconds after startup.
  */
-function deadlineSignal(caller: AbortSignal | undefined, ms: number): AbortSignal {
+export function deadlineSignal(caller: AbortSignal | undefined, ms: number = DEADLINE_MS): AbortSignal {
   const timeout = AbortSignal.timeout(ms);
   return caller ? AbortSignal.any([caller, timeout]) : timeout;
 }
@@ -68,6 +68,10 @@ export function createRequester(options: RequesterOptions): SoftRequester {
   const { id, label, init, classify, softStatuses, checkBody, deadlineMs = DEADLINE_MS } = options;
 
   return async <T>(ctx: SearchContext, target: string | URL, extra?: RequestInit): Promise<T | null> => {
+    // A caller that has already gone — a reader who navigated away mid-radio — must not
+    // spend a token and then wait out the bucket for an answer nobody wants. With Apple's
+    // refill that wait held a function open for tens of seconds.
+    ctx.signal?.throwIfAborted();
     await ctx.limiter.acquire(id, DEFAULT_POLICIES[id]);
 
     // Composed here rather than in the object literal so `init`/`extra` can still override
@@ -83,6 +87,10 @@ export function createRequester(options: RequesterOptions): SoftRequester {
       // "the host is gone" from "the host is answering too slowly" sends you to the wrong
       // place. `TimeoutError` is what `AbortSignal.timeout` raises; a caller's own abort
       // raises `AbortError` and is not this.
+      // The caller's own abort is theirs, not this source's: wrapped as "unreachable" it was
+      // logged as a provider failure, and the adapters that rethrow `AbortError` on purpose
+      // never saw one.
+      if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
       const timedOut = cause instanceof DOMException && cause.name === "TimeoutError";
       throw new ProviderError(
         id,
