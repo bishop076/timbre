@@ -4,6 +4,8 @@ import { ArtistLink } from "./artist-link";
 import { Artwork } from "./artwork";
 import { CheckIcon, PlayIcon, PlusIcon } from "./icons";
 import { usePlayerControls } from "./player/player-context";
+import { useSongMenu } from "./player/song-menu";
+import { sameTrack } from "./player/song-match";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import type { Song } from "./types";
 
@@ -17,10 +19,13 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
   const { play, enqueue, current, state, queue: playerQueue } = usePlayerControls();
   const isCurrent = current?.id === song.id;
   const isPlaying = isCurrent && state === "playing";
-  const isQueued = playerQueue.some((queued) => queued.id === song.id);
+  // By recording rather than id, so the tick agrees with what `enqueue` will do — see
+  // `sameTrack`.
+  const isQueued = playerQueue.some((queued) => sameTrack(queued, song));
+  const { onContextMenu, menu } = useSongMenu(song);
 
   return (
-    <div className="group relative w-full text-left">
+    <div onContextMenu={onContextMenu} className="group relative w-full text-left">
       {/* Positioned by this wrapper, not a class on <AddToPlaylist>: its own root is
           `relative`, and Tailwind emits `.relative` after `.absolute`, so a
           passed-through `absolute` loses. Outside the `overflow-hidden` cover too. */}
@@ -101,6 +106,8 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
           <ArtistLink artists={song.artists} />
         </p>
       </button>
+
+      {menu}
     </div>
   );
 }
