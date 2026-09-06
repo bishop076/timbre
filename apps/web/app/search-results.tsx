@@ -78,11 +78,14 @@ export function SearchResults() {
       fetch(endpoint, { signal: next.signal })
         .then(async (response) => {
           if (response.status === 404 && isUrl(trimmed)) {
-            const body = (await response.json()) as { error?: string };
+            // A 404 from a proxy in front of the app is not JSON; the fallback sentence
+            // is for that case too, not only for a body without `error`.
+            const body = (await response.json().catch(() => ({}))) as { error?: string };
             throw new Error(body.error ?? "That link isn't one Timbre can play.");
           }
           if (!response.ok) throw new Error(`Search failed (${response.status})`);
-          const body = (await response.json()) as SongsResponse | { song: Song };
+          const body = (await response.json()) as SongsResponse | { song: Song } | null;
+          if (!body || typeof body !== "object") throw new Error("Search returned nothing readable.");
           return "song" in body ? { songs: [body.song], failures: [] } : body;
         })
         .then((data) => {

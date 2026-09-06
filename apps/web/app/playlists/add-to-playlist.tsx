@@ -19,6 +19,11 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  // The "saved" tick lingers for a moment before the menu closes itself. Held so that a
+  // close by other means — a click elsewhere, Escape, the row unmounting — cancels it,
+  // rather than the timer firing later and pulling focus back to this button from
+  // wherever the reader had moved on to.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Portalled into `document.body`, not rendered beside its button: shelves are
   // `overflow-x-auto`, and an absolutely positioned child of a scroll container is clipped
@@ -31,15 +36,39 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   // Focus has to come back with the menu: it is portalled to the end of <body>, so the node
   // being dropped is nowhere near the row and the next Tab would restart at the top of the
   // document. An outside click closes without this, having moved focus itself.
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  }, []);
+
   const close = useCallback(() => {
+    cancelClose();
     setOpen(false);
     trigger.current?.focus();
-  }, []);
+  }, [cancelClose]);
+
+  const closeSoon = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      // Focus comes back only if it is still ours to return. If the reader has already
+      // clicked into the search field, taking it back mid-word is worse than leaving it.
+      const active = document.activeElement;
+      const ours =
+        !active ||
+        active === document.body ||
+        menu.current?.contains(active) ||
+        root.current?.contains(active);
+      setOpen(false);
+      if (ours) trigger.current?.focus();
+    }, 700);
+  }, [cancelClose]);
+
+  useEffect(() => cancelClose, [cancelClose]);
 
   useEffect(() => {
     if (open) loadPlaylists();
   }, [open]);
-
 
   useEffect(() => {
     if (!open) return;
@@ -48,6 +77,7 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
       const target = event.target as Node;
       // The menu is in a portal, so it is not inside `root` and needs its own check.
       if (root.current?.contains(target) || menu.current?.contains(target)) return;
+      cancelClose();
       setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -63,7 +93,7 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, close]);
+  }, [open, close, cancelClose]);
 
   // Focus moves in once the menu has somewhere to be, or Enter on the button leaves the next
   // Tab walking the page while the menu sits at the end of <body> — unreachable by keyboard.
@@ -76,7 +106,7 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   function save(playlistId: string) {
     addSongToPlaylist(playlistId, song);
     setSaved(playlistId);
-    setTimeout(close, 700);
+    closeSoon();
   }
 
   function createAndSave(event: React.FormEvent) {
@@ -88,7 +118,7 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     addSongToPlaylist(playlist.id, song);
     setCreating("");
     setSaved(playlist.id);
-    setTimeout(close, 700);
+    closeSoon();
   }
 
   return (

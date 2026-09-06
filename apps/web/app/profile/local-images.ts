@@ -142,9 +142,15 @@ function load(): Promise<void> {
 function onStorage(event: StorageEvent): void {
   if (event.key !== THUMB_KEY.avatar && event.key !== THUMB_KEY.banner) return;
 
-  // `load()` returns early once settled, so the flag has to come down first.
-  snapshot = { ...snapshot, loaded: false };
-  void load();
+  // `load()` returns early once settled, so the flag has to come down first. And it hands
+  // back the read already in flight rather than starting another, so a change that lands
+  // mid-load has to wait for that read to finish and then ask again — or the picture the
+  // other tab just chose is lost until a reload, replaced by the one read before it.
+  const reload = () => {
+    snapshot = { ...snapshot, loaded: false };
+    return load();
+  };
+  void (loading ? loading.then(reload) : reload());
 }
 
 // A small copy of each picture, read on the first render — IndexedDB cannot be, so the
