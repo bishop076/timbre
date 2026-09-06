@@ -96,6 +96,19 @@ if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
   exit 1
 fi
 
+# Redeploy, from the dashboard or the CLI, rebuilds a commit that *is* the last
+# successful one — so the diff below is empty by definition and every path rule
+# says skip. The button then appears to work and does nothing, with no failure to
+# read and no deployment to open, which is exactly how it looked from outside.
+#
+# Pressing Redeploy is a request for this build in the only words Vercel offers,
+# and there is no case where honouring it is wrong: the cost is one build the
+# rules would have declined, and the alternative is a control that lies.
+if [ "$(git rev-parse "$base^{commit}")" = "$(git rev-parse "HEAD^{commit}")" ]; then
+  echo "Rebuild of the commit already deployed — building $project on request."
+  exit 1
+fi
+
 # Deliberately unquoted: $paths is a list of pathspecs and must word-split. None
 # of them contain spaces.
 # shellcheck disable=SC2086
