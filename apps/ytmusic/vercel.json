@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "_comment_ignore": "Both Vercel projects point at the whole repo, so without this the sidecar rebuilds for every change to the Next app. The script is shared with apps/web and located from the repo root, so it does not depend on which directory Vercel runs it in.",
   "ignoreCommand": "sh \"$(git rev-parse --show-toplevel)/scripts/vercel-ignore.sh\" sidecar",
   "functions": {
     "app/main.py": {

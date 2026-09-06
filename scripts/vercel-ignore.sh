@@ -14,6 +14,14 @@
 #
 # Wired up from each project's vercel.json rather than the dashboard, so the rule
 # is reviewable in the diff and cannot drift between the two projects.
+#
+# All of the reasoning lives here because neither vercel.json can hold any of it.
+# That file is validated against openapi.vercel.sh/vercel.json, which sets
+# `additionalProperties: false`, so a `_comment` key — the convention this repo
+# uses freely in package.json, where npm ignores what it does not know — is not
+# ignored there. It fails the deployment outright, with the only explanation
+# behind `vercel inspect`. That is exactly how 0.4.4 shipped to a stale
+# production: both projects rejected the file and kept serving the build before.
 
 set -u
 
