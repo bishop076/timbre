@@ -7,10 +7,17 @@
 # release workflow's own version bump is a push to main too, so a single commit
 # carrying a `fix` cost four deployments: two for the commit, two for the bump.
 #
-# Exit 0 to skip the build, non-zero to run it. Everything below leans towards
-# running it. A build that did not need to happen wastes a minute of a free tier;
-# a skip that should not have happened leaves production quietly stale, and
-# nothing in the Vercel UI distinguishes that from a deploy that simply worked.
+# Exit 0 to skip the build, exit 1 to run it. Those are the only two statuses
+# Vercel documents — "when the command exits with code 1, the build will
+# continue. When the command exits with 0, the build is ignored" — and it says
+# nothing about any other. So no other is ever returned from here: `set -u`,
+# a missing argument and a failed `git` would all otherwise abort with 2 or 127
+# and leave the outcome to a rule nobody has written down.
+#
+# Everything below leans towards building. A build that did not need to happen
+# wastes a minute of a free tier; a skip that should not have happened leaves
+# production quietly stale, and nothing in the Vercel UI distinguishes that from
+# a deploy that simply worked.
 #
 # Wired up from each project's vercel.json rather than the dashboard, so the rule
 # is reviewable in the diff and cannot drift between the two projects.
@@ -25,7 +32,25 @@
 
 set -u
 
-project="${1:?usage: vercel-ignore.sh web|sidecar}"
+if [ "$#" -lt 1 ]; then
+  echo "usage: vercel-ignore.sh web|sidecar — building rather than guessing." >&2
+  exit 1
+fi
+project="$1"
+
+# Vercel runs this from the project's Root Directory — apps/web or apps/ytmusic —
+# and git pathspecs resolve against the working directory, not the repository root.
+# Unanchored, `apps/ytmusic` read from inside apps/ytmusic means
+# apps/ytmusic/apps/ytmusic, matches nothing, and `git diff --quiet` reports no
+# changes: the sidecar skipped every build it was offered and would have done so
+# for ever. `package.json` failed the other way round, matching apps/web/package.json
+# from apps/web, so the web project built for a reason that had nothing to do with
+# its rule. Anchor to the root, or decline to decide.
+root=$(git rev-parse --show-toplevel 2>/dev/null) || root=""
+if [ -z "$root" ] || ! cd "$root" 2>/dev/null; then
+  echo "Could not reach the repository root — building $project." >&2
+  exit 1
+fi
 
 # What each project is actually built from. Anything outside these paths — docs,
 # notes, the workflows, the root README — cannot change either deployment, which
