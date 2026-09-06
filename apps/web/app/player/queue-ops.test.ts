@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { Song } from "../types";
-import { moveWithin, removeAt } from "./queue-ops.ts";
+import { insertAfter, moveWithin, removeAt } from "./queue-ops.ts";
 
 /** Only the id matters here; the rest is shape the functions never read. */
 function song(id: string): Song {
@@ -141,4 +141,42 @@ test("the song under the playhead survives every single-step move", () => {
       }
     }
   }
+});
+
+test("play next lands the song directly after the playing one", () => {
+  const { queue, index } = fixture();
+  const edit = insertAfter(queue, index, [song("x")])!;
+
+  assert.equal(ids(edit.queue), "abcxde");
+  assert.equal(edit.index, index, "the playhead does not move");
+  assert.equal(edit.queue[edit.index]!.id, "c", "and still points at what is audible");
+  assert.equal(edit.play, null, "nothing reloads — the current song keeps playing");
+});
+
+test("play next keeps a batch in the order it was given", () => {
+  const { queue, index } = fixture();
+  const edit = insertAfter(queue, index, [song("x"), song("y")])!;
+
+  assert.equal(ids(edit.queue), "abcxyde");
+});
+
+test("play next on an empty queue starts playing, since there is no after", () => {
+  const edit = insertAfter([], 0, [song("x"), song("y")])!;
+
+  assert.equal(ids(edit.queue), "xy");
+  assert.equal(edit.index, 0);
+  assert.equal(edit.play!.id, "x", "or the songs arrive and sit there in silence");
+});
+
+test("play next at the end of the queue appends", () => {
+  const queue = ["a", "b", "c"].map(song);
+  const edit = insertAfter(queue, 2, [song("x")])!;
+
+  assert.equal(ids(edit.queue), "abcx");
+  assert.equal(edit.index, 2);
+});
+
+test("play next with nothing to add is a no-op", () => {
+  const { queue, index } = fixture();
+  assert.equal(insertAfter(queue, index, []), null);
 });

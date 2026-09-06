@@ -17,8 +17,13 @@ import { log } from "../logs.ts";
 import type { Song, SongsResponse } from "../types";
 import { recordPlay } from "./history-store";
 import { playedHandle } from "./played-handle";
-import { moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
-import { plausiblySameSong } from "./song-match";
+import {
+  insertAfter,
+  moveWithin,
+  removeAt as removeFromQueue,
+  type QueueEdit,
+} from "./queue-ops";
+import { plausiblySameSong, sameTrack } from "./song-match";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import {
   getVolumeServerSnapshot,
@@ -99,6 +104,8 @@ interface PlayerActions {
    * started falls through to the normal order. */
   play: (song: Song, rest?: Song[], prefer?: string) => void;
   enqueue: (songs: Song[]) => void;
+  /** Queues after the playing song rather than at the end, moving one already queued. */
+  playNext: (songs: Song[]) => void;
   removeAt: (position: number) => void;
   move: (from: number, to: number) => void;
   /** Drops everything after the current song, keeping it playing. */
@@ -932,11 +939,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   // Entry points overlap, and a duplicate breaks shuffle's "played once" bookkeeping.
+  // Matched on the recording rather than the id — see `sameTrack` for why an id check let
+  // the same song through twice, which is what made a radio circle a handful of tracks.
   const unqueued = useCallback(
-    (additions: Song[]) => {
-      const known = new Set(queue.map((song) => song.id));
-      return additions.filter((song) => !known.has(song.id));
-    },
+    (additions: Song[]) =>
+      additions.filter((song) => !queue.some((queued) => sameTrack(queued, song))),
     [queue],
   );
 
@@ -1071,12 +1078,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     writeProgress(0, 0);
   }, []);
 
+  /** Songs from `additions` that are not in the queue already, nor repeated within the batch.
+   * Against the ref rather than `unqueued`, which reads the render-time queue for `hasNext`:
+   * two additions in one tick would each see the queue without the other. */
+  const notQueued = useCallback((additions: Song[]) => {
+    const fresh: Song[] = [];
+    for (const song of additions) {
+      if (queueRef.current.some((queued) => sameTrack(queued, song))) continue;
+      if (fresh.some((added) => sameTrack(added, song))) continue;
+      fresh.push(song);
+    }
+    return fresh;
+  }, []);
+
   const enqueue = useCallback(
     (songs: Song[]) => {
-      // Against the ref rather than `unqueued`, which reads the render-time queue for
-      // `hasNext`: two additions in one tick would each see the queue without the other.
-      const known = new Set(queueRef.current.map((song) => song.id));
-      const fresh = songs.filter((song) => !known.has(song.id));
+      const fresh = notQueued(songs);
       if (fresh.length === 0) return;
 
       // Adding to an empty queue must start playback, or nothing loads the song.
@@ -1091,7 +1108,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // moment another write lands in the same tick, and appending to it dropped that write.
       writeQueue((current) => [...current, ...fresh]);
     },
-    [load, writeQueue],
+    [load, notQueued, writeQueue],
   );
 
   /** Applies an edit from `queue-ops`, which owns the index arithmetic. */
@@ -1120,6 +1137,39 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const move = useCallback(
     (from: number, to: number) => applyEdit(moveWithin(queue, index, from, to)),
     [applyEdit, index, queue],
+  );
+
+  /**
+   * Queues songs directly after the playing one instead of at the end.
+   *
+   * The queue continues into the radio and grows as it goes, so "add to queue" can mean an
+   * hour from now. This is the other half of that: hear it after this one, without losing
+   * what is already lined up.
+   *
+   * **A song already in the queue is moved, not refused.** `enqueue` drops a duplicate, which
+   * is right when the ask is "add it somewhere" — but asking for something sitting twenty
+   * songs down to play *next* is a request about position, and answering it with nothing
+   * looks exactly like a dead button. `moveWithin` owns the index arithmetic either way.
+   */
+  const playNext = useCallback(
+    (songs: Song[]) => {
+      const existing = songs.length === 1 ? songs[0]! : null;
+      const at = existing
+        ? queue.findIndex((queued) => sameTrack(queued, existing))
+        : -1;
+
+      if (at !== -1) {
+        // Already the next thing, or the thing playing: the ask is already satisfied.
+        if (at === index || at === index + 1) return;
+        // Behind the playhead its removal shifts the current song down one, so `index` is
+        // already the slot after it; ahead of it, that slot is `index + 1`.
+        applyEdit(moveWithin(queue, index, at, at < index ? index : index + 1));
+        return;
+      }
+
+      applyEdit(insertAfter(queueRef.current, index, notQueued(songs)));
+    },
+    [applyEdit, index, notQueued, queue],
   );
 
   const clearQueue = useCallback(() => {
@@ -1183,8 +1233,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const known = new Set(queued.map((song) => song.id));
-        const fresh = songs.filter((song) => !known.has(song.id));
+        // On the recording, not the id: this is the append that actually plays, and an id
+        // check here let the same song back into the queue every time a later fetch ranked
+        // a different upload of it first. See `sameTrack`.
+        const fresh = songs.filter(
+          (song) => !queued.some((already) => sameTrack(already, song)),
+        );
         setRadio([]);
         if (fresh.length > 0) writeQueue((current) => [...current, ...fresh]);
       })
@@ -1484,6 +1538,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     hasNext,
     play,
     enqueue,
+    playNext,
     removeAt,
     move,
     clearQueue,

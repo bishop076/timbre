@@ -112,6 +112,31 @@ export function plausiblySameSong(seed: Song, found: Song): boolean {
  * this panel would rather be short than repeat itself.
  */
 export function sameRecording(a: Song, b: Song): boolean {
+  return alike(a, b, "ignore");
+}
+
+/**
+ * Whether two rows are the same **queue entry** — the duplicate test for the queue itself,
+ * where {@link sameRecording} is a shade too eager.
+ *
+ * The difference is variants, and it runs the other way here. A suggestion panel would
+ * rather be short than offer the acoustic of something already queued; the queue itself must
+ * not refuse one. Queueing the studio cut *and* the live take is a thing people do on
+ * purpose, and a button that silently declines is indistinguishable from a broken one.
+ *
+ * **Why an id comparison was not enough.** `merge.ts` builds a song's id from its ISRC, or
+ * failing that from its dedupe key *and the source that will play it*
+ * (`key#ytmusic:videoId`). Only the ISRC is stable: fetch the same song twice and the second
+ * merge may rank a different upload first, so one recording arrives under two ids. Every
+ * dedupe in the player was an id check, so those copies walked straight past all of them and
+ * into the queue — the same song, again, a few tracks later.
+ */
+export function sameTrack(a: Song, b: Song): boolean {
+  return alike(a, b, "respect");
+}
+
+/** Shared by both: the same comparison, differing only in whether `(Acoustic)` counts. */
+function alike(a: Song, b: Song, variants: "ignore" | "respect"): boolean {
   // Settles the ordinary case for nothing: both lists come from the same merge, which
   // derives an id from the ISRC or the dedupe key, so a repeat arrives already identical.
   if (a.id === b.id) return true;
@@ -120,6 +145,7 @@ export function sameRecording(a: Song, b: Song): boolean {
   const left = dedupeParts(a.title, a.artists);
   const right = dedupeParts(b.title, b.artists);
   if (!left.base || left.base !== right.base) return false;
+  if (variants === "respect" && left.variants.join("+") !== right.variants.join("+")) return false;
 
   // Same name is not enough — NIKI and Drake both have a *Take Care*. Skipped rather than
   // failed when either side credits nobody, since a row can arrive with no artist at all.
