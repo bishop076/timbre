@@ -580,3 +580,168 @@ cannot be seen in local development at all — the probe has to run under a publ
 which a Playwright route can fulfil without deploying. And the media servers' judgement is
 YouTube's and can change; if the stall returns on the new host, B-18's fall-through is
 still underneath it.
+
+---
+
+## The 2026-09-05 review
+
+Five read-only passes over the whole tree — player, core and providers, the web routes, the
+client stores and views, the sidecar and tooling — with every finding re-verified against the
+code before it was touched. Everything below is `FIXED` and has a test where the area has a
+test file. Nothing was measured in a browser; these are defects the code states on its own
+terms, in the way B-11 and B-12 were.
+
+## B-20 · A song re-loaded onto itself never restarted `FIXED`
+
+**Severity:** high — repeat-one hung on a spinner at the end of every song
+
+`load` clears every player handle and the `attempt*` that follows sets one back, in the same
+synchronous batch. For the song already loaded that is the value the handle already had, so
+React reconciled nothing and no player's load effect re-ran: nothing called `loadVideoById`
+or `audio.play()`. Repeat-one reached it on every song's end, repeat-all on a one-song
+queue, Previous on the first song, and picking the playing song again from a list. The
+context now has `restart`, which seeks to zero and starts the player that is already there;
+`goTo`, `advance`, `play` and `handleEnded` use it whenever the target is the loaded song.
+The callers that know the player has ended say so, because YouTube's `ENDED` never reaches
+`handleStateChange` and the context still reads "playing" at that moment.
+
+## B-21 · Every fall-through cancelled the radio seed, and nothing asked again `FIXED`
+
+**Severity:** high — the queue died at its end for any song whose first copy refused
+
+The radio effect is keyed on the player handles so that every source re-seeds, and its
+cleanup aborted the request. A fall-through changes a handle for the *same* song, so it
+aborted the seed — and `seededFor`, set at the top of the effect, then stopped the re-run
+from asking again. *Wonderwall*, whose first three uploads refuse in 1.5s, got no radio at
+all. The cleanup now aborts only when the song has changed, read off `songRef`, which `load`
+sets before any state this cleanup could observe.
+
+## B-22 · SoundCloud's refusals were final, though the file said otherwise `FIXED`
+
+**Severity:** high — a song on four sources was given up on because SoundCloud was tried first
+
+`soundcloud-player.tsx` documents `soundcloudTried`, the once-per-song guard that lets it
+report a refusal as worth retrying. The guard had never been added to `player-context.tsx`,
+so the player kept reporting `false` and `handleError` returned at the top: no search, no
+rescue, no Spotify, no preview. It exists now, cleared in `load` and set in
+`attemptSoundCloud`, the SoundCloud rung checks it, and the player reports what is true.
+
+## B-23 · An interrupted `audio.play()` was reported against the next song `FIXED`
+
+**Severity:** medium — skipping away from a buffering Audius track walked the next song's ladder
+
+`play()` rejects with `AbortError` when the source changes under it. Only `NotAllowedError`
+was filtered, so the rejection reached `handleError` after `songRef` had moved on, and the
+song *after* the skip fell back to another copy mid-load — or was declared unplayable — for
+a failure it never had. The effect's cleanup now marks the attempt cancelled, and an
+`AbortError` is ignored regardless.
+
+## B-24 · A source badge on the playing song wiped the queue `FIXED`
+
+**Severity:** medium — choosing a source discarded everything queued after the song
+
+Badges call `play(song, [], source)`, which replaced the queue with `[song]`. Picking another
+source for the song already playing — the badges' documented purpose — threw away the rest
+of the queue and the radio continuation, and disabled Previous. `play` now keeps the queue
+when the song asked for is the one loaded and only a source was named.
+
+## B-25 · Concurrent acquisitions all passed the rate limiter `FIXED`
+
+**Severity:** high — Apple's 403 throttle was reachable from a single search
+
+`RateLimiter.acquire` is `load → consume → save`, and nothing serialised it within a
+process: every concurrent caller read the same state before any wrote, so twenty
+acquisitions against a five-token bucket resolved at once. Deezer's adapter fans out several
+requests in parallel and two searches share one bucket per provider, so this was the normal
+case, not a race in the edge sense. Acquisitions are now chained per key; a failed one does
+not stall the callers behind it. Tested.
+
+## B-26 · Four ways the title parser produced a wrong key `FIXED`
+
+**Severity:** medium-high — live cuts merging into studio takes, reissues never merging
+
+`normalize.ts`, all measured on real titles:
+
+- A segment with a guest credit returned before the variant patterns ran, so *Wonderwall
+  (Live with Orchestra)* and *Blinding Lights (Remix feat. Rosalía)* had no variant and
+  merged with the studio take on nothing but the duration guard — the one thing the module
+  exists to prevent. The credit is now the tail of the segment, and the rest is classified.
+- `from "…"\b` needed a word character after the closing quote, so a soundtrack credit was
+  never stripped and *Let It Go (From "Frozen")* never merged with *Let It Go*.
+- Two overlapping reissue patterns left residue: *(Remastered Version)*, *(Deluxe Version)*
+  and *(30th Anniversary Edition)* kept a `version` or a `30th` as a variant. One pattern now.
+- Noise was stripped from anywhere in the main title, so *Clean*, *Audio* and *Special*
+  reduced to an empty base — every such song by one artist shared a key, and LRCLIB was
+  asked for an empty track name — and *Stereo Hearts* lost its front. Only a trailing run
+  of noise comes off the main title now.
+
+## B-27 · A track carrying an ISRC was filed by title into a group without one `FIXED`
+
+**Severity:** medium — two songs sharing one id, which is the collision the id exists to prevent
+
+`mergeTracks` took the first group `matches` accepted. A track whose ISRC belonged to the
+second group matched the first on its title, and both came out with the ISRC as their id —
+duplicate React keys and a broken lookup. A group already holding the track's ISRC is now
+found before any title match. Tested.
+
+## B-28 · One malformed cached chart row bricked the home page `FIXED`
+
+**Severity:** high — S-1 again, one store over
+
+`charts-cache.ts` said "shape-checked" and checked `Array.isArray`, exactly what
+`importPlaylists` did before S-1. A `null` in `timbre:charts` threw during render on `/`,
+before the fetch that would have overwritten it, so it came back on every visit, and the
+only way out deleted every playlist too. The check `playlists/store.ts` grew for S-1 is now
+`song-shape.ts`, shared by both stores, and applied on write as well as read. Tested.
+
+## B-29 · Two Spotify refreshes spent one single-use token `FIXED`
+
+**Severity:** medium — the Spotify section vanished about an hour into a session
+
+PKCE refresh tokens rotate. `accessToken` had no in-flight guard, and it is called per
+search *and* on the SDK's own schedule, so two callers finding the same lapsed token both
+spent it and the loser was refused with `invalid_grant`, which read as "not connected". One
+refresh at a time now. Alongside it, in the same module: the Spotify search fired per
+keystroke with no debounce (now 300ms, like the blended search), a token response that was
+not JSON surfaced a `SyntaxError` instead of the status, the callback page ran the exchange
+twice under StrictMode and reported "started in a different tab" over a connection it had
+just saved, and a refused sign-in left the verifier in session storage.
+
+## B-30 · `/api/art` relayed SVG from Timbre's own origin `FIXED`
+
+**Severity:** medium — an allowlisted host serves what its users upload
+
+The type check was `startsWith("image/")` and the upstream type was echoed back.
+`image/svg+xml` passes both and is an XML document that may carry a `<script>`; opened
+directly, it would run with this origin's storage — playlists, profile, Spotify tokens. SVG
+is refused, and the refused-body paths now cancel the upstream body rather than leaving the
+socket to garbage collection.
+
+## B-31 · Smaller fixes from the same review `FIXED`
+
+- **player** — candidates `load` already found for a song not on YouTube Music were never
+  walked on failure; `enqueue` appended to the render-time queue instead of the ref; the
+  progress wave flashed full on the first play (its clock began at page load, and counted
+  time paused); the volume slider stayed in a drag after `pointercancel`; a rejected player
+  API script was memoised as rejected for the rest of the session.
+- **stores** — the "saved" tick's close timer in the playlist menu fired after the reader had
+  moved on and pulled focus back; a cross-tab picture change arriving mid-load was dropped.
+- **api** — `z.coerce.boolean()` made `?full=0` and `?alternatives=false` mean yes
+  (`queryFlag`, the four spellings `env.ts` accepts); `/api/radio` validated a `source` it
+  never used; `/api/lyrics` promised caching and set no header; the collection page decoded
+  an already-decoded param and threw a `URIError` — a 500 where a 404 belongs.
+- **providers** — a caller's own abort was wrapped as "unreachable" and a token was spent
+  for a caller already gone; three Spotify fetches bypassed the deadline every adapter must
+  carry.
+- **sidecar** — `/radio` at `limit=50` asked for 51 and fetched a continuation, which the
+  model's own comment says it must not.
+- **tooling** — the pre-commit hook skipped renamed-and-edited files (`--diff-filter` had no
+  `R`) and read commented-out imports as real; the sidecar Dockerfile installed from open
+  ranges rather than `uv.lock` (**not built here** — no Docker or uv on this machine — so the
+  `uv export` line is written from its documentation and needs one build to confirm).
+
+**Left alone, on purpose:** the sidecar shares one `requests.Session` across concurrent
+requests despite `client.py` saying it must not — the concern is the code's own and is
+unproven, so it is noted rather than changed. `DEPLOY.md` says CI builds the sidecar image
+on every release; `release.yml` builds only the web one. That workflow was mid-edit by
+another session when this was found, so the claim stands uncorrected here.
