@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { plausiblySameSong, sameRecording } from "./song-match.ts";
+import { plausiblySameSong, sameRecording, sameTrack } from "./song-match.ts";
 import type { Song } from "../types";
 
 function song(title: string, artist = "", durationMs: number | null = null): Song {
@@ -152,4 +152,48 @@ test("a guest credit named on only one side still matches", () => {
 test("the same entry twice is caught on its id without parsing anything", () => {
   const a = song("Anything At All", "Someone");
   assert.equal(sameRecording(a, { ...a, title: "totally different" }), true);
+});
+
+// `sameTrack` is the queue's duplicate test. It exists because a song's id is not stable
+// across fetches — `merge.ts` builds it from the source that will play the song when there is
+// no ISRC — so the same recording reached the queue twice under two ids and played twice.
+
+test("the same recording under two ids is one queue entry", () => {
+  // What two radio fetches actually return: one merge ranked the official video first, the
+  // other an upload, so the ids differ while the song does not.
+  const first = { ...song("Levitating", "Dua Lipa"), id: "levitating||dua lipa#ytmusic:aaa" };
+  const second = { ...song("Levitating", "Dua Lipa"), id: "levitating||dua lipa#ytmusic:bbb" };
+
+  assert.equal(first.id === second.id, false, "the ids disagree — that is the whole problem");
+  assert.equal(sameTrack(first, second), true);
+});
+
+test("a feature credited one way and not the other is still one queue entry", () => {
+  assert.equal(sameTrack(song("Sunflower (feat. Swae Lee)", "Post Malone"), song("Sunflower", "Post Malone")), true);
+});
+
+test("two different songs sharing a title are not one queue entry", () => {
+  // Distinct ids, or the shortcut at the top settles it before the names are ever compared.
+  const niki = { ...song("Take Care", "NIKI"), id: "take care||niki#ytmusic:aaa" };
+  const drake = { ...song("Take Care", "Drake"), id: "take care||drake#ytmusic:bbb" };
+
+  assert.equal(sameTrack(niki, drake), false);
+});
+
+test("a variant is a queue entry of its own, unlike a suggestion", () => {
+  // The one place `sameTrack` and `sameRecording` part company. Queueing the studio cut and
+  // the live take is a thing people do deliberately, and refusing the second looks broken;
+  // *suggesting* the live take of something already queued is just weak, so that one folds.
+  const studio = song("Wonderwall", "Oasis");
+  const live = song("Wonderwall (Live)", "Oasis");
+
+  assert.equal(sameTrack(studio, live), false);
+  assert.equal(sameRecording(studio, live), true);
+});
+
+test("distinct ISRCs settle it even when the names agree", () => {
+  const a = { ...song("Wonderwall", "Oasis"), id: "one", isrc: "GBAAA0000001" };
+  const b = { ...song("Wonderwall", "Oasis"), id: "two", isrc: "GBAAA0000002" };
+
+  assert.equal(sameTrack(a, b), false);
 });

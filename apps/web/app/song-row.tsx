@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Artwork } from "./artwork";
 import { sized } from "./artwork-url";
 import { PlayIcon } from "./icons";
+import { useSongMenu } from "./player/song-menu";
 import type { Song } from "./types";
 
 /** Row scale: `sm` for chart lists, `md` for library lists, `lg` for search results. */
@@ -74,6 +75,11 @@ export function SongRow({
   const scale = SCALE[size];
   const showing = isCurrent && isPlaying;
 
+  // Every list of songs gets the same right-click menu by getting it here — search results,
+  // an album, a playlist, the charts. Queueing from search was the ask; there is no reason
+  // the other four should behave differently, and one insertion point cannot drift.
+  const { onContextMenu, menu } = useSongMenu(song);
+
   const gutter =
     rank === undefined ? null : (
       <span className={`w-6 shrink-0 text-right tabular-nums text-[var(--fg-faint)] ${scale.rank}`}>
@@ -83,6 +89,7 @@ export function SongRow({
 
   return (
     <li
+      onContextMenu={onContextMenu}
       className={`group flex items-center rounded-lg px-2 transition ${scale.row} ${
         isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
       }`}
@@ -135,6 +142,7 @@ export function SongRow({
       </button>
 
       {trailing}
+      {menu}
     </li>
   );
 }
