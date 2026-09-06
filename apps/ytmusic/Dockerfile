@@ -15,10 +15,20 @@ ENV PATH="/home/timbre/.local/bin:${PATH}"
 
 WORKDIR /home/timbre/app
 
-# Manifest first: dependency installs stay cached while route code churns.
-COPY --chown=timbre:timbre pyproject.toml ./
+# Manifest and lockfile first: dependency installs stay cached while route code churns.
+#
+# Installed from `uv.lock` — the pins CI and Vercel install — rather than `pip install .`,
+# which re-resolved every open range in pyproject.toml at build time and could ship a
+# ytmusicapi nothing had tested. There is also no `[build-system]` to install the project
+# *with*: the app runs from the working directory, not from site-packages, so only the
+# dependencies are installed (`--no-emit-project`).
+COPY --chown=timbre:timbre pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir --user uv \
+ && uv export --frozen --no-dev --no-emit-project --no-hashes -o requirements.txt \
+ && pip install --no-cache-dir --user -r requirements.txt \
+ && pip uninstall -y uv \
+ && rm requirements.txt
 COPY --chown=timbre:timbre app ./app
-RUN pip install --no-cache-dir --user .
 
 # config.py defaults to loopback on purpose — exposing this service has to be a
 # deliberate act. This is that act. It is still guarded by the shared secret,
