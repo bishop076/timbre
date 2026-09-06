@@ -11,6 +11,17 @@
 import { guardArtwork } from "@/lib/api";
 import { allowed, capped, fetchAllowed, MAX_BYTES } from "@/lib/artwork-proxy";
 
+/**
+ * Pixels only. `image/svg+xml` starts with `image/` and is an XML document that may carry a
+ * `<script>` — relayed from this origin, opened directly, it would run with this origin's
+ * storage: playlists, profile, Spotify tokens. The allowlist has a host that serves whatever
+ * its users upload, so the type is what has to say no.
+ */
+function isRasterImage(contentType: string): boolean {
+  const media = (contentType.split(";")[0] ?? "").trim().toLowerCase();
+  return media.startsWith("image/") && media !== "image/svg+xml";
+}
+
 export async function GET(request: Request) {
   // Artwork has its own budget, well above what a page needs and well below a scraper —
   // the allowlist bounds which hosts can be reached, never how often. See EXPOSURE.md E-7.
@@ -43,8 +54,11 @@ export async function GET(request: Request) {
   if (!upstream) return new Response("Host not allowed.", { status: 403 });
 
   const type = upstream.headers.get("content-type") ?? "";
-  if (!upstream.ok || !type.startsWith("image/")) {
+  if (!upstream.ok || !isRasterImage(type)) {
     // Non-images are refused, or this becomes a relay for whatever else those hosts serve.
+    // The body is cancelled, not dropped: an unread body keeps the upstream socket and its
+    // buffer alive until garbage collection (`artwork-proxy.ts` says the same of its own).
+    void upstream.body?.cancel();
     return new Response("Not an image.", { status: 404 });
   }
 
@@ -54,6 +68,7 @@ export async function GET(request: Request) {
   // costs one comparison per chunk. See docs/EXPOSURE.md, E-9.
   const declared = Number(upstream.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_BYTES) {
+    void upstream.body?.cancel();
     return new Response("Too large.", { status: 413 });
   }
 
