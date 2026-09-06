@@ -409,6 +409,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   /** The song the radio was last fetched for. The deps below fire on every load attempt,
    * and only this keeps a fall-through from re-asking for a list already held. */
   const seededFor = useRef<string | null>(null);
+  const radioRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    radioRequest.current?.abort();
+    seededFor.current = null;
+  }, []);
 
   /** Whether the self-played copy has already had its turn on this song, so a failure there
    * cannot loop straight back into it. YouTube copies are tracked individually in
@@ -675,6 +681,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const aborter = new AbortController();
       resolving.current = aborter;
 
+      if (songRef.current?.id !== song.id) {
+        radioRequest.current?.abort();
+        seededFor.current = null;
+      }
       songRef.current = song;
       candidates.current = [];
       attempted.current = new Set();
@@ -1045,6 +1055,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
    */
   const stop = useCallback(() => {
     resolving.current?.abort();
+    radioRequest.current?.abort();
+    seededFor.current = null;
     songRef.current = null;
     setVideoId(null);
     setSoundcloudUrl(null);
@@ -1152,9 +1164,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (artist) params.set("artist", artist);
 
     const aborter = new AbortController();
+    radioRequest.current?.abort();
+    radioRequest.current = aborter;
     fetch(`/api/radio?${params}`, { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
       .then((data) => {
+        // A same-song source change can retire this effect's cleanup while its request
+        // survives. Keep ownership in a ref, and reject results after any later load.
+        if (aborter.signal.aborted || songRef.current?.id !== song.id) return;
         const songs = data?.songs ?? [];
 
         // Adopted only when nothing follows, so a one-song queue shows "up next" instead

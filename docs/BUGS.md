@@ -742,6 +742,23 @@ socket to garbage collection.
 
 **Left alone, on purpose:** the sidecar shares one `requests.Session` across concurrent
 requests despite `client.py` saying it must not — the concern is the code's own and is
-unproven, so it is noted rather than changed. `DEPLOY.md` says CI builds the sidecar image
-on every release; `release.yml` builds only the web one. That workflow was mid-edit by
-another session when this was found, so the claim stands uncorrected here.
+unproven, so it is noted rather than changed. `DEPLOY.md` said CI builds the sidecar image
+on every release; `release.yml` builds only the web one. Corrected in `DEPLOY.md` with B-32.
+
+---
+
+## B-32 · A radio response outlived the song it was fetched for `FIXED`
+
+**Severity:** medium — another song's recommendations could be appended under the wrong song
+
+B-21 stopped a fall-through cancelling the radio seed, and in doing so left the request
+without an owner. The effect's re-run for the same song returns at `seededFor` before it
+registers a cleanup, so once the handle had changed nothing held the controller: the next
+song's load could not abort it, and its response, arriving late, was adopted into whatever
+queue was current. Skip away from a song mid-seed and its recommendations could land under
+the song after it.
+
+The controller now lives in a ref. Loading a different song, `stop` and unmount abort it,
+and the response checks both its signal and the song it was fetched for before touching the
+queue. A same-song fall-through still keeps the request alive, which is what B-21 was for.
+Found by the integration review on `codex/claude-review`, 2026-09-05.
