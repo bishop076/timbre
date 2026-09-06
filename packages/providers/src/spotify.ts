@@ -25,7 +25,7 @@
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
-import { createRequester } from "./request.ts";
+import { createRequester, deadlineSignal } from "./request.ts";
 
 const OEMBED = "https://open.spotify.com/oembed";
 const EMBED = "https://open.spotify.com/embed";
@@ -75,7 +75,7 @@ interface SpotifyEntity {
 async function entityFromEmbed(ctx: SearchContext, trackId: string): Promise<SpotifyEntity | null> {
   try {
     await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
-    const response = await fetch(spotifyEmbedUrl(trackId), { signal: ctx.signal, cache: "no-store" });
+    const response = await fetch(spotifyEmbedUrl(trackId), { signal: deadlineSignal(ctx.signal), cache: "no-store" });
     if (!response.ok) return null;
 
     const html = await response.text();
@@ -202,7 +202,7 @@ export async function findSpotifyTrackId(
 async function labs<T>(ctx: SearchContext, path: string): Promise<T | null> {
   try {
     await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
-    const response = await fetch(`${LABS}${path}`, { signal: ctx.signal, cache: "no-store" });
+    const response = await fetch(`${LABS}${path}`, { signal: deadlineSignal(ctx.signal), cache: "no-store" });
     if (!response.ok) return null;
     return (await response.json()) as T;
   } catch (cause) {
@@ -242,7 +242,9 @@ async function isrcLookup(
     const response = await fetch(
       `${MUSICBRAINZ}/isrc/${encodeURIComponent(isrc)}?inc=url-rels&fmt=json`,
       {
-        signal: ctx.signal,
+        // The deadline every adapter carries (`request.ts`); these three calls bypass
+        // `createRequester` and had none, so a stalled host held /api/resolve open.
+        signal: deadlineSignal(ctx.signal),
         cache: "no-store",
         headers: { "User-Agent": AGENT, Accept: "application/json" },
       },
