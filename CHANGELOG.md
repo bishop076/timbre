@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.5.0 — 7 September 2026
+
+### Added
+
+- **web** — the mark returns, on the profile row rather than above it
+
+2 further changes under the hood — refactoring, docs and tests.
+
 ## 0.4.4 — 6 September 2026
 
 ### Fixed
