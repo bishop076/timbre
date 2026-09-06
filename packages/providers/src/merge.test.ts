@@ -260,3 +260,20 @@ test("a preview clip survives the merge on the source that offered it", () => {
   );
   assert.equal(songs[0]!.sources.find((source) => source.source === "ytmusic")?.previewUrl, null);
 });
+
+test("a track carrying an ISRC joins the group that holds it, not the first title match", () => {
+  const songs = mergeTracks([
+    track({ source: "ytmusic", sourceId: "yt-long", durationMs: 189_000 }),
+    track({ source: "ytmusic", sourceId: "yt-short", durationMs: 174_000 }),
+    track({ source: "deezer", durationMs: 174_000, isrc: "GBK3W2000225" }),
+    track({ source: "soundcloud", durationMs: 189_000, isrc: "GBK3W2000225" }),
+  ]);
+
+  assert.equal(songs.length, 2);
+  assert.equal(new Set(songs.map((song) => song.id)).size, 2, "two songs must not share an id");
+  const owner = songs.find((song) => song.isrc === "GBK3W2000225")!;
+  assert.deepEqual(
+    owner.sources.map((source) => source.source).sort(),
+    ["deezer", "soundcloud", "ytmusic"],
+  );
+});
