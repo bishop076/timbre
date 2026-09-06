@@ -10,6 +10,34 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.4.2 — 6 September 2026
+
+### Fixed
+
+- **ytmusic** — /radio at limit=50 asked for 51 and fetched a continuation it threw away
+- **web** — a late saved-tick timer no longer pulls focus back, and two smaller ones
+- **api** — a query flag is only on when it says so, and three route faults beside it
+- **api** — /api/art refuses SVG, which is a document and not a picture
+- **spotify** — one refresh at a time, since the token it spends is single-use
+- **web** — one malformed cached chart row no longer bricks the home page
+- **providers** — a caller's own abort is not the source being unreachable
+- **providers** — a track carrying an ISRC joins the group that holds it
+- **core** — four ways the title parser produced a wrong key
+- **core** — pace concurrent acquisitions on one bucket instead of admitting them all
+- **player** — five smaller faults from the same review
+- **player** — a source badge on the playing song keeps its queue
+- **player** — stop an interrupted audio.play() walking the next song's ladder
+- **player** — keep the radio seed alive across a fall-through
+- **player** — let a SoundCloud refusal fall through to the next source
+- **player** — start a song over when it is loaded onto itself
+- **web** — let reduced motion reach the skeletons and the spinner
+- **playlists** — the actions menu opened mostly off the side of the screen
+- **player** — stop the scrub bar paging the panel while you seek
+- **player** — stop the volume slider scrolling the page under itself
+- **player** — give the now-playing tabs the keyboard they promise
+
+12 further changes under the hood — refactoring, docs and tests.
+
 ## 0.4.1 — 5 September 2026
 
 ### Fixed
