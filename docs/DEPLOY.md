@@ -41,8 +41,9 @@ one already lives, so the service deploys unmodified — the same file `uvicorn`
 runs locally.
 
 The container is still here. [`apps/ytmusic/Dockerfile`](../apps/ytmusic/Dockerfile)
-is built by CI on every release so it cannot rot, and it is the escape hatch if
-this tier is the next one to change.
+is the escape hatch if this tier is the next one to change. Release CI currently
+builds only the root web Dockerfile; the sidecar image needs a separate build
+before use.
 
 ### The cold cost that remains, measured
 
@@ -186,9 +187,9 @@ reachable from the open internet. **Read it before the first deploy**, not after
 Every fact above has a date on it because free tiers do not keep still. If
 something here is wrong:
 
-- **The sidecar tier changed.** The Dockerfile is maintained and CI builds it on
-  every release. Any container host will run it; you lose scale-to-zero and gain
-  a cold start.
+- **The sidecar tier changed.** The Dockerfile is maintained, but release CI only
+  builds the web image. Build the sidecar image before moving to a container host;
+  you lose scale-to-zero and gain a cold start.
 - **The web tier changed.** It is a stock Next.js app with no Vercel-specific
   code. Anything that runs Next will run it.
 
