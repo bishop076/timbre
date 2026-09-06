@@ -116,6 +116,37 @@ harder would bias the whole feature toward music videos over songs.
 an additive bonus of any intuitive size — 0.25, say — would swamp the ranking
 entirely and reduce every other term to a tie-breaker.
 
+### What counts as "the same song" across two lists
+
+The consensus term is only worth as much as the lookup behind it, and that lookup
+used to be a single normalized key per song. It had a hole big enough to disable
+the term on ordinary songs.
+
+**Services disagree about featured artists.** YouTube Music lists *Sunflower
+(feat. Swae Lee)* by Post Malone; Deezer lists *Sunflower* by Post Malone.
+`dedupeKey` folds a feature into the artists, so those are two different keys —
+while `mergeTracks`, which is looser, groups the two tracks into one song anyway.
+The merged song therefore carried one spelling and was unfindable under the other,
+and scored `lists = 1` when both services had in fact reached it. Measured on that
+pair: it scored **0.0153 against 0.0156 for two fillers only one list mentioned**,
+so the one song both services agreed on was ranked last of three.
+
+So a song is now looked up by *every* name it answers to — its own, and each
+source track's, since the merger keeps the rows it grouped — with an ISRC or the
+exact key tried first and a looser form second: same title and variants, artist
+sets that need only **intersect**. Variants stay in the key deliberately, unlike
+`sameRecording`'s test: a live take inheriting the studio cut's rank would promote
+whichever of the two the lists happened to disagree about.
+
+The same lookup does the excluding, and that is the more visible half. The seed is
+excluded so that Deezer's top tracks do not hand back what just played — but the
+seed is credited by whichever source *played* it, which need not be the source the
+radio comes back from. Every song whose feature was credited inconsistently
+therefore slipped the exclusion, returned as its own first recommendation, played,
+and seeded the next radio: a queue that circles a handful of tracks. That, and the
+unstable song ids described in `song-match.ts`, were the two halves of "the same
+song keeps playing".
+
 ### Then two passes that are not scoring
 
 **Deduplication by title and artist.** The merger deliberately keeps a music
@@ -124,7 +155,9 @@ against the track's 174s, and beyond its 3-second tolerance those are different
 recordings. That is right when the question is *"which services have this
 song"* and wrong in a radio, where it shows the same song twice in twelve. The
 duration guard is dropped after scoring, keeping the higher-scored copy — which
-is the playable one, since playability is what separates them.
+is the playable one, since playability is what separates them. This pass matches
+on the names above rather than one key, for the reason given there: two copies of
+a song are exactly where its title is decorated differently.
 
 **Artist spacing.** No artist twice within any three consecutive picks. Every
 service ranks an artist's own catalogue highly, so a plain sort by score reliably

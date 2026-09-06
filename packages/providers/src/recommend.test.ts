@@ -191,3 +191,60 @@ test("the limit is respected", () => {
 
   assert.equal(recommend(lists, { limit: 8 }).length, 8);
 });
+
+// The three below are one bug seen from three sides: services disagree about whether a
+// featured artist belongs in the credits, `dedupeKey` folds features into the artists, and
+// so the two spellings produced two different keys for one recording. The merger grouped
+// them regardless — it is looser — so the song came out of the merge under one spelling and
+// could not be found under the other.
+
+test("a feature credited in one list and dropped in the other is still agreement", () => {
+  // YouTube Music titles it with the feature, Deezer omits it. One recording, two lists.
+  const lists = [
+    list("yt", [track("Filler One", "Alpha"), track("Sunflower (feat. Swae Lee)", "Post Malone")]),
+    list("dz", [
+      track("Filler Two", "Gamma", { source: "deezer" }),
+      track("Sunflower", "Post Malone", { source: "deezer" }),
+    ]),
+  ];
+
+  const scored = scoreCandidates(lists);
+  const sunflower = scored.find((entry) => entry.song.title.startsWith("Sunflower"))!;
+
+  assert.equal(sunflower.lists, 2);
+  // Not merely counted: it has to *win*. Scored as one list it fell below both fillers,
+  // so the one song both services reached was the last thing the radio offered.
+  assert.equal(titles(recommend(lists, { limit: 5 }))[0], "Sunflower (feat. Swae Lee)");
+});
+
+test("the seed is excluded however its feature is credited", () => {
+  // The seed is credited by whichever source actually played it, which need not be the
+  // source the radio comes back from. Missing here, the song that just played is offered
+  // as its own first recommendation — and then seeds the next radio, and circles.
+  const lists = [
+    list("yt", [track("Sunflower (feat. Swae Lee)", "Post Malone"), track("Keep", "Beta")]),
+  ];
+
+  const picked = recommend(lists, {
+    limit: 5,
+    exclude: [{ title: "Sunflower", artists: ["Post Malone"] }],
+  });
+
+  assert.deepEqual(titles(picked), ["Keep"]);
+});
+
+test("one recording spelled two ways is one entry, not two", () => {
+  // Same song, different duration *and* different credits, so neither the merger's tolerance
+  // nor a plain key catches it — this is the pair that reached the queue twice.
+  const lists = [
+    list("yt", [
+      track("Levitating (feat. DaBaby)", "Dua Lipa", {
+        durationMs: 203_000,
+        videoType: "MUSIC_VIDEO_TYPE_OMV",
+      }),
+    ]),
+    list("dz", [track("Levitating", "Dua Lipa", { source: "deezer", durationMs: 183_000 })]),
+  ];
+
+  assert.equal(recommend(lists, { limit: 5 }).length, 1);
+});

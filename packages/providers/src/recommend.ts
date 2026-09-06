@@ -4,10 +4,10 @@
  * produces values near 0.016, so an additive bonus of any intuitive size swamps the lot.
  */
 
-import { dedupeKey } from "@timbre/core";
+import { dedupeKey, dedupeParts } from "@timbre/core";
 
 import { mergeTracks } from "./merge.ts";
-import type { RankedList, Song, SourceTrack } from "./types.ts";
+import type { RankedList, Song } from "./types.ts";
 
 /** RRF damping, 60 from the paper: keeps rank 1 close to rank 10, so presence in several
  * lists outweighs being first in one. */
@@ -42,23 +42,110 @@ export interface RecommendOptions {
   exclude?: Iterable<SongIdentity>;
 }
 
-/** A song's identity for cross-list lookup: ISRC when known, else title+artists. */
-function identityOf(title: string, artists: string[], isrc: string | null): string {
-  return isrc ?? dedupeKey(title, artists);
+/**
+ * Every name one recording answers to, because a lookup has to survive two services
+ * spelling it differently.
+ *
+ * `exact` is an ISRC or the merger's own key, and settles the ordinary case for nothing.
+ * `loose` exists for the disagreement that actually happens: **a featured artist credited in
+ * one place and dropped in another.** YouTube Music lists *Sunflower (feat. Swae Lee)* by
+ * Post Malone; Deezer lists *Sunflower* by Post Malone. `dedupeKey` folds the feature into
+ * the artists, so those are two different keys — while the merger groups the tracks anyway,
+ * so the song comes out of the merge carrying one spelling and unfindable under the other.
+ * It then scored as though only one list had reached it, which is the opposite of the truth,
+ * and cost it the consensus multiplier this whole file exists to apply.
+ *
+ * So the loose form keeps the title and softens the credits to a set that only has to
+ * *intersect*. Variants stay in the key, unlike `sameRecording`'s: a live take and the studio
+ * cut are different recordings, and letting one inherit the other's rank would promote
+ * whichever of the two the lists happened to disagree about.
+ */
+interface Names {
+  exact: string[];
+  loose: { key: string; artists: string[] }[];
 }
 
-/** Best 1-based rank a song reached in one list — a repeat is the same evidence twice.
- * Identity is looser than the merger's (no duration check), so a live take can inherit the
- * studio rank: cheap here, but in the merger it would play the wrong song. */
+function namesOf(item: SongIdentity): Names {
+  const key = dedupeKey(item.title, item.artists);
+  const parts = dedupeParts(item.title, item.artists);
 
-function ranksIn(tracks: SourceTrack[]): Map<string, number> {
-  const ranks = new Map<string, number>();
-  tracks.forEach((track, index) => {
-    const byKey = dedupeKey(track.title, track.artists);
-    if (!ranks.has(byKey)) ranks.set(byKey, index + 1);
-    if (track.isrc && !ranks.has(track.isrc)) ranks.set(track.isrc, index + 1);
-  });
-  return ranks;
+  return {
+    exact: item.isrc ? [item.isrc, key] : [key],
+    loose: [{ key: `${parts.base}|${parts.variants.join("+")}`, artists: parts.artists }],
+  };
+}
+
+/** A merged song answers to its own name *and* to each source's: the sources are the rows
+ * the lists were indexed by, and the merger kept every one it grouped. */
+function namesOfSong(song: Song): Names {
+  const names: Names = { exact: [], loose: [] };
+
+  for (const item of [song as SongIdentity, ...song.sources]) {
+    const found = namesOf(item);
+    names.exact.push(...found.exact);
+    names.loose.push(...found.loose);
+  }
+
+  return names;
+}
+
+/** A set of songs, searchable by any of their names. The value is a 1-based rank when the
+ * set is a ranked list, and unused when the set is only asked *whether* it holds something. */
+interface NameIndex {
+  exact: Map<string, number>;
+  loose: Map<string, { artists: string[]; rank: number }[]>;
+}
+
+function emptyIndex(): NameIndex {
+  return { exact: new Map(), loose: new Map() };
+}
+
+/** First mention wins: a repeat inside one list is the same evidence twice, not more of it. */
+function addNames(index: NameIndex, names: Names, rank: number): void {
+  for (const key of names.exact) {
+    if (!index.exact.has(key)) index.exact.set(key, rank);
+  }
+
+  for (const entry of names.loose) {
+    const bucket = index.loose.get(entry.key);
+    if (bucket) bucket.push({ artists: entry.artists, rank });
+    else index.loose.set(entry.key, [{ artists: entry.artists, rank }]);
+  }
+}
+
+function indexOf(items: Iterable<SongIdentity>): NameIndex {
+  const index = emptyIndex();
+  let rank = 0;
+  for (const item of items) addNames(index, namesOf(item), ++rank);
+  return index;
+}
+
+/** Skipped rather than failed when either side credits nobody: a list can carry a row with
+ * no artist at all, and refusing everything then would lose the lookup this exists to make. */
+function sharesArtist(left: string[], right: string[]): boolean {
+  if (left.length === 0 || right.length === 0) return true;
+  return left.some((name) => right.includes(name));
+}
+
+/** The best rank this song reached, or undefined when the index does not name it. Exact
+ * first and only then loose, so a precise match is never beaten by a softer one. */
+function rankIn(index: NameIndex, names: Names): number | undefined {
+  let best: number | undefined;
+
+  for (const key of names.exact) {
+    const rank = index.exact.get(key);
+    if (rank !== undefined && (best === undefined || rank < best)) best = rank;
+  }
+  if (best !== undefined) return best;
+
+  for (const name of names.loose) {
+    for (const entry of index.loose.get(name.key) ?? []) {
+      if (!sharesArtist(name.artists, entry.artists)) continue;
+      if (best === undefined || entry.rank < best) best = entry.rank;
+    }
+  }
+
+  return best;
 }
 
 function playabilityOf(song: Song): number {
@@ -73,6 +160,9 @@ export interface ScoredSong {
   score: number;
   /** How many independent lists reached it. */
   lists: number;
+  /** Every name it answers to — built to score it, and reused to deduplicate and exclude it
+   * rather than derived again from a single key that would miss in the same way. */
+  names: Names;
 }
 
 /** Scores every song the lists mention. Exported so an order can be explained. */
@@ -82,16 +172,15 @@ export function scoreCandidates(lists: RankedList[]): ScoredSong[] {
 
   // Merged across every list at once, so one song found by several services is one entry.
   const songs = mergeTracks(usable.flatMap((entry) => entry.tracks));
-  const ranked = usable.map((entry) => ranksIn(entry.tracks));
+  const indexed = usable.map((entry) => indexOf(entry.tracks));
 
   return songs.map((song) => {
-    const identity = identityOf(song.title, song.artists, song.isrc);
-    const fallback = dedupeKey(song.title, song.artists);
+    const names = namesOfSong(song);
 
     let base = 0;
     let hits = 0;
-    for (const ranks of ranked) {
-      const rank = ranks.get(identity) ?? ranks.get(fallback);
+    for (const index of indexed) {
+      const rank = rankIn(index, names);
       if (rank === undefined) continue;
       base += 1 / (RRF_K + rank);
       hits += 1;
@@ -100,7 +189,7 @@ export function scoreCandidates(lists: RankedList[]): ScoredSong[] {
     // Two lists 1.5x, three 2x; RRF already sums per list, so agreement compounds.
     const consensus = 1 + CONSENSUS_WEIGHT * Math.max(0, hits - 1);
 
-    return { song, score: base * consensus * playabilityOf(song), lists: hits };
+    return { song, score: base * consensus * playabilityOf(song), lists: hits, names };
   });
 }
 
@@ -108,29 +197,25 @@ export function scoreCandidates(lists: RankedList[]): ScoredSong[] {
  * ranks an artist's own catalogue highly, so the top N is four songs by the seed's artist.
  * Spacing reorders, never drops. */
 export function recommend(lists: RankedList[], options: RecommendOptions): Song[] {
-  const excluded = new Set<string>();
-  for (const song of options.exclude ?? []) {
-    excluded.add(identityOf(song.title, song.artists, song.isrc ?? null));
-    excluded.add(dedupeKey(song.title, song.artists));
-  }
+  // Indexed the way the lists are, so an exclusion written one way still catches the copy
+  // spelled the other. This is what stops the song that *just played* returning as its own
+  // first recommendation: the seed is credited however the source that played it credits
+  // features, and a plain key comparison missed precisely those songs — which is how a
+  // radio ends up circling the same handful of tracks.
+  const excluded = indexOf(options.exclude ?? []);
 
-  /* One entry per song, by title and artist alone. The merger keeps a music video and its
-   * audio track apart (189s vs 174s, past its 3s tolerance), which in a radio shows as the same
-   * song twice — so the duration guard is dropped here only, after scoring. */
-
-  const kept = new Set<string>();
+  /* One entry per song. The merger keeps a music video and its audio track apart (189s vs
+   * 174s, past its 3s tolerance), which in a radio shows as the same song twice — so the
+   * duration guard is dropped here only, after scoring. Matched on names rather than one
+   * key, because those two copies are exactly where a title is decorated differently. */
+  const kept = emptyIndex();
 
   const pool = scoreCandidates(lists)
-    .filter((candidate) => {
-      const key = dedupeKey(candidate.song.title, candidate.song.artists);
-      const identity = identityOf(candidate.song.title, candidate.song.artists, candidate.song.isrc);
-      return !excluded.has(key) && !excluded.has(identity);
-    })
+    .filter((candidate) => rankIn(excluded, candidate.names) === undefined)
     .sort((a, b) => b.score - a.score)
     .filter((candidate) => {
-      const key = dedupeKey(candidate.song.title, candidate.song.artists);
-      if (kept.has(key)) return false;
-      kept.add(key);
+      if (rankIn(kept, candidate.names) !== undefined) return false;
+      addNames(kept, candidate.names, 1);
       return true;
     });
 
