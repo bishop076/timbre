@@ -119,7 +119,9 @@ async function post(body: URLSearchParams): Promise<SpotifyTokens> {
     body,
   });
 
-  const data = (await response.json()) as TokenResponse;
+  // A proxy's HTML error page or an empty body is not JSON; the status is the message then,
+  // not a SyntaxError about an unexpected `<`.
+  const data = (await response.json().catch(() => ({}))) as TokenResponse;
   if (!response.ok || !data.access_token) {
     // Spotify's own words, which are specific and worth surfacing: `invalid_client` means
     // the client id is wrong, `invalid_grant` that the code was already spent or that the
