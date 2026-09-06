@@ -13,6 +13,7 @@ import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/
 import { Avatar } from "../profile/avatar";
 import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
+import { TimbreMark } from "./brand";
 import { SiteLinks } from "./site-links";
 
 /** Primary navigation and library: a nav block, then a titled region of artwork rows that
@@ -48,30 +49,46 @@ export function Sidebar() {
   // a dozen pixels decides whether the last row is cut in half.
   return (
     <aside className="hidden w-64 shrink-0 flex-col gap-1.5 p-2 pb-1.5 lg:flex">
-      <Link
-        href="/profile"
-        onClick={exitTheater}
-        className="press relative mb-0.5 flex items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-3 py-2.5 hover:bg-[var(--surface-1)]"
-      >
-        {/* Drawn on the first paint, not after hydration: rendering nothing until storage
-            could be read collapsed this row to its padding, dropping the whole rail 32px and
-            snapping it back on every load. Values are stamped on `<html>` by `layout.tsx`. */}
-        <Avatar
-          id={profile.id}
-          name={profile.name}
-          email={profile.name ?? "Profile"}
-          image={pictures.avatar}
-          className="size-8 shrink-0"
-          textClassName="text-sm"
+      {/* Mark and profile on one row. 5baa587 took the logo out because a row of its own
+          above this one read as two headers fighting for the same corner; merging them was
+          named there as the alternative nobody had tried. It sits outside the <Link>
+          deliberately — inside, the logo would navigate to /profile, which is not what a
+          logo does anywhere else. It is not a link at all: Home is a nav button a
+          centimetre below, and a second route to it that looks nothing like the first is
+          the duplication that kept Library out of NAV. */}
+      <div className="mb-0.5 flex items-center gap-1.5 pl-3">
+        <TimbreMark
+          role="img"
+          aria-label="Timbre"
+          className="h-6 w-auto shrink-0 text-[var(--accent)]"
         />
-        {/* Empty until hydration, filled from CSS meanwhile: no wrong name, and no hole. */}
-        <span
-          className="replay truncate text-[17px] font-extrabold tracking-tight"
-          style={{ "--replay": 'var(--profile-name, "Profile")' } as React.CSSProperties}
+        <Link
+          href="/profile"
+          onClick={exitTheater}
+          // `min-w-0 flex-1` or the name below stops truncating: a flex child will not
+          // shrink past its content without it, and the row would push past the rail.
+          className="press relative flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-2 py-2.5 hover:bg-[var(--surface-1)]"
         >
-          {hydrated ? profile.name?.trim() || "Profile" : null}
-        </span>
-      </Link>
+          {/* Drawn on the first paint, not after hydration: rendering nothing until storage
+              could be read collapsed this row to its padding, dropping the whole rail 32px and
+              snapping it back on every load. Values are stamped on `<html>` by `layout.tsx`. */}
+          <Avatar
+            id={profile.id}
+            name={profile.name}
+            email={profile.name ?? "Profile"}
+            image={pictures.avatar}
+            className="size-8 shrink-0"
+            textClassName="text-sm"
+          />
+          {/* Empty until hydration, filled from CSS meanwhile: no wrong name, and no hole. */}
+          <span
+            className="replay truncate text-[17px] font-extrabold tracking-tight"
+            style={{ "--replay": 'var(--profile-name, "Profile")' } as React.CSSProperties}
+          >
+            {hydrated ? profile.name?.trim() || "Profile" : null}
+          </span>
+        </Link>
+      </div>
 
       {/* Library is filtered out here: the panel below *is* the library, so a nav button of
           the same name sits a centimetre from its heading. <BottomNav> still shows it. */}
