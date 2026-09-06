@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.4.3 — 6 September 2026
+
+### Fixed
+
+- **player** — a radio response no longer outlives the song it was fetched for
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.4.2 — 6 September 2026
 
 ### Fixed
