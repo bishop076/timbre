@@ -55,8 +55,11 @@ def radio(request: RadioRequest) -> RadioResponse:
     try:
         watch = get_client().get_watch_playlist(
             videoId=request.video_id,
-            # One more than asked for, since the seed itself occupies a slot.
-            limit=request.limit + 1,
+            # One more than asked for, since the seed itself occupies a slot — but never
+            # past 50, the size of one page: `RadioRequest.limit` allows 50 on the promise
+            # that it costs one upstream request, and asking for 51 fetched a continuation
+            # to parse fifty more tracks that `continuation()` then threw away.
+            limit=min(request.limit + 1, 50),
         )
     except Exception as error:  # any upstream failure is a 502
         raise upstream_error("radio", error) from error
