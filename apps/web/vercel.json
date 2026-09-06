@@ -1,5 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "_comment_ignore": "Both Vercel projects point at the whole repo, so without this the web app rebuilds for every change to the Python sidecar, and again for the version bump the release workflow pushes. See scripts/vercel-ignore.sh for what counts as an input.",
   "ignoreCommand": "sh \"$(git rev-parse --show-toplevel)/scripts/vercel-ignore.sh\" web"
 }
