@@ -83,12 +83,8 @@ export async function beginConnect(): Promise<string | null> {
  * skipping it would let another site start a flow that lands in this tab.
  */
 export async function completeConnect(params: URLSearchParams): Promise<string | null> {
-  const denied = params.get("error");
-  if (denied) return denied === "access_denied" ? "Sign-in was cancelled." : denied;
-
-  const code = params.get("code");
-  if (!code) return "Spotify did not send a code back.";
-
+  // Taken out of storage first, whatever the answer was: the round trip is over, and a
+  // refusal must not leave a live verifier behind any more than a success would.
   let verifier: string | null = null;
   let expected: string | null = null;
   try {
@@ -99,6 +95,12 @@ export async function completeConnect(params: URLSearchParams): Promise<string |
   } catch {
     return "This browser is blocking session storage, so the sign-in cannot be completed.";
   }
+
+  const denied = params.get("error");
+  if (denied) return denied === "access_denied" ? "Sign-in was cancelled." : denied;
+
+  const code = params.get("code");
+  if (!code) return "Spotify did not send a code back.";
 
   if (!verifier || !expected) return "This sign-in was started in a different tab.";
   if (params.get("state") !== expected) return "The sign-in came back with the wrong state.";
@@ -128,12 +130,26 @@ export async function accessToken(): Promise<string | null> {
   if (Date.now() < tokens.expiresAt) return tokens.accessToken;
 
   const clientId = spotifyClientId();
-  if (!clientId || !tokens.refreshToken) return null;
+  const refreshToken = tokens.refreshToken;
+  if (!clientId || !refreshToken) return null;
 
+  // One refresh at a time. PKCE refresh tokens are single-use — Spotify rotates them — so
+  // two callers finding the same lapsed token and each spending it meant the second was
+  // refused with `invalid_grant` and reported the connection as off. The callers are not
+  // hypothetical: the search fires per query, and the SDK asks on its own schedule.
+  refreshing ??= refresh(clientId, refreshToken).finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+let refreshing: Promise<string | null> | null = null;
+
+async function refresh(clientId: string, refreshToken: string): Promise<string | null> {
   try {
-    const next = await refreshTokens({ clientId, refreshToken: tokens.refreshToken });
+    const next = await refreshTokens({ clientId, refreshToken });
     // Spotify may not reissue a refresh token; keeping the old one is what the spec expects.
-    const merged = { ...next, refreshToken: next.refreshToken ?? tokens.refreshToken };
+    const merged = { ...next, refreshToken: next.refreshToken ?? refreshToken };
     saveSpotifyTokens(merged);
     return merged.accessToken;
   } catch {

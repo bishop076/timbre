@@ -31,13 +31,30 @@ export function SpotifySection({ query, render }: { query: string; render: (song
   useEffect(() => {
     if (!connected || !trimmed) return;
 
+    // Debounced like the blended search above it, and for a stronger reason: this one runs
+    // on the reader's own Spotify quota, and a request already on the wire is not recalled
+    // by aborting it. Ten keystrokes were ten searches, which is how the 429 was earned.
     const aborter = new AbortController();
-    searchSpotify(trimmed, aborter.signal)
-      .then((next) => setFound({ key: trimmed, result: next }))
-      .catch(() => {
-        // Aborted by a newer query. That effect owns the answer.
-      });
-    return () => aborter.abort();
+    const timer = setTimeout(() => {
+      searchSpotify(trimmed, aborter.signal)
+        .then((next) => setFound({ key: trimmed, result: next }))
+        .catch((cause: unknown) => {
+          // Aborted by a newer query: that effect owns the answer. Anything else is a
+          // failure this query has to report, or the previous query's section stays up.
+          if (aborter.signal.aborted) return;
+          setFound({
+            key: trimmed,
+            result: {
+              kind: "error",
+              message: cause instanceof Error ? cause.message : "Spotify did not answer.",
+            },
+          });
+        });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      aborter.abort();
+    };
     // `connected` rather than `tokens`: the object is replaced on every refresh, and keying
     // on it would re-run this search an hour into a session for no reason.
   }, [connected, trimmed]);
