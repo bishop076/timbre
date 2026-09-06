@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { log } from "../logs.ts";
 import { usePlayerControls } from "./player-context";
 import { stalledAt } from "./youtube-stall.ts";
 
 /**
- * The YouTube IFrame player, deliberately visible — the policies forbid hiding it. Three
+ * The YouTube IFrame player, deliberately visible while it plays — the policies forbid
+ * hiding it, and nothing here covers a running video. A stopped one is covered, because
+ * YouTube paints its own title bar and buttons over it and no parameter turns that off;
+ * see `chromeShowing` below for why that is the only lever left. Three
  * traps: `new YT.Player(node)` *replaces* the node, so a React-managed element makes the
  * two fight over the same DOM and it silently fails to init; it must be at least 200×200,
  * or playback fails with a "Video unavailable" that reads like an ad blocker; and no
@@ -177,6 +180,35 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
     registerSeek,
   } = usePlayerControls();
 
+  /**
+   * Whether YouTube is painting its own furniture over the video: the title, the channel
+   * avatar, a share link and a *Watch on YouTube* button. It appears in every state except
+   * playing and stays until playback resumes, so on a paused song it simply sits there.
+   *
+   * No player var turns it off. `modestbranding` was deprecated on 2023-08-15 and the
+   * documentation now says it "has no effect" — the player picks its own branding from the
+   * size and the other parameters instead — and `rel: 0` has not removed related videos
+   * since 2018, it only keeps them to the same channel. Both are kept below because they
+   * are harmless, but neither is doing anything here.
+   *
+   * Starts up, because a player that has not begun is showing it.
+   */
+  const [chromeShowing, setChromeShowing] = useState(true);
+
+  /**
+   * Puts the cover back for a new track, during render rather than from an effect — the
+   * adjustment React documents for state that has to follow a prop, and the one shape
+   * `react-hooks/set-state-in-effect` allows. It cannot wait for `onStateChange`:
+   * `loadVideoById` goes straight to BUFFERING, which is deliberately ignored below, so
+   * a song started while the last one was playing would show its title uncovered until
+   * the first frame arrived.
+   */
+  const [coveredId, setCoveredId] = useState(videoId);
+  if (coveredId !== videoId) {
+    setCoveredId(videoId);
+    setChromeShowing(true);
+  }
+
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const readyRef = useRef(false);
@@ -331,6 +363,12 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
                 setTimeout(() => unloadCaptions(playerRef.current), delay),
               );
             }
+            // Only PLAYING takes the cover down, and only a settled state puts it back:
+            // a seek runs PLAYING → BUFFERING → PLAYING, so treating BUFFERING as stopped
+            // would blink a black rectangle over a video that never actually stopped.
+            if (event.data === PLAYING) setChromeShowing(false);
+            else if (event.data !== BUFFERING) setChromeShowing(true);
+
             if (event.data === ENDED) handlers.current.handleEnded();
             else if (event.data === PLAYING) handlers.current.handleStateChange("playing");
             else if (event.data === PAUSED) handlers.current.handleStateChange("paused");
@@ -482,10 +520,20 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
     // it. `pointer-events: none` makes this a display: `controls: 0` still leaves a hover
     // overlay that no parameter turns off.
     <div
-      ref={containerRef}
-      className={`pointer-events-none select-none overflow-hidden bg-black ${size}`}
+      className={`pointer-events-none relative select-none overflow-hidden bg-black ${size}`}
       style={{ minHeight: 200, minWidth: 200 }}
-      aria-label="YouTube player"
-    />
+    >
+      <div ref={containerRef} className="absolute inset-0" aria-label="YouTube player" />
+      {/*
+        Opaque, and only while the player is stopped. The iframe underneath is never
+        resized, moved or re-parented — the API replaces its host node, so React must not
+        own it, and moving it reloads the upload.
+
+        A cover is the whole remedy available: the furniture is drawn inside a
+        cross-origin iframe, so no CSS reaches it, and the parameters that used to hide it
+        were withdrawn. It is deliberately not up while the video is playing.
+      */}
+      {chromeShowing && <div className="absolute inset-0 bg-black" aria-hidden="true" />}
+    </div>
   );
 }
