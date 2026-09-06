@@ -1,8 +1,8 @@
 import { parseTitle } from "@timbre/core";
 import { z } from "zod";
 
-import { guard } from "@/lib/api";
-import { optionalQueryText, queryText } from "@/lib/query-text";
+import { CACHE_CONTROL_DAY, guard } from "@/lib/api";
+import { optionalQueryText, queryFlag, queryText } from "@/lib/query-text";
 
 /*
  * Lyrics, from LRCLIB — the only keyless source licensing synced lines. Proxied rather
@@ -22,7 +22,7 @@ const querySchema = z.object({
   duration: z.coerce.number().int().positive().max(86_400).optional(),
   /** A specific LRCLIB record, when the automatic match was wrong — one song routinely has a dozen entries. */
   id: z.coerce.number().int().positive().optional(),
-  alternatives: z.coerce.boolean().optional(),
+  alternatives: queryFlag,
 });
 
 export interface LyricAlternative {
@@ -85,6 +85,15 @@ async function lookup(url: URL): Promise<LrcLibTrack | null> {
   return body && typeof body === "object" ? (body as LrcLibTrack) : null;
 }
 
+/**
+ * Lyrics found are stable: LRCLIB records do not change under their id, and the exact match
+ * for one title and artist does not either. Nothing was cached before this — the comment at
+ * the top promised it and the `revalidate` export is inert on a handler that reads the
+ * request — so every track change was a live round trip, two when the exact lookup missed.
+ * "Not found" and the alternatives list are left uncached: lyrics do arrive later.
+ */
+const CACHEABLE = { headers: { "cache-control": CACHE_CONTROL_DAY } };
+
 export async function GET(request: Request) {
   const refusal = guard(request);
   if (refusal) return refusal;
@@ -123,7 +132,7 @@ export async function GET(request: Request) {
           matchedArtist: chosen.artistName,
           id,
         },
-      });
+      }, CACHEABLE);
     }
 
     // Instead of the lyrics, not alongside, so an ordinary track change is one request.
@@ -197,7 +206,7 @@ export async function GET(request: Request) {
         matchedTitle: track.trackName,
         matchedArtist: track.artistName,
       },
-    });
+    }, CACHEABLE);
   } catch {
     // Upstream down or slow. The panel renders "no lyrics" either way.
     return Response.json({ lyrics: null }, { status: 200 });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { CACHE_CONTROL_DAY, guard } from "@/lib/api";
-import { queryText } from "@/lib/query-text";
+import { queryFlag, queryText } from "@/lib/query-text";
 import { fetchDiscography, findArtist } from "@/lib/discography";
 
 /*
@@ -13,7 +13,7 @@ export const revalidate = 86_400;
 
 const querySchema = z.object({
   name: queryText(200),
-  full: z.coerce.boolean().optional(),
+  full: queryFlag,
 });
 
 export async function GET(request: Request) {

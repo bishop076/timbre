@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { z } from "zod";
 
-import { optionalQueryText, queryText } from "./query-text.ts";
+import { optionalQueryText, queryFlag, queryText } from "./query-text.ts";
 
 const required = z.object({ q: queryText(200) });
 const optional = z.object({ artist: optionalQueryText(200) });
@@ -31,4 +31,13 @@ test("a blank optional parameter is absent rather than an error", () => {
 test("the length ceiling still applies, after trimming", () => {
   assert.equal(optional.safeParse({ artist: `  ${"a".repeat(200)}  ` }).success, true);
   assert.equal(optional.safeParse({ artist: "a".repeat(201) }).success, false);
+});
+
+test("a flag is only on when it says so", () => {
+  assert.equal(queryFlag.parse("1"), true);
+  assert.equal(queryFlag.parse("true"), true);
+  assert.equal(queryFlag.parse("0"), false);
+  assert.equal(queryFlag.parse("false"), false);
+  assert.equal(queryFlag.parse(undefined), false);
+  assert.equal(queryFlag.safeParse("yes").success, false);
 });

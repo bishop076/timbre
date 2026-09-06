@@ -1,4 +1,4 @@
-import { isSourceId, recommendFrom } from "@timbre/providers";
+import { recommendFrom } from "@timbre/providers";
 import { z } from "zod";
 
 import { getProviderRuntime } from "@/lib/providers";
@@ -43,11 +43,6 @@ export async function GET(request: Request) {
   const { id, artist, title, limit } = parsed.data;
   if (!id && !artist) {
     return Response.json({ error: "A seed track id or artist is required." }, { status: 400 });
-  }
-
-  const source = url.searchParams.get("source");
-  if (source && !isSourceId(source)) {
-    return Response.json({ error: `Unknown source "${source}".` }, { status: 400 });
   }
 
   const { limiter } = getProviderRuntime();

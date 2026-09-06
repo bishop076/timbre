@@ -35,3 +35,12 @@ export function queryText(max: number) {
 export function optionalQueryText(max: number) {
   return z.preprocess(blankToUndefined, z.string().max(max).optional());
 }
+
+/**
+ * A yes/no query parameter. `z.coerce.boolean()` is `Boolean(string)`, so every non-empty
+ * value — `?full=0`, `?full=false` — meant yes. The same four spellings `env.ts` accepts.
+ */
+export const queryFlag = z
+  .enum(["1", "true", "0", "false"])
+  .optional()
+  .transform((value) => value === "1" || value === "true");
