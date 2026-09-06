@@ -8,6 +8,7 @@
  */
 
 import { createLocalStore, useLocalStore } from "../local-store.ts";
+import { usableSongs } from "../song-shape.ts";
 import type { Song } from "../types";
 
 export interface LocalPlaylist {
@@ -62,35 +63,6 @@ function state(error: string | null): PlaylistsState {
     settled: true,
     error,
   };
-}
-
-/**
- * A playlist's songs, with anything that would throw downstream removed.
- *
- * `Array.isArray(songs)` used to be the entire check, in **both** places a playlist can
- * arrive — and nothing downstream guards a field before reading it: `summarise` below
- * reads `song.artworkUrl`, the player reads `song.sources.find(…)`, and every row reads
- * `song.artists.join(…)`. One `null` in this array was therefore a TypeError thrown
- * during render, from the sidebar, on every route — and `persist` had already written it
- * to storage, so it came back on every later load. See docs/SECURITY.md, S-1.
- *
- * Dropped rather than repaired, unlike the timestamps below: a record with no artists and
- * no sources is not a song and there is nothing to fall back to. A playlist that quietly
- * loses one entry still renders and still plays; a playlist that keeps it renders nothing
- * ever again.
- */
-function usableSongs(value: unknown): Song[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.filter(
-    (song): song is Song =>
-      typeof song === "object" &&
-      song !== null &&
-      typeof (song as Song).id === "string" &&
-      typeof (song as Song).title === "string" &&
-      Array.isArray((song as Song).artists) &&
-      Array.isArray((song as Song).sources),
-  );
 }
 
 function readStorage(): LocalPlaylist[] {
