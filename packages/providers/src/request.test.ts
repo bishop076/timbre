@@ -361,3 +361,55 @@ test("a 200 that is not JSON is this source's error, not a raw SyntaxError", asy
     },
   );
 });
+
+test("the caller's own abort comes back as itself, not as the source being unreachable", async () => {
+  const controller = new AbortController();
+  const acquired: string[] = [];
+  const limiter = {
+    acquire: async (key: string) => {
+      acquired.push(key);
+    },
+  } as unknown as RateLimiter;
+  const ctx: SearchContext = { limiter, signal: controller.signal };
+  const get = createRequester({ id: "deezer", label: "Deezer", init: () => ({}) });
+
+  await withFetch(
+    async () => {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    },
+    async () => {
+      await assert.rejects(
+        get(ctx, "https://api.deezer.com/chart"),
+        (cause: unknown) => cause instanceof DOMException && cause.name === "AbortError",
+        "an AbortError must not be wrapped as a ProviderError",
+      );
+    },
+  );
+});
+
+test("a caller that has already aborted spends no token and makes no request", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const acquired: string[] = [];
+  const limiter = {
+    acquire: async (key: string) => {
+      acquired.push(key);
+    },
+  } as unknown as RateLimiter;
+  const ctx: SearchContext = { limiter, signal: controller.signal };
+  const get = createRequester({ id: "apple", label: "Apple", init: () => ({}) });
+
+  await withFetch(
+    async () => {
+      throw new Error("fetch must not be reached for a caller that has gone");
+    },
+    async (calls) => {
+      await assert.rejects(
+        get(ctx, "https://itunes.apple.com/search"),
+        (cause: unknown) => cause instanceof DOMException && cause.name === "AbortError",
+      );
+      assert.deepEqual(acquired, [], "no token may be spent");
+      assert.equal(calls.length, 0);
+    },
+  );
+});
