@@ -5,6 +5,21 @@ import { useEffect, useState } from "react";
 
 import { completeConnect } from "../connection.ts";
 
+// The exchange is single-use twice over: the verifier is removed from storage as it is
+// read, and Spotify spends the code. React runs an effect twice under StrictMode, so the
+// second run found an empty storage and reported "started in a different tab" over a
+// connection the first run had just saved. One exchange per code, shared by every run.
+const exchanges = new Map<string, Promise<string | null>>();
+
+function exchangeOnce(search: string): Promise<string | null> {
+  let pending = exchanges.get(search);
+  if (!pending) {
+    pending = completeConnect(new URLSearchParams(search));
+    exchanges.set(search, pending);
+  }
+  return pending;
+}
+
 /**
  * Where Spotify sends the reader back to.
  *
@@ -23,7 +38,7 @@ export default function SpotifyCallback() {
     let cancelled = false;
     // Read from `location` rather than `useSearchParams`, which would force this route to
     // opt out of static rendering for a value only the browser ever has.
-    void completeConnect(new URLSearchParams(window.location.search)).then((error) => {
+    void exchangeOnce(window.location.search).then((error) => {
       if (cancelled) return;
       setState({ done: true, error });
       // Drop the code from the address bar either way: it is single-use and spent, and it
