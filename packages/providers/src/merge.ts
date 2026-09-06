@@ -74,7 +74,12 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
   for (const track of tracks) {
     const parts = dedupeParts(track.title, track.artists);
     const key = [parts.base, parts.variants.join("+"), parts.artists.join("+")].join("|");
-    const existing = groups.find((group) => matches(group, track, parts));
+    // An ISRC names the recording outright, so a group already holding it is *the* group —
+    // found before any title match. Otherwise a track whose ISRC belonged to the second group
+    // was filed into the first on its title, and two songs came out sharing one id.
+    const existing =
+      (track.isrc ? groups.find((group) => group.isrc === track.isrc) : undefined) ??
+      groups.find((group) => matches(group, track, parts));
 
     if (existing) {
       // Never list one source twice; its first result is its most relevant.
