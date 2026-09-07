@@ -98,8 +98,12 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Authored as the repository owner, not as the bot. A release commit is a
+          # version bump this repo asked for on a push of its owner's, not a third party
+          # contributing — and attributing it to `github-actions[bot]` put a bot in the
+          # contributor list for what is a one-person project.
+          git config user.name "bishop076"
+          git config user.email "271764729+bishop076@users.noreply.github.com"
           git add package.json apps/web/package.json CHANGELOG.md
           git commit -m "chore(release): $VERSION [skip ci]"
           git tag -a "$TAG" -m "Timbre $VERSION"
