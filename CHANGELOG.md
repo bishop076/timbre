@@ -10,6 +10,13 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.8.0 — 7 September 2026
+
+### Added
+
+- **web** — search from the queue panel, to add to what is already playing
+- **web** — draw the radio from a pool, so one song does not open one queue
+
 ## 0.7.0 — 7 September 2026
 
 ### Added
