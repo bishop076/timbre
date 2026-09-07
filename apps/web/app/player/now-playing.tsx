@@ -14,6 +14,8 @@ import { ArtistCard } from "./artist-card";
 import { usePlayerControls } from "./player-context";
 import { SimilarSongs } from "./similar-songs";
 import { PanelTabs } from "./panel-tabs";
+import { QueueSearch } from "./queue-search";
+import { useSongMenu } from "./song-menu";
 import { YouTubePlayer } from "./youtube-player";
 
 // Fetched when first shown: this panel is in the root shell, so a static import
@@ -51,6 +53,7 @@ export function QueueRow({
   onPlay,
   actions,
   playOverlay = false,
+  label,
 }: {
   song: Song;
   onPlay: () => void;
@@ -58,14 +61,24 @@ export function QueueRow({
   /** Hover play wash over the artwork, and the "Play …" label that goes with advertising one.
    * Opt-in: a queue already reads as a running order, so Related asks for it and Up Next does not. */
   playOverlay?: boolean;
+  /** Overrides the row's accessible name, for a list where the row does something other than
+   * play — the queue search adds, and "Song, Artist" alone would not say so. */
+  label?: string;
 }) {
+  // The same right-click menu the page's rows have. Worth having here too: this is where
+  // someone looks at what is coming and decides one of it should come sooner.
+  const { onContextMenu, menu } = useSongMenu(song);
+
   return (
-    <div className="group/row flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]">
+    <div
+      onContextMenu={onContextMenu}
+      className="group/row flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]"
+    >
       <button
         type="button"
         onClick={onPlay}
         className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus:outline-none"
-        aria-label={playOverlay ? `Play ${song.title}` : undefined}
+        aria-label={label ?? (playOverlay ? `Play ${song.title}` : undefined)}
       >
         <span className="relative shrink-0">
           <Artwork
@@ -87,6 +100,7 @@ export function QueueRow({
         </span>
       </button>
       {actions}
+      {menu}
     </div>
   );
 }
@@ -353,7 +367,7 @@ export function NowPlayingPanel() {
                   about what plays next. */}
               <PanelTabs
                 queue={
-                  <>
+                  <QueueSearch>
                   <div className="flex items-center gap-2 px-4 pb-2 pt-3">
                     <span className="text-[11px] tabular-nums text-[var(--fg-faint)]">
                       {upcoming.length || ""} coming up
@@ -414,7 +428,7 @@ export function NowPlayingPanel() {
                       </ul>
                     )}
                   </div>
-                  </>
+                  </QueueSearch>
                 }
               />
             </>
