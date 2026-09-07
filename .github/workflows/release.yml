@@ -122,7 +122,14 @@ jobs:
       - name: Publish the Release
         if: steps.version.outputs.released == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The owner's token, not the workflow's. A Release records whichever identity
+          # created it, and `github.token` *is* `github-actions[bot]` — so publishing with it
+          # put a bot's name on every release of a one-person project, and nothing about the
+          # release itself could be edited afterwards to say otherwise.
+          #
+          # Falls back to the workflow token so a fork, or this repo before the secret was
+          # set, still publishes rather than failing on an empty `GH_TOKEN`.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           for attempt in 1 2 3 4 5; do
