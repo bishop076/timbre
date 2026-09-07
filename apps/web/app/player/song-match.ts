@@ -9,6 +9,20 @@ import { dedupeParts } from "@timbre/core";
 
 import type { Song } from "../types";
 
+/**
+ * The fields these comparisons actually read.
+ *
+ * Widened from `Song` so a **history row** can be compared against one: `PlayedSong` stores
+ * only what it takes to replay a track, and the radio now has to ask whether it is about to
+ * suggest something already heard. Every `Song` satisfies this, so nothing else changes.
+ */
+export interface TrackLike {
+  id: string;
+  title: string;
+  artists: string[];
+  isrc?: string | null;
+}
+
 /** Words that carry meaning, lowercased. Punctuation and case differ constantly between
  * sources and never distinguish two songs. */
 export function titleWords(value: string): string[] {
@@ -111,7 +125,7 @@ export function plausiblySameSong(seed: Song, found: Song): boolean {
  * list both — but offering the acoustic of a song already queued is a weak suggestion, and
  * this panel would rather be short than repeat itself.
  */
-export function sameRecording(a: Song, b: Song): boolean {
+export function sameRecording(a: TrackLike, b: TrackLike): boolean {
   return alike(a, b, "ignore");
 }
 
@@ -131,12 +145,12 @@ export function sameRecording(a: Song, b: Song): boolean {
  * dedupe in the player was an id check, so those copies walked straight past all of them and
  * into the queue — the same song, again, a few tracks later.
  */
-export function sameTrack(a: Song, b: Song): boolean {
+export function sameTrack(a: TrackLike, b: TrackLike): boolean {
   return alike(a, b, "respect");
 }
 
 /** Shared by both: the same comparison, differing only in whether `(Acoustic)` counts. */
-function alike(a: Song, b: Song, variants: "ignore" | "respect"): boolean {
+function alike(a: TrackLike, b: TrackLike, variants: "ignore" | "respect"): boolean {
   // Settles the ordinary case for nothing: both lists come from the same merge, which
   // derives an id from the ISRC or the dedupe key, so a repeat arrives already identical.
   if (a.id === b.id) return true;
