@@ -15,7 +15,8 @@ import {
 import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
 import { log } from "../logs.ts";
 import type { Song, SongsResponse } from "../types";
-import { recordPlay } from "./history-store";
+import { drawRadio } from "./draw-radio";
+import { getHistorySnapshot, recordPlay } from "./history-store";
 import { playedHandle } from "./played-handle";
 import {
   insertAfter,
@@ -32,6 +33,14 @@ import {
   writeMuteToggle,
   writeVolume,
 } from "./volume-store";
+
+/** How many candidates the radio asks for, and how many of them a draw plays.
+ *
+ * The gap between the two is the room the draw has to be different from last time; with no
+ * gap there is no choice to make. Fifty is the route's ceiling, and twenty-five is what the
+ * queue used to take wholesale. */
+const RADIO_POOL = 50;
+const RADIO_PICKS = 25;
 
 /*
  * The queue holds songs, not source-tracks; only YouTube Music and SoundCloud are
@@ -1208,7 +1217,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     const seed = activeSource === "ytmusic" ? videoId : null;
 
-    const params = new URLSearchParams({ title: song.title, limit: "25" });
+    // Fifty rather than the twenty-five that are played: the extra is what a draw has to
+    // choose *between*. One cacheable pool per seed, a different running order out of it
+    // each time — see `draw-radio.ts` for why the variety belongs on this side.
+    const params = new URLSearchParams({ title: song.title, limit: String(RADIO_POOL) });
     if (seed) params.set("id", seed);
     const artist = song.artists[0];
     if (artist) params.set("artist", artist);
@@ -1224,23 +1236,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (aborter.signal.aborted || songRef.current?.id !== song.id) return;
         const songs = data?.songs ?? [];
 
+        const queued = queueRef.current;
+
+        // Drawn here, once per fetch, rather than at each of the two places below: the
+        // panel must show what will actually play, and drawing twice would show one running
+        // order and queue another. Excluding on the recording rather than the id is what
+        // keeps a duplicate out — see `sameTrack`.
+        const drawn = drawRadio(songs, {
+          count: RADIO_PICKS,
+          exclude: queued,
+          avoid: getHistorySnapshot(),
+        });
+
         // Adopted only when nothing follows, so a one-song queue shows "up next" instead
         // of twenty-six entries the moment it ends. Mid-queue it stays parked, or the
         // moving seed grows the queue without bound.
-        const queued = queueRef.current;
         if (indexRef.current < queued.length - 1) {
-          setRadio(songs);
+          setRadio(drawn);
           return;
         }
 
-        // On the recording, not the id: this is the append that actually plays, and an id
-        // check here let the same song back into the queue every time a later fetch ranked
-        // a different upload of it first. See `sameTrack`.
-        const fresh = songs.filter(
-          (song) => !queued.some((already) => sameTrack(already, song)),
-        );
         setRadio([]);
-        if (fresh.length > 0) writeQueue((current) => [...current, ...fresh]);
+        if (drawn.length > 0) writeQueue((current) => [...current, ...drawn]);
       })
       .catch(() => {
         // No recommendations is not worth surfacing: the queue still plays.
