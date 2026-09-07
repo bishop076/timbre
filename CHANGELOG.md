@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.7.0 — 7 September 2026
+
+### Added
+
+- **web** — queue any song from a list, by right-click or button, without repeats
+
+### Fixed
+
+- **providers** — count a song both services reached as agreement, however it is credited
+
 ## 0.6.0 — 7 September 2026
 
 ### Added
