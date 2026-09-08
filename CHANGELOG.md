@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.10.1 — 8 September 2026
+
+### Fixed
+
+- use public production domain for social preview images
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.10.0 — 8 September 2026
 
 ### Added
