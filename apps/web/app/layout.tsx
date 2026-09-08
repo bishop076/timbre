@@ -24,6 +24,19 @@ export const metadata: Metadata = {
   description:
     "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
   applicationName: "Timbre",
+  openGraph: {
+    type: "website",
+    siteName: "Timbre",
+    title: "Timbre — all your music, one search",
+    description:
+      "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Timbre — all your music, one search",
+    description:
+      "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
+  },
   // iOS ignores the manifest and reads these instead; without them "Add to Home
   // Screen" gives a Safari bookmark rather than an installed app.
   appleWebApp: {
