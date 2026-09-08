@@ -60,3 +60,8 @@ apps/web/public/sw.js
 # Planning and working notes. Kept on disk, deliberately out of the repository —
 # they are how the project was thought through, not how it is used or built.
 notes/
+
+# Vercel's local project link — `vercel link` writes the project and org ids here,
+# plus a `.env.local` carrying a short-lived OIDC token. Machine-specific, and the
+# token has no business in a public repository.
+.vercel
