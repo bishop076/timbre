@@ -46,11 +46,13 @@ export const metadata: Metadata = {
     // rather than a white band above the header.
     statusBarStyle: "black-translucent",
   },
-  // Must be a host that resolves — every absolute URL Next generates is built
-  // from it. Taken from the deployment, with localhost for a dev server.
+  // Social crawlers need the public production domain. VERCEL_URL points to a
+  // deployment-specific host that can redirect anonymous requests to Vercel login.
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ??
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"),
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : "http://localhost:3000"),
   ),
 };
 
