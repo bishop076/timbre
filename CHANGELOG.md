@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.10.0 — 8 September 2026
+
+### Added
+
+- add branded social preview and README banners
+
+3 further changes under the hood — refactoring, docs and tests.
+
 ## 0.9.0 — 7 September 2026
 
 ### Added
