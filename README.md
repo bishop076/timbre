@@ -1,3 +1,5 @@
+![Timbre — all your music, one search](docs/brand/banners/readme-banner.png)
+
 # Timbre
 
 **A music player for people who don't pay for streaming.**
