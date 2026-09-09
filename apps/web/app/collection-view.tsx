@@ -9,6 +9,12 @@ import { AddToQueue } from "./player/add-to-queue";
 import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
+import { songFromHistory } from "./home-shelves";
+import { useHistory } from "./player/history-store";
+import { Shelf } from "./shelf";
+import { SongCard } from "./song-card";
+import { useTaste } from "./taste-store";
+import type { Song } from "./types";
 import type { Collection } from "@/lib/collection";
 import { cover as coverSrc } from "./artwork-url";
 
@@ -20,11 +26,15 @@ export function CollectionView({ collection }: { collection: Collection }) {
   const { play, current, state } = usePlayerControls();
   const { tracks } = collection;
 
-  // Movement only for a chart — a playlist's order is whatever its editor typed. Pass
-  // `null`, never a spare number: `-1` stopped it *writing* a snapshot but not reading
-  // one, and `-1` is the fused ranking's key. See `chart-memory.ts`.
-  const isChart = collection.kind === "genre";
-  const snapshot = useChartSnapshot(isChart ? Number(collection.id) : null, tracks);
+  // Movement only for a chart — a playlist's order is whatever its editor typed, and a
+  // genre's new and on-air sections are a fresh deal each time. Pass `null`, never a spare
+  // number: `-1` stopped it *writing* a snapshot but not reading one, and `-1` is the fused
+  // ranking's key. See `chart-memory.ts`.
+  const chart = collection.sections.find((section) => section.ranked);
+  const snapshot = useChartSnapshot(
+    chart && collection.kind === "genre" ? Number(collection.id) : null,
+    chart?.tracks ?? [],
+  );
 
   function playAll(shuffled = false) {
     if (tracks.length === 0) return;
@@ -48,7 +58,13 @@ export function CollectionView({ collection }: { collection: Collection }) {
 
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-            {collection.kind === "genre" ? "Chart" : "Collection"}
+            {collection.kind === "genre"
+              ? collection.genreId === null
+                ? "Chart"
+                : "Genre"
+              : collection.kind === "radio"
+                ? "Station"
+                : "Collection"}
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:mt-1.5 sm:text-3xl @lg:text-4xl">
             {collection.title}
@@ -92,42 +108,89 @@ export function CollectionView({ collection }: { collection: Collection }) {
         </div>
       </header>
 
+      {collection.genreId !== null && (
+        <FromYourListening genreId={collection.genreId} />
+      )}
+
       {tracks.length === 0 ? (
         <p className="py-16 text-center text-sm text-[var(--fg-dim)]">
           Nothing in this one right now.
         </p>
       ) : (
-        <ul className="divide-y divide-[var(--line)]">
-          {tracks.map((track) => (
-            <SongRow
-              key={track.id}
-              song={track}
-              onPlay={() => play(track, tracks)}
-              isCurrent={current?.id === track.id}
-              isPlaying={state === "playing"}
-              size="sm"
-              rank={track.position}
-              rankPlays
-              subtitle={<ArtistLink artists={track.artists} />}
-              trailing={
-                <>
-                  <Movement delta={movementOf(snapshot, track.id, track.position)} />
+        collection.sections.map((section) => (
+          <section key={section.key} className="mb-8 last:mb-0">
+            {section.title && (
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1">
+                <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{section.title}</h2>
+                {section.caption && (
+                  <p className="text-[11px] text-[var(--fg-faint)]">{section.caption}</p>
+                )}
+              </div>
+            )}
 
-                  <AddToQueue
-                    song={track}
-                    className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-                  />
-                  <AddToPlaylist
-                    song={track}
-                    className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                  />
-                </>
-              }
-            />
-          ))}
-        </ul>
+            <ul className="divide-y divide-[var(--line)]">
+              {section.tracks.map((track) => (
+                <SongRow
+                  key={track.id}
+                  song={track}
+                  // The whole page queues, not the section: pressing a new song and hearing
+                  // nothing after the section ends reads as the player stopping.
+                  onPlay={() => play(track, tracks)}
+                  isCurrent={current?.id === track.id}
+                  isPlaying={state === "playing"}
+                  size="sm"
+                  rank={track.position}
+                  rankPlays
+                  subtitle={<ArtistLink artists={track.artists} />}
+                  trailing={
+                    <>
+                      {section.ranked && (
+                        <Movement delta={movementOf(snapshot, track.id, track.position)} />
+                      )}
+
+                      <AddToQueue
+                        song={track}
+                        className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+                      />
+                      <AddToPlaylist
+                        song={track}
+                        className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+                      />
+                    </>
+                  }
+                />
+              ))}
+            </ul>
+          </section>
+        ))
       )}
     </div>
+  );
+}
+
+/**
+ * What this browser played in the page's genre, above everything Deezer sent. Nothing on the
+ * server — history is in local storage — and nothing at all for a genre not played yet.
+ */
+function FromYourListening({ genreId }: { genreId: number }) {
+  const history = useHistory();
+  const taste = useTaste();
+
+  const songs: Song[] = history
+    .filter((entry) => entry.artists[0] && taste.genreOf(entry.artists[0]) === genreId)
+    .slice(0, 12)
+    .map(songFromHistory);
+
+  if (songs.length === 0) return null;
+
+  return (
+    <Shelf title="From your listening" caption="Only on this device" resetKey={songs[0]?.id}>
+      {songs.map((song) => (
+        <div key={song.id} className="w-[7rem] shrink-0 sm:w-[10.5rem]">
+          <SongCard song={song} queue={songs} />
+        </div>
+      ))}
+    </Shelf>
   );
 }
 

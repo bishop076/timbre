@@ -13,6 +13,8 @@ import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
 import { sourceStyle } from "./sources";
 import { SOURCE_TAG } from "./source-tag";
+import { useTaste } from "./taste-store";
+import { artistKey, listNames } from "@/lib/genre-tally";
 
 // Fetched when a tab opens. The genre chart is not here at all — the server page renders
 // it and passes it in, so it costs no JavaScript. The split
@@ -32,9 +34,10 @@ import type { Rankings } from "@/lib/rankings";
 /** Snapshot key for the fused ranking. Named, not a bare `-1` — see `chart-memory.ts`. */
 const FUSED_RANKING = -1;
 
-type ViewId = "mix" | "spread" | "songs" | "artists" | "agreement";
+type ViewId = "yours" | "mix" | "spread" | "songs" | "artists" | "agreement";
 
 const VIEWS: { id: ViewId; label: string; blurb: string }[] = [
+  { id: "yours", label: "For you", blurb: "The ranking, narrowed to the genres and artists you play" },
   { id: "mix", label: "Genre mix", blurb: "Which genres feed the chart, and how high they land" },
   { id: "spread", label: "Popularity", blurb: "Chart position against catalogue popularity" },
   { id: "songs", label: "Top songs", blurb: "Ranked across every chart at once" },
@@ -44,6 +47,8 @@ const VIEWS: { id: ViewId; label: string; blurb: string }[] = [
 
 export function RankingsView({
   rankings,
+  songGenres,
+  genreNames,
   share,
   agree,
   genreMix,
@@ -51,6 +56,9 @@ export function RankingsView({
   embedded = false,
 }: {
   rankings: Rankings;
+  /** Song id to the Deezer genre charts it is on. */
+  songGenres: Record<string, number[]>;
+  genreNames: Record<number, string>;
   share: { artist: string; entries: number; best: number }[];
   agree: { shared: number; only: { chart: string; count: number }[]; total: number };
   /* Rendered by the server page — see genre-mix-view.tsx for why. */
@@ -59,8 +67,12 @@ export function RankingsView({
   /** Rendered inside another page rather than as one. Explore embeds it; `/rankings` is the direct link. */
   embedded?: boolean;
 }) {
-  // The graph leads: a rankings page that opens on a list is a list with a menu.
-  const [view, setView] = useState<ViewId>(genreMix ? "mix" : "songs");
+  const taste = useTaste();
+  const [picked, setPicked] = useState<ViewId | null>(null);
+  // A listener's own view leads once their genres are known; otherwise the graph does — a
+  // rankings page that opens on a list is a list with a menu. Derived rather than set, so it
+  // follows the history arriving after hydration and yields the moment anything is pressed.
+  const view: ViewId = picked ?? (taste.genres.length > 0 ? "yours" : genreMix ? "mix" : "songs");
   const current = VIEWS.find((entry) => entry.id === view)!;
 
   // The failure state respects `embedded` too, or a page with an <h1> gets a second.
@@ -119,7 +131,7 @@ export function RankingsView({
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => setView(entry.id)}
+                onClick={() => setPicked(entry.id)}
                 aria-current={active ? "true" : undefined}
                 className={`press shrink-0 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition @3xl:w-full ${
                   active
@@ -139,6 +151,9 @@ export function RankingsView({
           <p className="mt-1 text-xs leading-relaxed text-[var(--fg-faint)]">{current.blurb}</p>
 
           <div className="mt-4">
+            {view === "yours" && (
+              <YoursView rankings={rankings} songGenres={songGenres} genreNames={genreNames} />
+            )}
             {view === "mix" && genreMix}
             {view === "spread" && <SpreadView chart={chart} />}
             {view === "songs" && <SongsView rankings={rankings} />}
@@ -148,6 +163,95 @@ export function RankingsView({
         </div>
       </div>
     </div>
+  );
+}
+
+/** How many of a listener's genres the view narrows to. Past three it is most of the chart. */
+const YOUR_GENRES = 3;
+
+/**
+ * The fused ranking with only what this listener would pick out of it: songs by artists in
+ * their history, and songs charting in their top genres. Numbered by their place in the whole
+ * ranking, so "#4" still means fourth overall — renumbering would claim a chart of one's own.
+ */
+function YoursView({
+  rankings,
+  songGenres,
+  genreNames,
+}: {
+  rankings: Rankings;
+  songGenres: Record<string, number[]>;
+  genreNames: Record<number, string>;
+}) {
+  const { play, current, state } = usePlayerControls();
+  const taste = useTaste();
+  const top = taste.genres.slice(0, YOUR_GENRES).map((genre) => genre.id);
+  const topNames = listNames(
+    top.map((id) => genreNames[id]).filter((name): name is string => Boolean(name)),
+  );
+
+  const picks = rankings.songs.flatMap((song) => {
+    if (song.artists.some((artist) => taste.artists.has(artistKey(artist)))) {
+      return [{ song, why: "You play them" }];
+    }
+    const genre = (songGenres[song.id] ?? []).find((id) => top.includes(id));
+    return genre === undefined ? [] : [{ song, why: genreNames[genre] ?? "Your genre" }];
+  });
+  const songs = picks.map((pick) => pick.song);
+
+  if (!taste.listening) {
+    return (
+      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+        Play a few songs and this narrows the ranking to the genres and artists you listen to.
+        It is worked out in your browser, from the history it keeps.
+      </p>
+    );
+  }
+
+  if (picks.length === 0) {
+    return (
+      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+        {taste.genres.length === 0
+          ? "Still working out the genres you play — this fills in as it does."
+          : `Nothing in this week's top ${rankings.songs.length} is in ${
+              topNames || "your genres"
+            }, or by anyone you have played.`}
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <p className="mb-3 text-xs leading-relaxed text-[var(--fg-faint)]">
+        {picks.length} of the top {rankings.songs.length}, numbered by their place overall.
+        {topNames && ` Your genres, by what you played lately: ${topNames}.`}
+      </p>
+
+      <ul className="divide-y divide-[var(--line)]">
+        {picks.map(({ song, why }) => (
+          <SongRow
+            key={song.id}
+            song={song}
+            onPlay={() => play(song, songs)}
+            isCurrent={current?.id === song.id}
+            isPlaying={state === "playing"}
+            size="sm"
+            rank={song.position}
+            rankPlays
+            subtitle={<ArtistLink artists={song.artists} />}
+            trailing={
+              <>
+                <span className={`${SOURCE_TAG} hidden shrink-0 @lg:inline`}>{why}</span>
+                <AddToPlaylist
+                  song={song}
+                  className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+                />
+              </>
+            }
+          />
+        ))}
+      </ul>
+    </>
   );
 }
 
