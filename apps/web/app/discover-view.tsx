@@ -6,24 +6,35 @@ import { useState, type ReactNode } from "react";
 
 import { cover as coverSrc } from "./artwork-url";
 import { Collage } from "./collage";
+import { ExploreForYou } from "./explore-for-you";
 import { ShuffleIcon } from "./icons";
 import { Shelf } from "./shelf";
+import { useTaste } from "./taste-store";
 import type { Discover } from "@/lib/discover";
 import type { Radio } from "@/lib/radios";
+import { seededShuffle } from "@/lib/rotation";
 
-/** Explore — Featured cards, rows of pills, then the charts. All Deezer's and keyless;
- * picking a track resolves a copy Timbre can actually drive. */
+/** Explore — shelves that follow what you play, Featured cards, rows of pills, then the
+ * charts. All Deezer's and keyless; picking a track resolves a copy Timbre can drive. */
 export function DiscoverView({
   initial,
   radios,
+  rotation,
   rankings,
 }: {
   initial: Discover;
   radios: Radio[];
+  /** The hour the server rendered in — seeds the stations' order, so both sides agree. */
+  rotation: number;
   /* The charts already rendered, not the data: as props the page had to await the slowest
    * thing on it first. A `ReactNode` because a client file cannot import a server one. */
   rankings: ReactNode;
 }) {
+  const taste = useTaste();
+  // A listener's genres lead both rows. Empty until the browser has read its history, so the
+  // server's order and the first client render agree; the rows reorder once it has.
+  const yours = taste.genres.map((genre) => genre.id);
+
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4">
       <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Explore</h1>
@@ -31,31 +42,36 @@ export function DiscoverView({
       {/* Keeps the charts heading below the fold at any size. The subtraction is chrome this
           page does not own; 12rem over-allowed and left half a heading peeking over the edge. */}
       <div className="min-h-[calc(100dvh-9rem)]">
+        <ExploreForYou genres={initial.genres} />
+
         <Featured data={initial} />
 
         <PillSection
           title="Genres"
           // `0` is the catalogue-wide chart, already the first Featured card.
-          pills={initial.genres
-            .filter((entry) => entry.id !== 0)
-            .map((entry) => ({
-              key: String(entry.id),
-              label: entry.name,
-              href: `/collection/genre/${entry.id}`,
-            }))}
+          pills={yoursFirst(
+            initial.genres.filter((entry) => entry.id !== 0),
+            (entry) => entry.id,
+            yours,
+          ).map((entry) => ({
+            key: String(entry.id),
+            label: entry.name,
+            href: `/collection/genre/${entry.id}`,
+            yours: yours.includes(entry.id),
+          }))}
           initial={9}
           shuffleable
         />
 
-        {/* Only words, sent to Deezer's playlist search when pressed — see `lib/radios.ts`.
-            One row, not one per genre: grouping put "Pop" as a heading directly under the
+        {/* One row, not one per genre: grouping put "Pop" as a heading directly under the
             same word as a pill. */}
         <PillSection
           title="Stations"
-          pills={interleave(radios).map((radio) => ({
+          pills={interleave(radios, rotation, yours).map((radio) => ({
             key: String(radio.id),
             label: radio.title,
             href: `/collection/radio/${radio.id}`,
+            yours: yours.includes(radio.genreId),
           }))}
           initial={9}
           shuffleable
@@ -110,9 +126,10 @@ function Featured({ data }: { data: Discover }) {
   }
 
   for (const album of data.albums.slice(0, 8)) {
+    const kind = album.kind === "single" ? "Single" : album.kind === "ep" ? "EP" : "Album";
     cards.push({
       key: `album-${album.id}`,
-      eyebrow: album.kind === "single" ? "Single" : album.kind === "ep" ? "EP" : "Album",
+      eyebrow: album.fresh ? `New ${kind.toLowerCase()} · editors' pick` : kind,
       title: album.title,
       subtitle: album.artist,
       href: `/album/${album.id}`,
@@ -212,7 +229,8 @@ function PillSection({
   shuffleable = false,
 }: {
   title: string;
-  pills: { key: string; label: string; href: string }[];
+  /** `yours`: in a genre this browser plays — marked, since the order alone does not say why. */
+  pills: { key: string; label: string; href: string; yours?: boolean }[];
   initial: number;
   /** Adds the dice. Only worth it where the list is long enough to surprise. */
   shuffleable?: boolean;
@@ -264,8 +282,14 @@ function PillSection({
           <Link
             key={pill.key}
             href={pill.href}
-            className="slab-sm press rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[12px] font-semibold text-[var(--fg-dim)] transition hover:text-[var(--fg)] sm:px-4 sm:py-2.5 sm:text-[13px]"
+            title={pill.yours ? "In a genre you play" : undefined}
+            className={`slab-sm press flex items-center gap-1.5 rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[12px] font-semibold transition hover:text-[var(--fg)] sm:px-4 sm:py-2.5 sm:text-[13px] ${
+              pill.yours ? "text-[var(--fg)]" : "text-[var(--fg-dim)]"
+            }`}
           >
+            {pill.yours && (
+              <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
+            )}
             {pill.label}
           </Link>
         ))}
@@ -274,22 +298,51 @@ function PillSection({
   );
 }
 
-/** Stations round-robin, one genre at a time — Deezer returns them grouped, so the
- * first nine in order are all Pop. */
-function interleave(radios: Radio[]): Radio[] {
-  const byGenre = new Map<string, Radio[]>();
+/** `items` with those whose genre is in `yours` moved to the front, in `yours`' order; the rest
+ * keep theirs. */
+function yoursFirst<T>(items: T[], genreOf: (item: T) => number, yours: number[]): T[] {
+  const rank = (item: T) => {
+    const index = yours.indexOf(genreOf(item));
+    return index === -1 ? yours.length : index;
+  };
+  // `sort` is stable, so equal ranks keep their incoming order.
+  return items.slice().sort((a, b) => rank(a) - rank(b));
+}
+
+/** Stations each of a listener's top genres puts in front of the round-robin. */
+const LEAD_STATIONS = 3;
+
+/**
+ * Stations round-robin, one genre at a time — Deezer returns them grouped, so the first nine
+ * in order are all Pop. Each genre's stations are shuffled by the hour and the genres'
+ * turns rotated by it too, so the nine on show change hourly. A listener's two top genres
+ * go first, a few stations each, before the round-robin starts. Seeded, not random: this
+ * runs during render, on the server and again in the browser, and the two must agree.
+ */
+function interleave(radios: Radio[], rotation: number, yours: number[]): Radio[] {
+  const byGenre = new Map<number, Radio[]>();
   for (const radio of radios) {
-    const existing = byGenre.get(radio.genre);
+    const existing = byGenre.get(radio.genreId);
     if (existing) existing.push(radio);
-    else byGenre.set(radio.genre, [radio]);
+    else byGenre.set(radio.genreId, [radio]);
   }
 
-  const queues = [...byGenre.values()];
+  // Seeded by genre, not position, so a genre's own order holds when a listener's reorder.
+  const queues = new Map(
+    [...byGenre].map(([genre, list]) => [genre, seededShuffle(list, rotation * 13 + genre)]),
+  );
+
   const out: Radio[] = [];
+  for (const genre of yours.slice(0, 2)) {
+    out.push(...(queues.get(genre)?.splice(0, LEAD_STATIONS) ?? []));
+  }
+
+  const rotated = yoursFirst(seededShuffle([...queues.keys()], rotation), (genre) => genre, yours);
+  const rest = rotated.map((genre) => queues.get(genre)!);
   // Capped: the full list runs past a hundred, and "View all" should open a choice.
   for (let round = 0; out.length < 36; round += 1) {
     const before = out.length;
-    for (const queue of queues) {
+    for (const queue of rest) {
       const radio = queue[round];
       if (radio) out.push(radio);
     }

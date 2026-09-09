@@ -1,6 +1,7 @@
 import "server-only";
 
 import { deezer } from "./deezer";
+import { seededShuffle } from "./rotation";
 
 /*
  * What Explore is built from: Deezer's charts, genres and editorial, all keyless. One
@@ -36,6 +37,8 @@ export interface ChartAlbum {
   artist: string;
   coverUrl: string | null;
   kind: string;
+  /** An editors' pick rather than a charting record — new, not merely popular. */
+  fresh: boolean;
 }
 
 export interface ChartArtist {
@@ -159,28 +162,54 @@ export async function fetchGenres(): Promise<Genre[]> {
   return (data?.data ?? []).map(toGenre);
 }
 
-/** A genre's chart and the genre list. Cached an hour — charts move daily at best. */
-export async function fetchDiscover(genre: number): Promise<Discover> {
-  const [genres, chart] = await Promise.all([
+/**
+ * A genre's chart and the genre list, with the albums and playlists *rotated*: `rotation`
+ * seeds which slice of a larger pool is shown. The chart answers with twenty-five of each and
+ * Explore used the first six and eight, so the same playlists headed the page all week. The
+ * caller passes the hour — see `rotationBucket` — so the row turns over with the page's own
+ * revalidation. Cached an hour — charts move daily at best.
+ */
+export async function fetchDiscover(genre: number, rotation = 0): Promise<Discover> {
+  const [genres, chart, picks] = await Promise.all([
     fetchGenres(),
     deezer<RawChart>(`/chart/${genre}?limit=25`, 3_600),
+    // Newer than anything charting: editors' picks turn over a few times a week.
+    deezer<{ data?: RawAlbum[] }>(`/editorial/${genre}/selection`, 21_600),
   ]);
+
+  // A pick that is also charting stays a pick — the newer of the two things it is.
+  const seen = new Set<number>();
+  const albums: { raw: RawAlbum; fresh: boolean }[] = [];
+  for (const [list, fresh] of [
+    [picks?.data ?? [], true],
+    [chart?.albums?.data ?? [], false],
+  ] as const) {
+    for (const raw of list) {
+      if (seen.has(raw.id)) continue;
+      seen.add(raw.id);
+      albums.push({ raw, fresh });
+    }
+  }
 
   return {
     genres,
     tracks: (chart?.tracks?.data ?? []).map(toTrack),
-    albums: (chart?.albums?.data ?? []).map((raw) => ({
+    albums: seededShuffle(albums, rotation).map(({ raw, fresh }) => ({
       id: raw.id,
       title: raw.title,
       artist: raw.artist?.name ?? "",
       coverUrl: raw.cover_medium ?? null,
       kind: raw.record_type ?? "album",
+      fresh,
     })),
     artists: (chart?.artists?.data ?? []).map((raw) => ({
       name: raw.name,
       imageUrl: raw.picture_medium ?? null,
     })),
-    playlists: await withCovers((chart?.playlists?.data ?? []).slice(0, 6)),
+    // The rotation mixed with a constant so albums and playlists do not shuffle in step.
+    playlists: await withCovers(
+      seededShuffle(chart?.playlists?.data ?? [], rotation * 7 + 3).slice(0, 6),
+    ),
   };
 }
 

@@ -14,8 +14,10 @@ import { CollectionView } from "../../../collection-view";
  */
 const KINDS = new Set<CollectionKind>(["genre", "playlist", "mood", "radio"]);
 
-/** An hour, matching Explore. Charts move daily; playlists move less. */
-export const revalidate = 3600;
+/** A quarter of an hour — a station's draw and a genre's rotation last that long (see
+ * `STATION_PERIOD_MS`). A literal, because Next reads this statically. Playlists and charts
+ * keep their own longer fetch caches, so a rebuild of one of those costs no request. */
+export const revalidate = 900;
 
 function parse(kind: string): CollectionKind | null {
   return KINDS.has(kind as CollectionKind) ? (kind as CollectionKind) : null;

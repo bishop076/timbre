@@ -125,6 +125,12 @@ export default function PrivacyPage() {
           not logged to any database and are not linked to you.
         </p>
         <p>
+          Explore follows what you play. To do that, your browser asks this site for the
+          genre and newest releases of artists in your listening history — one artist name
+          per request, the same kind of request a search is. Your history itself is never
+          sent; the answers are kept in your browser beside it.
+        </p>
+        <p>
           Search results are briefly held in memory — a couple of minutes — so that many
           people looking up the same song do not each cost a separate request to services
           that strictly limit how often they may be asked. That cache holds public
