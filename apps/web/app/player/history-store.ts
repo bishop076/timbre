@@ -1,8 +1,9 @@
 /**
  * What you have listened to, on this device and nowhere else — Timbre has no accounts, so
  * a server-side history has nothing to attach to. It powers "Recently played", "Because
- * you played X" (the only way to seed the recommender on a cold load), and not suggesting
- * what you just heard. Deliberately not a taste model — see docs/RECOMMENDATIONS.md.
+ * you played X" (the only way to seed the recommender on a cold load), not suggesting
+ * what you just heard, and the genre count Explore leads with (`taste-store.ts`).
+ * Deliberately not a taste model — see docs/RECOMMENDATIONS.md.
  *
  * Mirrors `volume-store.ts`: localStorage is an external store, and reading it into React
  * state after mount is a cascading render by another name.
