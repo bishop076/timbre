@@ -198,6 +198,18 @@ It powers recall, not modelling: *Recently played*, *Because you played X* (whic
 gives the recommender a seed on a cold page, where nothing is playing yet), and
 not re-suggesting something already queued.
 
+It also orders Explore, and that is a **count**, not a model. Each recent play
+votes for its artist's genre, newer plays louder (×0.92 per play back), and the
+heaviest genres lead the page (`lib/genre-tally.ts`, `app/taste-store.ts`). An
+artist's genre is whatever Deezer tags most of their releases with — Deezer tags
+albums, never artists — asked of `/api/taste` one name at a time, so no request
+carries more of a history than a search does, and cached in `localStorage` for a
+week. A name that matches no Deezer artist closely is filed as unknown rather
+than guessed, since a channel name mis-read as an artist would hand its whole
+history to a stranger's genre. What fills the genre shelves is retrieval, as
+everywhere else: Deezer's editors' picks for the genre and a draw from its
+stations (`lib/genre-feed.ts`).
+
 It is deliberately **not** a taste model. With a single listener, item-item
 co-occurrence re-derives the queues you already built and calls it discovery.
 YouTube's watch queue is a co-occurrence model fit on millions of people,
