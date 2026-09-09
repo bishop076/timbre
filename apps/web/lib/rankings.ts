@@ -126,6 +126,8 @@ export interface GenreMix {
 
 /** One genre's chart, as recording ids. The raw material for `mixGenres`. */
 export interface GenreChart {
+  /** Deezer's id, which a listener's genres are counted in — see `taste-store.ts`. */
+  id: number;
   genre: string;
   trackIds: string[];
 }
@@ -146,6 +148,7 @@ export async function fetchGenreCharts(genres: number): Promise<GenreChart[]> {
       );
 
       return {
+        id: genre.id,
         genre: genre.name,
         trackIds: (chart?.tracks?.data ?? []).map((track) => String(track.id)),
       };
@@ -178,6 +181,29 @@ export function mixGenres(charts: GenreChart[], songs: RankedSong[]): GenreMix[]
 
   // Empty genres dropped — a zero-height column reads as a rendering failure.
   return mixes.filter((mix) => mix.total > 0).sort((a, b) => b.total - a.total);
+}
+
+/** Which genre charts each ranked song appears on, by song id — only songs on at least one. Pure. */
+export function genresBySong(charts: GenreChart[], songs: RankedSong[]): Record<string, number[]> {
+  const byTrack = new Map<string, number[]>();
+  for (const chart of charts) {
+    for (const id of chart.trackIds) {
+      const genres = byTrack.get(id);
+      if (genres) genres.push(chart.id);
+      else byTrack.set(id, [chart.id]);
+    }
+  }
+
+  const out: Record<string, number[]> = {};
+  for (const song of songs) {
+    const genres = new Set<number>();
+    for (const source of song.sources) {
+      if (source.source !== "deezer") continue;
+      for (const genre of byTrack.get(source.sourceId) ?? []) genres.add(genre);
+    }
+    if (genres.size > 0) out[song.id] = [...genres];
+  }
+  return out;
 }
 
 /** Chart entries per artist, credited to the lead only — splitting a feature makes the shares exceed the songs. */

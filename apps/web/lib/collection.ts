@@ -2,14 +2,27 @@ import "server-only";
 
 import { deezer } from "./deezer";
 import { coversOf, toTrackByOrder, type ChartTrack, type RawTrack } from "./discover";
+import { drawStation, drawStations, fetchFresh, genreOfStation } from "./genre-feed";
+import { listNames } from "./genre-tally";
 
 /*
- * A collection: songs gathered under one name — a genre chart, a Deezer playlist, or a
+ * A collection: songs gathered under one name — a genre, a Deezer playlist, a station, or a
  * mood resolved to one. All kinds resolve to the same shape, so the page rendering them
  * never knows which it has and there is no second layout.
  */
 
 export type CollectionKind = "genre" | "playlist" | "mood" | "radio";
+
+/** A named run of a collection's songs. A playlist is one untitled section; a genre is three. */
+export interface CollectionSection {
+  key: string;
+  /** Null for a collection that is one list — a heading repeating the page's reads as a bug. */
+  title: string | null;
+  caption: string | null;
+  tracks: ChartTrack[];
+  /** A chart, whose order is a ranking: numbered, and compared against the last visit. */
+  ranked: boolean;
+}
 
 export interface Collection {
   kind: CollectionKind;
@@ -20,7 +33,11 @@ export interface Collection {
   /** Up to four covers, tiled when the collection was assembled rather than published. */
   covers: string[];
   coverUrl: string | null;
+  /** Every section's songs, in page order — what Play and Shuffle take. */
   tracks: ChartTrack[];
+  sections: CollectionSection[];
+  /** The Deezer genre it belongs to, so the page can add what *you* played in it. */
+  genreId: number | null;
 }
 
 /** Four covers, tiled. */
@@ -29,6 +46,25 @@ function tiles(tracks: ChartTrack[]): string[] {
     tracks.map((track) => track.artworkUrl),
     4,
   );
+}
+
+/** One untitled section: a playlist's order is its own and carries no heading. */
+function single(tracks: ChartTrack[]): CollectionSection[] {
+  return [{ key: "all", title: null, caption: null, tracks, ranked: false }];
+}
+
+/** Sections with nothing in them dropped, and the rest flattened for Play. */
+function assemble(sections: CollectionSection[]): { sections: CollectionSection[]; tracks: ChartTrack[] } {
+  const kept = sections.filter((section) => section.tracks.length > 0);
+  return { sections: kept, tracks: kept.flatMap((section) => section.tracks) };
+}
+
+/** `tracks` without anything already in `taken`, renumbered — a fresh list that repeats the chart below it is no fresher. */
+function without(tracks: ChartTrack[], taken: ChartTrack[]): ChartTrack[] {
+  const ids = new Set(taken.map((track) => track.id));
+  return tracks
+    .filter((track) => !ids.has(track.id))
+    .map((track, index) => ({ ...track, position: index + 1 }));
 }
 
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
@@ -56,35 +92,86 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
     covers: tiles(tracks),
     coverUrl: raw.picture_big ?? null,
     tracks,
+    sections: single(tracks),
+    genreId: null,
   };
 }
 
-/** A genre's chart. The name is looked up, never taken from the URL, so the heading can't be dictated. */
+/**
+ * A genre: what is new in it, what its stations are playing, then its chart. The chart
+ * alone was the whole page and moves weekly, and is only loosely the genre — see
+ * `genre-feed.ts`. The name is looked up, never taken from the URL, so the heading can't be
+ * dictated.
+ */
 async function fromGenre(id: string): Promise<Collection | null> {
-  const [chart, genres] = await Promise.all([
-    deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
-    deezer<{ data?: { id: number; name: string }[] }>("/genre", 604_800),
-  ]);
-
-  const tracks = (chart?.tracks?.data ?? []).map(toTrackByOrder);
-  if (tracks.length === 0) return null;
-
   // The id must name a genre Deezer publishes: `/chart/{id}` does not validate its path
   // segment, and a non-numeric id returns the *global* chart, so `/genre/abc` served the
   // worldwide top songs under a made-up heading. Never fall back to a placeholder.
-  const name = genres?.data?.find((entry) => String(entry.id) === id)?.name;
-  if (id !== "0" && name === undefined) return null;
+  if (!/^\d+$/.test(id)) return null;
+  const genre = Number(id);
 
-  const title = id === "0" ? "Top songs this week" : `${name} right now`;
+  const [chartRaw, genres, fresh, drawn] = await Promise.all([
+    deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
+    deezer<{ data?: { id: number; name: string }[] }>("/genre", 604_800),
+    // The catalogue-wide chart is already the "Top songs this week" card; the rest is a genre's.
+    genre === 0 ? Promise.resolve([]) : fetchFresh(genre),
+    genre === 0 ? Promise.resolve({ stations: [], tracks: [] }) : drawStations(genre),
+  ]);
+
+  const name = genres?.data?.find((entry) => entry.id === genre)?.name;
+  if (genre !== 0 && name === undefined) return null;
+
+  const chart = (chartRaw?.tracks?.data ?? []).map(toTrackByOrder);
+  const newest = without(fresh, chart);
+  const onAir = without(drawn.tracks, [...chart, ...newest]).slice(0, 30);
+
+  const { sections, tracks } = assemble([
+    {
+      key: "new",
+      title: `New in ${name}`,
+      caption: "Deezer editors' picks, newest release first",
+      tracks: newest,
+      ranked: false,
+    },
+    {
+      key: "stations",
+      title: `On ${name} stations now`,
+      caption: drawn.stations.length
+        ? `From ${listNames(drawn.stations.map((station) => station.title))} — a new draw every 15 minutes`
+        : null,
+      tracks: onAir,
+      ranked: false,
+    },
+    {
+      key: "chart",
+      // A single section needs no heading: it is the page.
+      title: genre === 0 ? null : `${name} chart`,
+      caption: genre === 0 ? null : "Deezer's chart for the genre — it leans on whatever is big overall",
+      tracks: chart,
+      ranked: true,
+    },
+  ]);
+  if (tracks.length === 0) return null;
+
+  const title = genre === 0 ? "Top songs this week" : `${name} right now`;
+  const fresher = newest.length + onAir.length;
 
   return {
     kind: "genre",
     id,
     title,
-    subtitle: `${tracks.length} songs · Deezer chart`,
+    subtitle:
+      genre === 0
+        ? `${chart.length} songs · Deezer chart`
+        : [fresher ? `${fresher} fresh` : null, chart.length ? `${chart.length} charting` : null, "Deezer"]
+            .filter(Boolean)
+            .join(" · "),
+    // From the fresh sections first: tiled from the chart, every genre wore the same four faces.
     covers: tiles(tracks),
     coverUrl: null,
     tracks,
+    sections,
+    genreId: genre === 0 ? null : genre,
   };
 }
 
@@ -120,24 +207,52 @@ function label(term: string): string {
     .join(" ");
 }
 
-/** A Deezer radio's own tracks. Title from Deezer, never from the URL. */
+/**
+ * A Deezer station's current draw, then what is new in its genre. Title from Deezer, never
+ * from the URL. The draw is cached for a quarter of an hour rather than an hour: Deezer deals
+ * a different hand on every call, and holding one for an hour made a station a playlist.
+ */
 async function fromRadio(id: string): Promise<Collection | null> {
-  const [meta, list] = await Promise.all([
-    deezer<{ title?: string; picture_big?: string }>(`/radio/${id}`, 86_400),
-    deezer<{ data?: RawTrack[] }>(`/radio/${id}/tracks`, 3_600),
-  ]);
+  if (!/^\d+$/.test(id)) return null;
 
-  const tracks = (list?.data ?? []).slice(0, 100).map(toTrackByOrder);
-  if (tracks.length === 0) return null;
+  const [meta, onAir, genre] = await Promise.all([
+    deezer<{ title?: string; picture_big?: string }>(`/radio/${id}`, 86_400),
+    drawStation(Number(id)),
+    genreOfStation(Number(id)),
+  ]);
+  if (onAir.length === 0) return null;
+
+  const fresh = genre ? without(await fetchFresh(genre.id), onAir) : [];
+
+  const { sections, tracks } = assemble([
+    {
+      key: "on-air",
+      title: fresh.length ? "On air now" : null,
+      caption: fresh.length ? "A new draw every 15 minutes" : null,
+      tracks: onAir,
+      ranked: false,
+    },
+    {
+      key: "new",
+      title: genre ? `New in ${genre.name}` : null,
+      caption: "Deezer editors' picks, newest release first",
+      tracks: fresh,
+      ranked: false,
+    },
+  ]);
 
   return {
     kind: "radio",
     id,
     title: meta?.title ?? "Radio",
-    subtitle: `${tracks.length} songs · Deezer radio`,
+    subtitle: [`${onAir.length} songs on air`, fresh.length ? `${fresh.length} new` : null, "Deezer radio"]
+      .filter(Boolean)
+      .join(" · "),
     covers: tiles(tracks),
     coverUrl: meta?.picture_big ?? null,
     tracks,
+    sections,
+    genreId: genre?.id ?? null,
   };
 }
 
