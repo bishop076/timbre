@@ -12,7 +12,7 @@ import { SongRow } from "./song-row";
 import { songFromHistory } from "./home-shelves";
 import { useHistory } from "./player/history-store";
 import { Shelf } from "./shelf";
-import { SongCard } from "./song-card";
+import { SongCard, TILE } from "./song-card";
 import { useTaste } from "./taste-store";
 import type { Song } from "./types";
 import type { Collection } from "@/lib/collection";
@@ -196,7 +196,7 @@ function FromYourListening({ genreId }: { genreId: number }) {
   return (
     <Shelf title="From your listening" caption="Only on this device" resetKey={songs[0]?.id}>
       {songs.map((song) => (
-        <div key={song.id} className="w-[7rem] shrink-0 sm:w-[10.5rem]">
+        <div key={song.id} className={TILE}>
           <SongCard song={song} queue={songs} />
         </div>
       ))}

@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { Artwork } from "./artwork";
 import { useHydrated } from "./hydrated";
 import { Shelf } from "./shelf";
-import { SongCard } from "./song-card";
+import { SongCard, TILE } from "./song-card";
 import { useTaste } from "./taste-store";
+import { ReleaseCard } from "./tile-cards";
 import { TileSkeletons } from "./tile-skeleton";
 import type { Song } from "./types";
 import type { Genre } from "@/lib/discover";
@@ -19,9 +19,6 @@ import { seededShuffle } from "@/lib/rotation";
  * history released lately. Someone with no history yet gets two genres drawn at random, so
  * the top of the page is different on every visit rather than the same editorial row.
  */
-
-// The home page's tile width, so the two pages' shelves read as one system.
-const TILE = "w-[7rem] shrink-0 sm:w-[10.5rem]";
 
 /** Genre shelves shown. Two: one is a guess, three pushes Featured below the fold. */
 const SHELVES = 2;
@@ -128,7 +125,9 @@ function GenreShelf({ pick }: { pick: Pick }) {
           ))}
           <Link
             href={`/collection/genre/${pick.id}`}
-            className={`${TILE} slab press flex aspect-square items-center justify-center rounded-[var(--r-lg)] bg-[var(--surface-2)] px-3 text-center text-[13px] font-bold text-[var(--fg-dim)] transition hover:text-[var(--fg)]`}
+            // Full height of the row rather than square: the song cards beside it are taller
+            // than their covers, and a square tile stopped short of them.
+            className={`${TILE} tile-card flex items-center justify-center px-3 text-center text-[13px] font-bold text-[var(--fg-dim)] hover:text-[var(--fg)]`}
           >
             All of {pick.name} →
           </Link>
@@ -146,20 +145,12 @@ function NewReleases({ releases }: { releases: ReturnType<typeof useTaste>["rele
     <Shelf title="New from artists you play" caption="The last four months">
       {releases.slice(0, 16).map((release) => (
         <div key={release.id} className={TILE}>
-          <Link
+          <ReleaseCard
             href={`/album/${release.id}`}
-            className="block snap-start rounded-[var(--r-lg)] transition hover:opacity-90"
-          >
-            <Artwork
-              src={release.coverUrl}
-              className="slab aspect-square w-full rounded-[var(--r-lg)]"
-              iconClassName="size-7"
-            />
-            <span className="mt-2 block truncate text-[13px] font-semibold">{release.title}</span>
-            <span className="block truncate text-xs text-[var(--fg-dim)]">
-              {release.artist} · {kindLabel(release.kind)} · {when(release.date)}
-            </span>
-          </Link>
+            coverUrl={release.coverUrl}
+            title={release.title}
+            subtitle={`${release.artist} · ${kindLabel(release.kind)} · ${when(release.date)}`}
+          />
         </div>
       ))}
     </Shelf>
