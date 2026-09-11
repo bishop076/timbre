@@ -8,6 +8,7 @@ import { Artwork } from "../artwork";
 import { useHydrated } from "../hydrated";
 import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
+import { LikedRow } from "../playlists/liked-tile";
 import { PlaylistCover } from "../playlists/playlist-cover";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
 import { Avatar } from "../profile/avatar";
@@ -154,7 +155,11 @@ export function Sidebar() {
             reads as the list running out rather than scrolling. */}
         <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {filter === "Playlists" ? (
-            <PlaylistRows playlists={playlists} settled={settled} />
+            <>
+              {/* Above the rows and outside them, so it shows with no playlists too. */}
+              <LikedRow />
+              <PlaylistRows playlists={playlists} settled={settled} />
+            </>
           ) : rows.length === 0 ? (
             <p className="px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]">
               Nothing queued. Play something and it shows up here.

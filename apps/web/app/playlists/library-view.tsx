@@ -10,6 +10,7 @@ import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { SiteLinks } from "../shell/site-links";
 import { ExportMenu } from "./export-menu";
+import { LikedTile } from "./liked-tile";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { createPlaylist, importPlaylists, loadPlaylists, usePlaylists } from "./store";
@@ -184,11 +185,15 @@ export function LibraryView() {
         </div>
       )}
 
-      {isEmpty ? (
+      {isEmpty && (
         <p className="mt-8 text-sm leading-relaxed text-[var(--fg-dim)]">
           No playlists yet.
         </p>
-      ) : (
+      )}
+      {/* Not only when there are playlists: Liked songs leads the grid either way, and on a
+          phone this grid is the only way to it. Held for the read, or that tile would stand
+          alone for a frame before the playlists joined it. */}
+      {settled && (
         /* Two up until the container is wide enough for three. `@md:grid-cols-3` was
            already here and already dead, repeating the base — which is the tell: three
            across a phone leaves each tile about 88px, and the cover loses another 20px to
@@ -196,6 +201,7 @@ export function LibraryView() {
            characters. The breakpoint that was meant to introduce the third column now
            does. */
         <ul className="mt-6 grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
+          <LikedTile />
           {playlists?.map((playlist) => (
             <li key={playlist.id} className="group relative">
               {/* Outside the <Link>: a button in an anchor is invalid, and clicking it
