@@ -18,6 +18,7 @@ import type { Song, SongsResponse } from "../types";
 import { drawRadio } from "./draw-radio";
 import { getHistorySnapshot, recordPlay } from "./history-store";
 import { playedHandle } from "./played-handle";
+import { getPlaybackPrefs, usePlaybackPrefs } from "./playback-prefs";
 import {
   insertAfter,
   moveWithin,
@@ -56,7 +57,8 @@ function settled(state: PlayState): boolean {
   return state === "playing" || state === "paused";
 }
 
-/** `off` continues into the recommendations at queue end; `all` loops the queue; `one` repeats a track. */
+/** `off` continues into the recommendations at queue end — unless Settings says to stop there
+ * (`playback-prefs.ts`); `all` loops the queue; `one` repeats a track. */
 export type RepeatMode = "off" | "all" | "one";
 
 interface PlayerState {
@@ -419,6 +421,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // Remembered across reloads, like the volume: a listener who shuffles expects to still be
   // shuffling after a refresh.
   const { shuffle, repeat } = useLocalStore(modeStore);
+  // Settings → General. Off, the radio is still fetched — Related and "Similar songs" show
+  // it — but never played into: the queue ends where the reader ended it.
+  const { continueWithRadio } = usePlaybackPrefs();
   // Played in this shuffle pass. A pass restarts only once every song has played.
   const shuffled = useRef<Set<string>>(new Set());
   const { volume, muted } = useSyncExternalStore(
@@ -1018,8 +1023,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // which this memo already depends on, so the button cannot be left behind.
     // eslint-disable-next-line react-hooks/refs
     if (shuffle ? unplayed().length > 0 : index + 1 < queue.length) return true;
-    return unqueued(radio).length > 0;
-  }, [index, queue, radio, repeat, shuffle, unplayed, unqueued]);
+    return continueWithRadio && unqueued(radio).length > 0;
+  }, [continueWithRadio, index, queue, radio, repeat, shuffle, unplayed, unqueued]);
 
   /**
    * One step forward, for a skip and for a track that ended alike: they were two copies of
@@ -1045,7 +1050,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const fresh = unqueued(radio);
+      const fresh = continueWithRadio ? unqueued(radio) : [];
       if (fresh.length === 0) {
         if (fromEnd) setState("idle");
         return;
@@ -1058,7 +1063,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // position, so `index + 1` landed on a played song and left the radio unplayed.
       goTo(queue.length);
     },
-    [goTo, index, nextIndex, queue, radio, restart, unqueued, writeQueue],
+    [continueWithRadio, goTo, index, nextIndex, queue, radio, restart, unqueued, writeQueue],
   );
 
   const next = useCallback(() => advance(false), [advance]);
@@ -1271,7 +1276,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Adopted only when nothing follows, so a one-song queue shows "up next" instead
         // of twenty-six entries the moment it ends. Mid-queue it stays parked, or the
         // moving seed grows the queue without bound.
-        if (indexRef.current < queued.length - 1) {
+        // Parked as well when Settings says a queue ends at its end. Read from the store, not
+        // the render: this callback outlives the render that created it.
+        if (indexRef.current < queued.length - 1 || !getPlaybackPrefs().continueWithRadio) {
           setRadio(drawn);
           return;
         }

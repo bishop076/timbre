@@ -15,6 +15,7 @@ import {
   TrashIcon,
 } from "../icons";
 import { clearLogs, useLogs, type LogLevel } from "../logs.ts";
+import { setPlaybackPref, usePlaybackPrefs } from "../player/playback-prefs";
 import { SpotifyConnect } from "../spotify/connect-panel";
 
 // Fetched when Appearance is first opened; the picker is the largest thing here.
@@ -38,12 +39,7 @@ const SECTIONS = [
     id: "general",
     label: "General",
     Icon: SettingsIcon,
-    render: () => (
-      <Planned>
-        Playback and behaviour: what happens when a queue ends, and whether lyrics open by
-        default.
-      </Planned>
-    ),
+    render: () => <General />,
   },
   {
     id: "sources",
@@ -303,13 +299,82 @@ function WhatsNew() {
   );
 }
 
-/** A rail section not yet built. Says what will be here rather than showing a
- * disabled switch nobody could tell from a broken one. */
-function Planned({ children }: { children: React.ReactNode }) {
+/** Playback behaviour — `player/playback-prefs.ts`. */
+function General() {
+  const prefs = usePlaybackPrefs();
+
   return (
-    <div className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5">
-      <p className="text-[13px] font-bold">Not built yet</p>
-      <p className="mt-1.5 max-w-prose text-xs leading-relaxed text-[var(--fg-dim)]">{children}</p>
+    <>
+      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
+        Saved in this browser, like everything else here.
+      </p>
+
+      <div className="mt-4 divide-y divide-[var(--line)]">
+        <Choice
+          label="When the queue ends"
+          detail="Keep going with songs like the last one, or stop where your queue stops."
+          value={prefs.continueWithRadio}
+          onChange={(value) => setPlaybackPref("continueWithRadio", value)}
+          options={[
+            { value: true, label: "Keep playing" },
+            { value: false, label: "Stop" },
+          ]}
+        />
+        <Choice
+          label="Open the player on"
+          detail="What the expanded player shows first. Songs with no lyrics say so."
+          value={prefs.lyricsByDefault}
+          onChange={(value) => setPlaybackPref("lyricsByDefault", value)}
+          options={[
+            { value: false, label: "Up next" },
+            { value: true, label: "Lyrics" },
+          ]}
+        />
+      </div>
+    </>
+  );
+}
+
+/** One setting and its two answers. A pair of pressed buttons rather than a switch: both
+ * answers are named, so neither has to be read as "the absence of the other". */
+function Choice({
+  label,
+  detail,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  detail: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  options: { value: boolean; label: string }[];
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 first:pt-0">
+      <div className="min-w-0 flex-1 basis-56">
+        <p className="text-[13px] font-bold">{label}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-[var(--fg-dim)]">{detail}</p>
+      </div>
+      <div className="flex shrink-0 gap-1.5">
+        {options.map((option) => {
+          const selected = option.value === value;
+          return (
+            <button
+              key={option.label}
+              type="button"
+              onClick={() => onChange(option.value)}
+              aria-pressed={selected}
+              className={`press rounded-[var(--r-full)] px-3 py-1.5 text-[12px] font-bold ${
+                selected ? "slab-sm text-[var(--accent-fg)]" : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
+              }`}
+              style={selected ? { background: "var(--accent)" } : undefined}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
