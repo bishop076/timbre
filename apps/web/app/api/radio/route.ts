@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getProviderRuntime } from "@/lib/providers";
 import { optionalQueryText } from "@/lib/query-text";
 import { CACHE_CONTROL_HOUR, guard } from "@/lib/api";
+import { log } from "@/lib/log";
 
 // What to play next — not a passthrough of YouTube Music's watch queue. Every source that
 // can answer contributes a ranked list, and the lists are **fused**: a song several reach
@@ -47,7 +48,11 @@ export async function GET(request: Request) {
 
   const { limiter } = getProviderRuntime();
   const songs = await recommendFrom(
-    { limiter, signal: request.signal },
+    {
+      limiter,
+      signal: request.signal,
+      report: (event, fields) => log("warn", event, { route: "/api/radio", ...fields }),
+    },
     { sourceId: id, artist, title },
     limit,
     title && artist ? [{ title, artists: [artist] }] : undefined,

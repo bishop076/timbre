@@ -152,8 +152,12 @@ export async function recommendFrom(
       lists.push(...result.value);
     } else {
       const provider = providers[index]!;
-      // Not surfaced, unlike a failed search: a missing recommendation is invisible.
-      console.warn(`[timbre] ${provider.id} radio failed:`, result.reason);
+      // Not surfaced, unlike a failed search: a missing recommendation is invisible, so this
+      // line is the only sign of it. A reader who navigated away mid-radio aborted every
+      // source at once, which is not a failure of any of them.
+      if (ctx.signal?.aborted) return;
+      if (ctx.report) ctx.report("radio_failed", { source: provider.id, error: result.reason });
+      else console.warn(`[timbre] ${provider.id} radio failed:`, result.reason);
     }
   });
 
