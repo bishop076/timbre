@@ -9,6 +9,7 @@ import { PlayIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { SongRow } from "../song-row";
+import { ROW_BADGES, SourceBadges } from "../source-badges";
 import type { Song } from "../types";
 import type { AlbumDetail } from "@/lib/discography";
 import { formatDuration } from "../duration";
@@ -104,6 +105,8 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
                 subtitle={<ArtistLink artists={song.artists} />}
                 trailing={
                   <>
+                    <SourceBadges song={song} className={ROW_BADGES} />
+
                     <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
                       {formatDuration(song.durationMs)}
                     </span>
