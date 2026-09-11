@@ -7,25 +7,10 @@ import { NextIcon, PauseIcon, PlayHereIcon, PlayIcon, PrevIcon, SpinnerIcon } fr
 import { commandRemote, takeOverRemote, type RemotePlayer } from "./use-tab-sync";
 import { Scrub } from "./wavy-progress";
 
-/**
- * **What another tab is playing, in a tab with nothing of its own.**
- *
- * The player bar's shape, so the two read as the same control, but every press is a message:
- * the tab that owns playback does the work and reports back (`tab-sync.ts`). Two things are
- * deliberately missing. Shuffle, repeat and volume steer the other tab's queue and output, and
- * a mode flipped from a place that does not show its result is a mode someone forgets they
- * set. The video toggles have no video here to toggle.
- *
- * "Play here" moves the queue into this tab and pauses the other one — for the person who has
- * settled into the new tab and wants the controls, the lyrics and the picture where they are.
- */
 export function RemoteBar({ remote }: { remote: RemotePlayer }) {
   const { song, state, position, duration, hasNext, hasPrevious } = remote.report;
   const playing = state === "playing";
   const busy = state === "resolving" || state === "loading";
-  // Said on the bar itself: a song on screen with nothing playing in this tab reads as a
-  // broken player unless it says where the sound is coming from. The verb is dropped on a
-  // phone, where the play button already shows it and the artist needs the room.
   const verb = state === "unplayable" ? "Stuck" : playing || busy ? "Playing" : "Paused";
 
   const seek = (seconds: number) => commandRemote({ action: "seek", seconds });
@@ -44,7 +29,6 @@ export function RemoteBar({ remote }: { remote: RemotePlayer }) {
             <span />
           </span>
         )}
-        {/* `min-w-0` for the ellipsis — see the same line in `player-bar.tsx`. */}
         <span className="min-w-0 truncate">{song.title}</span>
       </p>
       <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
@@ -90,7 +74,6 @@ export function RemoteBar({ remote }: { remote: RemotePlayer }) {
     </button>
   );
 
-  // Labelled from `sm` up; on a phone the icon alone, since the title needs the width more.
   const playHere = (
     <button
       type="button"
@@ -104,8 +87,6 @@ export function RemoteBar({ remote }: { remote: RemotePlayer }) {
     </button>
   );
 
-  // Two footers, as `player-bar.tsx` has, with the same paddings and the same scrub — which
-  // is what keeps this inside the `--bar-h` the shell reserves for that bar.
   return (
     <>
       <footer className="shrink-0 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-3 pb-2 pt-2.5 lg:hidden">

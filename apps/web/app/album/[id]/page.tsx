@@ -5,11 +5,6 @@ import { fetchAlbum } from "@/lib/discography";
 
 import { AlbumView } from "../album-view";
 
-// One release, with its running order — the whole reason this page exists, since search
-// returns an album's songs in popularity order jumbled with covers and live cuts. Nothing
-// plays *from* Deezer: each row carries only Deezer's identity, and picking one sends the
-// player to find a copy it can drive.
-
 export async function generateMetadata({
   params,
 }: {

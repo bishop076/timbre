@@ -25,18 +25,14 @@ test("a stored speed is one of the menu's or normal", () => {
   assert.equal(parseSpeed(2), 2);
   assert.equal(parseSpeed(null), 1);
   assert.equal(parseSpeed("fast"), 1);
-  // A rate nobody can pick from the menu is not restored behind the reader's back.
   assert.equal(parseSpeed("3"), 1);
   assert.equal(parseSpeed("0.25"), 1);
 });
 
 test("the menu's speeds are intersected with what the player lists", () => {
-  // YouTube's usual ladder: quarter steps from 0.25× to 2×.
   assert.deepEqual(offeredSpeeds([0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]), [...SPEEDS]);
-  // An older, sparser one.
   assert.deepEqual(offeredSpeeds([0.25, 0.5, 1, 1.5, 2]), [1, 1.5, 2]);
   assert.deepEqual(offeredSpeeds([1]), [1]);
-  // Floats that are the same rate still match.
   assert.deepEqual(offeredSpeeds([1.2500000001, 1]), [1, 1.25]);
 });
 
@@ -79,7 +75,6 @@ test("the widgets say they cannot, naming themselves", () => {
 });
 
 test("the player choice follows now-playing's order", () => {
-  // SoundCloud is chosen by its source before anything else is looked at, stream or not.
   const support = speedSupport({ ...nothing, activeSource: "soundcloud", streamUrl: "/x" });
   assert.equal(support.supported, false);
 });

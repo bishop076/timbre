@@ -15,25 +15,16 @@ import { useDominantColor } from "./dominant-color";
 import { useLocalImages } from "./local-images";
 import { setDisplayName, useLocalProfile } from "./local-profile";
 
-// The finished header gradient, for the boot script to replay. The wash is sampled from a
-// picture in IndexedDB, so without a replay the header is a flat dark band for several
-// hundred milliseconds on every load. Both grounds go in, since the reader may switch.
 const WASH_KEY = "timbre:profile-wash";
 
 function recordWash(value: { dark: string; light: string } | null): void {
   try {
     if (value) window.localStorage.setItem(WASH_KEY, JSON.stringify(value));
-    // Cleared, not left: a stale record paints a wash for a frame under a banner.
     else window.localStorage.removeItem(WASH_KEY);
   } catch {
-    // Storage unavailable.
   }
 }
 
-// The counts line, recorded one text node at a time. Recorded whole, the stand-in was one
-// flat run of dim text that React replaced with the same words in bold white digits — a
-// visible change even though nothing arrived late. Per node, each figure sits in the
-// element that styles it, so the first and settled paints are the same pixels.
 const COUNTS_KEY = "timbre:profile-counts";
 
 interface Counts {
@@ -47,21 +38,15 @@ function recordCounts(counts: Counts): void {
   try {
     window.localStorage.setItem(COUNTS_KEY, JSON.stringify(counts));
   } catch {
-    // Storage unavailable.
   }
 }
 
-// What lies over a banner so the header's text stays legible. Two gradients kept separate —
-// combined into one ramp, the light ground's fade to near-white dissolved the picture into a
-// pale band. One constant because the pre-hydration replay draws it too, and must match.
 const BANNER_SCRIM = [
   `linear-gradient(to top, var(--surface-1) 0%, transparent var(--banner-fade, 45%))`,
   `linear-gradient(to top, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0.1) 100%)`,
 ].join(", ");
 
-/** The profile page — header wash, name, counts and saved playlists, all local. */
 export function ProfileView({
-  /** The name as the server knew it, from the cookie. Null if it was never set. */
   serverName = null,
 }: {
   serverName?: string | null;
@@ -78,8 +63,6 @@ export function ProfileView({
     loadPlaylists();
   }, []);
 
-  // Do not chain `profile.name || serverName` — that made clearing your display name bring
-  // the old cookie value back, since the cookie is frozen at request time.
   const displayName = hydrated
     ? profile.name?.trim() || "Profile"
     : serverName?.trim() || "Profile";
@@ -97,29 +80,18 @@ export function ProfileView({
     });
   }, [settled, playlistCount, songCount]);
 
-  // The avatar only, never cover art, or the wash settles on some album's blue while the
-  // monogram in front of it stays orange.
   const sampled = useDominantColor(local.avatar);
 
-  // `ready` waits on three separate arrivals — the local id (localStorage), the pictures
-  // (IndexedDB) and the sampled colour (an image decode). Painting on each flashed the
-  // header through three colours, starting with the placeholder id `"local"`; until then
-  // the recorded wash stands in. `sampled.settled` rather than "is there a colour yet",
-  // since a greyscale picture has no dominant hue and waiting for one never ends. A colour
-  // already in hand counts too: the avatar's URL changes once per load — thumbnail, then
-  // full copy — restarting sampling and dropping `settled` mid-load.
   const ready =
     Boolean(profile.id) && local.loaded && (sampled.settled || sampled.color !== null);
   const hue = sampled.color ? Math.round(sampled.color.h * 360) : avatarHue(profile.id || "local");
   const saturation = Math.min(0.58, Math.max(0.26, sampled.color?.s ?? AVATAR_TONE.saturation));
 
-  // A dark gradient on a pastel palette drops a heavy band across a light page.
   const light = isLightTheme(useTheme());
 
   const stop = (lightness: number, satScale = 1) =>
     `hsl(${hue} ${Math.round(saturation * satScale * 100)}% ${lightness}%)`;
 
-  // Three stops: a straight fade reads as a diagonal band across the middle.
   const washLight = `linear-gradient(to bottom, ${stop(84, 0.55)} 0%, ${stop(91, 0.4)} 45%, var(--surface-1) 100%)`;
   const washDark = `linear-gradient(to bottom, ${stop(34)} 0%, ${stop(22, 0.8)} 45%, var(--surface-1) 100%)`;
   const wash = light ? washLight : washDark;
@@ -129,7 +101,6 @@ export function ProfileView({
     recordWash(local.banner ? null : { dark: washDark, light: washLight });
   }, [ready, local.banner, washDark, washLight]);
 
-  // One flag, so the two cannot drift; a banner carries its own scrim.
   const onDark = Boolean(local.banner) || !light;
 
   function save(event: React.FormEvent) {
@@ -142,8 +113,6 @@ export function ProfileView({
     <div className="@container w-full pb-16 sm:pb-20">
       <div
         className="group/banner relative isolate flex min-h-[14rem] w-full items-end transition-[background-image] duration-300 sm:min-h-[19rem] @lg:min-h-[21rem]"
-        // `--profile-wash` is stamped by the boot script before the first paint, and unset
-        // on a first visit, which leaves the page's own ground.
         style={
           local.banner
             ? undefined
@@ -152,7 +121,7 @@ export function ProfileView({
       >
         {local.banner ? (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element -- a local data URL, never a remote host */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={local.banner}
               alt=""
@@ -161,17 +130,6 @@ export function ProfileView({
             <div aria-hidden className="absolute inset-0 -z-10" style={{ background: BANNER_SCRIM }} />
           </>
         ) : !hydrated ? (
-          /* The banner before React can read storage, from `--banner-thumb`, which the boot
-             script stamps from the cached thumbnail — the avatar's `--avatar-thumb`, for the
-             header. One layer standing in for the two above: `cover` and `center` crop a
-             background exactly as `object-cover` crops the picture, and the gradients ignore
-             both.
-
-             **`var(--banner-thumb)` has no fallback on purpose.** Unset, it makes the whole
-             declaration invalid, and `background-image` falls to `none` — scrim included — so
-             a reader without a banner gets nothing here rather than a dark band. A fallback of
-             `none` would keep the scrim. From hydration React decides, as the avatar does, so
-             a variable left behind by a removed picture is never read. */
           <div
             aria-hidden
             className="absolute inset-0 -z-10 bg-cover bg-center"
@@ -179,13 +137,8 @@ export function ProfileView({
           />
         ) : null}
 
-        {/* Always visible on touch, where there is no hover; `focus-within` keeps the
-            group up so tabbing to one does not hide it. */}
         <div className="absolute right-4 top-4 z-20 flex items-center gap-2 opacity-100 transition @lg:opacity-0 @lg:focus-within:opacity-100 @lg:group-hover/banner:opacity-100">
           <SettingsPanel />
-          {/* Positions the picker's error against the button. It cannot go on the
-              cluster: that is `absolute`, and Tailwind emits `relative` after
-              `absolute`, silently un-positioning the row. */}
           <span className="relative flex items-center">
             <ImagePicker kind="banner" hasImage={Boolean(local.banner)} variant="button" />
           </span>
@@ -193,15 +146,8 @@ export function ProfileView({
 
         <div className="mx-auto w-full max-w-6xl px-4 pb-5 pt-12 sm:px-7 sm:pb-7 sm:pt-20">
           <div className="flex flex-col gap-3 sm:gap-5 @lg:flex-row @lg:items-end @lg:gap-6">
-            {/* `self-start` is load-bearing: this column is the cross axis until `@lg`
-                turns the header into a row, so the circle stretched into a pill. The
-                outer box must not clip — the picker's error sits below the avatar and
-                was cropped to nothing inside the `overflow-hidden` circle, so a
-                rejected file produced no visible response at all. */}
             <div className="group relative shrink-0 self-start">
               <div className="overflow-hidden rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.4)] ring-2 ring-white/20">
-                {/* Paints the cached thumbnail from CSS before hydration, so no
-                    monogram is shown on the way to a photograph. */}
                 <Avatar
                   id={profile.id}
                   name={profile.name}
@@ -225,25 +171,15 @@ export function ProfileView({
 
               {editing ? (
                 <form onSubmit={save} className="flex max-w-sm flex-col gap-2">
-                  {/* The heading *is* the name, so editing it replaced the page's only `h1`
-                      with an input and left the document with no heading at all for as long
-                      as the field was open. Kept for the outline while the visible one is
-                      gone, the same way `page.tsx` and `search/page.tsx` carry a heading for
-                      pages whose title is a picture. */}
                   <h1 className="sr-only">{displayName}</h1>
                   <input
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
-                    // Escape cancels. Every other dismissible thing here binds it — both
-                    // playlist menus and the search box — and this editor was the one place
-                    // where the Cancel button was the only way out.
                     onKeyDown={(event) => {
                       if (event.key === "Escape") setEditing(false);
                     }}
                     maxLength={60}
                     autoFocus
-                    // Otherwise the field's only name is its placeholder, which a screen
-                    // reader stops announcing as soon as there is anything typed in it.
                     aria-label="Display name"
                     placeholder="What should we call you?"
                     className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-2)] px-3.5 py-2.5 text-xl font-extrabold outline-none placeholder:font-medium placeholder:text-[var(--fg-faint)]"
@@ -293,12 +229,6 @@ export function ProfileView({
                 </div>
               )}
 
-              {/* `playlists?.length ?? 0` rendered a confident "0 playlists · 0 songs"
-                  until storage answered, and zero is a real state here, so that is a
-                  wrong answer rather than a placeholder. Gating on `settled` alone left
-                  an empty line, so the figures are replayed from `recordCounts`. The row
-                  is never conditional, only its slots, so nothing resizes between the
-                  first and settled paint. */}
               {!editing && (
                 <div
                   className={`mt-3.5 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1.5 text-sm ${onDark ? "text-white/75" : "text-[var(--fg-dim)]"}`}
@@ -314,8 +244,6 @@ export function ProfileView({
                       value={settled ? plural(playlistCount, "playlist") : null}
                     />
                   </span>
-                  {/* The boot script only sets `--count-dot` when it has counts to put
-                      around it: a lone middle dot is a worse frame than nothing. */}
                   <Replay
                     slot="count-dot"
                     value={settled ? "·" : null}
@@ -330,7 +258,6 @@ export function ProfileView({
                     />{" "}
                     <Replay slot="label-songs" value={settled ? plural(songCount, "song") : null} />
                   </span>
-                  {/* Unconditional, like the row: it needs nothing from storage to draw. */}
                   <Link
                     href="/stats"
                     className={`press ml-1 rounded-[var(--r-full)] px-2.5 py-0.5 text-[12px] font-semibold ${onDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-[var(--surface-2)] text-[var(--fg)] hover:bg-[var(--surface-3)]"}`}
@@ -349,19 +276,11 @@ export function ProfileView({
           Playlists
         </h2>
 
-        {/* Exactly one of three. While unsettled, both possible shapes are in the markup
-            and CSS picks the one this browser had last time, via `data-saved`. Skeleton
-            tiles reserve the grid — rendering neither and then inserting one pushed the
-            page down a frame after it had been drawn. A first visit matches neither rule
-            and reserves nothing. */}
         {!settled ? (
           <>
             <p className="saved-none rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
               Nothing saved yet.
             </p>
-            {/* Must stay column-for-column identical to the real grid below — this is the
-                stand-in drawn from CSS before storage is read, and a different track count
-                would reflow the page the moment React took over. */}
             <ul
               aria-hidden
               className="saved-some grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5"
@@ -407,20 +326,16 @@ export function ProfileView({
   );
 }
 
-/** "playlist" or "playlists" — one rule, since the line is written twice. */
 function plural(value: number, label: string): string {
   return `${label}${value === 1 ? "" : "s"}`;
 }
 
-// One text node of the header's stats line. `null` is "not counted yet", which is not zero:
-// the node is left empty and `.replay` in globals.css draws the recorded value here instead.
 function Replay({
   slot,
   value,
   className = "",
   decorative = false,
 }: {
-  /** The custom property the boot script writes into — see `recordCounts` and `layout.tsx`. */
   slot: "count-playlists" | "label-playlists" | "count-songs" | "label-songs" | "count-dot";
   value: string | null;
   className?: string;

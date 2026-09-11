@@ -4,13 +4,9 @@ import { normalizeLoose } from "@timbre/core";
 
 import { deezer } from "./deezer";
 
-// An artist's releases, from Deezer, which publishes them keyless. No artist profile can
-// be embedded: Spotify's needs an id from a paid API and YouTube Music has none.
-
 export interface Release {
   id: number;
   title: string;
-  /** Deezer's own tagging: `album`, `single`, `ep`, `compile`. */
   kind: string;
   year: string | null;
   coverUrl: string | null;
@@ -31,13 +27,11 @@ interface DeezerAlbum {
   nb_tracks?: number;
 }
 
-/** The numeric id, read out of the profile URL the artist lookup returned. */
 export function deezerIdFrom(url: string | null | undefined): string | null {
   const match = url ? /deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/.exec(url) : null;
   return match ? match[1]! : null;
 }
 
-/** An artist's releases and neighbouring artists, from their Deezer profile URL. */
 export async function fetchDiscography(
   artistUrl: string | null | undefined,
 ): Promise<{ releases: Release[]; related: RelatedArtist[] }> {
@@ -51,8 +45,6 @@ export async function fetchDiscography(
     ),
   ]);
 
-  // Deduplicated by title: a catalogue carries one record as deluxe, regional and
-  // re-release editions, and after the sort the first sighting is the newest.
   const seen = new Set<string>();
   const releases = (albums?.data ?? [])
     .slice()
@@ -83,7 +75,6 @@ export async function fetchDiscography(
   };
 }
 
-/** A track as Timbre's player understands it, carrying only Deezer identity. */
 export interface AlbumSong {
   id: string;
   title: string;
@@ -127,7 +118,6 @@ interface DeezerAlbumDetail {
   tracks?: { data?: DeezerTrack[] };
 }
 
-/** One release and its tracks, by Deezer album id. */
 export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
   if (!/^\d+$/.test(id)) return null;
 
@@ -146,7 +136,6 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
     coverUrl: album.cover_big ?? album.cover_medium ?? null,
     trackCount: album.nb_tracks ?? tracks.length,
     songs: tracks.map((track) => ({
-      // ISRC first, matching the merger, so this and a search hit are one entry.
       id: track.isrc ?? `deezer:${track.id}`,
       title: track.title,
       artists: [track.artist?.name || artistName].filter(Boolean),
@@ -159,8 +148,6 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
           source: "deezer",
           sourceId: String(track.id),
           url: track.link ?? null,
-          // Identity only: Deezer audio needs a subscription, so the player resolves a
-          // copy it can drive when a row is picked.
           playback: "link" as const,
         },
       ],
@@ -184,8 +171,6 @@ interface DeezerArtist {
   link?: string;
 }
 
-/** How closely a candidate's name matches, 0 to 1: identical once normalised, one
- * containing the other scaled by length ratio, then shared words as a fraction. */
 function nameScore(query: string, candidate: string): number {
   const a = normalizeLoose(query);
   const b = normalizeLoose(candidate);
@@ -194,7 +179,6 @@ function nameScore(query: string, candidate: string): number {
 
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
   if (longer.includes(shorter)) {
-    // A short query inside a long name is weak evidence — "so" is in "sonic youth".
     return 0.6 + 0.35 * (shorter.length / longer.length);
   }
 
@@ -205,16 +189,10 @@ function nameScore(query: string, candidate: string): number {
   return 0.55 * (shared / new Set([...wordsA, ...wordsB]).size);
 }
 
-/** Popularity, 0–1. Logarithmic because follower counts span six orders of
- * magnitude — linearly, everyone below a million rounds to zero. */
 function reachScore(followers: number | undefined): number {
   return Math.min(1, Math.log10(1 + (followers ?? 0)) / 7);
 }
 
-/** Finds the artist a name most likely refers to. Deezer's own ordering is not enough:
- * `katseye` returns a three-follower "Katseye" before the 237,000-follower "KATSEYE", so the
- * top hit gave a page with the wrong picture and no discography. Squaring the similarity
- * means no amount of popularity can promote a wrong name. */
 export async function findArtist(name: string): Promise<ResolvedArtist | null> {
   const query = name.trim();
   if (!query) return null;
@@ -231,7 +209,6 @@ export async function findArtist(name: string): Promise<ResolvedArtist | null> {
   for (const candidate of results) {
     const similarity = nameScore(query, candidate.name);
     if (similarity === 0) continue;
-    // Similarity dominates; reach adjusts by at most 40%.
     const score = similarity * similarity * (0.6 + 0.4 * reachScore(candidate.nb_fan));
     if (score > bestScore) {
       bestScore = score;

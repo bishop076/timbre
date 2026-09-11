@@ -12,18 +12,6 @@ import { ArtistCard } from "./tile-cards";
 import { TileSkeletons } from "./tile-skeleton";
 import type { PlayContext, Song, SongsResponse } from "./types";
 
-// The home page's shelves. Split out of `search-results.tsx` so `/` no longer downloads
-// the search view and `/search` no longer downloads this.
-
-/**
- * History is stored flat, so an entry is rebuilt into the least a card and the player need.
- *
- * **The source it actually played on comes first.** Rebuilding every entry as YouTube Music
- * was right when that was the only thing Timbre could play and is now wrong: a Mixcloud show
- * came back with no source at all, the player found nothing to play, and fell through to
- * searching YouTube for its title — which returned a different song and played it. Entries
- * written before this carry only `videoId`, so that path is kept for them.
- */
 export function songFromHistory(entry: PlayedSong): Song {
   const played =
     entry.source && entry.sourceId
@@ -32,7 +20,6 @@ export function songFromHistory(entry: PlayedSong): Song {
             source: entry.source,
             sourceId: entry.sourceId,
             url: entry.url ?? null,
-            // Spotify's embed cannot be started by script; everything else Timbre plays can.
             playback: entry.source === "spotify" ? ("manual" as const) : ("queue" as const),
           },
         ]
@@ -56,18 +43,14 @@ export function songFromHistory(entry: PlayedSong): Song {
     isrc: null,
     artworkUrl: entry.artworkUrl,
     sources: played,
-    // Kept, so a song replayed from history still counts as played from its artist.
     ...(entry.from ? { from: entry.from } : {}),
   };
 }
 
-/** Shelves built from what you have listened to; nothing on a first visit. */
 function ForYou() {
   const history = useHistory();
   const [radio, setRadio] = useState<Song[]>([]);
 
-  // The most recent play that can seed a radio — a song whose every copy refused to
-  // embed has no upload id.
   const seed = history.find((entry) => entry.videoId);
 
   useEffect(() => {
@@ -82,19 +65,13 @@ function ForYou() {
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
       .then((data) => setRadio(data?.songs ?? []))
       .catch(() => {
-        // A missing shelf is not worth an error message.
       });
 
     return () => aborter.abort();
   }, [seed?.videoId, seed?.title, seed?.artists]);
 
-  // Nothing played — or nothing *read yet*, which is not the same thing. `useHistory`
-  // returns empty from `getServerSnapshot`, so a returning listener got the guest layout on
-  // every load and then had two shelves inserted above it by hydration. `data-listener` on
-  // `<html>` is the one thing the first paint can know, and `globals.css` gates on it.
   if (history.length === 0) return <ForYouPending />;
 
-  // Songs played from an artist's page arrive as that artist — see `recent-items.ts`.
   const items = recentItems(history, 12);
   const recentSongs: Song[] = items.flatMap((item) => (item.kind === "song" ? [songFromHistory(item.entry)] : []));
   const first = items[0];
@@ -132,11 +109,6 @@ function ForYou() {
   );
 }
 
-/**
- * An artist you played from their page: their picture, a link back to them, and a play button
- * for the songs of theirs you played there — newest first, still tagged with them, so playing
- * them again keeps the tile where it is rather than scattering it into songs.
- */
 function RecentArtist({ artist, entries }: { artist: PlayContext; entries: PlayedSong[] }) {
   const { play, current, state } = usePlayerControls();
   const songs = entries.map(songFromHistory);
@@ -155,8 +127,6 @@ function RecentArtist({ artist, entries }: { artist: PlayContext; entries: Playe
   );
 }
 
-/** The space "Recently played" will occupy — see `.for-you-pending` in `globals.css`. One
- * shelf, not two: "Because you played X" depends on a request that may return nothing. */
 function ForYouPending() {
   return (
     <div className="for-you-pending" aria-hidden>
@@ -169,13 +139,6 @@ function ForYouPending() {
 
 export function HomeShelves({
   charts,
-  /**
-   * The request answered and there is nothing to show — as opposed to still waiting.
-   *
-   * Without this the two were the same `null`, so a refused or unreachable /api/charts
-   * left eight skeletons pulsing under "Trending now" for ever, and the sentence below
-   * was unreachable.
-   */
   failed = false,
 }: {
   charts: SongsResponse | null;
@@ -183,8 +146,6 @@ export function HomeShelves({
 }) {
   const songs = charts?.songs ?? [];
 
-  // Either the request failed, or it answered with an empty chart. An empty shelf under a
-  // heading is indistinguishable from the app being broken, and skeletons promise more.
   const chartsFailed = failed || (charts !== null && songs.length === 0);
   const waiting = charts === null && !failed;
 
@@ -206,7 +167,6 @@ export function HomeShelves({
         </Shelf>
       )}
 
-      {/* No shelf is drawn in this state, so this is not tucked under one. */}
       {chartsFailed && (
         <p className="mb-6 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)] sm:mb-9">
           Charts aren&rsquo;t available right now. Search still works — try a song or artist

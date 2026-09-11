@@ -33,15 +33,6 @@ const MENU_WIDTH = 256;
 
 const HEADING = "text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]";
 
-/**
- * Speed and the sleep timer, behind one button beside the volume. Neither earns a permanent
- * place in the transport — both are set once and left — but both have to be visible while
- * they are in force, so the button itself shows a changed speed and a running countdown.
- *
- * `bar` is the desktop transport, `sheet` the phone's expanded one; only the trigger differs.
- * A dialog rather than a `menu`: it holds two groups of toggles and a Cancel, not a list of
- * commands, and a `menu` role promises arrow-key navigation this does not need.
- */
 export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
   const { activeSource, videoId, streamUrl, mixcloudKey, spotifyTrackId, subscriptionTrack } =
     usePlayerControls();
@@ -54,7 +45,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  // The status row comes and goes with the timer, which changes the menu's height.
   const at = useAnchoredMenu(open, root, menu, MENU_WIDTH, timer.kind);
   const speedHeading = useId();
   const sleepHeading = useId();
@@ -68,7 +58,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
     subscription: subscriptionTrack?.source ?? null,
     youtubeRates,
   });
-  // What is audible, which is not always the preference — see `speedToApply`.
   const playingAt = support.supported ? speedToApply(speed, support.speeds) : NORMAL_SPEED;
   const speedNote = !support.supported
     ? support.reason
@@ -76,8 +65,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
       ? `YouTube doesn't offer ${formatSpeed(speed)} for this video, so it plays at 1×.`
       : null;
 
-  // Apple's and Deezer's embeds register no toggle and report no ending, so neither kind of
-  // timer could act on them — offering one would be a button that silently does nothing.
   const sleepBlocked = subscriptionTrack
     ? `${subscriptionTrack.source === "apple" ? "Apple Music" : "Deezer"}'s player can't be paused from here.`
     : null;
@@ -95,7 +82,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      // The menu is in a portal, so it is not inside `root` and needs its own check.
       if (root.current?.contains(target) || menu.current?.contains(target)) return;
       setOpen(false);
     };
@@ -113,8 +99,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
     };
   }, [open, close]);
 
-  // Focus moves in once the menu has a place, or the next Tab walks the page while the menu
-  // sits at the end of <body> — the same reason as <AddToPlaylist>.
   useEffect(() => {
     if (!open || !at) return;
     if (!menu.current?.contains(document.activeElement)) menu.current?.focus();
@@ -149,8 +133,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
         style={sheet ? undefined : { background: "var(--surface-2)" }}
       >
         {changed && (
-          // Faint when the source on screen cannot honour it: the preference is kept, but
-          // showing it at full strength would claim a speed nobody is hearing.
           <span className={playingAt === speed ? undefined : "text-[var(--fg-faint)]"}>
             {formatSpeed(speed)}
           </span>
@@ -167,7 +149,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
             role="dialog"
             aria-label="Speed and sleep timer"
             tabIndex={-1}
-            // Rendered hidden before it is placed, so `useAnchoredMenu` can measure it.
             style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
             className="slab fixed z-[100] w-64 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)] outline-none"
           >
@@ -176,8 +157,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
                 <h2 id={speedHeading} className={HEADING}>
                   Speed
                 </h2>
-                {/* Enabled whatever is playing: resetting a preference is always meaningful,
-                    and it is the way out of a remembered speed on a source that ignores it. */}
                 <button
                   type="button"
                   onClick={() => writeSpeed(NORMAL_SPEED)}
@@ -245,8 +224,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
                     <button
                       key={minutes}
                       type="button"
-                      // Pressing the running one again starts it over, which is what a
-                      // reader tapping "30" twice at 1am means.
                       onClick={() => startSleepTimer(minutes)}
                       disabled={Boolean(sleepBlocked)}
                       aria-pressed={chosen}
@@ -280,7 +257,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
 
               {status && (
                 <div className="mt-2.5 flex items-center gap-2">
-                  {/* No live region: a countdown announced every second is noise. */}
                   <p className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium tabular-nums">
                     <MoonIcon className="size-3.5 shrink-0 text-[var(--accent)]" />
                     <span className="truncate">
@@ -310,8 +286,6 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
   );
 }
 
-/** The playing track's remainder at the speed it is playing, when "end of this track" is set.
- * Its own component so only it re-renders on the progress tick. */
 function TrackLeft({ rate }: { rate: number }) {
   const { position, duration } = usePlayerProgress();
   const left = trackSecondsLeft(position, duration, rate);

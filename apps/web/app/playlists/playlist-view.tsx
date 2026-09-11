@@ -13,14 +13,8 @@ import { PlaylistCover } from "./playlist-cover";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
 import { formatDuration } from "../duration";
 
-// A saved row carries the whole song — every source it was found on — so the list renders
-// and plays with no network at all.
 
-
-/** One playlist, in full. */
 export function PlaylistView({ id }: { id: string }) {
-  // Finds a song in *this* playlist, not the catalogue (see `top-bar.tsx`). Local state,
-  // not the search store, so returning can't restore a hidden filter.
   const [filter, setFilter] = useState("");
   const { play, current, state } = usePlayerControls();
   const { settled, error } = usePlaylists();
@@ -30,7 +24,6 @@ export function PlaylistView({ id }: { id: string }) {
     loadPlaylists();
   }, []);
 
-  // Storage unread is not "no such playlist" — "not found" first flashes a lie.
   if (!settled) {
     return (
       <div className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-7">
@@ -64,8 +57,6 @@ export function PlaylistView({ id }: { id: string }) {
     .filter((url): url is string => Boolean(url))
     .slice(0, 4);
 
-  // Map first, filter second, so each song carries its *stored* index — the row controls
-  // address that array, and otherwise a delete hits the wrong offset.
   const term = filter.trim().toLowerCase();
   const visible = songs
     .map((song, position) => ({ song, position }))
@@ -94,7 +85,6 @@ export function PlaylistView({ id }: { id: string }) {
             {playlist.name}
           </h1>
           <p className="mt-2 text-xs text-[var(--fg-faint)]">
-            {/* Just the count — "only in this browser" is said once, on the library page. */}
             {songs.length} {songs.length === 1 ? "song" : "songs"}
           </p>
 
@@ -110,26 +100,17 @@ export function PlaylistView({ id }: { id: string }) {
                 Play
               </button>
             )}
-            {/* Deleting has to navigate away — this page is about to stop existing. */}
             <PlaylistActions id={playlist.id} name={playlist.name} onDeletedGoTo="/library" />
           </div>
         </div>
       </header>
 
-      {/*
-        A failed write says so here too, not only in the library.
-        Reordering and removing both persist, and this page did not read the
-        store's error — so on a full browser store a drag appeared to work and
-        was gone on the next load, with nothing said.
-      */}
       {error && (
         <p role="alert" className="mb-4 text-sm text-red-400">
           {error}
         </p>
       )}
 
-      {/* Ten is where the list stops fitting a phone screen; below that a filter
-          costs more attention than the looking it saves. */}
       {songs.length >= 10 && (
         <div className="mb-3 flex items-center justify-end gap-3">
           {term !== "" && (
@@ -183,9 +164,6 @@ export function PlaylistView({ id }: { id: string }) {
               subtitle={<ArtistLink artists={song?.artists ?? []} />}
               trailing={
                 <>
-                  {/* The same control as the search results: the name plays this song from
-                      that service, the arrow opens it there. Shared so a change to either
-                      lands in both — see `source-tag.tsx`. */}
                   <SourceBadges
                     song={song}
                     className="hidden opacity-0 transition group-hover:opacity-100 @xl:flex"
@@ -195,11 +173,7 @@ export function PlaylistView({ id }: { id: string }) {
                     {formatDuration(song.durationMs)}
                   </span>
 
-                  {/* Buttons, not drag-and-drop: these work by keyboard and touch for free. */}
                   <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                    {/* No reordering while filtered: the arrows move a song one place in the
-                        *stored* list, whose neighbour is usually hidden, so the press
-                        changes the playlist and appears to do nothing. */}
                     {term === "" && (
                       <>
                         <button

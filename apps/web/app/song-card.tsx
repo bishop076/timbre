@@ -9,38 +9,18 @@ import { sameTrack } from "./player/song-match";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import type { Song } from "./types";
 
-/**
- * One tile's width, for every shelf of `SongCard`s and the tiles beside them. The card's own
- * frame and padding come out of it, so it is wider than a bare cover was: at the old 7rem a
- * phone's cover shrank to 88px inside the frame. 8rem keeps the cut-off third tile that says
- * "this scrolls".
- */
 export const TILE = "w-[8rem] shrink-0 snap-start sm:w-[11.5rem]";
 
-/**
- * A song as a browsable tile: the cover framed in a card with its title, the shape every
- * shelf shares (`.tile-card` in globals.css). A chart entry from Deezer or Apple is resolved
- * to a playable copy at play time. Two actions, so the tile cannot be one button: a button
- * may not contain another, or the inner one is dropped and assistive technology sees a
- * single unlabelled target.
- */
 export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
   const { play, enqueue, current, state, queue: playerQueue } = usePlayerControls();
   const isCurrent = current?.id === song.id;
   const isPlaying = isCurrent && state === "playing";
-  // By recording rather than id, so the tick agrees with what `enqueue` will do — see
-  // `sameTrack`.
   const isQueued = playerQueue.some((queued) => sameTrack(queued, song));
   const { onContextMenu, menu } = useSongMenu(song);
 
   return (
     <div onContextMenu={onContextMenu} className="tile-card group relative w-full p-2 text-left sm:p-3">
-      {/* The cover and the one control that must not be clipped by it. `relative` without
-          `overflow-hidden`, so the playlist menu can open past the cover's edge. */}
       <div className="relative">
-        {/* Positioned by this wrapper, not a class on <AddToPlaylist>: its own root is
-            `relative`, and Tailwind emits `.relative` after `.absolute`, so a
-            passed-through `absolute` loses. Outside the `overflow-hidden` cover too. */}
         <div className="absolute right-2 top-2 z-30 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
           <AddToPlaylist song={song} />
         </div>
@@ -62,7 +42,6 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
             className="absolute inset-0 z-10 cursor-pointer focus:outline-none"
           />
 
-          {/* Purely a picture — the button above takes the click. */}
           <span
             aria-hidden
             className={`slab-sm tint pointer-events-none absolute bottom-2 right-2 z-20 flex size-10 items-center justify-center rounded-[var(--r-md)] text-[var(--accent-fg)] transition duration-300 ease-[var(--ease)] ${
@@ -83,8 +62,6 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
             )}
           </span>
 
-          {/* Queued tiles show a tick rather than hiding the control: otherwise "nothing
-              happened" and "already in there" are indistinguishable. */}
           <button
             type="button"
             onClick={() => enqueue([song])}

@@ -1,13 +1,5 @@
 import Link from "next/link";
 
-/**
- * About and Privacy — an obligation, not furniture: the services Timbre embeds require
- * that they are named and that a privacy policy is reachable, and a page nothing links
- * to does not discharge it.
- *
- * Rendered in two places on purpose. The rail is `lg:flex`, so the library page — which
- * is in the phone's bottom nav — carries the same links at its foot.
- */
 const LINKS = [
   { label: "About", href: "/about" },
   { label: "Privacy", href: "/privacy" },

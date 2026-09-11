@@ -1,15 +1,11 @@
 "use client";
 
-/** A ranked bar chart, horizontal because the categories are names. Bars start at zero and
- * are never truncated — a bar's length *is* the value, so a shortened axis makes four look
- * like double two. One hue for every bar, not a ramp. */
 export function BarChart({
   rows,
   unit,
   onPick,
 }: {
   rows: { key: string; label: string; value: number; note?: string }[];
-  /** What one unit is, for the value labels. Singular. */
   unit: string;
   onPick?: (key: string) => void;
 }) {
@@ -23,9 +19,6 @@ export function BarChart({
         const share = (row.value / max) * 100;
         const body = (
           <>
-            {/* Sized against the *container*, not the window: `sm:w-48` keys off the
-                viewport, so on a 1280px screen where the rail and the panel leave a
-                660px column it widened the label when there was least room. */}
             <span className="w-24 shrink-0 truncate text-[12px] font-medium @sm:w-36 @2xl:w-48 @2xl:text-[13px]">
               {row.label}
             </span>

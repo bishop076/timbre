@@ -5,31 +5,9 @@ import { useEffect, useRef, type RefObject } from "react";
 import { cover } from "../artwork-url";
 import { usePlayerControls } from "./player-context";
 
-/**
- * **Lock-screen and media-key controls, for the one player Timbre owns.**
- *
- * `navigator.mediaSession` describes whatever media the *top* document is playing. The
- * embeds — YouTube, SoundCloud, Mixcloud, Spotify — play inside cross-origin frames, which
- * own their own sessions and which nothing here may reach into; `notes/PLAN.md` rules that
- * out, and rightly. But Audius, the Internet Archive and the catalogues' preview clips play
- * through Timbre's own `<audio>`, and for those the session is simply ours to fill in. Without
- * it a phone's lock screen shows the tab's title and a play button, and the keyboard's
- * next-track key does nothing, because the browser has no idea there is a queue.
- *
- * This changes nothing about *whether* audio plays in the background — a media element
- * already does, and the YouTube rule against engineering that is about YouTube's player,
- * which this never touches. It only names what is playing and wires the buttons that
- * already exist on screen.
- *
- * Mounted by `progressive-audio-player.tsx` and cleared when it unmounts, so the next
- * source — an iframe that cannot use any of this — does not inherit a stale title and a set
- * of buttons that would drive the wrong player.
- */
 export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): void {
   const { current, hasNext, next, previous, playingPreview } = usePlayerControls();
 
-  // Handlers are installed once and read the latest actions through this, rather than being
-  // torn down and re-registered on every render that produced a new `next`.
   const actions = useRef({ next, previous });
   useEffect(() => {
     actions.current = { next, previous };
@@ -45,8 +23,6 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
 
     const art = cover(current.artworkUrl, 512);
     session.metadata = new MediaMetadata({
-      // A clip says it is one here too — the lock screen is the one place the bar's label
-      // is not visible, and a thirty-second song with no explanation reads as a fault.
       title: playingPreview ? `${current.title} (preview)` : current.title,
       artist: current.artists.join(", "),
       album: current.album ?? "",
@@ -57,8 +33,6 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const session = navigator.mediaSession;
-    // Offered only when it would do something, like the on-screen Next: a lock-screen button
-    // that silently fails reads as the phone's fault.
     set(session, "nexttrack", hasNext ? () => actions.current.next() : null);
   }, [hasNext]);
 
@@ -86,8 +60,6 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
       }
     });
 
-    // The lock screen's scrubber, kept honest. `durationchange` too, since a stream reports
-    // its length only once metadata has arrived.
     const element = audio();
     const report = () => {
       if (!element || !Number.isFinite(element.duration) || element.duration <= 0) return;
@@ -98,7 +70,6 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
           playbackRate: element.playbackRate || 1,
         });
       } catch {
-        // Thrown for a position past the duration mid-seek; the next tick corrects it.
       }
     };
     element?.addEventListener("durationchange", report);
@@ -118,7 +89,6 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
       try {
         session.setPositionState();
       } catch {
-        // Older engines take no argument-less call; the metadata above is already gone.
       }
     };
   }, [audioRef]);
@@ -134,12 +104,9 @@ const ACTIONS: MediaSessionAction[] = [
   "seekforward",
 ];
 
-/** Registers one handler, ignoring an action this browser does not know — `setActionHandler`
- * throws for those rather than returning, and Safari and Firefox each lack a different few. */
 function set(session: MediaSession, action: MediaSessionAction, handler: MediaSessionActionHandler | null) {
   try {
     session.setActionHandler(action, handler);
   } catch {
-    // Unsupported action on this engine.
   }
 }

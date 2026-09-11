@@ -1,14 +1,6 @@
 import { guardHealth } from "@/lib/api";
 import { getEnv, hasSoundCloud } from "@/lib/env";
 
-/**
- * Liveness check.
- *
- * There is exactly one dependency left to report on. Timbre stores nothing
- * about anyone — playlists, profile and history all live in the reader's
- * browser — so there is no database to be up or down, and the only way this
- * endpoint can be unhealthy is the YouTube Music sidecar being unreachable.
- */
 export const dynamic = "force-dynamic";
 
 type Check = { status: "ok" | "error"; detail?: string };
@@ -31,8 +23,6 @@ async function checkYtMusic(url: string): Promise<Check> {
 }
 
 export async function GET(request: Request) {
-  // Metered, not closed. Every hit here costs a sidecar invocation as well as this one, so
-  // it was the cheapest route to spend the deployment's allowance from. See EXPOSURE.md E-10.
   const refusal = guardHealth(request);
   if (refusal) return refusal;
 
@@ -44,8 +34,6 @@ export async function GET(request: Request) {
     {
       status: healthy ? "ok" : "degraded",
       services: { ytmusic },
-      // Never secret values, only whether they exist, so a half-configured
-      // environment is visible immediately rather than failing confusingly.
       configured: { soundcloud: hasSoundCloud(env) },
     },
     { status: healthy ? 200 : 503 },

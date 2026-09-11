@@ -14,16 +14,12 @@ test("a guest spot on someone else's record still counts", () => {
 });
 
 test("an artist whose name is a fragment of the one searched is refused", () => {
-  // Reported: `Real (feat. Slim Thug, Z-Ro & MUG)` by Le$ appeared second on Lé Real's page.
-  // `Le$` normalizes to `le`, and the old filter asked whether "le real" contained it.
   assert.equal(creditNames("le real", "Le$"), false);
   assert.equal(creditNames("le real", "Real Boston Richey"), false);
   assert.equal(creditNames("le real", "Real McCoy"), false);
 });
 
 test("a longer billing containing the whole name is kept", () => {
-  // What the removed arm was actually reaching for.
   assert.equal(creditNames("le real", "Lé Real Music"), true);
-  // ...but not a name that merely starts with the same letters.
   assert.equal(creditNames("le real", "Lé Realism"), false);
 });

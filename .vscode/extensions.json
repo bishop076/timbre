@@ -1,19 +1,6 @@
 {
-  // The only file `.gitignore` lets through from .vscode, so it is the one
-  // place editor setup can be shared rather than rediscovered.
   "recommendations": [
-    // Tailwind 4 keeps its configuration in CSS, so globals.css declares
-    // `@theme`. Without this extension VS Code's plain CSS validator does not
-    // recognise it, reports "Unknown at rule" as an *error*, and paints
-    // globals.css — and every folder above it — red in the Explorer.
-    //
-    // Nothing is actually wrong when that happens: the build compiles it and
-    // lint is clean. If you would rather not install this, the local-only
-    // escape hatch is `"css.lint.unknownAtRules": "ignore"` in your own
-    // .vscode/settings.json, which is ignored by git by design.
     "bradlc.vscode-tailwindcss",
-
-    // Matches the repo's existing lint setup; the sidecar is Python.
     "dbaeumer.vscode-eslint",
     "ms-python.python",
     "charliermarsh.ruff"

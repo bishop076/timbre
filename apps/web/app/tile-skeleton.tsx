@@ -1,9 +1,3 @@
-/**
- * The placeholder for a cover tile — the card's frame around a square, a title bar and a
- * shorter subtitle bar, because that is what a `SongCard` is. Reserving the same box is the
- * point: a skeleton of a different height moves the page when the real content lands. The
- * bars sit where the text does, at the text's line heights.
- */
 export function TileSkeleton() {
   return (
     <div className="tile-card pointer-events-none p-2 sm:p-3">
@@ -20,8 +14,6 @@ export function TileSkeleton() {
   );
 }
 
-/** A row of them, each in a box of the caller's width. `aria-hidden` on every tile: a
- * screen reader announcing eight empty groups is worse than silence. */
 export function TileSkeletons({ count, className }: { count: number; className?: string }) {
   return Array.from({ length: count }, (_, index) => (
     <div key={index} className={className} aria-hidden>

@@ -1,23 +1,11 @@
-// What makes Explore move between visits without anything being stored: a slice of the clock
-// picks which part of a larger pool is shown. Deliberately without `server-only` — the
-// stations row reorders on the client from a seed the server rendered with, and the two must
-// agree or hydration shows one order and then another.
-
-/** Which period of `periodMs` the clock is in — the same number for everyone inside it. */
 export function rotationBucket(now: number, periodMs: number): number {
   return Math.floor(now / periodMs);
 }
 
-/**
- * The bucket the clock is in right now, for a server render to seed from. A statically
- * rendered page runs once per revalidation, so reading the clock there is the point, not an
- * accident — it is what makes each rebuild different from the last.
- */
 export function currentRotation(periodMs: number): number {
   return rotationBucket(Date.now(), periodMs);
 }
 
-/** Mulberry32: tiny, fast, and the same sequence for the same seed on server and browser. */
 function random(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -29,7 +17,6 @@ function random(seed: number): () => number {
   };
 }
 
-/** Fisher–Yates on a copy, driven by `seed` rather than `Math.random`, so a render can do it. */
 export function seededShuffle<T>(items: readonly T[], seed: number): T[] {
   const next = [...items];
   const draw = random(seed);
@@ -40,11 +27,6 @@ export function seededShuffle<T>(items: readonly T[], seed: number): T[] {
   return next;
 }
 
-/**
- * One from each list in turn, skipping anything already taken, until `limit` or every list
- * is spent. Round-robin rather than concatenation: three stations joined end to end play the
- * whole of the first before the second is heard.
- */
 export function interleaveBy<T>(lists: readonly T[][], key: (item: T) => string, limit: number): T[] {
   const seen = new Set<string>();
   const out: T[] = [];

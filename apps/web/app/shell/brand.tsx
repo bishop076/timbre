@@ -1,26 +1,3 @@
-/**
- * The mark, in one place so the rail and the tab cannot drift apart again — between
- * 6f8d940 and e8cc40f they showed two different logos, which is the whole reason this
- * lives in one file rather than being redrawn per caller.
- *
- * This is the palm `app/icon.svg` draws, the same path, and e8cc40f records what it is:
- * Poke.com’s, from their brand kit. That was known when it was chosen to ship, and this
- * is written down again here so the next person does not have to rediscover it.
- *
- * The glyph alone in `currentColor`, not the rounded purple tile the favicon sits on. The
- * tile beside the avatar puts two purple shapes in one row, and every other icon in this
- * app is a themeable path — see `icons.tsx`. Pass a colour through `className`.
- *
- * The viewBox is the ink’s own bounding box. The path spans 0–247 by 0–282, which is
- * where those numbers come from: `icon.svg` scales this by 0.944113 inside 512, and
- * (512 − 2×139.402) / 0.944113 is 247. So a height class gives that much visible mark
- * rather than mostly padding. Sized by height alone; the viewBox supplies the width,
- * which is why nothing here sets one.
- *
- * Labelling belongs to the caller: the same mark is a named landmark in the rail and pure
- * decoration anywhere it sits beside the word “Timbre”, and only the caller knows which.
- * Pass `aria-hidden` or a `role`/`aria-label` pair.
- */
 export function TimbreMark(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 247 282" fill="none" {...props}>

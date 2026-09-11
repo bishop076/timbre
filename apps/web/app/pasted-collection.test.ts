@@ -51,7 +51,6 @@ test("YouTube Music's own editorial playlists open", () => {
 
 test("a mix, a personal list and a plain song offer nothing", () => {
   for (const link of [
-    // The `list=` on a song opened from a radio mix: no playlist page exists behind it.
     "https://music.youtube.com/watch?v=fa5IWHDbftI&list=RDAMVMfa5IWHDbftI",
     "https://www.youtube.com/playlist?list=LL",
     "https://www.youtube.com/playlist?list=WL",

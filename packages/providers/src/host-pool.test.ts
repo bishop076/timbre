@@ -5,7 +5,6 @@ import { createHostPool } from "./host-pool.ts";
 
 const HOSTS = ["https://a.test", "https://b.test", "https://c.test"];
 
-/** A clock the test moves by hand, so a cool-down can expire without waiting for it. */
 function clock(start = 1_000) {
   let at = start;
   return { now: () => at, advance: (ms: number) => (at += ms) };
@@ -31,8 +30,6 @@ test("a host that failed is asked last until its cool-down ends", () => {
 });
 
 test("with every host cooling, the soonest to recover leads — none is dropped", () => {
-  // Demoted rather than removed: a pool that refused to ask anyone would turn one bad minute
-  // into a minute of Audius missing from every search, even after it had recovered.
   const time = clock();
   const pool = createHostPool(HOSTS, 60_000, time.now);
 

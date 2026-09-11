@@ -1,9 +1,5 @@
 "use client";
 
-// A profile picture and banner, kept in this browser. IndexedDB, not localStorage: that
-// is one ~5MB string pool for the whole origin, where a base64 picture would start
-// failing playlist saves. Pictures are per-device as a result.
-
 import { useEffect, useSyncExternalStore } from "react";
 
 import { createNotifier } from "../local-store.ts";
@@ -11,7 +7,6 @@ import { createNotifier } from "../local-store.ts";
 export type ImageKind = "avatar" | "banner";
 
 export interface LocalImages {
-  /** False until IndexedDB has answered, so "none" and "not yet" differ. */
   loaded: boolean;
   avatar: string | null;
   banner: string | null;
@@ -20,8 +15,6 @@ export interface LocalImages {
 const DB_NAME = "timbre";
 const DB_VERSION = 1;
 
-// Keyed by the kind alone, never `<userId>:<kind>`: the profile id is generated locally and
-// regenerates, and an id in the key made every picture unreachable when it changed.
 const STORE = "images";
 
 const EMPTY: LocalImages = { loaded: false, avatar: null, banner: null };
@@ -30,9 +23,6 @@ let snapshot: LocalImages = EMPTY;
 let loading: Promise<void> | null = null;
 const { emit, subscribe } = createNotifier(onStorage);
 
-// One connection, reused: open connections block a version upgrade, so a `DB_VERSION`
-// bump would hang against handles nothing can close. Eviction closes it and drops the
-// cache, so the next call reopens.
 let connection: Promise<IDBDatabase> | null = null;
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -74,15 +64,11 @@ function run<T>(
   );
 }
 
-/** Swaps object URLs, revoking the old — each pins its Blob until released. */
 function replaceUrl(previous: string | null, blob: Blob | null): string | null {
   if (previous) URL.revokeObjectURL(previous);
   return blob ? URL.createObjectURL(blob) : null;
 }
 
-// Waits for a picture to decode before anything draws it — this is what stops the avatar
-// flickering. The thumbnail paints first, then IndexedDB answers with a freshly minted
-// `blob:`, a *different* URL, so the browser paints its own grey until that one decodes.
 async function decoded(url: string | null): Promise<void> {
   if (!url) return;
   try {
@@ -90,11 +76,9 @@ async function decoded(url: string | null): Promise<void> {
     image.src = url;
     await image.decode();
   } catch {
-    // Not decodable, or the browser lacks `decode()`. Publish regardless.
   }
 }
 
-/** Reads both pictures once. Concurrent callers share the same attempt. */
 function load(): Promise<void> {
   if (loading) return loading;
   if (snapshot.loaded) return Promise.resolve();
@@ -106,7 +90,6 @@ function load(): Promise<void> {
         run<Blob | undefined>("readonly", (store) => store.get("banner")),
       ]);
 
-      // Decoded before publishing — publishing first produced the flicker.
       const nextAvatar = avatar ? URL.createObjectURL(avatar) : null;
       const nextBanner = banner ? URL.createObjectURL(banner) : null;
       await Promise.all([decoded(nextAvatar), decoded(nextBanner)]);
@@ -116,7 +99,6 @@ function load(): Promise<void> {
 
       snapshot = { loaded: true, avatar: nextAvatar, banner: nextBanner };
 
-      // Backfilled so a size change reaches browsers that already hold a picture.
       const stale = !thumbsAreCurrent();
       for (const [kind, blob] of [
         ["avatar", avatar],
@@ -125,8 +107,6 @@ function load(): Promise<void> {
         if (blob && (stale || !readThumb(kind))) void writeThumb(kind, blob);
       }
     } catch {
-      // Private browsing blocks IndexedDB. The thumbnails are kept, not discarded:
-      // they came from `localStorage`, and dropping them downgrades to a monogram.
       snapshot = { ...snapshot, loaded: true };
     } finally {
       loading = null;
@@ -137,15 +117,9 @@ function load(): Promise<void> {
   return loading;
 }
 
-// Another tab changed a picture; re-read rather than diverging. IndexedDB fires no
-// cross-document event, so the thumbnail is the fast copy *and* the notification.
 function onStorage(event: StorageEvent): void {
   if (event.key !== THUMB_KEY.avatar && event.key !== THUMB_KEY.banner) return;
 
-  // `load()` returns early once settled, so the flag has to come down first. And it hands
-  // back the read already in flight rather than starting another, so a change that lands
-  // mid-load has to wait for that read to finish and then ask again — or the picture the
-  // other tab just chose is lost until a reload, replaced by the one read before it.
   const reload = () => {
     snapshot = { ...snapshot, loaded: false };
     return load();
@@ -153,23 +127,13 @@ function onStorage(event: StorageEvent): void {
   void (loading ? loading.then(reload) : reload());
 }
 
-// A small copy of each picture, read on the first render — IndexedDB cannot be, so the
-// first paint otherwise drew the monogram and replaced it a moment later. Not the whole
-// file: base64 of a 5MB animated GIF would exceed the storage quota on its own.
 const THUMB_KEY: Record<ImageKind, string> = {
   avatar: "timbre:thumb-avatar",
   banner: "timbre:thumb-banner",
 };
 
-// Measured from where the picture is actually drawn: 384 covers the profile header's
-// 192px avatar at 2× and a phone's 128px one at 3×, where the old 96px was visibly mushy.
-// 768 is a compromise for the banner — enough for a blurred backdrop, without a megabyte
-// of base64 in the 5MB pool shared with every playlist.
 const THUMB_SIZE: Record<ImageKind, number> = { avatar: 384, banner: 768 };
 
-// Bumped whenever `THUMB_SIZE` or the encoding changes: the backfill writes only when a
-// thumbnail is *missing*, so without a mismatch to detect, a size change would reach
-// nobody who already has one.
 const THUMB_VERSION = "2";
 const THUMB_VERSION_KEY = "timbre:thumb-version";
 
@@ -184,7 +148,6 @@ function thumbsAreCurrent(): boolean {
 function readThumb(kind: ImageKind): string | null {
   try {
     const raw = window.localStorage.getItem(THUMB_KEY[kind]);
-    // User-editable storage: anything that is not a data URL never reaches `src`.
     return raw?.startsWith("data:image/") ? raw : null;
   } catch {
     return null;
@@ -194,7 +157,6 @@ function readThumb(kind: ImageKind): string | null {
 let thumbed = false;
 
 function getSnapshot(): LocalImages {
-  // `loaded` stays false: IndexedDB has still not answered, which is the question.
   if (!thumbed) {
     thumbed = true;
     const avatar = readThumb("avatar");
@@ -208,7 +170,6 @@ function getServerSnapshot(): LocalImages {
   return EMPTY;
 }
 
-/** This user's local pictures. Empty until IndexedDB answers. */
 export function useLocalImages(): LocalImages {
   const current = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
@@ -219,7 +180,6 @@ export function useLocalImages(): LocalImages {
   return current;
 }
 
-/** Writes the small synchronous copy. Failure costs only the optimisation. */
 async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
   try {
     const bitmap = await createImageBitmap(blob);
@@ -233,8 +193,6 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
 
-    // `toDataURL` silently hands back a PNG for a type it cannot encode, which at
-    // these sizes is hundreds of kilobytes — so the type is checked, not assumed.
     let encoded = canvas.toDataURL("image/webp", 0.7);
     if (!encoded.startsWith("data:image/webp")) {
       encoded = canvas.toDataURL("image/jpeg", 0.72);
@@ -244,28 +202,20 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
     window.localStorage.setItem(THUMB_VERSION_KEY, THUMB_VERSION);
     paintThumbVariables(kind);
   } catch {
-    // Quota, an unsupported encoder, or an undecodable blob.
   }
 }
 
-/** Forgets the small copy, and the first-paint variables that quote it. */
 function dropThumb(kind: ImageKind): void {
   try {
     window.localStorage.removeItem(THUMB_KEY[kind]);
   } catch {
-    // Storage unavailable; there was nothing to leave behind either.
   }
   paintThumbVariables(kind);
 }
 
-// Keeps `<html>`'s first-paint variables in step with the thumbnails. The boot script sets
-// them once and nothing else did, so a removed picture left a stale `url(…)` of a deleted
-// photograph on the document.
 function paintThumbVariables(kind: ImageKind): void {
   const root = document.documentElement;
   const thumb = readThumb(kind);
-  // Quoted exactly as the boot script in `layout.tsx` quotes it, so the two cannot disagree
-  // about a value — `JSON.stringify` is a valid CSS string token whatever the value holds.
   const url = thumb ? `url(${JSON.stringify(thumb)})` : null;
 
   if (kind === "banner") {
@@ -283,9 +233,7 @@ function paintThumbVariables(kind: ImageKind): void {
   }
 }
 
-/** Resizes and stores a picture on this device. */
 export async function setLocalImage(kind: ImageKind, file: File): Promise<void> {
-  // Dynamic: this module is in every route's bundle, the canvas path is not.
   const { redraw, ImageTooLargeError } = await import("./image-resize");
 
   const blob = await redraw(file, kind);
@@ -294,9 +242,6 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
   try {
     await run("readwrite", (store) => store.put(blob, kind));
   } catch (cause) {
-    // Rolled back: the thumbnail is written first, so a failed save would leave a small
-    // copy of a picture that was never stored — painted on the next load, then taken away
-    // the moment IndexedDB answers with nothing.
     dropThumb(kind);
 
     throw new ImageTooLargeError(
@@ -314,8 +259,6 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
   emit();
 }
 
-/** The stored picture itself, for a backup. `null` when there is none or storage is blocked —
- * a backup without a picture is still a backup. */
 export async function readLocalImage(kind: ImageKind): Promise<Blob | null> {
   try {
     return (await run<Blob | undefined>("readonly", (store) => store.get(kind))) ?? null;
@@ -324,15 +267,11 @@ export async function readLocalImage(kind: ImageKind): Promise<Blob | null> {
   }
 }
 
-/** Whether this browser holds a picture, answered synchronously from the thumbnail — for a
- * decision that cannot wait for IndexedDB, like whether an import may fill the profile in. */
 export function hasLocalImage(kind: ImageKind): boolean {
   return readThumb(kind) !== null;
 }
 
-/** Forgets a picture, falling the profile back to its derived appearance. */
 export function clearLocalImage(kind: ImageKind): void {
-  // First: a thumbnail left behind is re-read and the picture comes back for a frame.
   dropThumb(kind);
 
   snapshot = {
@@ -343,6 +282,5 @@ export function clearLocalImage(kind: ImageKind): void {
   emit();
 
   void run("readwrite", (store) => store.delete(kind)).catch(() => {
-    // Nothing stored means nothing to remove.
   });
 }

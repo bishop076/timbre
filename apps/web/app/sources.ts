@@ -1,17 +1,7 @@
-/**
- * Per-source presentation.
- *
- * Each service gets its own brand colour so a result is recognisable at a
- * glance without reading — which matters when one song shows three or four
- * sources side by side.
- */
-
 export interface SourceStyle {
   label: string;
   short: string;
-  /** Brand colour, used for the badge text and border. */
   color: string;
-  /** Background tint behind the badge. */
   tint: string;
 }
 
@@ -77,7 +67,6 @@ export function sourceStyle(id: string): SourceStyle {
   );
 }
 
-/** Suggestions shown on the empty state, chosen to show off the catalogue. */
 export const SUGGESTED_SEARCHES = [
   "Fred again..",
   "Wonderwall",

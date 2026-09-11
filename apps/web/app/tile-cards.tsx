@@ -5,14 +5,6 @@ import Link from "next/link";
 import { Artwork } from "./artwork";
 import { PlayIcon } from "./icons";
 
-/*
- * The tiles that sit on shelves beside `SongCard`: a release, and an artist. Same frame,
- * same padding, same type (`.tile-card` in globals.css), so a shelf mixing kinds — "Recently
- * played" holds songs and artists — reads as one row. Each is a link to its page; a song is
- * not, because pressing a song plays it.
- */
-
-/** An album, EP or single, linking to its page. */
 export function ReleaseCard({
   href,
   coverUrl,
@@ -39,13 +31,6 @@ export function ReleaseCard({
   );
 }
 
-/**
- * An artist: a round picture, the way every service draws a person rather than a record. The
- * picture and the name link to the artist; `onPlay` adds a play button over the picture, a
- * sibling of the link rather than inside it — a button inside a link is two targets announced
- * as one. The name's link is out of the tab order, as `SongCard`'s title button is: one stop
- * per destination.
- */
 export function ArtistCard({
   href,
   name,
@@ -59,7 +44,6 @@ export function ArtistCard({
   imageUrl: string | null;
   subtitle?: string;
   onPlay?: () => void;
-  /** Something of this artist's is playing now: the button stays up and shows the bars. */
   playing?: boolean;
 }) {
   return (
@@ -81,7 +65,6 @@ export function ArtistCard({
             onClick={onPlay}
             aria-label={`Play ${name}`}
             title={`Play ${name}`}
-            // Where the song tiles keep theirs: the lower right of the picture.
             className={`slab-sm tint absolute bottom-0 right-0 z-20 flex size-10 items-center justify-center rounded-[var(--r-full)] text-[var(--accent-fg)] transition duration-300 ease-[var(--ease)] ${
               playing
                 ? "translate-y-0 opacity-100"

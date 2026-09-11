@@ -20,18 +20,10 @@ import type { Song } from "./types";
 import type { Collection } from "@/lib/collection";
 import { cover as coverSrc } from "./artwork-url";
 
-/**
- * One collection, one page — the same layout as every other detail page. Nothing is
- * stored; the page is assembled per request from Deezer and thrown away.
- */
 export function CollectionView({ collection }: { collection: Collection }) {
   const { play, current, state } = usePlayerControls();
   const { tracks } = collection;
 
-  // Movement only for a chart — a playlist's order is whatever its editor typed, and a
-  // genre's new and on-air sections are a fresh deal each time. Pass `null`, never a spare
-  // number: `-1` stopped it *writing* a snapshot but not reading one, and `-1` is the fused
-  // ranking's key. See `chart-memory.ts`.
   const chart = collection.sections.find((section) => section.ranked);
   const snapshot = useChartSnapshot(
     chart && collection.kind === "genre" ? Number(collection.id) : null,
@@ -48,7 +40,7 @@ export function CollectionView({ collection }: { collection: Collection }) {
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6">
       <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
         {collection.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={coverSrc(collection.coverUrl, 400) ?? undefined}
             alt=""
@@ -87,18 +79,13 @@ export function CollectionView({ collection }: { collection: Collection }) {
               <ShuffleIcon className="size-4" />
               Shuffle
             </button>
-            {/* Keyed to the page: moving between collections re-renders this same tree, and a
-                "Saved" carried over from the last one would refuse to save this one. */}
             <SaveAsPlaylist key={`${collection.kind}:${collection.id}`} name={collection.title} songs={tracks} />
           </div>
 
-          {/* Said once here, not on every row. */}
           <p className="mt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
             Assembled from {collection.from} and kept nowhere.{" "}
             {collection.from === "YouTube Music"
-              ? // These rows already are the uploads that play, so nothing is searched for —
-                // until one refuses to embed, when the player's usual fall-through takes over.
-                "Each song plays the upload the playlist holds; if YouTube will not embed one, another copy of the same recording plays instead."
+              ? "Each song plays the upload the playlist holds; if YouTube will not embed one, another copy of the same recording plays instead."
               : "Playing a song searches for a copy Timbre can actually play, so an occasional match is a different upload of the same recording."}
             {snapshot && (
               <>
@@ -136,8 +123,6 @@ export function CollectionView({ collection }: { collection: Collection }) {
                 <SongRow
                   key={track.id}
                   song={track}
-                  // The whole page queues, not the section: pressing a new song and hearing
-                  // nothing after the section ends reads as the player stopping.
                   onPlay={() => play(track, tracks)}
                   isCurrent={current?.id === track.id}
                   isPlaying={state === "playing"}
@@ -173,7 +158,6 @@ export function CollectionView({ collection }: { collection: Collection }) {
   );
 }
 
-/** The word above the title: what kind of thing this page is. */
 function eyebrowOf(collection: Collection): string {
   switch (collection.kind) {
     case "genre":
@@ -185,17 +169,12 @@ function eyebrowOf(collection: Collection): string {
     case "spotify-playlist":
       return "Spotify playlist";
     case "ytmusic-playlist":
-      // How YouTube Music shares an album: as its `OLAK5uy_` list.
       return collection.id.startsWith("OLAK5uy_") ? "YouTube Music album" : "YouTube playlist";
     default:
       return "Collection";
   }
 }
 
-/**
- * What this browser played in the page's genre, above everything Deezer sent. Nothing on the
- * server — history is in local storage — and nothing at all for a genre not played yet.
- */
 function FromYourListening({ genreId }: { genreId: number }) {
   const history = useHistory();
   const taste = useTaste();
@@ -218,7 +197,6 @@ function FromYourListening({ genreId }: { genreId: number }) {
   );
 }
 
-/** Fisher–Yates on a copy. `sort(() => random - 0.5)` is measurably biased. */
 function shuffle<T>(items: T[]): T[] {
   const next = [...items];
   for (let i = next.length - 1; i > 0; i -= 1) {

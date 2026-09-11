@@ -1,22 +1,14 @@
-# The web image copies the whole monorepo, so this file is load-bearing in two
-# ways: it keeps the build context small, and it keeps .env out of the image.
-# An image layer is not a secret store — anyone who can pull the image can read
-# it, and on a public Space that is everyone.
 .env
 .env.*
 !.env.example
 
-# Reinstalled inside the image. Copying the host's tree in would mix Windows
-# binaries and symlinks into a Linux image, and pnpm would then have to undo it.
 node_modules
 **/node_modules
 
-# Python virtualenv, same reasoning — host-specific interpreters and paths.
 apps/ytmusic/.venv
 **/__pycache__
 *.egg-info
 
-# Build output, rebuilt in the image.
 .next
 **/.next
 

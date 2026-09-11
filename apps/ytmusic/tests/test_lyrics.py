@@ -1,15 +1,3 @@
-"""The lyrics route, against a stand-in for ytmusicapi.
-
-`get_lyrics` has two shapes keyed on `hasTimestamps`, and the timed one only
-exists on the Android client — so the paths worth pinning are the fall-backs:
-no lyrics tab, the songs search that finds one, a timed request that comes back
-empty or fails outright, and a plain page. Each would otherwise surface as "no
-lyrics" with no error anywhere.
-
-Every line of text here is an invented placeholder. Real lyrics are licensed
-text and have no place in a fixture.
-"""
-
 import importlib
 import sys
 
@@ -27,15 +15,12 @@ CREDIT = "Source: Placeholder Licensing"
 
 
 class FakeClient:
-    """Answers the calls the route makes, recording what it was asked."""
-
     def __init__(self, watch=None, timed=None, plain=None, timed_error=None, plain_error=None):
         self.watch = {"tracks": [], "lyrics": BROWSE} if watch is None else watch
         self.timed = timed
         self.plain = plain
         self.timed_error = timed_error
         self.plain_error = plain_error
-        # Per-upload lyrics pages, when a test needs uploads to differ.
         self.tabs: dict[str, str | None] | None = None
         self.songs: list[dict] = []
         self.search_error: Exception | None = None
@@ -69,7 +54,6 @@ class FakeClient:
 
 @pytest.fixture
 def client(monkeypatch):
-    """Installs a FakeClient for every slot and hands it back for configuring."""
     fake = FakeClient()
     monkeypatch.setattr(route, "get_client", lambda slot="default": fake)
     return fake
@@ -92,7 +76,6 @@ def ask_by_name(title: str, artist: str, *video_ids: str) -> dict:
 
 
 def song(video_id: str, title: str, *artists: str) -> dict:
-    """A songs-search result, in ytmusicapi's shape."""
     return {
         "resultType": "song",
         "videoId": video_id,
@@ -113,13 +96,11 @@ def test_timed_lines_come_back_in_milliseconds_with_the_credit(client) -> None:
 
 
 def test_timed_lines_are_sorted_rather_than_trusted(client) -> None:
-    """The web app binary-searches for the current line; out of order, it lands wrong."""
     client.timed = timed(("la", 5000), ("la la", 1000))
     assert [line["start_ms"] for line in ask()["lines"]] == [1000, 5000]
 
 
 def test_a_blank_timed_line_keeps_its_slot(client) -> None:
-    """An instrumental gap is part of the timing, as in the LRCLIB path."""
     client.timed = timed(("line one", 1000), ("", 4000), ("line two", 9000))
     assert [line["text"] for line in ask()["lines"]] == ["line one", "", "line two"]
 
@@ -159,8 +140,6 @@ def test_an_empty_timed_answer_falls_back_to_the_plain_page(client) -> None:
 
 
 def test_a_failed_timed_request_falls_back_to_the_plain_page(client) -> None:
-    """The Android context is a pinned client version YouTube can retire. Losing
-    timings is acceptable; losing the words with them is not."""
     client.timed_error = RuntimeError("client version retired")
     client.plain = {"lyrics": "la la", "source": None, "hasTimestamps": False}
     answer = ask()
@@ -176,8 +155,6 @@ def test_no_lyrics_tab_is_an_empty_answer_without_a_second_call(client) -> None:
 
 
 def test_an_upload_without_a_tab_gives_way_to_the_next(client) -> None:
-    """The case this list exists for: a music video with no Lyrics tab, then the
-    art track of the same song, which has one."""
     client.tabs = {"bbbbbbbbbbb": None, "ccccccccccc": BROWSE}
     client.timed = timed(("line one", 0))
     assert ask("bbbbbbbbbbb", "ccccccccccc")["lines"][0]["text"] == "line one"
@@ -205,8 +182,6 @@ def test_no_upload_with_a_tab_is_an_empty_answer(client) -> None:
 
 
 def test_the_request_is_bounded() -> None:
-    """Each upload without a tab is a wasted upstream call, so the list is capped,
-    and a request with nothing to look up is refused before anything goes out."""
     with pytest.raises(ValueError):
         LyricsRequest(video_ids=[])
     with pytest.raises(ValueError):
@@ -219,7 +194,6 @@ def test_the_request_is_bounded() -> None:
 
 
 def test_with_no_known_art_track_a_songs_search_finds_one(client) -> None:
-    """The usual case: the song came from search as a music video, which has no page."""
     client.tabs = {"bbbbbbbbbbb": BROWSE}
     client.songs = [song("bbbbbbbbbbb", "Song Title", "Artist")]
     client.timed = timed(("line one", 0))
@@ -253,8 +227,6 @@ def test_asides_and_case_do_not_stop_a_match(client) -> None:
 
 
 def test_an_unbracketed_guest_credit_does_not_stop_a_match(client) -> None:
-    """Found live: an upload titled "Song (Official Audio) ft. Guest" against an
-    art track titled "Song (feat. Guest)"."""
     client.tabs = {"bbbbbbbbbbb": BROWSE}
     client.songs = [song("bbbbbbbbbbb", "Song Title (feat. Guest)", "Artist")]
     client.timed = timed(("line one", 0))
@@ -276,7 +248,6 @@ def test_a_trailing_dash_aside_does_not_stop_a_match(client) -> None:
 
 
 def test_a_top_result_by_someone_else_is_not_taken(client) -> None:
-    """A wrong guess would show another song's words under a licensor's credit."""
     client.tabs = {"bbbbbbbbbbb": BROWSE}
     client.songs = [song("bbbbbbbbbbb", "Song Title", "Somebody Else")]
     assert ask_by_name("Song Title", "Artist")["lines"] == []
@@ -341,8 +312,6 @@ def test_a_failing_plain_page_is_a_502(client) -> None:
 
 
 def test_lyrics_use_their_own_client_slot(monkeypatch) -> None:
-    """`as_mobile()` rewrites the client in place; on the shared slot a search
-    running alongside would go out as the Android app."""
     slots: list[str] = []
     fake = FakeClient(timed=timed(("line one", 0)))
 
@@ -370,7 +339,6 @@ def test_the_route_is_registered_behind_the_shared_secret(monkeypatch, client) -
     answer = http.post("/lyrics", json=body, headers={"x-timbre-secret": secret})
     assert answer.status_code == 200
     assert answer.json()["synced"] is True
-    # Ids are pattern-pinned like /radio's, so nothing unbounded reaches upstream.
     refused = http.post(
         "/lyrics", json={"video_ids": ["nope"]}, headers={"x-timbre-secret": secret}
     )

@@ -21,11 +21,6 @@ import type { Release, RelatedArtist } from "@/lib/discography";
 import { cover as coverSrc } from "../artwork-url";
 import { formatDuration } from "../duration";
 
-// The artist page's surface. Songs are a plain ranked list rather than shelves of albums,
-// because Timbre's sources do not agree on album membership — YouTube Music often has none
-// at all. Playing any row queues the rest behind it.
-
-/** Songs shown before the reader asks for the rest. */
 const SONG_LIMIT = 10;
 
 const GROUPS: { heading: string; kinds: readonly string[] }[] = [
@@ -56,19 +51,15 @@ export function ArtistView({
   filtered: boolean;
   releases: Release[];
   related: RelatedArtist[];
-  /** The biography, rendered on the server and streamed in — see `artist-about.tsx`. */
   about?: ReactNode;
 }) {
   const { play, current, state } = usePlayerControls();
 
-  // Every song queued from this page says so, which is what lets "Recently played" show this
-  // artist once instead of a run of their songs. Tagged here, the one page that knows.
   const queueable = useMemo<Song[]>(() => {
     const from = { kind: "artist" as const, name, imageUrl };
     return songs.map((song) => ({ ...song, from }));
   }, [songs, name, imageUrl]);
 
-  // Ten, then a button: forty rows pushed the discography below where anyone looked.
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? queueable : queueable.slice(0, SONG_LIMIT);
 
@@ -77,7 +68,7 @@ export function ArtistView({
       <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
         <div className="slab size-24 shrink-0 overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)] sm:size-40">
           {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={coverSrc(imageUrl, 640) ?? undefined} alt="" className="size-full object-cover" />
           ) : (
             <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
@@ -139,8 +130,6 @@ export function ArtistView({
         <>
           <h2 className="mb-3 text-xl font-extrabold tracking-tight">Songs</h2>
           {!filtered && (
-            // The filter found nothing, so these are search results for the name rather
-            // than a verified discography — said plainly, not silently.
             <p className="mb-3 text-xs leading-relaxed text-[var(--fg-faint)]">
               No result credits {name} directly, so these are search matches for the name.
             </p>
@@ -154,9 +143,6 @@ export function ArtistView({
                 onPlay={() => play(song, queueable)}
                 isCurrent={current?.id === song.id}
                 isPlaying={state === "playing"}
-                // The album only when it is not the title again — see `albumAddsSomething`.
-                // Otherwise the credits, which is what every other song list in Timbre shows
-                // and which surfaces the guests a collaboration is billed to.
                 subtitle={
                   albumAddsSomething(song.album, song.title) ? (
                     song.album
@@ -199,10 +185,6 @@ export function ArtistView({
         </>
       )}
 
-      {/*
-        Discography, grouped by Deezer's record type in reading order. Compilations
-        stay with the albums — one row labelled "Compilation" earns no heading.
-      */}
       {GROUPS.map(({ heading, kinds }) => {
         const group = releases.filter((release) => kinds.includes(release.kind));
         if (group.length === 0) return null;
@@ -232,15 +214,12 @@ export function ArtistView({
         <Shelf title="Similar artists">
           {related.map((artist) => (
             <div key={artist.name} className={TILE}>
-              {/* Keyed by name: Timbre's artist route belongs to no single service. */}
               <ArtistCard href={`/artist/${toArtistSlug(artist.name)}`} name={artist.name} imageUrl={artist.imageUrl} />
             </div>
           ))}
         </Shelf>
       )}
 
-      {/* Last, where Spotify and Apple Music keep it too — and the one place that arriving a
-          few seconds after the rest moves nothing anyone is reading. */}
       {about}
     </div>
   );

@@ -11,10 +11,6 @@ import {
   type ThemeState,
 } from "./theme-store";
 
-/**
- * The modes, labelled by ground rather than by how each palette is built. Never rename
- * the ids — they are written to storage, so a rename silently resets everyone's theme.
- */
 const MODES: { id: ThemeMode; label: string; blurb: string }[] = [
   {
     id: "album",
@@ -33,19 +29,13 @@ const MODES: { id: ThemeMode; label: string; blurb: string }[] = [
   },
 ];
 
-/**
- * Twelve evenly spaced hues. A ring, not `<input type="color">`, which opens the OS
- * picker — a modal Timbre controls neither the font nor the language of.
- */
 const HUES = Array.from({ length: 12 }, (_, index) => index * 30);
 
-/** Choosing how the app looks, each option previewed in its own colours. */
 export function ThemePicker() {
   const theme = useTheme();
 
   return (
     <section>
-      {/* No heading: the settings section around this is already titled "Themes". */}
       <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
         Saved in this browser, like everything else here.
       </p>
@@ -72,7 +62,6 @@ export function ThemePicker() {
                 </span>
               )}
 
-              {/* Each strip is the mode's own ground and accent, so the choice is visible first. */}
               <span
                 aria-hidden
                 className="slab-sm flex h-8 w-full items-end gap-1 overflow-hidden rounded-[var(--r-md)] p-1 sm:h-11 sm:p-1.5"
@@ -100,7 +89,6 @@ export function ThemePicker() {
         })}
       </div>
 
-      {/* Only for the active mode — a control that changes something invisible reads as broken. */}
       {theme.mode === "custom" && (
         <div className="slab mt-3 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2.5 sm:p-3.5">
           <p className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)]">
@@ -108,7 +96,6 @@ export function ThemePicker() {
           </p>
 
           <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-2.5 sm:gap-2">
-            {/* White and dark first: at the end of a colour ring they read as two more hues. */}
             {[
               { light: true, label: "White", swatch: "#ffffff" },
               { light: false, label: "Dark", swatch: "#131318" },
@@ -130,7 +117,6 @@ export function ThemePicker() {
               );
             })}
 
-            {/* A gap, so the neutrals read as their own pair. */}
             <span aria-hidden className="w-1.5" />
 
             {HUES.map((hue) => {
@@ -151,7 +137,6 @@ export function ThemePicker() {
             })}
           </div>
 
-          {/* Hidden for the neutrals — "White" already names its ground. */}
           <div className={`mt-4 items-center gap-2 ${theme.customNeutral ? "hidden" : "flex"}`}>
             <span className="text-xs font-bold uppercase tracking-wider text-[var(--fg-dim)]">
               Ground
@@ -184,7 +169,6 @@ export function ThemePicker() {
   );
 }
 
-/** The ground a mode paints on, for its preview. Album stays near neutral — its ramp carries a third of the hue. */
 function previewGround(theme: ThemeState): string {
   if (theme.mode === "album") return "hsl(258 12% 7%)";
   if (theme.mode === "pastel") return "hsl(280 30% 96%)";

@@ -1,9 +1,5 @@
-/** Inline icons. Hand-rolled rather than a dependency, and inlining keeps them
- * themeable with currentColor. */
-
 type IconProps = { className?: string };
 
-/** Outline icons. Caps and joins are inherited; spread then override to vary one. */
 const stroked = {
   viewBox: "0 0 24 24",
   fill: "none",
@@ -14,7 +10,6 @@ const stroked = {
   "aria-hidden": true,
 } as const;
 
-/** Solid icons: filled with currentColor, never stroked. */
 const filled = { viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": true } as const;
 
 export function SearchIcon({ className }: IconProps) {
@@ -56,7 +51,6 @@ export function NoteIcon({ className }: IconProps) {
   );
 }
 
-/** Home. A roof and a door, which is the shape everyone reads instantly. */
 export function HomeIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -87,7 +81,6 @@ export function NextIcon({ className }: IconProps) {
   );
 }
 
-/** Shows the video surface. Paired with {@link VideoOffIcon} as a toggle. */
 export function VideoIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -97,7 +90,6 @@ export function VideoIcon({ className }: IconProps) {
   );
 }
 
-/** Hides the video surface — the same shape, struck through. */
 export function VideoOffIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -118,7 +110,6 @@ export function VolumeIcon({ className }: IconProps) {
   );
 }
 
-/** Muted — the same speaker, waves struck out. */
 export function VolumeMuteIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -128,7 +119,6 @@ export function VolumeMuteIcon({ className }: IconProps) {
   );
 }
 
-/** Clears the search box. Replaces the browser's unthemeable blue one. */
 export function CloseIcon({ className }: IconProps) {
   return <svg {...stroked} strokeWidth={2.2} className={className}><path d="M6 6l12 12M18 6 6 18" /></svg>;
 }
@@ -143,7 +133,6 @@ export function ShuffleIcon({ className }: IconProps) {
   );
 }
 
-/** Repeat the queue. {@link RepeatOneIcon} is the same loop with a 1 in it. */
 export function RepeatIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -165,7 +154,6 @@ export function RepeatOneIcon({ className }: IconProps) {
   );
 }
 
-/** Expands the video to fill the content area. */
 export function ExpandIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -175,7 +163,6 @@ export function ExpandIcon({ className }: IconProps) {
   );
 }
 
-/** Puts the expanded video back in the panel — the same arrows, reversed. */
 export function CollapseIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -197,8 +184,6 @@ export function PlusIcon({ className }: IconProps) {
   return <svg {...stroked} className={className}><path d="M12 5v14M5 12h14" /></svg>;
 }
 
-/** Add to the play queue — a list with a plus. Not {@link PlusIcon}: song rows carry
- * both actions, and two identical plus buttons is a coin toss over which does what. */
 export function QueueAddIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -221,7 +206,6 @@ export function CameraIcon({ className }: IconProps) {
   );
 }
 
-/** Overflow menu — the affordance for actions that are not the primary one. */
 export function MoreIcon({ className }: IconProps) {
   return (
     <svg {...filled} className={className}>
@@ -245,14 +229,10 @@ export function CheckIcon({ className }: IconProps) {
   return <svg {...stroked} strokeWidth={2.5} className={className}><path d="m5 13 4 4 10-10" /></svg>;
 }
 
-/** Save to a playlist — lines with a plus. Distinct from {@link PlusIcon}, which means
- * "add to queue"; the two sit on the same tile. */
 export function PlaylistAddIcon({ className }: IconProps) {
   return <svg {...stroked} className={className}><path d="M4 7h12M4 12h12M4 17h7" /><path d="M18 15v6M15 18h6" /></svg>;
 }
 
-/** Explore — a compass. Not a magnifier: that glyph belongs to the search field above
- * every page, and reusing it would put two meanings on one shape. */
 export function CompassIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>
@@ -324,8 +304,6 @@ export function HeartIcon({ className }: IconProps) {
   return <svg {...stroked} className={className}><path d={HEART} /></svg>;
 }
 
-/** Stroked as well as filled, not `filled`: without the stroke the solid heart is a pixel
- * smaller on every side, so liking a song would visibly shrink the button. */
 export function HeartFilledIcon({ className }: IconProps) {
   return <svg {...stroked} fill="currentColor" className={className}><path d={HEART} /></svg>;
 }
@@ -347,7 +325,6 @@ export function MoonIcon({ className }: IconProps) {
   );
 }
 
-/** Moves playback into this tab: a window with an arrow coming down into it. */
 export function PlayHereIcon({ className }: IconProps) {
   return (
     <svg {...stroked} className={className}>

@@ -1,15 +1,6 @@
 const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"]);
-// `slider` because both of Timbre's are `<div role="slider">` with their own arrow keys: the
-// global handler runs in the capture phase, so without this a seek nudge also skipped the track.
 const TYPING_ROLES = new Set(["button", "textbox", "link", "searchbox", "menuitem", "slider"]);
 
-/**
- * Whether a keystroke belongs to the focused element: text entry, buttons/links/selects where
- * Space and Enter already activate the control, and sliders, which own the arrow keys.
- * Duck-typed rather than `instanceof
- * HTMLElement` — an element from another realm, such as the iframes this app mounts, is not
- * an instance of *this* realm's, and `instanceof` against a missing global throws.
- */
 export function isTypingTarget(target: unknown): boolean {
   if (!target || typeof target !== "object") return false;
 
@@ -25,18 +16,12 @@ export function isTypingTarget(target: unknown): boolean {
     return true;
   }
 
-  // A div playing the part of a button still owns Space and Enter.
   const role = typeof element.getAttribute === "function" ? element.getAttribute("role") : null;
   return typeof role === "string" && TYPING_ROLES.has(role);
 }
 
 export type TransportAction = "toggle" | "next" | "previous" | "volume-up" | "volume-down";
 
-/**
- * Which action a keystroke means, or null for "not ours". Ctrl/Cmd/Alt chords belong to
- * the browser — `Cmd+←` is "go back" — but Shift alone forms no chord with these keys.
- * Left and right are track skips, not seeks: media keys reach the embedded iframe.
- */
 export function actionFor(event: {
   key: string;
   ctrlKey: boolean;
@@ -48,7 +33,6 @@ export function actionFor(event: {
   if (isTypingTarget(event.target)) return null;
 
   switch (event.key) {
-    // " " is the modern name; "Spacebar" is what older Firefox and Edge report.
     case " ":
     case "Spacebar":
       return "toggle";
@@ -65,5 +49,4 @@ export function actionFor(event: {
   }
 }
 
-/** How far one arrow press moves the volume, 0–100. */
 export const VOLUME_STEP = 5;

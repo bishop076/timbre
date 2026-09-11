@@ -20,7 +20,6 @@ test("tryConsume spends tokens when available", () => {
 test("tryConsume reports exactly how long to wait", () => {
   const result = tryConsume({ tokens: 1, updatedAtMs: 0 }, policy, 6, 0);
   assert.ok(!result.ok);
-  // Short by 5 tokens at 5/sec is exactly one second.
   assert.equal(result.waitMs, 1_000);
 });
 
@@ -35,7 +34,6 @@ test("acquire spends from a persisted bucket", async () => {
 
   for (let i = 0; i < 10; i++) await limiter.acquire(key, policy, 1);
 
-  // Bucket is empty; advancing the clock is what lets the next call through.
   now = 1_000;
   await limiter.acquire(key, policy, 5);
 });
@@ -53,7 +51,6 @@ test("concurrent acquisitions on one key are paced, not all admitted at once", a
     ),
   );
 
-  // Every microtask settles here, and no timer fires: the third caller must be waiting.
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(admitted, 2, "a two-token bucket admitted more than two callers at once");
 

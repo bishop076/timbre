@@ -4,17 +4,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { formatDuration } from "../duration";
 
-// A progress slider whose played portion is a travelling wave — a sine sampled as a
-// polyline, with a flat line for the remainder. Phase advances with playback position
-// rather than on a CSS animation, so there is no separate "is it animating" state to keep
-// in sync with the player. The amplitude eases to zero at the handle.
-
 const HEIGHT = 24;
 const MID = HEIGHT / 2;
-/** Wavelength and amplitude in user units; the viewBox is 100 wide. */
 const WAVELENGTH = 7;
 const AMPLITUDE = 3.2;
-/** Sample step. Small enough to look smooth, large enough to keep the path short. */
 const STEP = 0.7;
 
 function wavePath(percent: number, phase: number): string {
@@ -48,13 +41,9 @@ export function WavyProgress({
     <svg
       viewBox={`0 0 100 ${HEIGHT}`}
       preserveAspectRatio="none"
-      // The fallback applies only when nothing is passed: two competing Tailwind height
-      // classes resolve by stylesheet order rather than by intent.
       className={`w-full ${className || "h-6"}`}
       aria-hidden
     >
-      {/* One opacity cannot serve both grounds: 0.28 is a faint track in a dark room and a
-          drawn line across a pale one, so the palette sets it per ground. */}
       <line
         x1={clamped}
         y1={MID}
@@ -81,9 +70,6 @@ export function WavyProgress({
   );
 }
 
-/** The scrub handle, deliberately **not** part of the SVG: `preserveAspectRatio="none"`
- * stretches the viewBox horizontally, turning any circle inside it into a resizing
- * ellipse, and `vectorEffect` fixes strokes, not fills. */
 export function WavyHandle({ percent }: { percent: number }) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0));
   return (
@@ -95,24 +81,14 @@ export function WavyHandle({ percent }: { percent: number }) {
   );
 }
 
-// A position that advances every frame instead of twice a second. Neither embedded player
-// pushes progress events, so `youtube-player.tsx` polls on a 500ms timer, and wired
-// straight to the bar the wave lurched rather than travelled. The reported position
-// becomes an *anchor* that rendering extrapolates from with a clock.
 function useSmoothPosition(position: number, duration: number, playing: boolean): number {
   const [estimated, setEstimated] = useState(position);
   const anchor = useRef({ position, at: 0 });
 
-  // Re-anchored during render, not in an effect, so the first frame after a report
-  // extrapolates from it rather than from the previous one.
   if (anchor.current.position !== position) {
     anchor.current = { position, at: performance.now() };
   }
 
-  // Anchored again whenever playback starts. The anchor's clock began at 0 — page load —
-  // and `position` stays 0 from mount until the first poll, so the first frames of the first
-  // song extrapolated from seconds-since-load and the wave flashed full. The same on resume:
-  // time spent paused counted as time played until the next poll corrected it.
   useEffect(() => {
     if (playing) anchor.current = { position: anchor.current.position, at: performance.now() };
   }, [playing]);
@@ -133,9 +109,6 @@ function useSmoothPosition(position: number, duration: number, playing: boolean)
   return playing ? estimated : position;
 }
 
-/** The seek control. Its own component so the per-frame smoothing above re-renders *this*
- * and nothing else — inline, every control in the bar would re-render sixty times a
- * second to animate one line. */
 export function Scrub({
   position,
   duration,
@@ -159,12 +132,7 @@ export function Scrub({
       aria-label="Seek"
       aria-valuemin={0}
       aria-valuemax={Math.round(duration)}
-      // The reported position, not the interpolated one: a screen reader should hear where
-      // the track is, not a per-frame estimate.
       aria-valuenow={Math.round(position)}
-      // Without this a screen reader reads the raw number — "142" rather than "2:22 of
-      // 4:19". `aria-valuenow` is seconds because the range has to be numeric; this is the
-      // same value in the form a person uses.
       aria-valuetext={
         duration > 0
           ? `${formatDuration(position * 1000)} of ${formatDuration(duration * 1000)}`
@@ -175,15 +143,6 @@ export function Scrub({
         const box = event.currentTarget.getBoundingClientRect();
         onSeek(((event.clientX - box.left) / box.width) * duration);
       }}
-      /*
-       * `Home`, `End`, `PageUp` and `PageDown` are all scroll keys, and this slider is
-       * focusable — so seeking with the keyboard also threw the panel behind it to the top,
-       * to the bottom, or a page in either direction. Handling a key now consumes it.
-       *
-       * One decision rather than six independent `if`s, so a single place knows whether the
-       * press was ours. Home and End are expected of any slider, and are the only way to
-       * reach either end without holding an arrow down for the length of the track.
-       */
       onKeyDown={(event) => {
         if (duration <= 0) return;
 
@@ -206,7 +165,6 @@ export function Scrub({
         event.preventDefault();
         onSeek(to);
       }}
-      // Taller than the visible line: 4px is impossible with a thumb.
       className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
     >
       <WavyProgress percent={percent} playing={playing} className={height} />

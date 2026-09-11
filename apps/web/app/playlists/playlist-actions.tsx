@@ -7,13 +7,9 @@ import { MoreIcon, PencilIcon, TrashIcon } from "../icons";
 import { deletePlaylist, renamePlaylist } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
-/** Rename and delete, for one playlist. An overflow menu, because a delete control beside
- * "Play" at the same weight eventually gets hit by accident; the destructive button is
- * never the one under the cursor when the menu opens. */
 export function PlaylistActions({
   id,
   name,
-  /** Where to go after deleting. Detail pages must leave; a card can stay. */
   onDeletedGoTo,
   className,
 }: {
@@ -32,21 +28,13 @@ export function PlaylistActions({
   const [mode, setMode] = useState<"menu" | "rename" | "confirm">("menu");
   const [draft, setDraft] = useState(name);
 
-  // `mode` is in the deps because it changes the menu's height — the list, a rename field
-  // and a delete confirmation are three different boxes, and a menu that flipped above its
-  // trigger to fit the first would hang off the edge on the third without re-measuring.
   const at = useAnchoredMenu(open, root, menu, 240, mode);
 
-  // Escape and both forms remove the node holding focus, and the next Tab would restart at
-  // the top of the document. An outside click is left alone, having moved focus itself.
   const close = useCallback(() => {
     setOpen(false);
     trigger.current?.focus();
   }, []);
 
-  // Reopening starts from the menu, never a rename or delete left over from last time.
-  // Reset on the way in rather than in an effect watching `open`, which would render the
-  // stale menu once before correcting it.
   function toggle() {
     setOpen((was) => {
       if (!was) {
@@ -82,9 +70,6 @@ export function PlaylistActions({
     };
   }, [open, close]);
 
-  // The store notifies every view, so only a delete navigates — the page it happened
-  // on just stopped existing. Neither call reports a failure: a quota error is published on
-  // `PlaylistsState.error` and rendered by the views, and this menu closes on submit anyway.
   function submitRename(event: React.FormEvent) {
     event.preventDefault();
     const next = draft.trim();
@@ -112,21 +97,6 @@ export function PlaylistActions({
       </button>
 
       {open && (
-        /*
-         * Fixed and measured, not `absolute left-0 top-full`.
-         *
-         * This trigger's main home is the corner of a playlist card, and on a phone that
-         * card is about 173px wide against a 240px menu — so hanging the menu off the
-         * trigger's left ran three quarters of it off the right of the screen in the second
-         * column, where `main`'s `overflow-x: hidden` clipped it away. Flipping to `right-0`
-         * would only have moved the same problem to the left edge in the first column: no
-         * fixed alignment works when the menu is wider than what it hangs off.
-         *
-         * `useAnchoredMenu` measures against the window instead, and is shared with
-         * <AddToPlaylist>, which had grown the same logic for its own reasons. Fixed is what
-         * escapes the clipping — `overflow: hidden` does not clip a fixed descendant — so
-         * this still needs no portal.
-         */
         <div
           ref={menu}
           role="menu"

@@ -8,9 +8,6 @@ import type { Song } from "../types";
 import { addSongToPlaylist, createPlaylist, loadPlaylists, usePlaylists } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
-/** Saves a song to a playlist. A menu, because a playlist has to be chosen; the one list
- * that needs no choosing is Liked songs, which is <LikeButton>'s. Playlists are local, so
- * the interaction is synchronous. */
 export function AddToPlaylist({ song, className }: { song: Song; className?: string }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -20,23 +17,10 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  // The "saved" tick lingers for a moment before the menu closes itself. Held so that a
-  // close by other means — a click elsewhere, Escape, the row unmounting — cancels it,
-  // rather than the timer firing later and pulling focus back to this button from
-  // wherever the reader had moved on to.
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Portalled into `document.body`, not rendered beside its button: shelves are
-  // `overflow-x-auto`, and an absolutely positioned child of a scroll container is clipped
-  // by it. Fixed coordinates also let it flip to whichever side has room.
-  //
-  // The placement itself now lives in `useAnchoredMenu`, shared with <PlaylistActions>,
-  // which had none of it and needed all of it.
   const at = useAnchoredMenu(open, root, menu, 240);
 
-  // Focus has to come back with the menu: it is portalled to the end of <body>, so the node
-  // being dropped is nowhere near the row and the next Tab would restart at the top of the
-  // document. An outside click closes without this, having moved focus itself.
   const cancelClose = useCallback(() => {
     if (closeTimer.current !== null) clearTimeout(closeTimer.current);
     closeTimer.current = null;
@@ -52,8 +36,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     cancelClose();
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
-      // Focus comes back only if it is still ours to return. If the reader has already
-      // clicked into the search field, taking it back mid-word is worse than leaving it.
       const active = document.activeElement;
       const ours =
         !active ||
@@ -76,7 +58,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      // The menu is in a portal, so it is not inside `root` and needs its own check.
       if (root.current?.contains(target) || menu.current?.contains(target)) return;
       cancelClose();
       setOpen(false);
@@ -96,9 +77,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
     };
   }, [open, close, cancelClose]);
 
-  // Focus moves in once the menu has somewhere to be, or Enter on the button leaves the next
-  // Tab walking the page while the menu sits at the end of <body> — unreachable by keyboard.
-  // The containment test stops a re-place on scroll from pulling focus out of the name field.
   useEffect(() => {
     if (!open || !at) return;
     if (!menu.current?.contains(document.activeElement)) menu.current?.focus();
@@ -143,15 +121,6 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
             role="menu"
             aria-label={`Playlists for ${song.title}`}
             tabIndex={-1}
-            /*
-             * Rendered before it is placed, which is what lets the layout effect above
-             * measure a real box instead of assuming one — it used to be gated on `at` too,
-             * so on the pass that decided the position there was no element to read.
-             *
-             * `visibility` rather than `display: none` for that single pre-paint frame: a
-             * `display: none` element has no height either. Both effects run before the
-             * browser paints, so this position is never seen.
-             */
             style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
             className="slab fixed z-[100] w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)] outline-none"
           >

@@ -6,13 +6,10 @@ import { useEffect } from "react";
 import { HeartFilledIcon } from "../icons";
 import { loadLikes, useLikes } from "./likes-store";
 
-/** Liked songs' cover: a heart on the accent, not a collage. Every playlist is a collage, and
- * the one list that is not a playlist should be findable among them at a glance. */
 export function LikedCover({
   className = "",
   iconClassName = "size-8",
 }: {
-  /** Applied to the wrapper, so the caller controls size and shape — as `PlaylistCover`. */
   className?: string;
   iconClassName?: string;
 }) {
@@ -26,7 +23,6 @@ export function LikedCover({
   );
 }
 
-/** "3 songs", or nothing until storage has been read — a zero there first would be a lie. */
 function useCount(): string {
   const { songs, settled } = useLikes();
 
@@ -38,8 +34,6 @@ function useCount(): string {
   return `${songs.length} ${songs.length === 1 ? "song" : "songs"}`;
 }
 
-/** Liked songs as the first tile of the library grid — shaped like the playlist tiles
- * beside it, so it reads as one of the lists rather than as a banner above them. */
 export function LikedTile() {
   const count = useCount();
 
@@ -54,14 +48,12 @@ export function LikedTile() {
           iconClassName="size-1/3"
         />
         <span className="mt-2.5 block truncate text-sm font-semibold">Liked songs</span>
-        {/* A space rather than nothing before the read, so the tile keeps its height. */}
         <span className="block text-xs text-[var(--fg-dim)]">{count || " "}</span>
       </Link>
     </li>
   );
 }
 
-/** The same entry in the desktop rail, shaped like the playlist rows under it. */
 export function LikedRow() {
   const count = useCount();
 

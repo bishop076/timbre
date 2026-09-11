@@ -21,10 +21,6 @@ import { getPlaybackPrefs } from "./playback-prefs";
 import { usePlayer } from "./player-context";
 import { Scrub } from "./wavy-progress";
 
-// The phone's full-screen transport, shown under the expanded player. The picture above it
-// is the video, not cover art — YouTube's terms require the player to stay visible while
-// its audio plays, and it cannot be re-mounted here because a re-parented iframe reloads.
-// So this is the controls only, rendered as a sibling.
 export function MobileTransport() {
   const {
     current,
@@ -44,7 +40,6 @@ export function MobileTransport() {
     toggleTheater,
   } = usePlayer();
 
-  // Settings → General decides where this opens; after that the toggle is the reader's.
   const [showLyrics, setShowLyrics] = useState(() => getPlaybackPrefs().lyricsByDefault);
 
   const playing = state === "playing";
@@ -156,8 +151,6 @@ export function MobileTransport() {
         <PlaybackMenu variant="sheet" />
       </div>
 
-      {/* `min-h-0` is load-bearing on a flex child that scrolls: without it the panel
-          refuses to shrink and pushes the transport off the bottom of the screen. */}
       {showLyrics && (
         <div className="min-h-0 flex-1 overflow-hidden border-t-[length:var(--edge)] border-[var(--ink)] pt-2">
           <LyricsPanel />

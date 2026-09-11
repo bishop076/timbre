@@ -1,13 +1,3 @@
-"""Search and resolve routes.
-
-Both are **unauthenticated** against YouTube Music — nobody logs into anything,
-so there are no per-user credentials in this service at all.
-
-Endpoints are declared with `def` rather than `async def` on purpose:
-`ytmusicapi` is blocking, and FastAPI runs sync handlers in a threadpool. An
-`async def` here would stall the event loop for every concurrent request.
-"""
-
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -32,29 +22,13 @@ router = APIRouter()
 
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
-# Lower sorts first. Official music videos were never barred in testing; art
-# tracks were the only class that was. Anything whose type is missing or
-# unrecognised sits between the two rather than being trusted or punished.
-#
-# `OFFICIAL_SOURCE_MUSIC` ranks with OMV for what it *is*, not for a bar rate:
-# sampled, it is the artist's own channel — Fred again..'s own "Delilah" and his
-# Tiny Desk. Left at "unknown" it sat below every user re-upload, and on the
-# query the player itself fires for that song it landed 19th of 20 and was cut
-# by the `limit` below while ten re-uploads survived. (RESEARCH-2026-08-20 G-5.)
-#
-# `PODCAST_EPISODE` ranks below art tracks: a podcast episode is not a degraded
-# song, it is not a song, and at "unknown" it outranked every art track of the
-# song that was actually asked for. Ranked rather than filtered, so a search
-# that finds nothing else still answers with something. `SHOULDER`, a fifth tier
-# seen three times in about seven hundred results and never sampled, goes with
-# it: an unexamined tier should not outrank the one known to be the song.
 _EMBED_RANK = {
-    "MUSIC_VIDEO_TYPE_OMV": 0,  # official music video
-    "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC": 0,  # official artist-channel upload
-    "MUSIC_VIDEO_TYPE_UGC": 1,  # user upload
-    "MUSIC_VIDEO_TYPE_ATV": 3,  # auto-generated Topic art track — barred ~7%
-    "MUSIC_VIDEO_TYPE_PODCAST_EPISODE": 4,  # not a song at all
-    "MUSIC_VIDEO_TYPE_SHOULDER": 4,  # unsampled, see above
+    "MUSIC_VIDEO_TYPE_OMV": 0,
+    "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC": 0,
+    "MUSIC_VIDEO_TYPE_UGC": 1,
+    "MUSIC_VIDEO_TYPE_ATV": 3,
+    "MUSIC_VIDEO_TYPE_PODCAST_EPISODE": 4,
+    "MUSIC_VIDEO_TYPE_SHOULDER": 4,
 }
 _EMBED_RANK_UNKNOWN = 2
 
@@ -64,12 +38,6 @@ def _embed_rank(track: Track) -> int:
 
 
 def _search_videos(query: str, limit: int) -> list | None:
-    """The video-filter half of a search, or None if it failed.
-
-    Failure is logged and swallowed rather than raised: songs-only is a
-    degraded but perfectly usable answer, and it is what this endpoint returned
-    before the video search existed at all.
-    """
     try:
         return get_client("videos").search(query, filter="videos", limit=limit)
     except Exception as error:  # noqa: BLE001
@@ -79,30 +47,6 @@ def _search_videos(query: str, limit: int) -> list | None:
 
 @router.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest) -> SearchResponse:
-    # **Always** search videos as well, never conditionally.
-    #
-    # `filter="songs"` returns art tracks (MUSIC_VIDEO_TYPE_ATV) essentially
-    # exclusively, and art tracks are the class rights holders bar from
-    # embedding. `filter="videos"` is where the official music videos
-    # (MUSIC_VIDEO_TYPE_OMV) and user uploads (UGC) live, and those are the
-    # copies that actually play.
-    #
-    # This used to run only when the songs filter came back thin — but it
-    # almost never does, so in practice every candidate handed to the client
-    # was an art track and the client's fall-through had nothing better to try.
-    #
-    # **At the same time as the songs search, not after it.** Measured warm,
-    # each of these is about 1.4s against YouTube, and they were sequential —
-    # so making the video search unconditional (correctly) also made every
-    # search take the *sum* of two round trips, about 2.8s, for two requests
-    # that share no data and neither of which depends on the other's result.
-    # Run together the endpoint costs the slower of the two instead. Each gets
-    # its own client, because they would otherwise share one `requests.Session`
-    # — see `get_client`.
-    #
-    # One extra thread, not two: the songs search runs on the request's own
-    # thread, which is already in FastAPI's threadpool and would otherwise be
-    # sitting idle waiting for the other one.
     with ThreadPoolExecutor(max_workers=1) as pool:
         pending_videos = pool.submit(_search_videos, request.query, request.limit)
 
@@ -112,18 +56,10 @@ def search(request: SearchRequest) -> SearchResponse:
                 filter="songs",
                 limit=request.limit,
             )
-        except Exception as error:  # any upstream failure is a 502
-            # Leaving the block waits for the video search to finish before this
-            # propagates, which costs a failed search up to one extra round trip.
-            # Deliberately not worked around: cancelling a future that has
-            # already started does nothing, and racing `cancel()` against a
-            # submit that has *not* started yet is how `result()` below ends up
-            # raising CancelledError on the success path instead. A slower error
-            # is worth more than a subtle one.
+        except Exception as error:
             raise upstream_error("search", error) from error
 
         tracks = to_tracks(results)
-        # Never raises: `_search_videos` turns its own failures into None.
         videos = pending_videos.result()
 
     if videos is not None:
@@ -133,28 +69,12 @@ def search(request: SearchRequest) -> SearchResponse:
                 seen.add(track.video_id)
                 tracks.append(track)
 
-    # Order by how likely the copy is to play in an embed, best first.
-    #
-    # Measured Aug 2026 over 64 uploads across 15 chart songs, in a real browser
-    # driving the IFrame API (the only way to know — a barred upload still
-    # answers oEmbed 200 and reports playableInEmbed:true, so this genuinely
-    # cannot be determined server-side):
-    #
-    #     art tracks (ATV)        45 tested, 3 barred with error 150   ~7%
-    #     official videos (OMV)   19 tested, 0 barred                   0%
-    #
-    # Ranking also decides what survives the `limit` truncation below, so
-    # without it the video results would be appended and then cut straight off
-    # again. The client's fall-through remains the real remedy; this just makes
-    # the first attempt the one most likely to succeed.
     tracks.sort(key=_embed_rank)
 
     return SearchResponse(items=tracks[: request.limit])
 
 
 def extract_video_id(raw: str) -> str | None:
-    """Pulls a video id out of a YouTube or YouTube Music URL, or accepts a
-    bare id. Returns None if there is nothing that looks like one."""
     candidate = raw.strip()
     if VIDEO_ID.match(candidate):
         return candidate
@@ -174,7 +94,6 @@ def extract_video_id(raw: str) -> str | None:
         values = parse_qs(parsed.query).get("v")
         if values and VIDEO_ID.match(values[0]):
             return values[0]
-        # /embed/<id> and /shorts/<id>
         segments = [segment for segment in parsed.path.split("/") if segment]
         if len(segments) >= 2 and segments[0] in {"embed", "shorts", "v"}:
             return segments[1] if VIDEO_ID.match(segments[1]) else None
@@ -193,16 +112,13 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
 
     try:
         song = get_client().get_song(video_id)
-    except Exception as error:  # any upstream failure is a 502
+    except Exception as error:
         raise upstream_error("lookup", error) from error
 
     details = song.get("videoDetails") if isinstance(song, dict) else None
     if not isinstance(details, dict):
         return ResolveResponse(track=None)
 
-    # `get_song` also returns `streamingData` containing signed audio URLs.
-    # Those are deliberately never read or forwarded: Timbre embeds players, it
-    # does not extract streams. Only videoDetails is touched.
     length = details.get("lengthSeconds")
     author = details.get("author")
 

@@ -12,8 +12,6 @@ import {
   wikidataIdFrom,
 } from "./biography.ts";
 
-// Fixtures are trimmed from real answers, measured 2026-09-11.
-
 const sades = [
   { id: "band", name: "Sade", score: 100 },
   { id: "brazil", name: "Sade", score: 73 },
@@ -25,15 +23,12 @@ test("the well-known namesake MusicBrainz is sure of, not the others", () => {
 });
 
 test("a search that was only close picks nobody", () => {
-  // "radiohead 3" and "DJ Radiohead" are what a search for Radiohead returns after the band.
   const near = [
     { id: "a", name: "radiohead 3", score: 57 },
     { id: "b", name: "DJ Radiohead", score: 57 },
   ];
   assert.equal(pickArtist("Radiohead", near), null);
-  // The right name with a doubtful score is still doubtful.
   assert.equal(pickArtist("Flume", [{ id: "pt", name: "Flume", score: 80 }]), null);
-  // And a confident score on a different name is a different artist.
   assert.equal(pickArtist("Boiler Room", [{ id: "c", name: "Boiler Room Collective", score: 100 }]), null);
 });
 
@@ -59,7 +54,6 @@ test("Wikidata and English Wikipedia links are read out of MusicBrainz relations
     { type: "wikipedia", url: { resource: "https://en.wikipedia.org/wiki/Boiler_Room_(band)" } },
   ];
   assert.equal(wikidataIdFrom(relations), "Q4938334");
-  // The German article is skipped for the English one, and the title is decoded.
   assert.equal(enwikiTitleFrom(relations), "Boiler Room (band)");
   assert.equal(
     enwikiTitleFrom([{ type: "wikipedia", url: { resource: "https://en.wikipedia.org/wiki/Sigur_R%C3%B3s" } }]),
@@ -76,7 +70,6 @@ test("no links, or links to other things, give nothing", () => {
 
 test("a Deezer id claimed by exactly one entity names it; two claimants name nobody", () => {
   assert.equal(soleEntity({ query: { search: [{ title: "Q44190" }] } }), "Q44190");
-  // Deezer's "Sade" (202) is claimed by both the band and the singer.
   assert.equal(soleEntity({ query: { search: [{ title: "Q658182" }, { title: "Q194187" }] } }), null);
   assert.equal(soleEntity({ query: { search: [] } }), null);
   assert.equal(soleEntity(null), null);
@@ -85,17 +78,14 @@ test("a Deezer id claimed by exactly one entity names it; two claimants name nob
 test("the enwiki sitelink is read from a wbgetentities answer", () => {
   const body = { entities: { Q658182: { sitelinks: { enwiki: { title: "Sade (band)" } } } } };
   assert.equal(sitelinkTitle(body, "Q658182"), "Sade (band)");
-  // An entity with no English article.
   assert.equal(sitelinkTitle({ entities: { Q1: { sitelinks: {} } } }, "Q1"), null);
   assert.equal(sitelinkTitle(null, "Q1"), null);
 });
 
 test("a name match needs a release in common to count", () => {
   const band = ["Boiler Room", "Can't Breathe", "Rectify"];
-  // The broadcaster's catalogue shares only the self-titled record, which proves nothing.
   assert.equal(sharesARelease("Boiler Room", ["Boiler Room", "Boiler Room x Dekmantel"], band), false);
   assert.equal(sharesARelease("Boiler Room", ["Can't Breathe"], band), true);
-  // Reissue noise on one side does not hide the match.
   assert.equal(sharesARelease("Sade", ["Diamond Life (Remastered)"], ["Diamond Life", "Promise"]), true);
   assert.equal(sharesARelease("Sade", [], ["Diamond Life"]), false);
 });
@@ -137,7 +127,6 @@ test("an article with no prose is not a biography, and the URL is rebuilt when a
 });
 
 test("without a Deezer profile there is nothing to corroborate, so no lookup happens", async () => {
-  // Would reach the network if it went any further; the test runs offline.
   assert.equal(await findBiography({ name: "Radiohead", deezerId: null, releaseTitles: [] }), null);
   assert.equal(await findBiography({ name: "Radiohead", deezerId: "../399", releaseTitles: [] }), null);
 });

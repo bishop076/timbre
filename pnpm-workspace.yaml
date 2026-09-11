@@ -2,13 +2,7 @@ packages:
   - "apps/web"
   - "packages/*"
 
-# Hoisted from the nested workspace file create-next-app writes into apps/web.
-# That file has to be deleted, not kept: a pnpm-workspace.yaml inside a package
-# makes pnpm treat it as a separate workspace root, which silently breaks
-# `workspace:*` links to packages/.
 allowBuilds:
-  # drizzle-kit runs on esbuild, whose postinstall fetches its native binary.
-  # Without this, `db:generate` and `db:migrate` fail.
   esbuild: true
   sharp: false
   unrs-resolver: false

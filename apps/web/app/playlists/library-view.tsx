@@ -16,9 +16,6 @@ import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { createPlaylist, importPlaylists, loadPlaylists, usePlaylists } from "./store";
 
-/** Every playlist in this browser. A real route rather than only a rail, since the rail is
- * desktop-only and a phone would have no way back to what it saved. Export is the only way
- * to move playlists off this browser or survive clearing site data. */
 export function LibraryView() {
   const { playlists, settled, error } = usePlaylists();
   const profile = useLocalProfile();
@@ -26,8 +23,6 @@ export function LibraryView() {
   const [name, setName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  // A backup's profile, held while the reader decides: this browser already has one, and an
-  // import never replaces something without being asked — see `profile-backup.ts`.
   const [offered, setOffered] = useState<ProfileExport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -61,7 +56,6 @@ export function LibraryView() {
       const incoming = readProfileExport((data as { profile?: unknown }).profile);
 
       if (incoming && !hasLocalProfile()) {
-        // Nothing here to lose, so a backup restores itself.
         await applyProfile(incoming);
         setNotice(added > 0 || likes > 0 ? `Imported ${lists}, and your profile.` : "Imported your profile.");
       } else {
@@ -90,19 +84,7 @@ export function LibraryView() {
   const isEmpty = settled && playlists?.length === 0;
 
   return (
-    <div /*
-        The column must be taller than its content for `mt-auto` to push against.
-        `min-h-full` does not work — a percentage min-height needs a definite height on
-        every ancestor, which the scrolling panel does not offer. `dvh` rather than
-        `vh` so a phone's collapsing address bar leaves no strip of dead space.
-
-        `--chrome-b` is the bar and the nav together, published by <AppShell> because their
-        combined height depends on whether anything is playing. Subtracting `--nav-h` alone
-        was right only with the player bar absent; with it, this column ran `--bar-h` past
-        the bottom of the panel and the library scrolled into 96px of nothing. `--safe-t`
-        goes with it because `dvh` is the whole screen while the panel starts below the
-        status bar — see the `body` padding in globals.css.
-      */
+    <div
       className="@container mx-auto flex min-h-[calc(100dvh-var(--safe-t)-var(--chrome-b))] w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6 lg:min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your library</h1>
@@ -197,22 +179,11 @@ export function LibraryView() {
           No playlists yet.
         </p>
       )}
-      {/* Not only when there are playlists: Liked songs leads the grid either way, and on a
-          phone this grid is the only way to it. Held for the read, or that tile would stand
-          alone for a frame before the playlists joined it. */}
       {settled && (
-        /* Two up until the container is wide enough for three. `@md:grid-cols-3` was
-           already here and already dead, repeating the base — which is the tell: three
-           across a phone leaves each tile about 88px, and the cover loses another 20px to
-           the link's padding, so a playlist called anything at all truncated to roughly six
-           characters. The breakpoint that was meant to introduce the third column now
-           does. */
         <ul className="mt-6 grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
           <LikedTile />
           {playlists?.map((playlist) => (
             <li key={playlist.id} className="group relative">
-              {/* Outside the <Link>: a button in an anchor is invalid, and clicking it
-                  would follow the link on the way to the menu. */}
               <PlaylistActions
                 id={playlist.id}
                 name={playlist.name}
@@ -238,12 +209,6 @@ export function LibraryView() {
         </ul>
       )}
 
-      {/*
-        The phone's route to About and Privacy. A reachable privacy policy is a
-        condition of embedding the players Timbre depends on, and the desktop rail is
-        `lg:flex`, so this cannot be desktop-only. `mt-auto` pushes it to the end of
-        the page so it reads as a footer.
-      */}
       <SiteLinks className="mt-auto justify-center pt-16 lg:hidden" />
     </div>
   );

@@ -1,24 +1,9 @@
-# Cuts a release from the commit log, with nobody choosing a version number.
-#
-# Timbre's commits are strict conventional commits, so the types since the last tag
-# already say what kind of release this is. `scripts/release.mts` reads them, works
-# out the next version, rewrites both manifests and CHANGELOG.md, and this pushes the
-# result and publishes the Release. The arithmetic is tested — see release.test.mts.
-#
-# The script is TypeScript run by Node directly. `setup-node` with `22` resolves to
-# the newest 22.x, which strips types without a flag (22.18 and later do).
-#
-# A push that contains no `feat`, `fix` or `perf` releases nothing, so a day of
-# refactoring and docs does not mint a version.
-
 name: Release
 
 on:
   push:
     branches: [main]
 
-# One at a time, and never cancelled: a run that is halfway through pushing a tag
-# must not be killed by the next push. CI cancels its own stale runs; this must not.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -29,29 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
-    # The bump commit is itself a push to main, so without this the workflow would
-    # trigger itself for ever. Two guards rather than one, because they fail
-    # differently: `[skip ci]` is honoured by GitHub before a run is even created,
-    # and the subject check still holds if that behaviour ever changes.
     if: "!contains(github.event.head_commit.message, 'chore(release):')"
 
     permissions:
-      # Pushes the version bump, the tag, and the Release itself.
       contents: write
 
-    # Every `uses:` below is pinned to a full commit SHA, with the version in the
-    # trailing comment. Tags are mutable — whoever owns an action's repository can
-    # repoint `v4` at new code, and it runs here on the next push to main, inside a job
-    # holding a write token. That is not hypothetical: it is how tj-actions/changed-files
-    # reached tens of thousands of repositories in March 2025. A SHA cannot be repointed.
-    #
-    # Dependabot updates SHA pins exactly as it updates tags, so this costs nothing to
-    # keep current. Read the diff when it does — that is the review step the pin buys.
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # The whole history, or `git describe` cannot find the last tag and every
-          # release would be computed from the beginning of time.
           fetch-depth: 0
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
@@ -63,7 +33,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Same placeholders CI uses. The build must never need real credentials.
       - name: Write a placeholder .env
         run: |
           cat > .env <<'EOF'
@@ -71,24 +40,17 @@ jobs:
           YTMUSIC_SHARED_SECRET=ci-placeholder
           EOF
 
-      # A release must not ship something red. This repeats CI deliberately: CI runs
-      # on every branch and could be green on a stale commit, and the cost of finding
-      # out here is one job rather than a bad tag nobody can take back.
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
 
-      # The Dockerfile's own comment says an untested escape hatch is worse than none.
-      # Built and thrown away: it proves the container still assembles without
-      # publishing anything anywhere.
       - name: Build the container, and discard it
         run: docker build -t timbre:ci-check .
 
       - name: Work out the version
         id: version
         env:
-          # Fixed, so a re-run of the same commit writes the same date.
           RELEASE_DATE: ${{ github.event.head_commit.timestamp }}
         run: node scripts/release.mts
 
@@ -98,10 +60,6 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # Authored as the repository owner, not as the bot. A release commit is a
-          # version bump this repo asked for on a push of its owner's, not a third party
-          # contributing — and attributing it to `github-actions[bot]` put a bot in the
-          # contributor list for what is a one-person project.
           git config user.name "bishop076"
           git config user.email "271764729+bishop076@users.noreply.github.com"
           git add package.json apps/web/package.json CHANGELOG.md
@@ -109,26 +67,9 @@ jobs:
           git tag -a "$TAG" -m "Timbre $VERSION"
           git push origin HEAD:main --follow-tags
 
-      # Retried, and safe to run twice.
-      #
-      # 0.1.1 tagged fine and then lost its Release to a 503 from GitHub's own API.
-      # The tag is pushed by the step above, so a single failure here leaves a
-      # version that exists in git with nothing to read about it — and the next push
-      # will not retry, because by then the version is already bumped and there is
-      # nothing left to release.
-      #
-      # Existence is checked first so a re-run of a half-finished job completes it
-      # rather than failing on a Release that is already there.
       - name: Publish the Release
         if: steps.version.outputs.released == 'true'
         env:
-          # The owner's token, not the workflow's. A Release records whichever identity
-          # created it, and `github.token` *is* `github-actions[bot]` — so publishing with it
-          # put a bot's name on every release of a one-person project, and nothing about the
-          # release itself could be edited afterwards to say otherwise.
-          #
-          # Falls back to the workflow token so a fork, or this repo before the secret was
-          # set, still publishes rather than failing on an empty `GH_TOKEN`.
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |

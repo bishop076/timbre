@@ -15,13 +15,6 @@ import { drawStation, drawStations, fetchFresh, genreOfStation } from "./genre-f
 import { listNames } from "./genre-tally";
 import { getProviderRuntime } from "./providers";
 
-/*
- * A collection: songs gathered under one name — a genre, a Deezer playlist, a station, a mood
- * resolved to one, or a Spotify album or playlist or YouTube playlist someone pasted. All kinds
- * resolve to the same shape, so the page rendering them never knows which it has and there is
- * no second layout.
- */
-
 export type CollectionKind =
   | "genre"
   | "playlist"
@@ -31,14 +24,11 @@ export type CollectionKind =
   | "spotify-playlist"
   | "ytmusic-playlist";
 
-/** A named run of a collection's songs. A playlist is one untitled section; a genre is three. */
 export interface CollectionSection {
   key: string;
-  /** Null for a collection that is one list — a heading repeating the page's reads as a bug. */
   title: string | null;
   caption: string | null;
   tracks: ChartTrack[];
-  /** A chart, whose order is a ranking: numbered, and compared against the last visit. */
   ranked: boolean;
 }
 
@@ -46,21 +36,15 @@ export interface Collection {
   kind: CollectionKind;
   id: string;
   title: string;
-  /** What it is, in a few words: "Deezer chart", "48 songs · Deezer". */
   subtitle: string;
-  /** Up to four covers, tiled when the collection was assembled rather than published. */
   covers: string[];
   coverUrl: string | null;
-  /** Every section's songs, in page order — what Play and Shuffle take. */
   tracks: ChartTrack[];
   sections: CollectionSection[];
-  /** The Deezer genre it belongs to, so the page can add what *you* played in it. */
   genreId: number | null;
-  /** The catalogue it was assembled from, named on the page. */
   from: "Deezer" | "Spotify" | "YouTube Music";
 }
 
-/** Four covers, tiled. */
 function tiles(tracks: ChartTrack[]): string[] {
   return coversOf(
     tracks.map((track) => track.artworkUrl),
@@ -68,18 +52,15 @@ function tiles(tracks: ChartTrack[]): string[] {
   );
 }
 
-/** One untitled section: a playlist's order is its own and carries no heading. */
 function single(tracks: ChartTrack[]): CollectionSection[] {
   return [{ key: "all", title: null, caption: null, tracks, ranked: false }];
 }
 
-/** Sections with nothing in them dropped, and the rest flattened for Play. */
 function assemble(sections: CollectionSection[]): { sections: CollectionSection[]; tracks: ChartTrack[] } {
   const kept = sections.filter((section) => section.tracks.length > 0);
   return { sections: kept, tracks: kept.flatMap((section) => section.tracks) };
 }
 
-/** `tracks` without anything already in `taken`, renumbered — a fresh list that repeats the chart below it is no fresher. */
 function without(tracks: ChartTrack[], taken: ChartTrack[]): ChartTrack[] {
   const ids = new Set(taken.map((track) => track.id));
   return tracks
@@ -98,7 +79,6 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
   }>(`/playlist/${id}`, 86_400);
   if (!raw?.title) return null;
 
-  // Capped at 100: some playlists run two hundred deep, and every row costs an image.
   const tracks = (raw.tracks?.data ?? []).slice(0, 100).map(toTrackByOrder);
   const by = raw.creator?.name;
 
@@ -118,23 +98,13 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
   };
 }
 
-/**
- * A genre: what is new in it, what its stations are playing, then its chart. The chart
- * alone was the whole page and moves weekly, and is only loosely the genre — see
- * `genre-feed.ts`. The name is looked up, never taken from the URL, so the heading can't be
- * dictated.
- */
 async function fromGenre(id: string): Promise<Collection | null> {
-  // The id must name a genre Deezer publishes: `/chart/{id}` does not validate its path
-  // segment, and a non-numeric id returns the *global* chart, so `/genre/abc` served the
-  // worldwide top songs under a made-up heading. Never fall back to a placeholder.
   if (!/^\d+$/.test(id)) return null;
   const genre = Number(id);
 
   const [chartRaw, genres, fresh, drawn] = await Promise.all([
     deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
     deezer<{ data?: { id: number; name: string }[] }>("/genre", 604_800),
-    // The catalogue-wide chart is already the "Top songs this week" card; the rest is a genre's.
     genre === 0 ? Promise.resolve([]) : fetchFresh(genre),
     genre === 0 ? Promise.resolve({ stations: [], tracks: [] }) : drawStations(genre),
   ]);
@@ -165,7 +135,6 @@ async function fromGenre(id: string): Promise<Collection | null> {
     },
     {
       key: "chart",
-      // A single section needs no heading: it is the page.
       title: genre === 0 ? null : `${name} chart`,
       caption: genre === 0 ? null : "Deezer's chart for the genre — it leans on whatever is big overall",
       tracks: chart,
@@ -187,7 +156,6 @@ async function fromGenre(id: string): Promise<Collection | null> {
         : [fresher ? `${fresher} fresh` : null, chart.length ? `${chart.length} charting` : null, "Deezer"]
             .filter(Boolean)
             .join(" · "),
-    // From the fresh sections first: tiled from the chart, every genre wore the same four faces.
     covers: tiles(tracks),
     coverUrl: null,
     tracks,
@@ -197,7 +165,6 @@ async function fromGenre(id: string): Promise<Collection | null> {
   };
 }
 
-/** A mood or decade resolved to a playlist. Nothing is stored; most tracks wins, as a proxy for "maintained". */
 async function fromMood(term: string): Promise<Collection | null> {
   const found = await deezer<{ data?: { id: number; nb_tracks?: number }[] }>(
     `/search/playlist?q=${encodeURIComponent(term)}&limit=10`,
@@ -212,7 +179,6 @@ async function fromMood(term: string): Promise<Collection | null> {
   const collection = await fromPlaylist(String(best.id), "mood");
   if (!collection) return null;
 
-  // The pill's word heads the page: landing on "Classical sleep" alone reads as broken.
   return {
     ...collection,
     id: term,
@@ -229,11 +195,6 @@ function label(term: string): string {
     .join(" ");
 }
 
-/**
- * A Deezer station's current draw, then what is new in its genre. Title from Deezer, never
- * from the URL. The draw is cached for a quarter of an hour rather than an hour: Deezer deals
- * a different hand on every call, and holding one for an hour made a station a playlist.
- */
 async function fromRadio(id: string): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
@@ -279,20 +240,12 @@ async function fromRadio(id: string): Promise<Collection | null> {
   };
 }
 
-/**
- * A Spotify album or playlist, read anonymously — see `packages/providers/src/spotify-web.ts`.
- * Reached by pasting its link. Each track keeps its Spotify identity, so the player looks for
- * a full copy it can queue first and falls back to Spotify's own embed, exactly as it does for
- * a pasted Spotify track. A refusal from Spotify reads as "not found" rather than a 500: the
- * surface is private and will break, and a page that says so beats one that crashes.
- */
 async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Collection | null> {
   const { limiter } = getProviderRuntime();
   const found = await fetchSpotifyCollection({ limiter }, kind, id).catch(() => null);
   if (!found || found.tracks.length === 0) return null;
 
   const tracks: ChartTrack[] = found.tracks.map((track, index) => ({
-    // Namespaced like every other Spotify id in the app, so none can meet a merged song's.
     id: `spotify:${track.sourceId}`,
     title: track.title,
     artists: track.artists,
@@ -305,7 +258,6 @@ async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Col
     popularity: 0,
   }));
 
-  // Said when Spotify has more than one page's worth, or "100 songs" undersells a 300-song list.
   const count =
     found.total > tracks.length ? `${tracks.length} of ${found.total} songs` : `${tracks.length} songs`;
 
@@ -313,7 +265,6 @@ async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Col
     kind: kind === "album" ? "spotify-album" : "spotify-playlist",
     id,
     title: found.title,
-    // The Deezer playlist's wording. The kind is already the eyebrow above the title.
     subtitle: [found.by ? `by ${found.by}` : null, found.year, count, "on Spotify"]
       .filter(Boolean)
       .join(" · "),
@@ -326,30 +277,16 @@ async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Col
   };
 }
 
-/**
- * A public YouTube or YouTube Music playlist, an album's `OLAK5uy_` list included, read by the
- * sidecar without an account. Reached by pasting its link. Unlike a Spotify list's, these
- * tracks already are copies the player can queue, so pressing one plays it rather than
- * searching for it.
- *
- * Through the shared response cache as well as the page's `cache()`: that one only spans a
- * single render, and a link passed round a group chat is opened by everyone in it within
- * minutes — each a sidecar invocation and a YouTube browse without this. A failure is never
- * held (`cached` stores no rejection), and reads as "not found" for the reason Spotify's does.
- */
 async function fromYouTube(id: string): Promise<Collection | null> {
   const { limiter } = getProviderRuntime();
   const provider = listProviders().find(isYtMusicProvider);
   if (!provider) return null;
 
   const found = await cached<YtMusicPlaylist | null>(`ytmusic-playlist:${id}`, () =>
-    // 100 for the reason Deezer's playlists stop there, and it is one sidecar page besides.
     provider.playlist({ limiter }, id, 100),
   ).catch(() => null);
   if (!found) return null;
 
-  // Each video once. A playlist can repeat one, and the page keys its rows — and the player
-  // finds the song it is on — by id, so a repeat would be two rows answering as one.
   const seen = new Set<string>();
   const tracks: ChartTrack[] = [];
   for (const track of found.tracks) {
@@ -370,7 +307,6 @@ async function fromYouTube(id: string): Promise<Collection | null> {
   }
   if (tracks.length === 0) return null;
 
-  // An album's list has no author of its own; its songs' artist is the one to name.
   const album = id.startsWith("OLAK5uy_");
   const by = found.author ?? (album ? (tracks[0]?.artists[0] ?? null) : null);
   const count =
@@ -392,7 +328,6 @@ async function fromYouTube(id: string): Promise<Collection | null> {
   };
 }
 
-/** One collection by kind and id, or null when it cannot be established. */
 export async function fetchCollection(
   kind: CollectionKind,
   id: string,

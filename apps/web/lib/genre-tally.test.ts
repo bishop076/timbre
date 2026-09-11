@@ -8,7 +8,6 @@ const ALTERNATIVE = 85;
 const POP = 132;
 
 test("an artist is filed under whatever most of their releases are tagged", () => {
-  // Weezer, measured 2026-09-10: nine of ten recent albums Alternative, one Rock.
   assert.equal(dominantGenre([85, 152, 85, 85, 85, 85, 85, 85, 85, 85]), ALTERNATIVE);
 });
 
@@ -24,7 +23,6 @@ test("a tie goes to the genre seen first — the newest release, as callers orde
 
 test("recent plays outweigh older ones", () => {
   const genres = { a: ROCK, b: POP } as Record<string, number>;
-  // One recent rock play against the two before it: 1 against 0.92 + 0.92², which pop wins…
   const tally = tallyGenres(
     [{ artist: "a" }, { artist: "b" }, { artist: "b" }],
     (artist) => genres[artist] ?? null,
@@ -34,7 +32,6 @@ test("recent plays outweigh older ones", () => {
     [POP, ROCK],
   );
 
-  // …but pushed far enough back, the same two lose to it.
   const older = tallyGenres(
     [{ artist: "a" }, ...Array(20).fill({ artist: "x" }), { artist: "b" }, { artist: "b" }],
     (artist) => genres[artist] ?? null,

@@ -18,13 +18,10 @@ import { clearLogs, useLogs, type LogLevel } from "../logs.ts";
 import { setPlaybackPref, usePlaybackPrefs } from "../player/playback-prefs";
 import { SpotifyConnect } from "../spotify/connect-panel";
 
-// Fetched when Appearance is first opened; the picker is the largest thing here.
 const ThemePicker = dynamic(() => import("../theme/theme-picker").then((m) => m.ThemePicker));
 
 const REPO = "https://github.com/bishop076/timbre";
 
-/** What is running. Both halves come from `next.config.ts`; the commit is empty in
- * development and the label drops it rather than printing "unknown". */
 const VERSION = [
   `v${process.env.NEXT_PUBLIC_TIMBRE_VERSION ?? "0.0.0"}`,
   process.env.NEXT_PUBLIC_TIMBRE_COMMIT ? `(${process.env.NEXT_PUBLIC_TIMBRE_COMMIT})` : "",
@@ -32,8 +29,6 @@ const VERSION = [
   .filter(Boolean)
   .join(" ");
 
-/** The sections, in rail order. `render` rather than a component per entry, so a
- * three-line section needs no file of its own. */
 const SECTIONS = [
   {
     id: "general",
@@ -67,8 +62,6 @@ const SECTIONS = [
   },
   {
     id: "whats-new",
-    // A real apostrophe, not `&rsquo;`: this is a string rendered as a text node, so an
-    // entity would show up on screen verbatim.
     label: "What’s New",
     Icon: SparkleIcon,
     render: () => <WhatsNew />,
@@ -77,8 +70,6 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]["id"];
 
-/** The shortcuts, listed rather than configurable. Implemented in
- * `player/transport-keys.ts` — this table is kept in step by hand. */
 const SHORTCUTS: { keys: string[]; action: string; note?: string }[] = [
   { keys: ["Space"], action: "Play or pause", note: "Once something is loaded" },
   { keys: ["→"], action: "Next track" },
@@ -127,12 +118,10 @@ const LEVEL_TONE: Record<LogLevel, string> = {
   error: "text-red-400",
 };
 
-/** 24-hour, since a log read against a clock wants no am/pm to parse. */
 function stamp(at: number): string {
   return new Date(at).toLocaleTimeString(undefined, { hour12: false });
 }
 
-/** `app/logs.ts`, newest first. */
 function Logs() {
   const entries = useLogs();
 
@@ -189,8 +178,6 @@ function Logs() {
   );
 }
 
-/** The headlines from `CHANGELOG.md`, newest first. Written out rather than parsed at
- * runtime: a markdown reader in the bundle costs more than these strings do. */
 const RELEASES: { title: string; when?: string; changes: string[] }[] = [
   {
     title: "0.1.0",
@@ -299,7 +286,6 @@ function WhatsNew() {
   );
 }
 
-/** Playback behaviour — `player/playback-prefs.ts`. */
 function General() {
   const prefs = usePlaybackPrefs();
 
@@ -335,8 +321,6 @@ function General() {
   );
 }
 
-/** One setting and its two answers. A pair of pressed buttons rather than a switch: both
- * answers are named, so neither has to be read as "the absence of the other". */
 function Choice({
   label,
   detail,
@@ -379,7 +363,6 @@ function Choice({
   );
 }
 
-/** Settings, behind one button — a rail of sections beside a pane, in a dialog. */
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<SectionId>(SECTIONS[0].id);
@@ -388,15 +371,11 @@ export function SettingsPanel() {
 
   const active = SECTIONS.find((entry) => entry.id === section) ?? SECTIONS[0];
 
-  // `showModal()` is where the top layer, the `::backdrop`, Escape, the focus trap and focus
-  // back to the trigger come from. Not the scroll lock: no engine blocks the document for
-  // `dialog:modal`, and a wheel over the backdrop would move the page behind it.
   useEffect(() => {
     const el = dialog.current;
     if (!open || !el) return;
 
     el.showModal();
-    // Or the dialog focusing steps land on the first rail button and ring it.
     panel.current?.focus();
 
     const previous = document.body.style.overflow;
@@ -420,34 +399,22 @@ export function SettingsPanel() {
         <SettingsIcon className="size-4" />
       </button>
 
-      {/* `open:flex`, not `flex`: an author `display` beats the UA's
-          `dialog:not([open]) { display: none }` and would leave this over the page.
-          `::backdrop` does not inherit at this project's floor, so its tint is literal. */}
       <dialog
         ref={dialog}
         aria-modal="true"
         aria-label="Settings"
-        // Every close goes through the element and comes back as `close`, so the dialog is
-        // already hidden by the time React drops the panel.
         onClose={() => setOpen(false)}
-        // Target-checked, so a drag ending out here is not a dismissal.
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) event.currentTarget.close();
         }}
         className="fixed inset-0 size-full max-h-none max-w-none items-end justify-center overflow-hidden bg-transparent p-0 text-[var(--fg)] backdrop:bg-[rgb(0_0_0/50%)] backdrop:backdrop-blur-[8px] open:flex sm:items-center sm:p-6"
       >
-        {/* A definite 32rem height, not a maximum: sized to content the dialog grew
-            and shrank between sections, so the rail jumped and the close button moved
-            out from under the pointer. The scroll lives on the pane. */}
         {open && (
           <div
             ref={panel}
             tabIndex={-1}
             className="slab @container flex max-h-[85dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[var(--r-lg)] bg-[var(--surface-1)] outline-none sm:h-[32rem] sm:flex-row sm:rounded-[var(--r-lg)]"
           >
-            {/* Separated by tone, not a rule. A row of chips on a phone, since a
-                vertical list above the content would push the controls off the
-                bottom of the sheet. */}
             <nav
               aria-label="Settings sections"
               className="shelf flex shrink-0 gap-1 overflow-x-auto bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-visible sm:p-3"
@@ -473,13 +440,10 @@ export function SettingsPanel() {
                 );
               })}
 
-              {/* `mt-auto` rather than a spacer element, and a no-op in the
-                  horizontal layout. */}
               <div className="flex shrink-0 items-center gap-2.5 sm:mt-auto sm:px-1 sm:pt-4">
                 <a
                   href={REPO}
                   target="_blank"
-                  // `noreferrer` too, or the new tab gets a reference back to this one.
                   rel="noopener noreferrer"
                   aria-label="Timbre on GitHub"
                   title="Timbre on GitHub"
@@ -506,11 +470,6 @@ export function SettingsPanel() {
                 </button>
               </div>
 
-              {/* The sheet is flush to the bottom of the screen on a phone, so the home
-                  indicator lies over the end of this pane — the inset goes on the padding
-                  rather than on the sheet, which would leave a strip of blurred backdrop
-                  under a panel that is meant to look anchored. From `sm` the dialog is
-                  centred and floating, where the inset is simply wrong. */}
               <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+var(--safe-b))] pt-2 sm:px-6 sm:pb-5">
                 {active.render()}
               </div>

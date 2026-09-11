@@ -9,20 +9,6 @@ import type { Song } from "../types";
 import { usePlayerControls } from "./player-context";
 import { sameTrack } from "./song-match";
 
-/**
- * Right-click a song, queue it. The trailing buttons on a row only appear on hover, which is
- * fine as decoration and useless as the *only* way in — a reader who does not know they are
- * there has no reason to sweep the cursor across a row to find out.
- *
- * A context menu is the discoverable version of the same actions: everyone already tries
- * right-clicking a list. It is deliberately short — the two ways to put a song somewhere in
- * the queue, the ordinary play, and the like, which is the one save that needs no choosing —
- * since a menu that lists everything is another thing to read rather than a shortcut.
- *
- * Positioned at the pointer, so it is not anchored to any element and cannot reuse
- * `useAnchoredMenu`. Portalled for the same reason that one is: shelves and panels are
- * scroll containers, and an absolutely positioned child of one is clipped by it.
- */
 const MENU_WIDTH = 208;
 const MARGIN = 8;
 
@@ -31,10 +17,6 @@ interface Point {
   y: number;
 }
 
-/**
- * Wires a row up to the menu. Returns the handler to put on the row and the menu itself,
- * which renders into a portal and so can go anywhere in the row's markup.
- */
 export function useSongMenu(song: Song): {
   onContextMenu: (event: React.MouseEvent) => void;
   menu: React.ReactNode;
@@ -42,14 +24,9 @@ export function useSongMenu(song: Song): {
   const [at, setAt] = useState<Point | null>(null);
 
   const onContextMenu = useCallback((event: React.MouseEvent) => {
-    // Only the row's own menu, never the browser's. Shift+right-click still gets the
-    // browser's, which is the usual escape hatch and worth leaving open.
     if (event.shiftKey) return;
     event.preventDefault();
 
-    // The keyboard raises this event too — Shift+F10 and the menu key — and reports no
-    // pointer, as a zero or a -1 depending on the browser. Fall back to the row itself, or
-    // the menu opens in the top-left corner away from what it acts on.
     const useless = event.clientX <= 0 && event.clientY <= 0;
     if (useless) {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -75,15 +52,10 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
   const playing = current !== null && sameTrack(current, song);
   const liked = useIsLiked(song);
 
-  // Measured, not assumed: the menu is short but its height still decides whether it opens
-  // downwards. `useLayoutEffect` so the unplaced frame is never painted — the same trick
-  // `useAnchoredMenu` documents at length.
   useLayoutEffect(() => {
     const height = menu.current?.offsetHeight ?? 0;
 
     const left = Math.min(at.x, window.innerWidth - MENU_WIDTH - MARGIN);
-    // Down from the pointer by preference, up when there is no room below — and clamped
-    // either way, for a window too short for either.
     const wantTop = at.y + height + MARGIN <= window.innerHeight ? at.y : at.y - height;
     const maxTop = Math.max(MARGIN, window.innerHeight - height - MARGIN);
 
@@ -104,9 +76,6 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
       onClose();
     };
 
-    // Anchored to a point in the viewport rather than to an element, so a scroll leaves it
-    // pointing at nothing: it closes instead of chasing the cursor's old position. Capturing,
-    // so a scroll in any ancestor is seen and not only one on the window.
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("scroll", onClose, true);
@@ -119,8 +88,6 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
     };
   }, [onClose]);
 
-  // Focus moves in once it has somewhere to be, or the next Tab walks the page while the
-  // menu sits at the end of <body>, unreachable by keyboard.
   useEffect(() => {
     if (placed) menu.current?.focus();
   }, [placed]);
@@ -182,8 +149,6 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
   );
 }
 
-/** One row of the menu. `hint` says why a disabled item is disabled — "nothing happened" and
- * "it is already there" are otherwise the same event. */
 function Item({
   icon,
   onClick,

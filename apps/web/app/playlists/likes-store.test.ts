@@ -3,10 +3,6 @@ import { test } from "node:test";
 
 import { sameTrack } from "../player/song-match.ts";
 
-/*
- * As in `store.test.ts`: module-level state and one read of storage, so each test imports
- * its own copy, and a query string is the only way past the ESM cache.
- */
 let instance = 0;
 
 interface Storage {
@@ -20,7 +16,6 @@ async function fresh(seed?: Storage, { full = false } = {}) {
     localStorage: {
       getItem: (key: string) => backing[key] ?? null,
       setItem: (key: string, value: string) => {
-        // What a browser throws when the origin's quota is spent.
         if (full) throw new Error("QuotaExceededError");
         backing[key] = value;
       },
@@ -39,7 +34,6 @@ async function fresh(seed?: Storage, { full = false } = {}) {
 
 const KEY = "timbre:likes";
 
-/** A song with every field the app dereferences without a guard. */
 function song(id: string, title = `Track ${id}`, extra: Record<string, unknown> = {}) {
   return {
     id,
@@ -74,8 +68,6 @@ test("likes are stored newest first, without the page they were played from", as
 test("the same recording under another id is one like, and unliking it clears it", async () => {
   const { likes } = await fresh();
 
-  // Two merges of one song can rank different uploads first and so arrive under two ids —
-  // the reason the store asks `sameTrack` rather than comparing ids.
   likes.likeSong(song("key#ytmusic:one", "Take Care"));
   likes.likeSong(song("key#ytmusic:two", "Take Care (Official Video)"));
   assert.equal(likes.getLikedSongs().length, 1);
@@ -88,7 +80,6 @@ test("a different recording is a different like", async () => {
   const { likes } = await fresh();
 
   likes.likeSong(song("a", "Take Care"));
-  // An acoustic take is its own recording, and Drake's *Take Care* is a different song.
   likes.likeSong(song("b", "Take Care (Acoustic)"));
   likes.likeSong({ ...song("c", "Take Care"), artists: ["Drake"] });
 
@@ -107,9 +98,6 @@ test("a shared ISRC is the same recording whatever the titles say", async () => 
 test("the index never answers differently from asking sameTrack of every entry", async () => {
   const { likes } = await fresh();
 
-  // The index is only a shortcut to the entries worth asking — so across ids, ISRCs,
-  // decoration, variants, featured credits and a title with no words, it must agree with
-  // the slow way on every pair.
   const pool = [
     song("same-id", "One Title"),
     song("same-id", "Another Title Entirely"),
@@ -138,7 +126,6 @@ test("the index never answers differently from asking sameTrack of every entry",
 test("a like starts from what is stored, not from an empty list", async () => {
   const { likes, backing } = await fresh({ [KEY]: JSON.stringify([song("old")]) });
 
-  // No read has happened yet — the first write must not overwrite the stored likes.
   likes.likeSong(song("new"));
 
   assert.deepEqual(

@@ -6,7 +6,6 @@ import { MemoryBucketStore, RateLimiter } from "@timbre/core";
 import { interleaveByPlayability, recommendFrom, registerProvider } from "./registry.ts";
 import type { Playback, SearchProvider, SourceId, SourceTrack } from "./types.ts";
 
-/** Only the two fields the interleaver reads. */
 function source(id: SourceId, playback: Playback): SearchProvider {
   return {
     id,
@@ -32,8 +31,6 @@ function tracks(id: SourceId, count: number): SourceTrack[] {
 }
 
 test("sources take turns rather than one owning the top of the list", () => {
-  // The bug this replaced: concatenating meant all of one source, then all of the next,
-  // so a source whose rows never merged began at #21 — past where anyone scrolls.
   const out = interleaveByPlayability([
     { provider: source("ytmusic", "queue"), tracks: tracks("ytmusic", 3) },
     { provider: source("audius", "queue"), tracks: tracks("audius", 3) },
@@ -92,8 +89,6 @@ test("a source that answered with nothing contributes nothing", () => {
 });
 
 test("a radio source that fails is reported to the caller's hook, and an abort is not", async () => {
-  // Registered here rather than in a helper because the registry is module state; node:test
-  // runs each file in its own process, so nothing leaks into another suite.
   const failure = new Error("Deezer returned 503.");
   registerProvider({
     ...source("deezer", "link"),
@@ -110,7 +105,6 @@ test("a radio source that fails is reported to the caller's hook, and an abort i
   assert.deepEqual(songs, [], "a failed source contributes nothing and throws nothing");
   assert.deepEqual(reported, [{ event: "radio_failed", fields: { source: "deezer", error: failure } }]);
 
-  // The reader left: every source rejects at once, and none of them is at fault.
   const controller = new AbortController();
   controller.abort();
   reported.length = 0;

@@ -6,18 +6,11 @@ import { optionalQueryText } from "@/lib/query-text";
 import { CACHE_CONTROL_HOUR, guard } from "@/lib/api";
 import { log } from "@/lib/log";
 
-// What to play next — not a passthrough of YouTube Music's watch queue. Every source that
-// can answer contributes a ranked list, and the lists are **fused**: a song several reach
-// independently outranks any one list's favourite. See `recommend.ts`.
 export const revalidate = 3600;
 
 const querySchema = z.object({
-  // All three passed, each provider taking what it can use: YouTube Music continues from
-  // an upload, Deezer can only start from an artist, Audius only from a title.
   id: optionalQueryText(64),
   artist: optionalQueryText(200),
-  // So the seed can be excluded from its own results: Deezer's top tracks include it,
-  // so without this the first suggestion is often what just played.
   title: optionalQueryText(300),
   limit: z.coerce.number().int().min(1).max(50).default(25),
 });
@@ -58,7 +51,6 @@ export async function GET(request: Request) {
     title && artist ? [{ title, artists: [artist] }] : undefined,
   );
 
-  // Always 200: a failed radio and an empty one produce the same UI.
   return Response.json(
     { songs, failures: [] },
     { headers: { "cache-control": CACHE_CONTROL_HOUR } },

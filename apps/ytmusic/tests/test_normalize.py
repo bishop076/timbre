@@ -1,10 +1,3 @@
-"""Flattening ytmusicapi's result dicts.
-
-`ytmusicapi` tracks YouTube's private API and its shapes change without
-warning, so these tests are mostly about degrading gracefully rather than
-about happy paths.
-"""
-
 from app.normalize import to_track, to_tracks
 
 SONG = {
@@ -39,8 +32,6 @@ def test_picks_the_largest_thumbnail() -> None:
 
 
 def test_keeps_videos_not_just_songs() -> None:
-    # Videos are where remixes, live sets and unofficial uploads live — often
-    # the only copy in existence, and precisely the catalogue Timbre targets.
     video = {**SONG, "resultType": "video"}
     track = to_track(video)
     assert track is not None
@@ -75,8 +66,6 @@ def test_survives_a_missing_or_malformed_duration() -> None:
 
 
 def test_survives_every_optional_field_disappearing() -> None:
-    # The shape after a hypothetical upstream change: only the two fields we
-    # genuinely require survive.
     track = to_track({"resultType": "song", "videoId": "abc12345678", "title": "X"})
     assert track is not None
     assert track.artists == []
@@ -86,7 +75,6 @@ def test_survives_every_optional_field_disappearing() -> None:
 
 
 def test_filters_separators_out_of_artist_lists() -> None:
-    # Video results interleave bullet separators and view counts with artists.
     track = to_track({**SONG, "artists": [{"name": "Oasis"}, {"name": "•"}, {"name": "  "}, "junk"]})
     assert track is not None
     assert track.artists == ["Oasis"]

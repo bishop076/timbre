@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import { describeError, log, scrub } from "./log.ts";
 
-/** Captures what one call writes, by stream, and always puts the console back. */
 function capture(run: () => void): { stream: string; line: Record<string, unknown> }[] {
   const written: { stream: string; line: Record<string, unknown> }[] = [];
   const original = { log: console.log, warn: console.warn, error: console.error };
@@ -43,7 +42,6 @@ test("a query string is cut, because that is where a search term travels", () =>
     "fetch failed for https://api.deezer.com/search?…",
   );
   assert.equal(scrub("GET /api/search?q=secret failed"), "GET /api/search?… failed");
-  // A sentence that happens to end in a question mark is not a URL.
   assert.equal(scrub("Is the sidecar up? No."), "Is the sidecar up? No.");
 });
 

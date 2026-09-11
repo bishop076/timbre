@@ -11,8 +11,6 @@ import { loadLikes, unlikeSong, useLikes } from "../playlists/likes-store";
 import { SongRow } from "../song-row";
 import { SourceBadges } from "../source-badges";
 
-/** Every liked song, newest first. Shaped like a playlist page, since it plays like one —
- * but there is nothing to rename, reorder or delete, only songs to unlike. */
 export function LikedView() {
   const { play, current, state } = usePlayerControls();
   const { songs, settled, error } = useLikes();
@@ -21,7 +19,6 @@ export function LikedView() {
     loadLikes();
   }, []);
 
-  // Storage unread is not "nothing liked" — the empty state first flashes a lie.
   if (!settled) {
     return (
       <div className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-7">
@@ -30,8 +27,6 @@ export function LikedView() {
     );
   }
 
-  /** The clicked song, then everything after it, then the ones before — the list in order
-   * from where the reader chose, rather than jumping back to the top after one song. */
   const from = (position: number) => [...songs.slice(position), ...songs.slice(0, position)];
 
   return (
@@ -69,8 +64,6 @@ export function LikedView() {
         </div>
       </header>
 
-      {/* Said here as well as on the heart: a like that fills but will not survive a
-          reload is the failure a list like this cannot afford to keep quiet about. */}
       {error && (
         <p role="alert" className="mb-4 text-sm text-red-400">
           {error}
@@ -95,7 +88,6 @@ export function LikedView() {
               subtitle={<ArtistLink artists={song.artists} />}
               trailing={
                 <>
-                  {/* As on a playlist page — see `source-tag.tsx`. */}
                   <SourceBadges
                     song={song}
                     className="hidden opacity-0 transition group-hover:opacity-100 @xl:flex"
@@ -105,8 +97,6 @@ export function LikedView() {
                     {formatDuration(song.durationMs)}
                   </span>
 
-                  {/* Always shown, unlike a playlist's row controls: it is the state as well
-                      as the way out, and a phone has no hover to reveal it with. */}
                   <button
                     type="button"
                     onClick={() => unlikeSong(song)}

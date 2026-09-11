@@ -34,7 +34,6 @@ test("merges the same recording across sources into one song", () => {
 });
 
 test("an ISRC match is decisive even when the titles differ", () => {
-  // Services title the same recording differently all the time.
   const songs = mergeTracks([
     track({ source: "ytmusic", isrc: "GBAAW9500189", title: "Wonderwall" }),
     track({ source: "deezer", isrc: "GBAAW9500189", title: "Wonderwall - Remastered" }),
@@ -54,8 +53,6 @@ test("different ISRCs never merge, however alike they look", () => {
 });
 
 test("a live take never merges into the studio version", () => {
-  // The failure this whole module exists to prevent: queue one song, hear
-  // another.
   const songs = mergeTracks([
     track({ source: "ytmusic", title: "Wonderwall" }),
     track({ source: "deezer", title: "Wonderwall (Live at Knebworth)" }),
@@ -65,8 +62,6 @@ test("a live take never merges into the studio version", () => {
 });
 
 test("an acoustic version never merges into the original, whatever the brackets", () => {
-  // The third variant the README names. Same length on purpose: duration is not what keeps
-  // these apart, the variant is.
   const songs = mergeTracks([
     track({ source: "ytmusic", title: "Wonderwall" }),
     track({ source: "deezer", title: "Wonderwall (Acoustic)" }),
@@ -95,7 +90,6 @@ test("a small duration difference is tolerated", () => {
 });
 
 test("an unknown duration is not treated as a mismatch", () => {
-  // Apple's chart feed carries no duration at all.
   const songs = mergeTracks([
     track({ source: "ytmusic", durationMs: 259_000 }),
     track({ source: "apple", durationMs: null }),
@@ -116,7 +110,6 @@ test("sources are ordered so the playable one leads", () => {
 });
 
 test("one source contributes at most once per song", () => {
-  // Search returns several near-identical uploads; the first is the relevant one.
   const songs = mergeTracks([
     track({ source: "ytmusic", sourceId: "first" }),
     track({ source: "ytmusic", sourceId: "second" }),
@@ -128,8 +121,6 @@ test("one source contributes at most once per song", () => {
 });
 
 test("song ids are unique even when two recordings share a dedupe key", () => {
-  // Regression: identical titles separated only by duration collided as ids,
-  // which broke React keys and any lookup.
   const songs = mergeTracks([
     track({ source: "ytmusic", sourceId: "a", durationMs: 259_000 }),
     track({ source: "ytmusic", sourceId: "b", durationMs: 400_000 }),
@@ -140,10 +131,6 @@ test("song ids are unique even when two recordings share a dedupe key", () => {
 });
 
 test("a blank ISRC is not an id, and cannot collide", () => {
-  // Regression: `group.isrc ?? …` falls back only on null, so a provider that sends
-  // an empty string rather than omitting the field passed one straight through — and
-  // every song without an ISRC then shared the same empty id. Audius does exactly this;
-  // three songs in one search reached React with the same key.
   const songs = mergeTracks([
     track({ source: "audius", sourceId: "a", title: "One", isrc: "" }),
     track({ source: "audius", sourceId: "b", title: "Two", isrc: "" }),
@@ -156,10 +143,6 @@ test("a blank ISRC is not an id, and cannot collide", () => {
 });
 
 test("a variant never merges into the original, even with no ISRC anywhere", () => {
-  // The rule the whole Audius integration rests on: it carries no usable ISRC and its
-  // titles are *all* variants, so this is the only thing keeping a remix from being
-  // swallowed by the song it remixes. OmniSource — a shipped multi-source plugin —
-  // strips "remix" as noise and collapses exactly this pair.
   const songs = mergeTracks([
     track({ source: "ytmusic", sourceId: "orig", title: "Blinding Lights", durationMs: 200_000 }),
     track({ source: "audius", sourceId: "rmx", title: "Blinding Lights (Zaza Remix)", durationMs: 200_000 }),
@@ -196,8 +179,6 @@ test("an empty result set produces no songs", () => {
 });
 
 test("one catalogue naming the guest does not split the recording in two", () => {
-  // Reported as the same song listed three times on an artist page. Deezer billed it to the
-  // artist alone and Apple to "artist & guest", so the two never shared a key.
   const songs = mergeTracks([
     track({
       source: "deezer",
@@ -222,8 +203,6 @@ test("one catalogue naming the guest does not split the recording in two", () =>
 });
 
 test("a different edit still stands apart, however the credits are written", () => {
-  // The third of those three rows: same title, same artist, five seconds shorter. Duration is
-  // what keeps the relaxed credit test honest, so this one must not be swept in.
   const songs = mergeTracks([
     track({ source: "deezer", title: "This Was Your Song", artists: ["Lé Real"], durationMs: 93_000 }),
     track({
@@ -247,8 +226,6 @@ test("a track crediting nobody does not swallow every song of the same name", ()
 });
 
 test("a live take stays apart even when one side also names the guest", () => {
-  // Containment must not reach across a variant marker: that is the failure this whole file
-  // exists to prevent.
   const songs = mergeTracks([
     track({ source: "deezer", title: "Wonderwall", artists: ["Oasis"] }),
     track({ source: "apple", title: "Wonderwall (Live)", artists: ["Oasis & Noel Gallagher"] }),
@@ -258,8 +235,6 @@ test("a live take stays apart even when one side also names the guest", () => {
 });
 
 test("a preview clip survives the merge on the source that offered it", () => {
-  // Plumbing, and it has already failed once silently: the field is read in the browser but
-  // set in a workspace package, so nothing in between complains when it stops being carried.
   const songs = mergeTracks([
     track({ source: "ytmusic", previewUrl: null }),
     track({ source: "deezer", previewUrl: "https://cdnt-preview.dzcdn.net/api/1/1/x.mp3" }),

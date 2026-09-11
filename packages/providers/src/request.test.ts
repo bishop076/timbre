@@ -6,14 +6,6 @@ import { ProviderError, type RateLimiter } from "@timbre/core";
 import { createRequester } from "./request.ts";
 import type { SearchContext } from "./types.ts";
 
-/*
- * These exist because the adapters' fetch path had no coverage at all — the other
- * two suites test merging and ranking, which never issue a request. Every case
- * below is a behaviour one real source depends on, and each was previously held
- * up only by types.
- */
-
-/** Records what was paced, so a test can assert the limiter ran before the fetch. */
 function stubContext(): { ctx: SearchContext; acquired: string[] } {
   const acquired: string[] = [];
   const limiter = {
@@ -24,7 +16,6 @@ function stubContext(): { ctx: SearchContext; acquired: string[] } {
   return { ctx: { limiter }, acquired };
 }
 
-/** Replaces global fetch for one test and always restores it. */
 async function withFetch(
   stub: (target: string | URL, init?: RequestInit) => Promise<Response>,
   body: (calls: { target: string | URL; init?: RequestInit }[]) => Promise<void>,
@@ -75,8 +66,6 @@ test("an unreachable host becomes a transient error naming the source", async ()
           assert.ok(error instanceof ProviderError);
           assert.equal(error.kind, "transient");
           assert.equal(error.message, "Apple Music unreachable.");
-          // The original failure is kept, or a DNS problem and a refused
-          // connection are indistinguishable in a log.
           assert.ok(error.cause instanceof TypeError);
           return true;
         },
@@ -107,8 +96,6 @@ test("a failing status carries the status, and defaults to transient", async () 
 });
 
 test("apple: 403 is a throttle, not a fault", async () => {
-  // Apple's iTunes endpoint answers 403 rather than 429 when it throttles, so
-  // classifying it as transient would retry into the same wall.
   const { ctx } = stubContext();
   const get = createRequester({
     id: "apple",
@@ -181,7 +168,6 @@ test("ytmusic: the shared secret and method ride on every call", async () => {
       const init = calls[0]!.init!;
       assert.equal(init.method, "POST");
       assert.equal((init.headers as Record<string, string>)["x-timbre-secret"], "s3cret");
-      // The per-call argument is merged in, not swapped for the shared options.
       assert.equal(init.body, JSON.stringify({ q: "oasis" }));
       assert.equal(init.cache, "no-store");
     },
@@ -189,8 +175,6 @@ test("ytmusic: the shared secret and method ride on every call", async () => {
 });
 
 test("soundcloud: 403 and 404 resolve to null rather than throwing", async () => {
-  // A track that is private or gone is an ordinary answer for SoundCloud, not a
-  // failure worth propagating — the resolver treats null as "not here".
   const { ctx } = stubContext();
   const resolve = createRequester({
     id: "soundcloud",
@@ -208,7 +192,6 @@ test("soundcloud: 403 and 404 resolve to null rather than throwing", async () =>
     );
   }
 
-  // Anything else still throws, or a real outage would look like an empty result.
   await withFetch(
     async () => json({}, 500),
     async () => {
@@ -218,8 +201,6 @@ test("soundcloud: 403 and 404 resolve to null rather than throwing", async () =>
 });
 
 test("deezer: an error object in a 200 body still throws", async () => {
-  // Deezer reports quota and validation failures with a 200 status, so trusting
-  // response.ok would hand a caller an error object shaped like a result.
   const { ctx } = stubContext();
   const get = createRequester({
     id: "deezer",
@@ -245,7 +226,6 @@ test("deezer: an error object in a 200 body still throws", async () => {
     },
   );
 
-  // A body with no error object passes straight through.
   await withFetch(
     async () => json({ data: [] }),
     async () => {
@@ -255,9 +235,6 @@ test("deezer: an error object in a 200 body still throws", async () => {
 });
 
 test("the caller's abort still aborts, now that a deadline rides alongside it", async () => {
-  // Was `assert.equal(init.signal, controller.signal)` — identity, which stopped holding
-  // the moment a deadline had to be composed in. What matters was never which object
-  // arrives, it is that the caller's abort still reaches fetch, so that is what is asserted.
   const controller = new AbortController();
   const acquired: string[] = [];
   const limiter = {
@@ -282,9 +259,6 @@ test("the caller's abort still aborts, now that a deadline rides alongside it", 
 });
 
 test("a request with no caller signal still carries a deadline", async () => {
-  // The shape `/api/search` actually uses: no signal, deliberately, because a cached call
-  // is shared. Before this there was nothing to stop a silent host holding the search open
-  // until the platform killed the function.
   const { ctx } = stubContext();
   const get = createRequester({ id: "audius", label: "Audius", init: () => ({}) });
 
@@ -299,8 +273,6 @@ test("a request with no caller signal still carries a deadline", async () => {
 
 test("a host that never answers becomes a timeout naming the source, not a hang", async () => {
   const { ctx } = stubContext();
-  // 20ms rather than the real six seconds: the behaviour under test is that the deadline
-  // fires at all, and a test suite must not wait out a production timeout to prove it.
   const get = createRequester({
     id: "mixcloud",
     label: "Mixcloud",
@@ -309,16 +281,8 @@ test("a host that never answers becomes a timeout naming the source, not a hang"
   });
 
   await withFetch(
-    // Accepts the connection and then says nothing — the failure mode that motivated this,
-    // and the one an unreachable host does *not* reproduce.
     (_target, init) =>
       new Promise((_resolve, reject) => {
-        // A real socket holds the event loop open while it waits; a bare promise does not,
-        // and `AbortSignal.timeout` counts on an unreferenced timer. On Node 22 the loop
-        // therefore drained before the deadline fired and the runner cancelled this test —
-        // and the one after it — with "Promise resolution is still pending but the event
-        // loop has already resolved". Node 26 happened to keep the loop alive. The stand-in
-        // holds it the way the socket would, for longer than any deadline under test.
         const held = setTimeout(() => {}, 1000);
         init?.signal?.addEventListener("abort", () => {
           clearTimeout(held);
@@ -340,9 +304,6 @@ test("a host that never answers becomes a timeout naming the source, not a hang"
 });
 
 test("a 200 that is not JSON is this source's error, not a raw SyntaxError", async () => {
-  // An upstream serving an HTML error page with a 200 used to throw straight past every
-  // caller that catches ProviderError — including searchAll, which would have reported it
-  // as an unlabelled failure.
   const { ctx } = stubContext();
   const get = createRequester({ id: "deezer", label: "Deezer", init: () => ({}) });
 

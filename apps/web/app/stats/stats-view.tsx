@@ -17,14 +17,8 @@ import { StackedColumns } from "../stacked-columns";
 import { listeningStats, playsFrom, WEEKDAYS, type ListeningStats } from "./listening-stats";
 import { PLAY_LOG_LIMIT, usePlayLog } from "./play-log";
 
-/** Rows per list. Ten is a top ten; past it the counts are mostly ones. */
 const TOP = 10;
 
-/**
- * "Your listening" — top artists, top songs and the days you play, counted from this
- * browser's own plays. Nothing is sent anywhere to work it out, and nothing here is shared
- * with another device.
- */
 export function StatsView() {
   const hydrated = useHydrated();
   const history = useHistory();
@@ -39,10 +33,6 @@ export function StatsView() {
         Counted in this browser only, from what it has played.
       </p>
 
-      {/* Both stores read empty until hydration, and "nothing played yet" is a real answer
-          here, so the server's render must not give it. A returning listener gets the
-          space the figures will take — `.for-you-pending` is shown only when the boot
-          script found a history — and a first visit gets nothing until storage answers. */}
       {!hydrated ? (
         <div className="for-you-pending" aria-hidden>
           <Pending />
@@ -90,7 +80,6 @@ function Stats({ stats, capped }: { stats: ListeningStats; capped: boolean }) {
   );
 }
 
-/** One headline number. A figure rather than a chart — a single value has nothing to compare. */
 function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col-reverse">
@@ -107,8 +96,6 @@ function TopArtists({ stats }: { stats: ListeningStats }) {
   const top = stats.artists.slice(0, TOP);
 
   return (
-    // Its own container: `BarChart` sizes its labels against the nearest one, and the page
-    // is two columns wide on a desktop.
     <section className="@container min-w-0">
       <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">Top artists</h2>
       <p className="mb-3 mt-1 text-xs leading-relaxed text-[var(--fg-faint)]">
@@ -141,8 +128,6 @@ function TopArtists({ stats }: { stats: ListeningStats }) {
 function TopSongs({ stats }: { stats: ListeningStats }) {
   const { play, current, state } = usePlayerControls();
   const top = stats.songs.slice(0, TOP);
-  // Rebuilt the way every other history shelf rebuilds them, so a song plays from the source
-  // it played on last time rather than being searched for by title.
   const songs = top.map((entry) => songFromHistory(entry.song));
 
   return (
@@ -179,7 +164,6 @@ function TopSongs({ stats }: { stats: ListeningStats }) {
   );
 }
 
-/** Plays by day of the week — the one question the times answer that the lists do not. */
 function Weekdays({ stats }: { stats: ListeningStats }) {
   return (
     <section className="mt-10">
@@ -204,10 +188,6 @@ function Weekdays({ stats }: { stats: ListeningStats }) {
   );
 }
 
-/**
- * Which plays these are, said plainly — never "all time". The log is capped, and before it
- * existed the history kept which songs were played but not how often.
- */
 function describeWindow(stats: ListeningStats, capped: boolean): string {
   const count = (value: number, unit: string) =>
     `${value.toLocaleString()} ${value === 1 ? unit : `${unit}s`}`;
@@ -231,7 +211,6 @@ function describeWindow(stats: ListeningStats, capped: boolean): string {
   return `${since} Timbre started counting plays on ${from}; before that it kept only which songs you played, so ${rest} you have not played since ${stats.undated === 1 ? "counts" : "count"} once.`;
 }
 
-/** "3 Sep", with the year only when it is not this one. */
 function formatDate(at: number): string {
   const date = new Date(at);
   return date.toLocaleDateString(undefined, {
@@ -241,7 +220,6 @@ function formatDate(at: number): string {
   });
 }
 
-/** The space the figures and lists take, for a returning listener before storage is read. */
 function Pending() {
   return (
     <>

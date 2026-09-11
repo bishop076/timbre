@@ -18,34 +18,21 @@ import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
 import { formatDuration } from "./duration";
 
-/**
- * A failure a reader can act on, rather than the one the platform threw.
- *
- * A dropped connection surfaces as `TypeError: Failed to fetch`, and that string was going
- * straight to the screen — it names no cause, suggests no action, and reads like the app
- * broke rather than the network. `navigator.onLine` is only trustworthy in the negative
- * (false definitely means no connection; true means an interface is up, not that anything is
- * reachable), which is exactly the direction needed here.
- */
 function readableFailure(cause: unknown): string {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return "You're offline. Timbre searches other people's services, so it needs a connection — this will work again the moment you're back.";
   }
-  // Every browser words this differently: "Failed to fetch", "NetworkError when attempting
-  // to fetch resource", "Load failed". Matching the class rather than the wording.
   if (cause instanceof TypeError) {
     return "Couldn't reach Timbre. The connection dropped, or something between here and it is blocking the request.";
   }
   return cause instanceof Error ? cause.message : "Something went wrong.";
 }
 
-/** Whether what was typed is a link to resolve rather than words to search. */
 function isUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
 
-/** Search results. The field lives in the app shell, above the router, so it survives navigation — see `top-bar.tsx`. */
 export function SearchResults() {
   const query = useSearchQuery();
   const [results, setResults] = useState<SongsResponse | null>(null);
@@ -67,9 +54,6 @@ export function SearchResults() {
         return;
       }
 
-      // An album or playlist is a page of its own, not a song to resolve — the card below
-      // links to it, and asking /api/resolve would only answer "not a track". Unless the link
-      // names a song as well, as a YouTube `watch?v=…&list=…` does: that song still resolves.
       const pasted = pastedCollectionOf(trimmed);
       if (pasted && !pasted.withSong) {
         setResults(null);
@@ -83,8 +67,6 @@ export function SearchResults() {
       setLoading(true);
       setError(null);
 
-      // A pasted link is resolved, not searched — the only way SoundCloud tracks get in,
-      // since its catalogue needs a paid account and its player needs none.
       const endpoint = isUrl(trimmed)
         ? `/api/resolve?url=${encodeURIComponent(trimmed)}`
         : `/api/search?q=${encodeURIComponent(trimmed)}`;
@@ -92,8 +74,6 @@ export function SearchResults() {
       fetch(endpoint, { signal: next.signal })
         .then(async (response) => {
           if (response.status === 404 && isUrl(trimmed)) {
-            // A 404 from a proxy in front of the app is not JSON; the fallback sentence
-            // is for that case too, not only for a body without `error`.
             const body = (await response.json().catch(() => ({}))) as { error?: string };
             throw new Error(body.error ?? "That link isn't one Timbre can play.");
           }
@@ -124,8 +104,6 @@ export function SearchResults() {
 
     return () => {
       clearTimeout(timer);
-      // The in-flight request goes too, not just the debounce, or leaving `/search`
-      // costs a round trip and a `setResults` nobody is looking at.
       controller.current?.abort();
     };
   }, [query]);
@@ -134,7 +112,6 @@ export function SearchResults() {
   const pastedCollection = pastedCollectionOf(query);
   const songs = results?.songs ?? [];
 
-  // Guarded on `attempted > 0`: optional, and `0 === 0` declares a false total outage.
   const attempted = results?.attempted ?? 0;
   const allSourcesDown = attempted > 0 && results?.failures.length === attempted;
 
@@ -147,8 +124,6 @@ export function SearchResults() {
           </p>
         )}
 
-        {/* Partial and total outages must not share a message: "showing everything else"
-            above "Nothing found for …" blames the query for an outage. */}
         {allSourcesDown ? (
           <div
             role="alert"
@@ -170,23 +145,16 @@ export function SearchResults() {
           ))
         )}
 
-        {/* No suggestions here — the field shows them on focus, and clearing the box
-            leaves it focused, so this would put the same chips on screen twice. */}
         {!hasQuery && (
           <div className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
             <p>
               Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
             </p>
-            {/* SoundCloud and Spotify are the two sources that play but cannot be searched —
-                their catalogue search is gated behind accounts this project will not buy. A
-                pasted link works and always has, and nothing said so, which made the feature
-                effectively invisible: the placeholder says "or a link" without saying whose. */}
             <p className="mx-auto mt-3 max-w-md text-[var(--fg-faint)]">
               Paste a <span className="text-[var(--fg-dim)]">SoundCloud</span> or{" "}
               <span className="text-[var(--fg-dim)]">Spotify</span> link and it plays here.
               Neither can be searched — only opened.
             </p>
-            {/* Said for the same reason: a playlist link is the one thing search cannot find. */}
             <p className="mx-auto mt-2 max-w-md text-[var(--fg-faint)]">
               A <span className="text-[var(--fg-dim)]">YouTube</span> playlist link opens the whole
               list.
@@ -196,7 +164,6 @@ export function SearchResults() {
 
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
-        {/* `!allSourcesDown`: "nothing found" is only true if something actually looked. */}
         {pastedCollection && (
           <Link
             href={pastedCollection.href}
@@ -228,7 +195,6 @@ export function SearchResults() {
           </ul>
         )}
 
-        {/* Below the ranked list and never inside it — see `SpotifySection`. */}
         <SpotifySection
           query={query}
           render={(found) => (
@@ -250,9 +216,6 @@ function ResultRow({ song }: { song: Song }) {
   return (
     <SongRow
       song={song}
-      // Plays this song alone and does *not* queue the other results: a title search
-      // returns the same song many times over, so queueing them all never reaches the
-      // end of the queue, which is where recommendations begin.
       onPlay={() => play(song)}
       isCurrent={current?.id === song.id}
       isPlaying={state === "playing"}
@@ -265,9 +228,6 @@ function ResultRow({ song }: { song: Song }) {
       }
       trailing={
         <>
-          {/* Each badge is now two controls: the label plays this song *from that source*,
-              the arrow still opens it there. See `source-badges.tsx` for why only some of
-              them can play, and why the ones that cannot say "30s" instead. */}
           <SourceBadges song={song} className="hidden @xl:flex" />
 
           <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">

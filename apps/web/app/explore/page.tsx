@@ -18,18 +18,11 @@ import { RankingsView } from "../rankings-view";
 
 export const metadata = { title: "Explore — Timbre" };
 
-/** Everything browsable, on one page. Revalidated hourly, so the fifteen-odd requests
- * behind the ranking are paid once an hour by whoever arrives first. */
 export const revalidate = 3600;
 
 export default async function ExplorePage() {
-  // Which hour this render belongs to. Each hourly rebuild shows a different slice of the
-  // featured pool and deals the stations in a different order — the page used to be the same
-  // all week, since the chart it was built from only moves weekly.
   const rotation = currentRotation(3_600_000);
 
-  // Only what the top of the page needs. Awaiting the ranking here too put its requests on
-  // the critical path for markup that does not contain it — one to two seconds of it.
   const [initial, radios] = await Promise.all([fetchDiscover(0, rotation), fetchRadios()]);
 
   return (
@@ -37,9 +30,6 @@ export default async function ExplorePage() {
       initial={initial}
       radios={radios}
       rotation={rotation}
-      /* Streamed behind a boundary rather than awaited, and passed as a prop because
-       * `DiscoverView` is a client component: a server component cannot be imported into one,
-       * but it can be handed in already rendered. */
       rankings={
         <Suspense fallback={<RankingsPending />}>
           <RankingsSection chart={initial.tracks} />
@@ -49,26 +39,16 @@ export default async function ExplorePage() {
   );
 }
 
-/** The charts, fetched independently of the page around them. `fetchGenreCharts` needs
- * nothing from the ranking, so the two run together and are matched up afterwards. */
 async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
-  // Every genre, not the first twelve: the "For you" view matches a listener's genres against
-  // these, and Metal or Latin being past the cut left those listeners with nothing. Each is
-  // one request an hour.
   const [rankings, genreCharts] = await Promise.all([fetchRankings(100), fetchGenreCharts(30)]);
 
   return (
     <RankingsView
       rankings={rankings}
-      /* Reduced here to the ranked songs' genres — the charts themselves are a thousand ids
-         the browser has no use for. */
       songGenres={genresBySong(genreCharts, rankings.songs)}
       genreNames={Object.fromEntries(genreCharts.map((chart) => [chart.id, chart.genre]))}
       share={shareByArtist(rankings.songs)}
       agree={agreement(rankings)}
-      /* Rendered here rather than inside RankingsView, which is a client component:
-         anything it imports ships as JavaScript, and this chart never changes after
-         paint. See genre-mix-view.tsx. */
       genreMix={<GenreMixView mix={mixGenres(genreCharts, rankings.songs)} />}
       chart={chart}
       embedded
@@ -76,8 +56,6 @@ async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
   );
 }
 
-/** What stands in while the charts load, sized to roughly what arrives — a placeholder
- * shorter than its content moves the scroll position under whoever is reading. */
 function RankingsPending() {
   return (
     <div className="animate-pulse">

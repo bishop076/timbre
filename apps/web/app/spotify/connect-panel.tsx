@@ -5,14 +5,6 @@ import { useState } from "react";
 import { beginConnect, saveSpotifyClientId, spotifyClientId } from "./connection.ts";
 import { disconnectSpotify, useSpotifyTokens } from "./token-store.ts";
 
-/**
- * Connect or disconnect Spotify.
- *
- * **The client id field is not a nicety.** Spotify allows five users per app, so a copy of
- * Timbre cannot usefully ship one — anyone running their own registers their own app, and
- * asking them to rebuild to supply the id would be the same barrier in a smaller form. A
- * client id is public by design; PKCE is what makes shipping one without a secret safe.
- */
 export function SpotifyConnect() {
   const tokens = useSpotifyTokens();
   const [clientId, setClientId] = useState("");
@@ -31,8 +23,6 @@ export function SpotifyConnect() {
       setError(reason);
       setBusy(false);
     }
-    // On success the browser is already navigating to Spotify; leaving `busy` set keeps the
-    // button from being pressed twice during the redirect.
   }
 
   return (

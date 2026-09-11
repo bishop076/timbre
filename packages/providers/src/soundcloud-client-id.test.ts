@@ -18,25 +18,19 @@ test("ignores scripts served from anywhere else", () => {
 });
 
 test("reads the client_id out of a minified bundle", () => {
-  // Both spellings appear depending on how the bundle was minified.
   assert.equal(clientIdFrom(`a={client_id:"iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX"}`), "iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX");
   assert.equal(clientIdFrom(`t.client_id="abcdefghijklmnopqrstuvwxyz012345"`), "abcdefghijklmnopqrstuvwxyz012345");
 });
 
 test("does not mistake a short value for an id", () => {
-  // A stray `client_id:"x"` in unrelated code must not be adopted and then fail every call.
   assert.equal(clientIdFrom(`{client_id:"short"}`), null);
   assert.equal(clientIdFrom(`no id here at all`), null);
 });
-
-// The resolver itself. Only the two parsers above were covered, and every fault worth
-// having a test for lived in the caching and the deadline rather than the regexes.
 
 const BUNDLES = `<script src="https://a-v2.sndcdn.com/assets/0-a.js"></script>
   <script src="https://a-v2.sndcdn.com/assets/9-z.js"></script>`;
 const ID = "iZIs9mchVcX5lhVRyQGGAYlNPVldzAoX";
 
-/** Swaps `fetch` for the run of one test and always puts it back. */
 async function withFetch(
   stub: (url: string, init?: { signal?: AbortSignal }) => Promise<unknown>,
   body: () => Promise<void>,
@@ -63,16 +57,12 @@ test("a resolved id is cached, not re-crawled on the next search", async () => {
       const resolve = createClientIdResolver("UA", 5_000);
       assert.equal(await resolve(), ID);
       assert.equal(await resolve(), ID);
-      // Homepage plus the last bundle, and nothing for the second call.
       assert.equal(calls, 2);
     },
   );
 });
 
 test("a refused crawl is not retried by every later search", async () => {
-  // Regression: a datacentre IP being refused is the likeliest failure here, and without a
-  // back-off each search started a fresh walk of soundcloud.com — asking the host that had
-  // already said no, once per search, for as long as the instance ran.
   let calls = 0;
   await withFetch(
     async () => {
@@ -88,14 +78,10 @@ test("a refused crawl is not retried by every later search", async () => {
 });
 
 test("a hung upstream is abandoned rather than killing the resolver for good", async () => {
-  // Regression: `fetch` has no timeout, so one socket that accepted the connection and then
-  // said nothing left `inFlight` pending for ever. It is only cleared when the promise
-  // settles, so every later search joined the same dead crawl and abstained permanently.
   let calls = 0;
   await withFetch(
     (_url, init) => {
       calls += 1;
-      // Honour the crawl budget the way a real `fetch` honours a signal.
       return new Promise((_resolve, reject) => {
         init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
       });
@@ -104,7 +90,6 @@ test("a hung upstream is abandoned rather than killing the resolver for good", a
       const resolve = createClientIdResolver("UA", 10);
       assert.equal(await resolve(), null);
       assert.equal(calls, 1);
-      // The crawl is still running here — a second call joins it rather than piling on.
       assert.equal(await resolve(), null);
       assert.equal(calls, 1);
     },
@@ -112,8 +97,6 @@ test("a hung upstream is abandoned rather than killing the resolver for good", a
 });
 
 test("the deadline leaves no timer behind once it has been beaten", async () => {
-  // `Promise.race` abandons the loser, it does not cancel it: one live timer per search on
-  // a cold instance, each holding a scale-to-zero container awake after it had answered.
   await withFetch(
     async (url) => ok(url === "https://soundcloud.com" ? BUNDLES : `client_id:"${ID}"`),
     async () => {
@@ -127,9 +110,6 @@ test("the deadline leaves no timer behind once it has been beaten", async () => 
 });
 
 test("the homepage's own hydration blob is read, and no bundle is fetched", async () => {
-  // The id is the `id` of an `apiClient` hydratable, not a key called `client_id` — which is
-  // why searching the page for the obvious name finds nothing and makes the bundles look
-  // necessary. One request instead of two, and inside the deadline rather than past it.
   let calls = 0;
   await withFetch(
     async (url) => {
@@ -148,7 +128,6 @@ test("the homepage's own hydration blob is read, and no bundle is fetched", asyn
 });
 
 test("a homepage without the blob still falls back to the bundles", async () => {
-  // It is undocumented and can move, so the walk stays.
   let calls = 0;
   await withFetch(
     async (url) => {

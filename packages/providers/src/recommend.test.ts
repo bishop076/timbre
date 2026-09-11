@@ -30,7 +30,6 @@ function titles(songs: { title: string }[]): string[] {
 }
 
 test("a song two lists agree on beats a song only one list ranked first", () => {
-  // "Agreed" is second in both lists; "Solo" is first in one and absent from the other.
   const lists = [
     list("a", [track("Solo", "Alpha"), track("Agreed", "Beta")]),
     list("b", [track("Other", "Gamma"), track("Agreed", "Beta")]),
@@ -83,26 +82,21 @@ test("an art track is demoted below an official video that ranked equally", () =
     ]),
   ];
 
-  // Both rank equally, so fusion alone ties them; measured embed failure breaks it.
   assert.equal(recommend(lists, { limit: 2 })[0]!.title, "Official");
 });
 
-/** One song per kind, each reached by a single list at the same rank, so the only thing
- * separating their scores is what kind of upload they are. */
 function scoreOfKind(videoType: string | null): number {
   const lists = [list(`only-${videoType}`, [track("Same", "Alpha", { videoType })])];
   return scoreCandidates(lists)[0]!.score;
 }
 
 test("an official artist-channel upload scores with official videos, above re-uploads", () => {
-  // G-5: at "unknown" the artist's own upload scored below every user re-upload of it.
   const official = scoreOfKind("MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC");
   assert.equal(official, scoreOfKind("MUSIC_VIDEO_TYPE_OMV"));
   assert.ok(official > scoreOfKind("MUSIC_VIDEO_TYPE_UGC"));
 });
 
 test("a podcast episode and the shoulder tier score below an art track", () => {
-  // At "unknown" both outscored every art track, which is the song itself.
   const art = scoreOfKind("MUSIC_VIDEO_TYPE_ATV");
   assert.ok(scoreOfKind("MUSIC_VIDEO_TYPE_PODCAST_EPISODE") < art);
   assert.ok(scoreOfKind("MUSIC_VIDEO_TYPE_SHOULDER") < art);
@@ -116,7 +110,6 @@ test("an unrecognised kind still sits between user uploads and art tracks", () =
 });
 
 test("one artist holding every top score does not take every top slot", () => {
-  // Alpha holds ranks 1-3 in both lists; the alternatives are ranked below all of them.
   const ranking = [
     track("One", "Alpha"),
     track("Two", "Alpha"),
@@ -129,18 +122,15 @@ test("one artist holding every top score does not take every top slot", () => {
 
   const artists = recommend(lists, { limit: 4 }).map((song) => song.artists[0]);
 
-  // A plain sort by score would return Alpha, Alpha, Alpha, Beta.
   for (let index = 1; index < artists.length; index += 1) {
     if (artists[index] === artists[index - 1]) {
       assert.fail(`same artist twice in a row at ${index}: ${artists.join(", ")}`);
     }
   }
-  // Alpha still leads — spacing reorders, it does not punish.
   assert.equal(artists[0], "Alpha");
 });
 
 test("spacing yields when an artist genuinely owns everything left", () => {
-  // Three Alpha songs in four slots cannot avoid adjacency, so the window gives way.
   const ranking = [
     track("One", "Alpha"),
     track("Two", "Alpha"),
@@ -171,8 +161,6 @@ test("excluded songs are dropped however they were spelled", () => {
 });
 
 test("a music video and its audio track are one entry, not two", () => {
-  // The merger keeps these apart on purpose — 189s against 174s is outside its tolerance
-  // — but the same song twice in a radio is a defect.
   const lists = [
     list("yt", [
       track("Watermelon Sugar (Official Video)", "Harry Styles", {
@@ -187,7 +175,6 @@ test("a music video and its audio track are one entry, not two", () => {
 
   const picked = recommend(lists, { limit: 5 });
   assert.equal(picked.length, 1);
-  // The survivor is the copy that can actually be played.
   assert.ok(picked[0]!.sources.some((source) => source.source === "ytmusic"));
 });
 
@@ -220,14 +207,7 @@ test("the limit is respected", () => {
   assert.equal(recommend(lists, { limit: 8 }).length, 8);
 });
 
-// The three below are one bug seen from three sides: services disagree about whether a
-// featured artist belongs in the credits, `dedupeKey` folds features into the artists, and
-// so the two spellings produced two different keys for one recording. The merger grouped
-// them regardless — it is looser — so the song came out of the merge under one spelling and
-// could not be found under the other.
-
 test("a feature credited in one list and dropped in the other is still agreement", () => {
-  // YouTube Music titles it with the feature, Deezer omits it. One recording, two lists.
   const lists = [
     list("yt", [track("Filler One", "Alpha"), track("Sunflower (feat. Swae Lee)", "Post Malone")]),
     list("dz", [
@@ -240,15 +220,10 @@ test("a feature credited in one list and dropped in the other is still agreement
   const sunflower = scored.find((entry) => entry.song.title.startsWith("Sunflower"))!;
 
   assert.equal(sunflower.lists, 2);
-  // Not merely counted: it has to *win*. Scored as one list it fell below both fillers,
-  // so the one song both services reached was the last thing the radio offered.
   assert.equal(titles(recommend(lists, { limit: 5 }))[0], "Sunflower (feat. Swae Lee)");
 });
 
 test("the seed is excluded however its feature is credited", () => {
-  // The seed is credited by whichever source actually played it, which need not be the
-  // source the radio comes back from. Missing here, the song that just played is offered
-  // as its own first recommendation — and then seeds the next radio, and circles.
   const lists = [
     list("yt", [track("Sunflower (feat. Swae Lee)", "Post Malone"), track("Keep", "Beta")]),
   ];
@@ -262,8 +237,6 @@ test("the seed is excluded however its feature is credited", () => {
 });
 
 test("one recording spelled two ways is one entry, not two", () => {
-  // Same song, different duration *and* different credits, so neither the merger's tolerance
-  // nor a plain key catches it — this is the pair that reached the queue twice.
   const lists = [
     list("yt", [
       track("Levitating (feat. DaBaby)", "Dua Lipa", {

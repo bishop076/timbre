@@ -8,14 +8,11 @@ import { getLikedSongs, useLikes } from "./likes-store";
 import { allPlaylists, exportPlaylists } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
-/** A blob URL and a synthetic click — there is no export endpoint to send this to. */
 export function saveFile(contents: BlobPart, type: string, name: string): void {
   const url = URL.createObjectURL(new Blob([contents], { type }));
   const link = document.createElement("a");
   link.href = url;
   link.download = name;
-  // In the document, revoked next turn: Firefox ignores a detached anchor outright, and
-  // revoking on the same tick races the browser's own read.
   document.body.append(link);
   link.click();
   link.remove();
@@ -24,14 +21,6 @@ export function saveFile(contents: BlobPart, type: string, name: string): void {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-/**
- * Three ways out, because they are three different jobs.
- *
- * **A backup** carries the name, both pictures and the liked songs as well as the lists — it
- * is what gets this browser back after clearing site data. **Playlists only** is the same
- * file without the parts that are about a person, for sending a list to somebody. **CSV** is for a
- * spreadsheet, and does not come back in: see `csv.ts`.
- */
 export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean; hasProfile: boolean }) {
   const hasLikes = useLikes().songs.length > 0;
   const root = useRef<HTMLDivElement>(null);
@@ -68,8 +57,6 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
   async function backup(withProfile: boolean) {
     setBusy(true);
     try {
-      // Read at the click, not held in state: the pictures are the largest thing here and
-      // only this path needs them.
       const profile = withProfile ? await exportProfile() : null;
       const file = exportPlaylists({ profile, liked: withProfile ? getLikedSongs() : [] });
       saveFile(
@@ -84,7 +71,6 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
   }
 
   function csv() {
-    // Liked songs as one more list, so the spreadsheet is everything that was saved.
     const liked = getLikedSongs();
     const lists = liked.length > 0 ? [{ name: "Liked songs", songs: liked }, ...allPlaylists()] : allPlaylists();
     saveFile(playlistsToCsv(lists), "text/csv;charset=utf-8", `timbre-playlists-${today()}.csv`);

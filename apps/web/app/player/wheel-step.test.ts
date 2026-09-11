@@ -9,8 +9,6 @@ test("pixel deltas pass through unchanged", () => {
 });
 
 test("line and page deltas are converted, not taken literally", () => {
-  // Firefox commonly reports lines. Treating 3 lines as 3 pixels leaves the
-  // control almost inert there.
   assert.ok(pixelDelta(3, 1) > pixelDelta(3, 0));
   assert.ok(pixelDelta(1, 2) > pixelDelta(1, 1));
 });
@@ -22,7 +20,6 @@ test("a scroll shorter than one step moves nothing but is remembered", () => {
 });
 
 test("small deltas accumulate into a step", () => {
-  // A trackpad flick, sixty small events rather than one large one.
   let carried = 0;
   let spent = 0;
   for (let i = 0; i < 10; i += 1) {
@@ -50,11 +47,6 @@ test("the two directions are symmetric", () => {
 });
 
 test("a partial step never rounds away from zero", () => {
-  /*
-   * `Math.floor` would make these asymmetric: floor(-0.5) is -1, so scrolling
-   * up would spend a step it had not earned while scrolling down waited. The
-   * control would drift quieter over a series of small nudges back and forth.
-   */
   const up = wheelSteps(-WHEEL_THRESHOLD / 2);
   const down = wheelSteps(WHEEL_THRESHOLD / 2);
 

@@ -1,14 +1,3 @@
-/**
- * What you have listened to, on this device and nowhere else — Timbre has no accounts, so
- * a server-side history has nothing to attach to. It powers "Recently played", "Because
- * you played X" (the only way to seed the recommender on a cold load), not suggesting
- * what you just heard, and the genre count Explore leads with (`taste-store.ts`).
- * Deliberately not a taste model — see docs/RECOMMENDATIONS.md.
- *
- * Mirrors `volume-store.ts`: localStorage is an external store, and reading it into React
- * state after mount is a cascading render by another name.
- */
-
 import { createLocalStore, useLocalStore } from "../local-store.ts";
 import { logPlay } from "../stats/play-log.ts";
 import type { PlayContext } from "../types";
@@ -18,41 +7,22 @@ export interface PlayedSong {
   title: string;
   artists: string[];
   artworkUrl: string | null;
-  /** The upload that actually played, which is what seeds a radio. */
   videoId: string | null;
-  /**
-   * The source that actually played, and its handle.
-   *
-   * **Optional because the entries already in people's browsers do not have it.** This
-   * struct predates every source but YouTube Music, and stored only `videoId` — so a
-   * Mixcloud show came back from history with nothing to play, the player fell through to a
-   * search for its title, and something entirely different played instead. Absent means a
-   * pre-2026-08-19 row: fall back to `videoId` and the old behaviour.
-   */
   source?: string;
   sourceId?: string;
-  /** Needed by the sources whose player takes a link rather than an id — SoundCloud's
-   * widget wants a permalink, not a track number. */
   url?: string | null;
-  /** The page it was played from — an artist's — when it was one. Absent for everything
-   * else, and for every row written before this existed. */
   from?: PlayContext;
 }
 
 const HISTORY_KEY = "timbre:history";
 
-/** Fifty is a few weeks of casual listening at roughly 20KB against a 5MB budget, and the
- * cap stops the store growing without bound. */
 const LIMIT = 50;
 
-/** Referentially stable, and what hydration renders against. */
 const EMPTY: PlayedSong[] = [];
 
 function isPlayed(value: unknown): value is PlayedSong {
   if (typeof value !== "object" || value === null) return false;
   const entry = value as Partial<PlayedSong>;
-  // The elements too, not only the array: `artists: [1]` passed a container check and then
-  // threw in Explore's name normalising, on every load (docs/SECURITY.md S-11).
   return (
     typeof entry.id === "string" &&
     typeof entry.title === "string" &&
@@ -68,18 +38,13 @@ function read(): PlayedSong[] {
     if (!raw) return EMPTY;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return EMPTY;
-    // Stored data outlives the code that wrote it, so a bad row drops itself rather than
-    // throwing on render.
     const entries = parsed.filter(isPlayed);
     return entries.length > 0 ? entries : EMPTY;
   } catch {
-    // Private browsing, blocked storage and malformed JSON all throw rather than return null.
     return EMPTY;
   }
 }
 
-// A failed write is swallowed: not being able to remember a play is no reason to fail the
-// playback that triggered it.
 const store = createLocalStore<PlayedSong[]>({
   read,
   initial: EMPTY,
@@ -91,23 +56,14 @@ export const subscribeHistory = store.subscribe;
 export const getHistorySnapshot = store.getSnapshot;
 export const getHistoryServerSnapshot = store.getServerSnapshot;
 
-/** Subscribes a component to the history. Client-only, like the store. */
 export function useHistory(): PlayedSong[] {
   return useLocalStore(store);
 }
 
-/** Records a play, newest first, one entry per song. A repeat moves to the front rather
- * than adding a row, or a track on loop fills the whole shelf. */
 export function recordPlay(song: PlayedSong): void {
-  // Counted before the early return below: a repeat is not a new row on the shelf, but it is
-  // another play, and "Your listening" counts plays (`stats/play-log.ts`).
   logPlay(song);
 
   const current = getHistorySnapshot();
-  // Already at the front *and* saying the same thing. The `source` comparison matters: rows
-  // written before it existed carry none, and skipping on id alone meant replaying the song
-  // at the top of the shelf returned early and left that row stale forever — so the one
-  // entry most likely to be played again was the one that could never repair itself.
   const front = current[0];
   if (front?.id === song.id && front.source === song.source && front.sourceId === song.sourceId) {
     return;

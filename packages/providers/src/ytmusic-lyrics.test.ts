@@ -6,8 +6,6 @@ import { ProviderError, type RateLimiter } from "@timbre/core";
 import type { SearchContext } from "./types.ts";
 import { createYtMusicLyrics, toYtMusicLyrics } from "./ytmusic-lyrics.ts";
 
-// Every line of text here is an invented placeholder: real lyrics are licensed text.
-
 const CREDIT = "Source: Placeholder Licensing";
 
 const ctx: SearchContext = {
