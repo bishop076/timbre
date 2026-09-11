@@ -26,6 +26,7 @@ import {
   removeAt as removeFromQueue,
   type QueueEdit,
 } from "./queue-ops";
+import { takeTrackEndStop } from "./sleep-timer.ts";
 import { plausiblySameSong, sameTrack } from "./song-match";
 import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
@@ -1681,6 +1682,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const handleEnded = useCallback(() => {
+    // The sleep timer's "end of this track": stop on the finished song, ahead of repeat and
+    // the queue alike. Set explicitly because YouTube's ENDED never reports a pause.
+    if (takeTrackEndStop()) {
+      setState("paused");
+      return;
+    }
     // Repeat-one ignores the queue entirely; everything else is `advance`, which also
     // continues into the recommendations at queue end.
     if (repeat === "one") {
