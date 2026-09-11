@@ -22,7 +22,7 @@ export function useJson<T>(
   url: string | null,
   read: (response: Response) => Promise<T | null> = readOk,
   retryIn?: (data: T) => number | null,
-): { data: T | null; loading: boolean } {
+): { data: T | null; loading: boolean; retry: () => void } {
   const [found, setFound] = useState<{ url: string; data: T | null; stale?: boolean } | null>(
     null,
   );
@@ -56,7 +56,11 @@ export function useJson<T>(
     return () => clearTimeout(timer);
   }, [found, retryIn]);
 
-  return { data: cached ? found.data : null, loading: url !== null && !fresh };
+  return {
+    data: cached ? found.data : null,
+    loading: url !== null && !fresh,
+    retry: () => setFound(null),
+  };
 }
 
 export function Empty({ children }: { children: ReactNode }) {

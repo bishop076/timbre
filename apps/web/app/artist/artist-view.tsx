@@ -11,14 +11,17 @@ import { Artwork } from "../artwork";
 import { sized } from "../artwork-url";
 import { ExternalIcon } from "../icons";
 import { Caption, EmptyNotice, Page, PageHeader } from "../page-chrome";
+import { useJson } from "../player/panel-tabs";
 import { usePlayerControls } from "../player/player-context";
+import { RowSkeletons } from "../row-skeleton";
 import { Shelf } from "../shelf";
 import { TILE } from "../song-card";
 import { SongActions, SongRow } from "../song-row";
 import { ROW_BADGES, SourceBadges } from "../source-badges";
 import { sourceStyle } from "../sources";
 import { ArtistCard, ReleaseCard } from "../tile-cards";
-import type { Song } from "../types";
+import type { Song, SongsResponse } from "../types";
+import { creditNames } from "./credits";
 import { albumAddsSomething } from "./song-subtitle";
 
 const SONG_LIMIT = 10;
@@ -30,35 +33,48 @@ const GROUPS: { heading: string; kinds: readonly string[] }[] = [
 ];
 
 export function ArtistView({
+  query,
   name,
   imageUrl,
   followers,
   sourceUrl,
   sourceName,
-  songs,
-  filtered,
   releases,
   related,
   about,
 }: {
+  query: string;
   name: string;
   imageUrl: string | null;
   followers: number | null;
   sourceUrl: string | null;
   sourceName: string | null;
-  songs: Song[];
-  filtered: boolean;
   releases: Release[];
   related: RelatedArtist[];
   about?: ReactNode;
 }) {
   const { play, current, state } = usePlayerControls();
   const [showAll, setShowAll] = useState(false);
+  const { data, loading, retry } = useJson<SongsResponse>(
+    `/api/search?q=${encodeURIComponent(query)}&limit=40`,
+  );
+
+  const { songs, filtered, cover } = useMemo(() => {
+    const found = data?.songs ?? [];
+    const theirs = found.filter((song) =>
+      song.artists.some((credited) => creditNames(query, credited)),
+    );
+    return {
+      songs: theirs.length > 0 ? theirs : found,
+      filtered: theirs.length > 0,
+      cover: imageUrl ?? theirs[0]?.artworkUrl ?? null,
+    };
+  }, [data, query, imageUrl]);
 
   const queueable = useMemo<Song[]>(() => {
-    const from = { kind: "artist" as const, name, imageUrl };
+    const from = { kind: "artist" as const, name, imageUrl: cover };
     return songs.map((song) => ({ ...song, from }));
-  }, [songs, name, imageUrl]);
+  }, [songs, name, cover]);
   const visible = showAll ? queueable : queueable.slice(0, SONG_LIMIT);
   const source = sourceName && sourceStyle(sourceName).label;
 
@@ -67,7 +83,7 @@ export function ArtistView({
       <PageHeader
         art={
           <Artwork
-            src={sized(imageUrl, 640)}
+            src={sized(cover, 640)}
             className="slab size-24 shrink-0 rounded-[var(--r-full)] sm:size-40"
             iconClassName="size-10"
             eager
@@ -80,9 +96,11 @@ export function ArtistView({
           {followers !== null && source && (
             <span>{followers.toLocaleString()} followers on {source}</span>
           )}
-          <span>
-            {songs.length} {songs.length === 1 ? "song" : "songs"} Timbre can reach
-          </span>
+          {data && (
+            <span>
+              {songs.length} {songs.length === 1 ? "song" : "songs"} Timbre can reach
+            </span>
+          )}
         </div>
         <PlayRow songs={queueable}>
           {sourceUrl && source && (
@@ -99,7 +117,16 @@ export function ArtistView({
         </PlayRow>
       </PageHeader>
 
-      {songs.length === 0 ? (
+      {loading ? (
+        <RowSkeletons />
+      ) : songs.length === 0 && (!data || data.failures.length > 0) ? (
+        <EmptyNotice>
+          Couldn&rsquo;t load {name}&rsquo;s songs.{" "}
+          <button type="button" onClick={retry} className="font-semibold text-[var(--fg)] underline">
+            Try again
+          </button>
+        </EmptyNotice>
+      ) : songs.length === 0 ? (
         <EmptyNotice>
           Nothing found for {name}. Try searching instead — the spelling may differ from the one
           Timbre was given.
