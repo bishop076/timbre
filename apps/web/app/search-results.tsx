@@ -132,11 +132,10 @@ export function SearchResults() {
           <p className="mx-auto mt-3 max-w-md text-[var(--fg-faint)]">
             Paste a <span className="text-[var(--fg-dim)]">SoundCloud</span> or{" "}
             <span className="text-[var(--fg-dim)]">Spotify</span> link and it plays here.
-            Neither can be searched — only opened.
           </p>
           <p className="mx-auto mt-2 max-w-md text-[var(--fg-faint)]">
-            A <span className="text-[var(--fg-dim)]">YouTube</span> playlist link opens the whole
-            list.
+            A <span className="text-[var(--fg-dim)]">Spotify</span> album or playlist, or a{" "}
+            <span className="text-[var(--fg-dim)]">YouTube</span> playlist, opens the whole list.
           </p>
         </div>
       )}
