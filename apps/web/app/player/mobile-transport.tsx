@@ -16,6 +16,7 @@ import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { LikeButton } from "../playlists/like-button";
 import { ModeButton, repeatMode } from "../shell/player-bar";
 import { LyricsPanel } from "./lyrics-panel";
+import { PlaybackMenu } from "./playback-menu";
 import { getPlaybackPrefs } from "./playback-prefs";
 import { usePlayer } from "./player-context";
 import { Scrub } from "./wavy-progress";
@@ -152,6 +153,7 @@ export function MobileTransport() {
         {current && (
           <AddToPlaylist song={current} className="flex size-11 items-center justify-center" />
         )}
+        <PlaybackMenu variant="sheet" />
       </div>
 
       {/* `min-h-0` is load-bearing on a flex child that scrolls: without it the panel

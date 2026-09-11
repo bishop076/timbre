@@ -17,6 +17,7 @@ import {
   VideoIcon,
   VideoOffIcon,
 } from "../icons";
+import { PlaybackMenu } from "../player/playback-menu";
 import { usePlayer, type RepeatMode } from "../player/player-context";
 import { Volume } from "../player/volume";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
@@ -345,6 +346,7 @@ export function PlayerBar() {
             {duration > 0 ? formatElapsed(duration, duration) : "—:—"}
           </span>
           <Volume />
+          <PlaybackMenu variant="bar" />
           <span className="mx-1 h-6 w-px bg-[var(--line)]" />
           {theaterButton}
           {panelButton}
