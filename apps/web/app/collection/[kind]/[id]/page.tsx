@@ -7,8 +7,8 @@ import { fetchCollection, type CollectionKind } from "@/lib/collection";
 import { CollectionView } from "../../../collection-view";
 
 /**
- * One page for a genre, a Deezer playlist, a mood, a station, or a pasted Spotify album or
- * playlist.
+ * One page for a genre, a Deezer playlist, a mood, a station, a pasted Spotify album or
+ * playlist, or a pasted YouTube playlist.
  *
  * They share a route because they render identically — see
  * `lib/collection.ts`. Splitting them into a route each would mean that many pages
@@ -21,6 +21,7 @@ const KINDS = new Set<CollectionKind>([
   "radio",
   "spotify-album",
   "spotify-playlist",
+  "ytmusic-playlist",
 ]);
 
 /** A quarter of an hour — a station's draw and a genre's rotation last that long (see
@@ -31,7 +32,8 @@ export const revalidate = 900;
 /**
  * Once per request, shared by the metadata and the page. Deezer's lookups dedupe themselves in
  * the fetch cache; a Spotify album or playlist is read on a token that changes, so it cannot,
- * and without this every view asked Spotify twice.
+ * and without this every view asked Spotify twice. A YouTube playlist is a POST to the
+ * sidecar, which the fetch cache never keeps, so the same holds for it.
  */
 const loadCollection = cache(fetchCollection);
 

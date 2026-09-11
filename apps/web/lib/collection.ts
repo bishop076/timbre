@@ -1,7 +1,14 @@
 import "server-only";
 
-import { fetchSpotifyCollection, type SpotifyCollectionKind } from "@timbre/providers";
+import {
+  fetchSpotifyCollection,
+  isYtMusicProvider,
+  listProviders,
+  type SpotifyCollectionKind,
+  type YtMusicPlaylist,
+} from "@timbre/providers";
 
+import { cached } from "./api";
 import { deezer } from "./deezer";
 import { coversOf, toTrackByOrder, type ChartTrack, type RawTrack } from "./discover";
 import { drawStation, drawStations, fetchFresh, genreOfStation } from "./genre-feed";
@@ -10,11 +17,19 @@ import { getProviderRuntime } from "./providers";
 
 /*
  * A collection: songs gathered under one name — a genre, a Deezer playlist, a station, a mood
- * resolved to one, or a Spotify album or playlist someone pasted. All kinds resolve to the same
- * shape, so the page rendering them never knows which it has and there is no second layout.
+ * resolved to one, or a Spotify album or playlist or YouTube playlist someone pasted. All kinds
+ * resolve to the same shape, so the page rendering them never knows which it has and there is
+ * no second layout.
  */
 
-export type CollectionKind = "genre" | "playlist" | "mood" | "radio" | "spotify-album" | "spotify-playlist";
+export type CollectionKind =
+  | "genre"
+  | "playlist"
+  | "mood"
+  | "radio"
+  | "spotify-album"
+  | "spotify-playlist"
+  | "ytmusic-playlist";
 
 /** A named run of a collection's songs. A playlist is one untitled section; a genre is three. */
 export interface CollectionSection {
@@ -42,7 +57,7 @@ export interface Collection {
   /** The Deezer genre it belongs to, so the page can add what *you* played in it. */
   genreId: number | null;
   /** The catalogue it was assembled from, named on the page. */
-  from: "Deezer" | "Spotify";
+  from: "Deezer" | "Spotify" | "YouTube Music";
 }
 
 /** Four covers, tiled. */
@@ -311,6 +326,72 @@ async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Col
   };
 }
 
+/**
+ * A public YouTube or YouTube Music playlist, an album's `OLAK5uy_` list included, read by the
+ * sidecar without an account. Reached by pasting its link. Unlike a Spotify list's, these
+ * tracks already are copies the player can queue, so pressing one plays it rather than
+ * searching for it.
+ *
+ * Through the shared response cache as well as the page's `cache()`: that one only spans a
+ * single render, and a link passed round a group chat is opened by everyone in it within
+ * minutes — each a sidecar invocation and a YouTube browse without this. A failure is never
+ * held (`cached` stores no rejection), and reads as "not found" for the reason Spotify's does.
+ */
+async function fromYouTube(id: string): Promise<Collection | null> {
+  const { limiter } = getProviderRuntime();
+  const provider = listProviders().find(isYtMusicProvider);
+  if (!provider) return null;
+
+  const found = await cached<YtMusicPlaylist | null>(`ytmusic-playlist:${id}`, () =>
+    // 100 for the reason Deezer's playlists stop there, and it is one sidecar page besides.
+    provider.playlist({ limiter }, id, 100),
+  ).catch(() => null);
+  if (!found) return null;
+
+  // Each video once. A playlist can repeat one, and the page keys its rows — and the player
+  // finds the song it is on — by id, so a repeat would be two rows answering as one.
+  const seen = new Set<string>();
+  const tracks: ChartTrack[] = [];
+  for (const track of found.tracks) {
+    if (seen.has(track.sourceId)) continue;
+    seen.add(track.sourceId);
+    tracks.push({
+      id: `ytmusic:${track.sourceId}`,
+      title: track.title,
+      artists: track.artists,
+      album: track.album,
+      durationMs: track.durationMs,
+      isrc: null,
+      artworkUrl: track.artworkUrl,
+      sources: [{ source: "ytmusic", sourceId: track.sourceId, url: track.url, playback: "queue" }],
+      position: tracks.length + 1,
+      popularity: 0,
+    });
+  }
+  if (tracks.length === 0) return null;
+
+  // An album's list has no author of its own; its songs' artist is the one to name.
+  const album = id.startsWith("OLAK5uy_");
+  const by = found.author ?? (album ? (tracks[0]?.artists[0] ?? null) : null);
+  const count =
+    found.trackCount !== null && found.trackCount > tracks.length
+      ? `${tracks.length} of ${found.trackCount} songs`
+      : `${tracks.length} songs`;
+
+  return {
+    kind: "ytmusic-playlist",
+    id,
+    title: found.title,
+    subtitle: [by ? `by ${by}` : null, found.year, count, "on YouTube Music"].filter(Boolean).join(" · "),
+    covers: tiles(tracks),
+    coverUrl: found.artworkUrl,
+    tracks,
+    sections: single(tracks),
+    genreId: null,
+    from: "YouTube Music",
+  };
+}
+
 /** One collection by kind and id, or null when it cannot be established. */
 export async function fetchCollection(
   kind: CollectionKind,
@@ -321,5 +402,6 @@ export async function fetchCollection(
   if (kind === "radio") return fromRadio(id);
   if (kind === "spotify-album") return fromSpotify("album", id);
   if (kind === "spotify-playlist") return fromSpotify("playlist", id);
+  if (kind === "ytmusic-playlist") return fromYouTube(id);
   return fromMood(id);
 }

@@ -90,8 +90,12 @@ export function CollectionView({ collection }: { collection: Collection }) {
 
           {/* Said once here, not on every row. */}
           <p className="mt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
-            Assembled from {collection.from} and kept nowhere. Playing a song searches for a copy Timbre can
-            actually play, so an occasional match is a different upload of the same recording.
+            Assembled from {collection.from} and kept nowhere.{" "}
+            {collection.from === "YouTube Music"
+              ? // These rows already are the uploads that play, so nothing is searched for —
+                // until one refuses to embed, when the player's usual fall-through takes over.
+                "Each song plays the upload the playlist holds; if YouTube will not embed one, another copy of the same recording plays instead."
+              : "Playing a song searches for a copy Timbre can actually play, so an occasional match is a different upload of the same recording."}
             {snapshot && (
               <>
                 {" "}
@@ -176,6 +180,9 @@ function eyebrowOf(collection: Collection): string {
       return "Spotify album";
     case "spotify-playlist":
       return "Spotify playlist";
+    case "ytmusic-playlist":
+      // How YouTube Music shares an album: as its `OLAK5uy_` list.
+      return collection.id.startsWith("OLAK5uy_") ? "YouTube Music album" : "YouTube playlist";
     default:
       return "Collection";
   }
