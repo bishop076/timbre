@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
 import { hideWhenBroken } from "../artwork";
-import { openSpotifyWindow, rememberSpotifyPreviewsOnly } from "../spotify/preview-mode.ts";
+import { openSpotifyWindow } from "../spotify/preview-mode.ts";
 import { useSpotifyTokens } from "../spotify/token-store.ts";
 import { addScript, blockedReason, findScript, loadOnce, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
@@ -118,7 +118,6 @@ export function SpotifyPlayer({
               const clipped =
                 data.duration > 0 && data.duration <= 31_000 && (song?.durationMs ?? 0) > 45_000;
               setPreviewOnly(clipped);
-              if (clipped) rememberSpotifyPreviewsOnly();
 
               if (data.position > 0) reachedEnd = true;
               if (reachedEnd && data.isPaused && data.position === 0) {
@@ -157,7 +156,7 @@ export function SpotifyPlayer({
 
   if (useSdk) {
     return (
-      <div className={`flex items-center justify-center overflow-hidden bg-black ${size}`}>
+      <div className={`flex items-center justify-center overflow-hidden bg-[var(--surface-1)] ${size}`}>
         <SpotifySdkPlayer
           trackId={trackId}
           onOutcome={(outcome) => {
@@ -178,9 +177,26 @@ export function SpotifyPlayer({
     );
   }
 
+  const cover = controls.current?.artworkUrl;
+
   return (
-    <div className={`flex flex-col items-center justify-center overflow-hidden bg-black ${size}`}>
-      <div ref={hostRef} className="w-full" />
+    <div className={`relative flex flex-col items-center justify-center overflow-hidden bg-[var(--surface-1)] ${size}`}>
+      <div
+        ref={hostRef}
+        aria-hidden={Boolean(cover)}
+        inert={Boolean(cover)}
+        className={cover ? "pointer-events-none absolute inset-x-0 top-0 opacity-0" : "w-full"}
+      />
+      {cover && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={cover}
+          alt=""
+          aria-hidden
+          {...hideWhenBroken}
+          className="min-h-0 w-full flex-1 object-contain"
+        />
+      )}
       {previewOnly && (
         <>
           <button
@@ -193,11 +209,11 @@ export function SpotifyPlayer({
           <p className="px-3 py-2 text-center text-[11px] leading-snug text-[var(--fg-faint)]">
             {(sdkFailed && PREVIEW_REASONS[sdkFailed]) || (
               <>
-                Spotify is playing a 30-second preview — its embed reads your login through
-                third-party cookies, which your browser blocks. To play in full, connect your
-                Spotify account in{" "}
-                <span className="text-[var(--fg-dim)]">Profile → Settings</span>. Needs Premium
-                and a client id from your own Spotify app.
+                Spotify is playing a 30-second preview — your browser hides your Spotify login
+                from players inside other sites. Signed in to Spotify, free or Premium, the window
+                above plays the whole song. To hear it here instead, allow cross-site cookies for
+                this site (in Brave: Shields →{" "}
+                <span className="text-[var(--fg-dim)]">Cookies → Allow all</span>).
               </>
             )}
           </p>

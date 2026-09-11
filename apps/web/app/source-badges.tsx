@@ -3,7 +3,6 @@
 import type { Song } from "./types";
 import { ExternalIcon } from "./icons";
 import { playbackFrom, usePlayerControls } from "./player/player-context";
-import { openSpotifyWindow, spotifyPreviewsOnly } from "./spotify/preview-mode.ts";
 import { sourceStyle } from "./sources";
 import { SOURCE_TAG, SOURCE_TAG_ACTIVE, sourceTone } from "./source-tag";
 
@@ -30,13 +29,7 @@ export function SourceBadges({ song, className = "" }: { song: Song; className?:
             {kind ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (source.source === "spotify" && spotifyPreviewsOnly() && source.sourceId) {
-                    openSpotifyWindow(source.sourceId);
-                    return;
-                  }
-                  play(song, [], source.source);
-                }}
+                onClick={() => play(song, [], source.source)}
                 title={playLabel(kind, style.label)}
                 aria-label={playLabel(kind, style.label)}
                 className={`${SOURCE_TAG} ${SOURCE_TAG_ACTIVE}`}
