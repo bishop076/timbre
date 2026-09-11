@@ -37,14 +37,34 @@ function sameArtist(seed: Song, found: Song): boolean {
   return foundNames.some((name) => seedHay.includes(name));
 }
 
+function credited(seed: Song, found: Song): boolean {
+  const foundArtists = normalizeName(found.artists.join(" "));
+  return seed.artists.map(normalizeName).some((name) => name.length > 3 && foundArtists.includes(name));
+}
+
 function sameLength(seed: Song, found: Song): boolean {
   if (!seed.durationMs || !found.durationMs) return true;
   const gap = Math.abs(seed.durationMs - found.durationMs);
+  if (!credited(seed, found)) return gap <= Math.max(10_000, seed.durationMs * 0.08);
   return gap <= Math.max(20_000, seed.durationMs * 0.25);
+}
+
+const VERSIONS: RegExp[] = [
+  /\binstrumental\b|\bkaraoke\b|\boff\s*vocal\b|\bbacking\s+track\b/i,
+  /\bcover\b|\bsings\b|\bsung\s+by\b/i,
+  /\bremix\b/i,
+  /\blive\b/i,
+  /\bacoustic\b|\bunplugged\b/i,
+  /\bsped\s*up\b|\bspeed\s*up\b|\bslowed\b|\bnightcore\b|\breverb\b|\b8d\b/i,
+];
+
+function sameVersion(seed: Song, found: Song): boolean {
+  return VERSIONS.every((version) => !version.test(found.title) || version.test(seed.title));
 }
 
 export function plausiblySameSong(seed: Song, found: Song): boolean {
   if (!sameArtist(seed, found)) return false;
+  if (!sameVersion(seed, found)) return false;
   if (!sameLength(seed, found)) return false;
 
   const wanted = titleWords(seed.title);

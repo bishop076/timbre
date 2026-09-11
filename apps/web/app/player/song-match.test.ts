@@ -94,6 +94,28 @@ test("the same artist's different song is refused on length", () => {
   );
 });
 
+test("another version of the song is not a copy of it", () => {
+  const seed = song("Love Quizzes", "rhyu", 212_142);
+
+  assert.equal(plausiblySameSong(seed, song("love quizzes rhyu instrumental", "test", 213_000)), false);
+  assert.equal(
+    plausiblySameSong(seed, song("Tara Turton sings “Love Quizzes” by rhyu", "Tara Turton", 212_000)),
+    false,
+  );
+  assert.equal(plausiblySameSong(seed, song("Rhyu love quizzes speed up semitones.m4a", "love love")), false);
+  assert.equal(plausiblySameSong(song("Wonderwall (Live)", "Oasis"), song("Wonderwall - Live", "Oasis")), true);
+});
+
+test("a stranger's upload must run as long as the song, since it may be a different take", () => {
+  const seed = song("Love Quizzes", "rhyu", 212_142);
+
+  assert.equal(
+    plausiblySameSong(seed, song("Love Quizzes - RAINE (rhyu) [4K]", "Mic's Video Station", 260_000)),
+    false,
+  );
+  assert.equal(plausiblySameSong(seed, song("rhyu - Love Quizzes", "someone", 214_000)), true);
+});
+
 test("a decorated title and its plain one are one recording, either way round", () => {
   const upload = song("Pandemonium (Visualizer Video)", "NIKI");
   const plain = song("Pandemonium", "NIKI");
