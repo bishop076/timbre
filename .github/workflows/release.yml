@@ -9,17 +9,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Version, changelog and GitHub Release
+  verify:
+    name: Typecheck, lint, test and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
     if: "!contains(github.event.head_commit.message, 'chore(release):')"
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -44,6 +44,23 @@ jobs:
       - name: Build the container, and discard it
         run: docker build -t timbre:ci-check .
 
+  release:
+    name: Version, changelog and GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
       - name: Work out the version
         id: version
         env:
@@ -55,13 +72,15 @@ jobs:
         env:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
+          PUSH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "bishop076"
           git config user.email "271764729+bishop076@users.noreply.github.com"
           git add package.json apps/web/package.json CHANGELOG.md
           git commit -m "chore(release): $VERSION [skip ci]"
           git tag -a "$TAG" -m "Timbre $VERSION"
-          git push origin HEAD:main --follow-tags
+          git push --atomic "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            HEAD:main "refs/tags/$TAG"
 
       - name: Publish the Release
         if: steps.version.outputs.released == 'true'

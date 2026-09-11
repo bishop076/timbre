@@ -149,6 +149,7 @@ await check("Self-repair sources", async () => {
 });
 
 const ICON = { ok: "✅", warn: "⚠️", fail: "❌" };
+const code = (text: string) => `\`${text.replace(/[`\s]+/g, " ").trim().replace(/\|/g, "\\|")}\``;
 const failed = results.filter((result) => result.level === "fail");
 const warned = results.filter((result) => result.level === "warn");
 
@@ -161,7 +162,7 @@ const lines = [
   "",
   "| | Check | Result |",
   "|---|---|---|",
-  ...results.map((result) => `| ${ICON[result.level]} | ${result.check} | ${result.detail.replace(/\|/g, "\\|")} |`),
+  ...results.map((result) => `| ${ICON[result.level]} | ${result.check} | ${code(result.detail)} |`),
 ];
 for (const result of [...failed, ...warned]) {
   if (!result.fix) continue;
