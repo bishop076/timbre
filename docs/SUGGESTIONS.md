@@ -212,33 +212,16 @@ noticing.
 
 ---
 
-## S-8 · A test for the variant rule `PROMISING`
+## S-8 · A test for the variant rule `DONE`
 
-*Not a suggestion so much as a debt. Grounded in a live counterexample.*
+*Settled 2026-09-11 — kept as a pointer, per this file's own rule, rather than as a suggestion.*
 
-The README's rule that `(Live)`, `(Acoustic)` and `- Remix` are **variants** that
-must agree before two tracks merge is the project's genuine edge, and it currently
-rests on prose.
-
-**A shipped competitor gets it wrong in exactly the predicted way.** The
-`nuclear-plugin-omnisource` community plugin — the same architecture as Timbre,
-built independently — strips `remix`, `edit` and `extended` as noise words, then
-fingerprints its dedup on that normalised title. So *Never Be Like You* and *Never
-Be Like You (Flume Remix)* produce the same fingerprint and one is silently
-dropped. Its scorer then penalises `remix` a further −15. Verified still live
-2026-08-19.
-
-**Two measurements make this urgent rather than theoretical:**
-
-- Audius's catalogue is **entirely** variant-bearing titles — every result for
-  Timbre's own suggested searches was a remix, edit, mashup or set — and its
-  `isrc` field is **0/20 populated**, so the merger falls through to
-  title+artist+duration with nothing to backstop it.
-- MusicBrainz ranks the *instrumental* of a track above the recording itself
-  (score 100 vs 92), so variant confusion is a **lookup** failure as well as a
-  merge failure.
-
-**To promote:** it is a test, not a design. Write it.
+The rule that `(Live)`, `(Acoustic)` and `- Remix` are variants that must agree before two
+tracks merge no longer rests on prose: `packages/providers/src/merge.test.ts` holds a live
+take against the studio version, a remix with no ISRC to backstop it, and an acoustic version
+spelt two ways, and `packages/core/src/normalize.test.ts` covers the parsing underneath. The
+two counterexamples that made this urgent — Audius's all-variant catalogue with no ISRCs, and
+MusicBrainz ranking an instrumental above its recording — are exactly what those cases pin.
 
 ---
 
