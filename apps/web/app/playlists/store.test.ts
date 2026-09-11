@@ -150,3 +150,15 @@ test("a rescued song gains the copies that played, beside the ones it had", asyn
   // Nothing new the second time round, so nothing is written.
   assert.equal(store.addSourcesToSong("a", [audius]), 0);
 });
+
+test("a backup carries liked songs, and a file holding only those still imports", async () => {
+  const { store } = await fresh();
+  const file = store.exportPlaylists({ liked: [song("l")] });
+  assert.equal(file.version, 2);
+  assert.equal(file.liked.length, 1);
+  // Nothing is written when there is nothing to carry.
+  assert.equal("liked" in store.exportPlaylists({ liked: [] }), false);
+
+  assert.equal(store.importPlaylists({ ...exportFile([]), liked: [song("l")] }), 0);
+  assert.throws(() => store.importPlaylists({ ...exportFile([]), liked: [] }), /no playlists/);
+});

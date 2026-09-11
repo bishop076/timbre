@@ -269,24 +269,29 @@ export function addSourcesToSong(songId: string, found: Song["sources"]): number
 /** Everything, as a file — the only way to move a library to another machine or survive
  * clearing site data. Versioned so a format change can still read it.
  *
- * Version 2 adds the profile, optionally: a backup carries it, a list sent to a friend does
- * not — the name and pictures are the one part of this file that is about a person. Version 1
- * files still import; nothing in them changed meaning. */
+ * Version 2 adds the profile and the liked songs, optionally: a backup carries them, a list
+ * sent to a friend does not — they are the part of this file that is about a person. Version
+ * 1 files still import; nothing in them changed meaning. */
 export interface PlaylistExport {
   format: "timbre.playlists";
   version: 1 | 2;
   exportedAt: string;
   playlists: LocalPlaylist[];
   profile?: ProfileExport;
+  /** Imported by `likes-store.ts`, which owns them and checks every one. */
+  liked?: Song[];
 }
 
-export function exportPlaylists(extras: { profile?: ProfileExport | null } = {}): PlaylistExport {
+export function exportPlaylists(
+  extras: { profile?: ProfileExport | null; liked?: Song[] } = {},
+): PlaylistExport {
   return {
     format: "timbre.playlists",
     version: 2,
     exportedAt: new Date().toISOString(),
     playlists: all,
     ...(extras.profile ? { profile: extras.profile } : {}),
+    ...(extras.liked?.length ? { liked: extras.liked } : {}),
   };
 }
 
@@ -302,8 +307,8 @@ const MAX_NAME = 120;
 
 /** Merges an exported file back in, returning how many arrived. Merge rather than replace,
  * with new ids: importing must never silently overwrite what is already here. A file that
- * carries only a profile is still an export — the profile itself is applied by the caller,
- * which has to ask before replacing one. */
+ * carries only a profile or liked songs is still an export — the caller applies those, and
+ * has to ask before replacing a profile. */
 export function importPlaylists(data: unknown): number {
   const file = data as Partial<PlaylistExport>;
   if (!file || file.format !== "timbre.playlists" || !Array.isArray(file.playlists)) {
@@ -316,7 +321,7 @@ export function importPlaylists(data: unknown): number {
   );
 
   if (incoming.length === 0) {
-    if (readProfileExport(file.profile)) return 0;
+    if (readProfileExport(file.profile) || (Array.isArray(file.liked) && file.liked.length > 0)) return 0;
     throw new ImportError("That file has no playlists in it.");
   }
 
