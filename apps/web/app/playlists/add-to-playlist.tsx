@@ -8,8 +8,9 @@ import type { Song } from "../types";
 import { addSongToPlaylist, createPlaylist, loadPlaylists, usePlaylists } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
-/** Saves a song to a playlist. A menu rather than a heart, since there is no single
- * "liked songs" list. Playlists are local, so the interaction is synchronous. */
+/** Saves a song to a playlist. A menu, because a playlist has to be chosen; the one list
+ * that needs no choosing is Liked songs, which is <LikeButton>'s. Playlists are local, so
+ * the interaction is synchronous. */
 export function AddToPlaylist({ song, className }: { song: Song; className?: string }) {
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
