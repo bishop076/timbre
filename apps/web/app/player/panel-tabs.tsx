@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { useRef, useState, type ReactNode } from "react";
 
+import { getPlaybackPrefs } from "./playback-prefs";
+
 // Fetched when their tab is first opened: a static import would bundle both, and this
 // panel is in the root shell, so that cost lands on every route. The default tab is
 // `queue`, passed in, so the common case downloads neither.
@@ -32,7 +34,12 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 export function PanelTabs({ queue }: { queue: ReactNode }) {
-  const [active, setActive] = useState<TabId>("queue");
+  // Where it opens is Settings → General's; read once, so switching tabs is never undone
+  // under the reader. Safe from a hydration mismatch because this only mounts once a song
+  // is loaded, which the server never sees.
+  const [active, setActive] = useState<TabId>(() =>
+    getPlaybackPrefs().lyricsByDefault ? "lyrics" : "queue",
+  );
   const list = useRef<HTMLDivElement>(null);
 
   /**

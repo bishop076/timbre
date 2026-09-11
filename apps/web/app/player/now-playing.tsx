@@ -14,6 +14,7 @@ import { ArtistCard } from "./artist-card";
 import { usePlayerControls } from "./player-context";
 import { SimilarSongs } from "./similar-songs";
 import { PanelTabs } from "./panel-tabs";
+import { usePlaybackPrefs } from "./playback-prefs";
 import { QueueSearch } from "./queue-search";
 import { useSongMenu } from "./song-menu";
 import { YouTubePlayer } from "./youtube-player";
@@ -176,16 +177,18 @@ export function NowPlayingPanel() {
     removeAt,
     clearQueue,
   } = usePlayerControls();
+  const { continueWithRadio } = usePlaybackPrefs();
 
   const active = current !== null;
   const open = active && panelOpen;
   const expanded = open && theater;
 
   // The queue, then the blend it steps into when that runs out — the queue alone said
-  // "nothing after this one" with recommendations already fetched a track away.
+  // "nothing after this one" with recommendations already fetched a track away. Not when
+  // Settings stops the queue at its end: listing songs that will never play is the same lie.
   const queued = queue.slice(index + 1);
   const known = new Set(queue.map((song) => song.id));
-  const suggested = radio.filter((song) => !known.has(song.id));
+  const suggested = continueWithRadio ? radio.filter((song) => !known.has(song.id)) : [];
   const upcoming = [...queued, ...suggested];
 
   // Where to send someone whose track will not play here. The song's own most-playable
