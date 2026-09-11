@@ -5,7 +5,9 @@ tracks; keeping this layer dumb means a `ytmusicapi` shape change touches one
 Python file and nothing else.
 """
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class Track(BaseModel):
@@ -75,3 +77,57 @@ class RadioResponse(BaseModel):
 
     radio: list[Track]
     related: list[Track]
+
+
+class LyricsRequest(BaseModel):
+    """The words YouTube Music shows in its Lyrics tab, for one song.
+
+    **Only art tracks have a Lyrics tab.** Measured 2026-09-11, unauthenticated,
+    across seven songs: 6 of 6 art tracks (MUSIC_VIDEO_TYPE_ATV) had one, and
+    0 of 14 official videos and 0 of 26 user uploads did — with no
+    `counterpart` on their watch pages pointing at the art track either. Timbre
+    plays videos first, since art tracks are the uploads most often barred from
+    embedding, so the upload playing is usually one with no lyrics at all.
+
+    Hence two ways in. `video_ids` are art tracks the web app already knows of,
+    tried in order. Failing those, `title` and `artist` find the art track with
+    a songs search, the way YouTube Music itself would pair a video with its
+    song. Three ids at most: each without a tab is a second spent on nothing.
+    """
+
+    video_ids: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{11}$")]] = Field(
+        default=[], max_length=3
+    )
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    artist: str | None = Field(default=None, min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def _something_to_look_up(self) -> "LyricsRequest":
+        if not self.video_ids and not (self.title and self.artist):
+            raise ValueError("Give video_ids, or a title and an artist.")
+        return self
+
+
+class LyricLine(BaseModel):
+    text: str
+    # Milliseconds into the song, or None on every line when YouTube Music has
+    # the words but not their timing. Never mixed within one answer.
+    start_ms: int | None = None
+
+
+class LyricsResponse(BaseModel):
+    """Always a 200, even when there is nothing to show.
+
+    "No lyrics" is an empty `lines` rather than a 404 because the web app and
+    this service deploy independently: a web app ahead of an older sidecar gets
+    FastAPI's own 404 for the unknown route, and that has to read as a fault to
+    fix, not as a song without words.
+    """
+
+    source: str = "ytmusic"
+    synced: bool = False
+    lines: list[LyricLine] = []
+    # YouTube Music licenses its lyrics and names the licensor — "Source:
+    # LyricFind" and the like. Passed through verbatim so the credit is shown
+    # the way the licensor worded it.
+    attribution: str | None = None
