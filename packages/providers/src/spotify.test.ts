@@ -130,4 +130,5 @@ test("oEmbed stands in for an unreadable page; unplayable tracks and non-track l
     assert.equal(await resolve(`https://open.spotify.com/track/${TRACK_ID}`), null);
   });
   assert.equal(await resolve("https://open.spotify.com/album/2noRn2Aes5aoNVsU6iWThc"), null);
+  assert.equal(await resolve(`javascript://open.spotify.com/track/${TRACK_ID}`), null);
 });

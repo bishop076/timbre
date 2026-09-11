@@ -65,6 +65,12 @@ test("an unresolved client_id abstains instead of waiting", async (t) => {
   assert.equal(fetches.callCount(), 0);
 });
 
+test("a link on soundcloud.com under another scheme is not resolved", async (t) => {
+  const fetches = t.mock.method(globalThis, "fetch", async () => Response.json({ title: "x" })).mock;
+  assert.equal(await proxied().resolve?.(ctx, "javascript://soundcloud.com/%0aalert(1)"), null);
+  assert.equal(fetches.callCount(), 0);
+});
+
 test("with neither a base nor a resolver it is not searchable", () => {
   assert.equal(createSoundCloudProvider().searchable, false);
 });

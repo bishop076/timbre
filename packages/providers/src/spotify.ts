@@ -45,7 +45,7 @@ async function quietly<T>(
 export function spotifyTrackId(raw: string): string | null {
   try {
     const url = new URL(raw);
-    if (url.hostname.replace(/^www\./, "") !== "open.spotify.com") return null;
+    if (!/^https?:$/.test(url.protocol) || url.hostname.replace(/^www\./, "") !== "open.spotify.com") return null;
     return TRACK_PATH.exec(url.pathname)?.[1] ?? null;
   } catch {
     return null;
