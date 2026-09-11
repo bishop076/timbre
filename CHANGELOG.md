@@ -10,6 +10,20 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.12.0 — 11 September 2026
+
+### Added
+
+- **home** — show the artist in Recently played when you played from their page
+- **ui** — frame song, release and artist tiles as cards
+- **spotify** — search Spotify and open its albums and playlists without an account
+
+### Fixed
+
+- **spotify** — mend retired query hashes and fall back to embed pages
+
+3 further changes under the hood — refactoring, docs and tests.
+
 ## 0.11.1 — 11 September 2026
 
 ### Fixed
