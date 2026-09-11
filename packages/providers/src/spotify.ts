@@ -14,13 +14,11 @@
 // `playback: "manual"`, which `types.ts` has described for exactly this since before there
 // was anything to describe.
 //
-// **Why there is no search.** Spotify's catalogue search needs a developer app, and since
-// Feb 2026 that needs Premium and caps at five users — a limit no amount of building moves.
-// Track ids *are* freely available from any web index, since Spotify's track pages are
-// indexed for SEO, but Timbre would need a search index of its own to query one and its own
-// search page renders no ids server-side (checked: 156KB of HTML, zero). So Timbre can play
-// a Spotify track you already found and cannot find one for you — the same shape as
-// SoundCloud, for entirely different reasons.
+// **Why search is not here.** Spotify's official search needs a developer app, and since
+// Feb 2026 that needs Premium and caps at five users. Search lives in `spotify-web.ts`
+// instead, on the anonymous token every embed page carries, and stays out of `searchAll`:
+// its results render in their own section and never merge into the ranked list. This
+// provider remains what plays a Spotify track, however it was found.
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 

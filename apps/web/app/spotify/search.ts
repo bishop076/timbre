@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * Searching Spotify's catalogue with the reader's own token, from the browser.
+ * Searching Spotify's catalogue — through Timbre's server with no account, or with the
+ * reader's own token from the browser when that path is down.
  *
  * **Kept apart from `searchAll` on purpose, twice over.** Technically, the token lives in
  * this browser and the fan-out runs on the server, so it could not join it without sending
@@ -65,8 +66,21 @@ function toSong(track: SpotifyTrack): Song | null {
 
 export type SpotifySearchResult =
   | { kind: "off" }
-  | { kind: "ok"; songs: Song[] }
+  /** `from` says whose search answered — Spotify's public catalogue, or the reader's account. */
+  | { kind: "ok"; songs: Song[]; from: "catalogue" | "account" }
   | { kind: "error"; message: string };
+
+/**
+ * Spotify's public catalogue, searched by Timbre's server with no account at all — see
+ * `packages/providers/src/spotify-web.ts`. Throws on failure rather than returning an error,
+ * so the caller can fall back to the reader's own account before giving up.
+ */
+export async function searchSpotifyCatalogue(query: string, signal?: AbortSignal): Promise<Song[]> {
+  const response = await fetch(`/api/spotify/search?q=${encodeURIComponent(query)}`, { signal });
+  const body = (await response.json().catch(() => null)) as { songs?: Song[]; error?: string } | null;
+  if (!response.ok || !body?.songs) throw new Error(body?.error ?? `Spotify search failed (${response.status}).`);
+  return body.songs;
+}
 
 /**
  * Searches, or explains why it did not.
@@ -108,5 +122,5 @@ export async function searchSpotify(query: string, signal?: AbortSignal): Promis
 
   const body = (await response.json()) as { tracks?: { items?: SpotifyTrack[] } };
   const songs = (body.tracks?.items ?? []).map(toSong).filter((song): song is Song => song !== null);
-  return { kind: "ok", songs };
+  return { kind: "ok", songs, from: "account" };
 }
