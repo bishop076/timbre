@@ -316,6 +316,13 @@ export function ProfileView({
                     />{" "}
                     <Replay slot="label-songs" value={settled ? plural(songCount, "song") : null} />
                   </span>
+                  {/* Unconditional, like the row: it needs nothing from storage to draw. */}
+                  <Link
+                    href="/stats"
+                    className={`press ml-1 rounded-[var(--r-full)] px-2.5 py-0.5 text-[12px] font-semibold ${onDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-[var(--surface-2)] text-[var(--fg)] hover:bg-[var(--surface-3)]"}`}
+                  >
+                    Your listening
+                  </Link>
                 </div>
               )}
             </div>
