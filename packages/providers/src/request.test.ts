@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { ProviderError, type RateLimiter } from "@timbre/core";
 
@@ -159,7 +160,8 @@ test("every request carries a deadline, and the caller's own abort still reaches
 
 test("the deadline fires on its own, as a TimeoutError", async () => {
   const signal = deadlineSignal(undefined, 20);
-  await new Promise((resolve) => signal.addEventListener("abort", resolve));
+  await sleep(60);
+  assert.equal(signal.aborted, true);
   assert.equal((signal.reason as DOMException).name, "TimeoutError");
 });
 
