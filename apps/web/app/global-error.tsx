@@ -6,7 +6,11 @@ function ownedKeys(): string[] {
 
 function download(): void {
   try {
-    const dump = Object.fromEntries(ownedKeys().map((key) => [key, localStorage.getItem(key)]));
+    const dump = Object.fromEntries(
+      ownedKeys()
+        .filter((key) => !key.startsWith("timbre:spotify"))
+        .map((key) => [key, localStorage.getItem(key)]),
+    );
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" }),
     );

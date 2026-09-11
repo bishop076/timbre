@@ -10,8 +10,11 @@ interface MixcloudCloudcast {
   pictures?: { "320wx320h"?: string; "640wx640h"?: string; large?: string } | null;
 }
 
+const WEB = "https://www.mixcloud.com";
+
 function toSourceTrack(raw: MixcloudCloudcast): SourceTrack | null {
   if (!raw.key || !raw.name) return null;
+  const link = URL.parse(raw.key, WEB);
   const host = raw.user?.name?.trim() || raw.user?.username?.trim();
   return {
     source: "mixcloud",
@@ -21,7 +24,7 @@ function toSourceTrack(raw: MixcloudCloudcast): SourceTrack | null {
     album: null,
     durationMs: raw.audio_length ? raw.audio_length * 1000 : null,
     isrc: null,
-    url: `https://www.mixcloud.com${raw.key}`,
+    url: link?.origin === WEB ? link.href : null,
     artworkUrl: raw.pictures?.["640wx640h"] ?? raw.pictures?.["320wx320h"] ?? raw.pictures?.large ?? null,
     playback: "queue",
   };

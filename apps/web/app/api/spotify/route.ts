@@ -20,7 +20,7 @@ export const GET = queryRoute(
   async ({ title, artist, album, isrc }, request) => {
     if (!album && !isrc) return Response.json({ trackId: null });
 
-    const key = `spotify:${isrc ?? ""}:${artist ?? ""}:${album ?? ""}:${title}`;
+    const key = JSON.stringify([isrc, artist, album, title]);
     const ctx = { ...getProviderRuntime(), signal: request.signal };
     const trackId =
       hits.get(key) ?? (await findSpotifyTrackId(ctx, { title, artist, album, isrc }));

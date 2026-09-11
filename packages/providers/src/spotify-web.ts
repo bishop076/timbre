@@ -5,8 +5,9 @@ import type { SearchContext, SourceTrack } from "./types.ts";
 
 const BOOTSTRAP = "https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC";
 const PATHFINDER = "https://api-partner.spotify.com/pathfinder/v1/query";
+const BUNDLE_ORIGIN = "https://open.spotifycdn.com";
 const UPSTREAM_TABLE =
-  "https://raw.githubusercontent.com/AliAkhtari78/SpotifyScraper/master/src/spotify_scraper/api/pathfinder.py";
+  "https://raw.githubusercontent.com/AliAkhtari78/SpotifyScraper/9cbf05aa4963bac3684bb941270dcb62fc851ab7/src/spotify_scraper/api/pathfinder.py";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
@@ -234,7 +235,7 @@ export async function discoverHashesFrom(ctx: SearchContext, fresh = false): Pro
     try {
       const page = (await text("https://open.spotify.com/search")) ?? "";
       const mainUrl = /src="([^"]+\/web-player\.[0-9a-f]+\.js)"/.exec(page)?.[1];
-      const main = mainUrl ? await text(mainUrl) : null;
+      const main = mainUrl && URL.parse(mainUrl)?.origin === BUNDLE_ORIGIN ? await text(mainUrl) : null;
       if (mainUrl && main) {
         adopt("bundle", main);
         const chunk = result.hashes.search ? null : chunkUrl(main, mainUrl, "xpui-routes-search");
