@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { ArtistLink } from "../artist-link";
 import { toArtistSlug } from "../artist-slug";
@@ -45,6 +45,7 @@ export function ArtistView({
   filtered,
   releases,
   related,
+  about,
 }: {
   name: string;
   imageUrl: string | null;
@@ -55,6 +56,8 @@ export function ArtistView({
   filtered: boolean;
   releases: Release[];
   related: RelatedArtist[];
+  /** The biography, rendered on the server and streamed in — see `artist-about.tsx`. */
+  about?: ReactNode;
 }) {
   const { play, current, state } = usePlayerControls();
 
@@ -235,6 +238,10 @@ export function ArtistView({
           ))}
         </Shelf>
       )}
+
+      {/* Last, where Spotify and Apple Music keep it too — and the one place that arriving a
+          few seconds after the rest moves nothing anyone is reading. */}
+      {about}
     </div>
   );
 }
