@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Artwork } from "../artwork";
 import { useHydrated } from "../hydrated";
@@ -64,6 +64,7 @@ export function Sidebar() {
   const hydrated = useHydrated();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
   const { playlists, settled } = usePlaylists();
+  const [list, edges] = useScrollEdges();
 
   useEffect(() => {
     void loadPlaylists();
@@ -137,7 +138,12 @@ export function Sidebar() {
           })}
         </div>
 
-        <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div
+          ref={list}
+          data-above={edges.above || undefined}
+          data-below={edges.below || undefined}
+          className="edge-fade scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+        >
           {filter === "Playlists" ? (
             <>
               <LikedRow />
@@ -189,6 +195,44 @@ export function Sidebar() {
 
     </aside>
   );
+}
+
+// Whether a scroll box has more above or below what it shows, so `.edge-fade` softens only an
+// edge with something past it. Watched, not measured once: the queue grows, and switching tabs
+// swaps the box's contents without resizing the box.
+function useScrollEdges() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ above: false, below: false });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const measure = () => {
+      const above = el.scrollTop > 1;
+      const below = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+      setEdges((prev) => (prev.above === above && prev.below === below ? prev : { above, below }));
+    };
+
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const sizes = new ResizeObserver(measure);
+    const watch = () => {
+      sizes.observe(el);
+      for (const child of el.children) sizes.observe(child);
+    };
+    watch();
+    const contents = new MutationObserver(watch);
+    contents.observe(el, { childList: true });
+
+    return () => {
+      el.removeEventListener("scroll", measure);
+      sizes.disconnect();
+      contents.disconnect();
+    };
+  }, []);
+
+  return [ref, edges] as const;
 }
 
 function PlaylistRows({

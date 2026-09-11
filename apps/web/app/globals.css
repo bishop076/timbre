@@ -363,6 +363,37 @@ input[type="search"]::-webkit-search-results-decoration {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent 100%);
 }
 
+/* A list cropped by its panel, softened only at an edge with more past it — set by
+   `useScrollEdges`. Registered so the fade eases in rather than snapping. */
+@property --fade-above {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-below {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.edge-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--fade-above),
+    #000 calc(100% - var(--fade-below)),
+    transparent
+  );
+  transition:
+    --fade-above 0.2s var(--ease),
+    --fade-below 0.2s var(--ease);
+}
+.edge-fade[data-above] {
+  --fade-above: 28px;
+}
+.edge-fade[data-below] {
+  --fade-below: 40px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-in,
   .rise {
