@@ -25,6 +25,20 @@ test("a rights-gated SNIP is dropped rather than listed as the song", async (t) 
   );
 });
 
+test("a snipped transcoding is a clip too, whatever the policy says", async (t) => {
+  const transcodings = (...snipped: boolean[]) => ({ transcodings: snipped.map((value) => ({ snipped: value })) });
+  stubSearch(
+    t,
+    { id: 6, title: "Shape of You", duration: 30_000, policy: "MONETIZE", media: transcodings(false, true) },
+    { id: 7, title: "Perfect", duration: 263_400, policy: "MONETIZE", media: transcodings(false, false) },
+  );
+  const tracks = await proxied().search(ctx, "ed sheeran", 10);
+  assert.deepEqual(
+    tracks.map((track) => track.title),
+    ["Perfect"],
+  );
+});
+
 test("a track with no policy at all is kept", async (t) => {
   stubSearch(t, { id: 3, title: "Untitled Demo", duration: 91_000 });
   const tracks = await proxied().search(ctx, "demo", 10);
