@@ -49,7 +49,7 @@ test("YouTube Music's own editorial playlists open", () => {
   assert.equal(youtubePlaylistPath(`https://music.youtube.com/playlist?list=${id}`)?.href, `/collection/ytmusic-playlist/${id}`);
 });
 
-test("a mix, a personal list and a plain song offer nothing", () => {
+test("a mix, a personal list, a plain song and anything not a YouTube link offer nothing", () => {
   for (const link of [
     "https://music.youtube.com/watch?v=fa5IWHDbftI&list=RDAMVMfa5IWHDbftI",
     "https://www.youtube.com/playlist?list=LL",
@@ -58,13 +58,6 @@ test("a mix, a personal list and a plain song offer nothing", () => {
     "https://youtu.be/hpSrLjc5SMs",
     `https://www.youtube.com/watch?list=${LIST}`,
     `https://www.youtube.com/channel/UC123?list=${LIST}`,
-  ]) {
-    assert.equal(youtubePlaylistPath(link), null, link);
-  }
-});
-
-test("anything that is not a YouTube link offers nothing", () => {
-  for (const link of [
     "",
     "daft punk",
     `youtube.com/playlist?list=${LIST}`,

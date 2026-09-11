@@ -1,35 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  activeProvider,
-  artTrackIds,
-  hasYouTube,
-  readAnswer,
-  retryDelayMs,
-} from "./lyrics-source.ts";
+import { activeProvider, artTrackIds, hasYouTube, readAnswer, retryDelayMs } from "./lyrics-source.ts";
 
-const video = (sourceId: string) => ({ source: "ytmusic", sourceId, videoType: "MUSIC_VIDEO_TYPE_OMV" });
+const video = { source: "ytmusic", sourceId: "vvvvvvvvvvv", videoType: "MUSIC_VIDEO_TYPE_OMV" };
 const artTrack = (sourceId: string) => ({ source: "ytmusic", sourceId, videoType: "MUSIC_VIDEO_TYPE_ATV" });
-const untyped = (sourceId: string) => ({ source: "ytmusic", sourceId });
 const audius = { source: "audius", sourceId: "x1" };
 
-test("only art tracks are sent, since only they have lyrics pages", () => {
-  assert.deepEqual(
-    artTrackIds([video("vvvvvvvvvvv"), untyped("uuuuuuuuuuu"), artTrack("aaaaaaaaaaa")], "vvvvvvvvvvv"),
-    ["aaaaaaaaaaa"],
-  );
+test("only art tracks are sent, since only they have lyrics pages; none known sends none", () => {
+  const untyped = { source: "ytmusic", sourceId: "uuuuuuuuuuu" };
+  assert.deepEqual(artTrackIds([video, untyped, artTrack("aaaaaaaaaaa")], "vvvvvvvvvvv"), ["aaaaaaaaaaa"]);
+  assert.deepEqual(artTrackIds([video, untyped], "vvvvvvvvvvv"), []);
 });
 
 test("a playing art track leads the others", () => {
-  assert.deepEqual(artTrackIds([artTrack("aaaaaaaaaaa"), artTrack("bbbbbbbbbbb")], "bbbbbbbbbbb"), [
-    "bbbbbbbbbbb",
-    "aaaaaaaaaaa",
-  ]);
-  assert.deepEqual(artTrackIds([artTrack("aaaaaaaaaaa"), artTrack("bbbbbbbbbbb")], null), [
-    "aaaaaaaaaaa",
-    "bbbbbbbbbbb",
-  ]);
+  const both = [artTrack("aaaaaaaaaaa"), artTrack("bbbbbbbbbbb")];
+  assert.deepEqual(artTrackIds(both, "bbbbbbbbbbb"), ["bbbbbbbbbbb", "aaaaaaaaaaa"]);
+  assert.deepEqual(artTrackIds(both, null), ["aaaaaaaaaaa", "bbbbbbbbbbb"]);
 });
 
 test("at most three art tracks are sent, each once", () => {
@@ -40,55 +27,34 @@ test("at most three art tracks are sent, each once", () => {
   assert.deepEqual(ids, ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"]);
 });
 
-test("a song with no known art track sends none, leaving the search to the sidecar", () => {
-  assert.deepEqual(artTrackIds([video("vvvvvvvvvvv"), untyped("uuuuuuuuuuu")], "vvvvvvvvvvv"), []);
-});
-
 test("any YouTube copy, listed or playing, makes YouTube Music worth offering", () => {
-  assert.equal(hasYouTube([video("vvvvvvvvvvv")], null), true);
+  assert.equal(hasYouTube([video], null), true);
   assert.equal(hasYouTube([audius], "zzzzzzzzzzz"), true, "a copy found after the listed ones failed");
   assert.equal(hasYouTube([audius], null), false);
   assert.equal(hasYouTube([], null), false);
 });
 
-test("LRCLIB is the default, and older stored preferences read as it", () => {
+test("LRCLIB is the default; YouTube Music is used only while the song has a YouTube copy", () => {
   assert.equal(activeProvider(undefined, true), "lrclib");
   assert.equal(activeProvider("lrclib", true), "lrclib");
   assert.equal(activeProvider("something-else", true), "lrclib");
-});
-
-test("YouTube Music is used only while the song has a YouTube copy", () => {
   assert.equal(activeProvider("ytmusic", true), "ytmusic");
   assert.equal(activeProvider("ytmusic", false), "lrclib");
 });
 
-test("lyrics found are read as found", () => {
+test("lyrics found are read as found, and a null answer as none rather than a failure", () => {
   const lyrics = { instrumental: false, synced: [{ at: 1, text: "line one" }], plain: "line one" };
   assert.deepEqual(readAnswer(200, null, { lyrics }), { kind: "found", lyrics });
-});
-
-test("a null answer is no lyrics, not a failure", () => {
   assert.deepEqual(readAnswer(200, null, { lyrics: null }), { kind: "none" });
   assert.deepEqual(readAnswer(200, null, null), { kind: "none" });
 });
 
-test("LRCLIB's back-off is busy, with the wait it named", () => {
-  assert.deepEqual(readAnswer(503, "42", { lyrics: null, busy: true }), {
-    kind: "busy",
-    retryAfterSeconds: 42,
-  });
-});
-
-test("Timbre's own meter is busy too, not no lyrics", () => {
-  assert.deepEqual(readAnswer(429, "12", { error: "Too many requests." }), {
-    kind: "busy",
-    retryAfterSeconds: 12,
-  });
-});
-
-test("a busy answer without a readable wait assumes thirty seconds", () => {
+test("a back-off, LRCLIB's or Timbre's own meter, is busy for the wait named, else thirty seconds", () => {
+  const busy = (retryAfterSeconds: number) => ({ kind: "busy", retryAfterSeconds });
+  assert.deepEqual(readAnswer(503, "42", { lyrics: null, busy: true }), busy(42));
+  assert.deepEqual(readAnswer(429, "12", { error: "Too many requests." }), busy(12));
   for (const header of [null, "", "soon", "0", "-4"]) {
-    assert.deepEqual(readAnswer(503, header, null), { kind: "busy", retryAfterSeconds: 30 }, String(header));
+    assert.deepEqual(readAnswer(503, header, null), busy(30), String(header));
   }
 });
 

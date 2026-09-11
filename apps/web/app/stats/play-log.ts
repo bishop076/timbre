@@ -1,12 +1,10 @@
-import { createLocalStore, useLocalStore } from "../local-store.ts";
+import { createJsonStore, useLocalStore } from "../local-store.ts";
 import type { PlayedSong } from "../player/history-store";
 
 export interface PlayLog {
   plays: [id: string, at: number][];
   songs: Record<string, PlayedSong>;
 }
-
-const LOG_KEY = "timbre:plays";
 
 export const PLAY_LOG_LIMIT = 500;
 
@@ -33,12 +31,6 @@ export function appendPlay(
   return { plays, songs };
 }
 
-function isSong(value: unknown): value is PlayedSong {
-  if (typeof value !== "object" || value === null) return false;
-  const entry = value as Partial<PlayedSong>;
-  return typeof entry.id === "string" && typeof entry.title === "string";
-}
-
 export function parsePlayLog(raw: unknown, limit = PLAY_LOG_LIMIT): PlayLog {
   if (typeof raw !== "object" || raw === null) return EMPTY_LOG;
   const { plays, songs } = raw as { plays?: unknown; songs?: unknown };
@@ -46,7 +38,7 @@ export function parsePlayLog(raw: unknown, limit = PLAY_LOG_LIMIT): PlayLog {
 
   const known: Record<string, PlayedSong> = {};
   for (const [id, song] of Object.entries(songs)) {
-    if (isSong(song) && song.id === id) known[id] = song;
+    if (song?.id === id && typeof song.title === "string") known[id] = song;
   }
 
   const kept: PlayLog["plays"] = [];
@@ -60,26 +52,10 @@ export function parsePlayLog(raw: unknown, limit = PLAY_LOG_LIMIT): PlayLog {
   }
   if (kept.length === 0) return EMPTY_LOG;
 
-  const used: Record<string, PlayedSong> = {};
-  for (const [id] of kept) used[id] = known[id]!;
-  return { plays: kept, songs: used };
+  return { plays: kept, songs: Object.fromEntries(kept.map(([id]) => [id, known[id]!])) };
 }
 
-function read(): PlayLog {
-  try {
-    const raw = window.localStorage.getItem(LOG_KEY);
-    return raw ? parsePlayLog(JSON.parse(raw)) : EMPTY_LOG;
-  } catch {
-    return EMPTY_LOG;
-  }
-}
-
-const store = createLocalStore<PlayLog>({
-  read,
-  initial: EMPTY_LOG,
-  write: (next) => window.localStorage.setItem(LOG_KEY, JSON.stringify(next)),
-  keys: [LOG_KEY],
-});
+const store = createJsonStore("timbre:plays", EMPTY_LOG, parsePlayLog);
 
 export function usePlayLog(): PlayLog {
   return useLocalStore(store);

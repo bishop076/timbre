@@ -4,7 +4,8 @@ import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import { formatElapsed } from "../duration";
 import { NextIcon, PauseIcon, PlayHereIcon, PlayIcon, PrevIcon, SpinnerIcon } from "../icons";
-import { commandRemote, takeOverRemote, type RemotePlayer } from "./use-tab-sync";
+import type { RemotePlayer } from "./tab-sync";
+import { commandRemote, takeOverRemote } from "./use-tab-sync";
 import { ScrubBar } from "./wavy-progress";
 
 export function RemoteBar({ remote }: { remote: RemotePlayer }) {

@@ -8,7 +8,7 @@ import { getLikedSongs, useLikes } from "./likes-store";
 import { allPlaylists, exportPlaylists } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
-export function saveFile(contents: BlobPart, type: string, name: string): void {
+function saveFile(contents: BlobPart, type: string, name: string): void {
   const url = URL.createObjectURL(new Blob([contents], { type }));
   const link = document.createElement("a");
   link.href = url;
@@ -43,8 +43,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
   }
 
   function csv() {
-    const liked = getLikedSongs();
-    const lists = liked.length > 0 ? [{ name: "Liked songs", songs: liked }, ...allPlaylists()] : allPlaylists();
+    const lists = [{ name: "Liked songs", songs: getLikedSongs() }, ...allPlaylists()];
     saveFile(playlistsToCsv(lists), "text/csv;charset=utf-8", `timbre-playlists-${today()}.csv`);
     close();
   }

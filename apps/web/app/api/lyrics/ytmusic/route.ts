@@ -33,26 +33,16 @@ export async function GET(request: Request) {
   }
 
   const { title, artist, ids } = parsed.data;
-  const runtime = getProviderRuntime();
-
+  const ctx = { ...getProviderRuntime(), signal: request.signal };
   try {
-    const found = await getYtMusicLyrics()(
-      { ...runtime, signal: request.signal },
-      { videoIds: ids, title: withoutArtistPrefix(title, artist), artist },
-    );
-    if (!found) return Response.json({ lyrics: null });
-
-    return json(
-      {
-        lyrics: {
-          instrumental: false,
-          synced: found.synced,
-          plain: found.plain,
-          attribution: found.attribution,
-        },
-      },
-      CACHE_CONTROL_DAY,
-    );
+    const found = await getYtMusicLyrics()(ctx, {
+      videoIds: ids,
+      title: withoutArtistPrefix(title, artist),
+      artist,
+    });
+    return found
+      ? json({ lyrics: { instrumental: false, ...found } }, CACHE_CONTROL_DAY)
+      : Response.json({ lyrics: null });
   } catch {
     return Response.json(
       { lyrics: null, error: "YouTube Music did not answer." },

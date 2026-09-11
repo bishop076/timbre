@@ -1,14 +1,14 @@
 "use client";
 
 import { dedupeParts } from "@timbre/core";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
-import { createLocalStore, useLocalStore } from "../local-store.ts";
+import { createLocalStore, readJson, useLocalStore, writeJson } from "../local-store.ts";
 import { sameTrack, type TrackLike } from "../player/song-match.ts";
 import { usableSongs } from "../song-shape.ts";
 import type { Song } from "../types";
 
-export interface LikesState {
+interface LikesState {
   songs: Song[];
   settled: boolean;
   error: string | null;
@@ -16,54 +16,34 @@ export interface LikesState {
 
 const KEY = "timbre:likes";
 
-const EMPTY: LikesState = { songs: [], settled: false, error: null };
-
-const OUT_OF_ROOM =
-  "Out of browser storage, so new likes will be gone after a reload. Remove a playlist, or a profile picture.";
-
-function readStorage(): Song[] {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return [];
-    return usableSongs(JSON.parse(raw));
-  } catch {
-    return [];
-  }
-}
-
 const store = createLocalStore<LikesState>({
-  read: () => ({ songs: readStorage(), settled: true, error: null }),
-  initial: EMPTY,
+  read: () => ({ songs: usableSongs(readJson(KEY)), settled: true, error: null }),
+  initial: { songs: [], settled: false, error: null },
   keys: [KEY],
 });
 
-function liked(): Song[] {
-  return store.getSnapshot().songs;
-}
-
 function persist(songs: Song[]): void {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(songs));
-  } catch {
-    store.publish({ songs, settled: true, error: OUT_OF_ROOM });
-    return;
-  }
-  store.publish({ songs, settled: true, error: null });
+  const error = writeJson(KEY, songs)
+    ? null
+    : "Out of browser storage, so new likes will be gone after a reload. Remove a playlist, or a profile picture.";
+  store.publish({ songs, settled: true, error });
 }
 
-const keysCache = new WeakMap<TrackLike, string[]>();
+function cached<K extends object, V>(compute: (key: K) => V): (key: K) => V {
+  const cache = new WeakMap<K, V>();
+  return (key) => {
+    if (!cache.has(key)) cache.set(key, compute(key));
+    return cache.get(key)!;
+  };
+}
 
-function keysOf(song: TrackLike): string[] {
-  let keys = keysCache.get(song);
-  if (!keys) {
-    const { base } = dedupeParts(song.title, song.artists);
-    keys = [`id:${song.id}`];
-    if (song.isrc) keys.push(`isrc:${song.isrc}`);
-    if (base) keys.push(`base:${base}`);
-    keysCache.set(song, keys);
-  }
+const keysOf = cached((song: TrackLike) => {
+  const { base } = dedupeParts(song.title, song.artists);
+  const keys = [`id:${song.id}`];
+  if (song.isrc) keys.push(`isrc:${song.isrc}`);
+  if (base) keys.push(`base:${base}`);
   return keys;
-}
+});
 
 type Index = Map<string, Song[]>;
 
@@ -81,16 +61,7 @@ function buildIndex(songs: Song[]): Index {
   return index;
 }
 
-const indexCache = new WeakMap<Song[], Index>();
-
-function indexOf(songs: Song[]): Index {
-  let index = indexCache.get(songs);
-  if (!index) {
-    index = buildIndex(songs);
-    indexCache.set(songs, index);
-  }
-  return index;
-}
+const indexOf = cached(buildIndex);
 
 function matchesIn(index: Index, song: TrackLike): Set<Song> {
   const found = new Set<Song>();
@@ -110,49 +81,35 @@ function stored(song: Song): Song {
   return { ...song, from: undefined };
 }
 
-export const loadLikes = store.load;
-
 export function useLikes(): LikesState {
+  useEffect(() => store.load(), []);
   return useLocalStore(store);
 }
 
-export function useIsLiked(song: TrackLike | null): boolean {
+export function useIsLiked(song: TrackLike): boolean {
   const { songs } = useLikes();
-  return useMemo(() => (song ? isLikedIn(songs, song) : false), [songs, song]);
+  return useMemo(() => isLikedIn(songs, song), [songs, song]);
 }
 
 export function getLikedSongs(): Song[] {
-  return liked();
+  return store.getSnapshot().songs;
 }
 
-export function getLikesState(): LikesState {
-  return store.getSnapshot();
-}
+export const getLikesState = store.getSnapshot;
 
 export function likeSong(song: Song): void {
-  const songs = liked();
-  if (isLikedIn(songs, song)) return;
-  persist([stored(song), ...songs]);
+  const songs = getLikedSongs();
+  if (!isLikedIn(songs, song)) persist([stored(song), ...songs]);
 }
 
 export function unlikeSong(song: TrackLike): void {
-  const songs = liked();
+  const songs = getLikedSongs();
   const found = matchesIn(indexOf(songs), song);
-  if (found.size === 0) return;
-  persist(songs.filter((entry) => !found.has(entry)));
-}
-
-export function toggleLike(song: Song): boolean {
-  if (isLikedIn(liked(), song)) {
-    unlikeSong(song);
-    return false;
-  }
-  likeSong(song);
-  return true;
+  if (found.size > 0) persist(songs.filter((entry) => !found.has(entry)));
 }
 
 export function importLikedSongs(value: unknown): number {
-  const songs = liked();
+  const songs = getLikedSongs();
   const index = buildIndex(songs);
   const added: Song[] = [];
 
@@ -162,8 +119,6 @@ export function importLikedSongs(value: unknown): number {
     added.push(entry);
     addTo(index, entry);
   }
-  if (added.length === 0) return 0;
-
-  persist([...songs, ...added]);
+  if (added.length > 0) persist([...songs, ...added]);
   return added.length;
 }

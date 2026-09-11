@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, type ComponentProps } from "react";
 import { createPortal } from "react-dom";
 
-import { formatElapsed } from "../duration";
+import { formatClock, formatElapsed } from "../duration";
 import { MoonIcon, SpeedIcon } from "../icons";
+import { EYEBROW } from "../page-chrome";
 import { useAnchoredMenu } from "../playlists/use-anchored-menu";
 import {
   formatSpeed,
@@ -20,7 +21,6 @@ import { usePlayerControls, usePlayerProgress } from "./player-context";
 import {
   cancelSleepTimer,
   describeSleep,
-  formatRemaining,
   SLEEP_MINUTES,
   sleepAtTrackEnd,
   startSleepTimer,
@@ -29,43 +29,31 @@ import {
   useSleepTimer,
 } from "./sleep-timer.ts";
 
-const MENU_WIDTH = 256;
-
-const HEADING = "text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]";
-
 export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
-  const { activeSource, videoId, streamUrl, mixcloudKey, spotifyTrackId, subscriptionTrack } =
-    usePlayerControls();
+  const controls = usePlayerControls();
   const speed = useSpeed();
   const youtubeRates = useYouTubeRates();
   const timer = useSleepTimer();
   const seconds = useSleepSecondsLeft();
 
-  const { open, setOpen, root, trigger, menu, placed, style } = useAnchoredMenu(
-    timer.kind,
-    MENU_WIDTH,
-  );
+  const { open, setOpen, root, trigger, menu, placed, style } = useAnchoredMenu(timer.kind, 256);
   const speedHeading = useId();
   const sleepHeading = useId();
 
-  const support = speedSupport({
-    activeSource,
-    videoId,
-    streamUrl,
-    mixcloudKey,
-    spotifyTrackId,
-    subscription: subscriptionTrack?.source ?? null,
-    youtubeRates,
-  });
+  const subscription = controls.subscriptionTrack?.source ?? null;
+  const support = speedSupport({ ...controls, subscription, youtubeRates });
   const playingAt = support.supported ? speedToApply(speed, support.speeds) : NORMAL_SPEED;
   const speedNote = !support.supported
     ? support.reason
     : playingAt !== speed
       ? `YouTube doesn't offer ${formatSpeed(speed)} for this video, so it plays at 1×.`
       : null;
+  const speedRefused = support.supported
+    ? "YouTube doesn't offer this speed for this video."
+    : support.reason;
 
-  const sleepBlocked = subscriptionTrack
-    ? `${subscriptionTrack.source === "apple" ? "Apple Music" : "Deezer"}'s player can't be paused from here.`
+  const sleepBlocked = subscription
+    ? `${subscription === "apple" ? "Apple Music" : "Deezer"}'s player can't be paused from here.`
     : null;
 
   const sleeping = timer.kind !== "off";
@@ -109,7 +97,7 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
           </span>
         )}
         {sleeping && <MoonIcon className="size-4" />}
-        {timer.kind === "timed" && seconds !== null && <span>{formatRemaining(seconds)}</span>}
+        {timer.kind === "timed" && seconds !== null && <span>{formatClock(seconds)}</span>}
         {!changed && !sleeping && <SpeedIcon className="size-[18px]" />}
       </button>
 
@@ -125,7 +113,7 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
           >
             <section aria-labelledby={speedHeading} className="p-3">
               <div className="mb-2 flex items-center justify-between">
-                <h2 id={speedHeading} className={HEADING}>
+                <h2 id={speedHeading} className={EYEBROW}>
                   Speed
                 </h2>
                 <button
@@ -145,32 +133,17 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
                 aria-describedby={speedNote ? `${speedHeading}-note` : undefined}
                 className="grid grid-cols-5 gap-1"
               >
-                {SPEEDS.map((rate) => {
-                  const offered = support.supported && support.speeds.includes(rate);
-                  const chosen = speed === rate;
-                  return (
-                    <button
-                      key={rate}
-                      type="button"
-                      onClick={() => writeSpeed(rate)}
-                      disabled={!offered}
-                      aria-pressed={chosen}
-                      title={
-                        offered
-                          ? undefined
-                          : support.supported
-                            ? "YouTube doesn't offer this speed for this video."
-                            : support.reason
-                      }
-                      className={`press rounded-[var(--r-sm)] py-1.5 font-mono text-[12px] font-bold tabular-nums disabled:cursor-not-allowed disabled:opacity-40 ${
-                        chosen ? "tint text-[var(--accent-fg)]" : "bg-[var(--surface-2)] text-[var(--fg)]"
-                      }`}
-                      style={chosen ? { background: "var(--accent)" } : undefined}
-                    >
-                      {formatSpeed(rate)}
-                    </button>
-                  );
-                })}
+                {SPEEDS.map((rate) => (
+                  <Choice
+                    key={rate}
+                    chosen={speed === rate}
+                    blocked={support.supported && support.speeds.includes(rate) ? null : speedRefused}
+                    onClick={() => writeSpeed(rate)}
+                    className="font-mono font-bold tabular-nums"
+                  >
+                    {formatSpeed(rate)}
+                  </Choice>
+                ))}
               </div>
 
               {speedNote && (
@@ -184,46 +157,31 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
               aria-labelledby={sleepHeading}
               className="border-t-[length:var(--edge)] border-[var(--ink)] p-3"
             >
-              <h2 id={sleepHeading} className={`${HEADING} mb-2`}>
+              <h2 id={sleepHeading} className={`${EYEBROW} mb-2`}>
                 Sleep timer
               </h2>
 
               <div role="group" aria-label="Pause after" className="grid grid-cols-4 gap-1">
-                {SLEEP_MINUTES.map((minutes) => {
-                  const chosen = timer.kind === "timed" && timer.minutes === minutes;
-                  return (
-                    <button
-                      key={minutes}
-                      type="button"
-                      onClick={() => startSleepTimer(minutes)}
-                      disabled={Boolean(sleepBlocked)}
-                      aria-pressed={chosen}
-                      aria-label={`Pause in ${minutes} minutes`}
-                      title={sleepBlocked ?? undefined}
-                      className={`press rounded-[var(--r-sm)] py-1.5 text-[12px] font-semibold tabular-nums disabled:cursor-not-allowed disabled:opacity-40 ${
-                        chosen ? "tint text-[var(--accent-fg)]" : "bg-[var(--surface-2)] text-[var(--fg)]"
-                      }`}
-                      style={chosen ? { background: "var(--accent)" } : undefined}
-                    >
-                      {minutes}m
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
+                {SLEEP_MINUTES.map((minutes) => (
+                  <Choice
+                    key={minutes}
+                    chosen={timer.kind === "timed" && timer.minutes === minutes}
+                    blocked={sleepBlocked}
+                    onClick={() => startSleepTimer(minutes)}
+                    aria-label={`Pause in ${minutes} minutes`}
+                    className="font-semibold tabular-nums"
+                  >
+                    {minutes}m
+                  </Choice>
+                ))}
+                <Choice
+                  chosen={timer.kind === "track-end"}
+                  blocked={sleepBlocked}
                   onClick={sleepAtTrackEnd}
-                  disabled={Boolean(sleepBlocked)}
-                  aria-pressed={timer.kind === "track-end"}
-                  title={sleepBlocked ?? undefined}
-                  className={`press col-span-4 rounded-[var(--r-sm)] py-1.5 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
-                    timer.kind === "track-end"
-                      ? "tint text-[var(--accent-fg)]"
-                      : "bg-[var(--surface-2)] text-[var(--fg)]"
-                  }`}
-                  style={timer.kind === "track-end" ? { background: "var(--accent)" } : undefined}
+                  className="col-span-4 font-semibold"
                 >
                   End of this track
-                </button>
+                </Choice>
               </div>
 
               {status && (
@@ -254,6 +212,27 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
           document.body,
         )}
     </div>
+  );
+}
+
+function Choice({
+  chosen,
+  blocked,
+  className,
+  ...props
+}: ComponentProps<"button"> & { chosen: boolean; blocked: string | null }) {
+  return (
+    <button
+      {...props}
+      type="button"
+      aria-pressed={chosen}
+      disabled={blocked !== null}
+      title={blocked ?? undefined}
+      className={`press rounded-[var(--r-sm)] py-1.5 text-[12px] disabled:cursor-not-allowed disabled:opacity-40 ${className} ${
+        chosen ? "tint text-[var(--accent-fg)]" : "bg-[var(--surface-2)] text-[var(--fg)]"
+      }`}
+      style={chosen ? { background: "var(--accent)" } : undefined}
+    />
   );
 }
 
