@@ -5,8 +5,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayerControls } from "../player/player-context";
+import { RemoteBar } from "../player/remote-bar";
 import { useArtworkAccent } from "../player/use-artwork-accent";
 import { useSleepTimerDriver } from "../player/use-sleep-timer";
+import { useRemotePlayer } from "../player/use-tab-sync";
 import { useTransportKeys } from "../player/use-transport-keys";
 import { TopBar } from "../top-bar";
 import { PlayerBar } from "./player-bar";
@@ -26,6 +28,9 @@ let movedOnce = false;
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const { theater, current } = usePlayerControls();
+  // Another tab's song, shown only while this tab has none of its own — see `tab-sync.ts`.
+  const remote = useRemotePlayer();
+  const mirrored = current ? null : remote;
   const pathname = usePathname();
 
   // The page fades on a navigation and not on a first load. A CSS entry animation begins at
@@ -44,7 +49,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Applied from the shell, which always mounts. In `PlayerBar` nothing wrote the palette
   // until the first play, so a first visit wore the static CSS fallback and choosing a theme
   // updated only the picker — a control that looks outright broken.
-  useArtworkAccent(current?.artworkUrl);
+  // A mirroring tab wears the other tab's cover too, so the two agree in colour as well.
+  useArtworkAccent(current?.artworkUrl ?? mirrored?.report.song.artworkUrl);
 
   // Watched, not measured once: the answer changes on resize, on load and on navigation —
   // the panel element does not resize when its contents are swapped, hence `pathname`.
@@ -93,10 +99,13 @@ export function AppShell({ children }: { children: ReactNode }) {
        *
        * Phone value. From `lg` the nav is hidden and the bar is a different height, so
        * every consumer stops using this at that breakpoint.
+       *
+       * The remote bar counts as the bar: it takes the player bar's place and is built to
+       * the same height, so it borrows the same reservation rather than inventing one.
        */
       style={
         {
-          "--chrome-b": current
+          "--chrome-b": current || mirrored
             ? "calc(var(--bar-h) + var(--nav-h) + var(--safe-b))"
             : "calc(var(--nav-h) + var(--safe-b))",
         } as React.CSSProperties
@@ -143,6 +152,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       */}
       <div className={theater ? "hidden lg:contents" : "contents"}>
         {current && <PlayerBar />}
+        {mirrored && <RemoteBar remote={mirrored} />}
         <BottomNav />
       </div>
     </div>
