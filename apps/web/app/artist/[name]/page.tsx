@@ -79,7 +79,7 @@ export default async function ArtistPage({ params }: { params: Promise<{ name: s
        * biography is found from it, and a name alone picks namesakes. */
       about={
         artist ? (
-          <Suspense fallback={null}>
+          <Suspense key="about" fallback={null}>
             <ArtistAbout
               name={artist.name}
               deezerId={deezerIdFrom(artist.url)}
