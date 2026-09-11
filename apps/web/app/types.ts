@@ -12,6 +12,9 @@ export interface SourceTrack {
   /** A thirty-second clip the catalogue publishes, played only when nothing else will.
    * Mirrors `SourceTrack.previewUrl` in `@timbre/providers`, which is server-only. */
   previewUrl?: string | null;
+  /** A YouTube upload's kind — `MUSIC_VIDEO_TYPE_ATV` for an art track. Sent by search all
+   * along and first read by the lyrics panel; absent on songs saved without it. */
+  videoType?: string | null;
 }
 
 export interface Song {

@@ -20,8 +20,8 @@ artists are paid exactly as they would be otherwise.
 - **Play** a continuous queue that resolves a playable copy at play time, and falls through
   to another upload when one refuses to embed
 - **Explore** charts fused across Deezer and Apple, plus genres, radios and editorial lists
-- **Lyrics** from LRCLIB, **playlists**, **liked songs**, **listening stats** and **a
-  profile** — saved in your browser, no account, and backed up to a file whenever you like
+- **Lyrics** from LRCLIB or YouTube Music, **playlists**, **liked songs**, **listening stats**
+  and **a profile** — saved in your browser, no account, and backed up to a file whenever you like
 - **Open** a pasted Spotify or YouTube playlist, and save any list or album as your own
 
 ## What it deliberately doesn't do
