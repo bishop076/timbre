@@ -124,3 +124,29 @@ test("a file that is not an export is refused by name", async () => {
   assert.throws(() => store.importPlaylists(null), store.ImportError);
   assert.throws(() => store.importPlaylists(exportFile([])), store.ImportError);
 });
+
+// The rescue's copies join a saved song rather than replacing what it had: a VPN that walls
+// YouTube for one afternoon must not strip YouTube from a list for good.
+test("a rescued song gains the copies that played, beside the ones it had", async () => {
+  const youtube = { source: "ytmusic", sourceId: "y1", url: null, playback: "queue" };
+  const saved = { ...song("a"), sources: [youtube] };
+  const { store, backing } = await fresh({
+    [KEY]: JSON.stringify([
+      { id: "p1", name: "One", createdAt: "2026-01-01", updatedAt: "2026-01-02", songs: [saved, song("b")] },
+      { id: "p2", name: "Two", createdAt: "2026-01-01", updatedAt: "2026-01-03", songs: [song("c")] },
+    ]),
+  });
+
+  const audius = { source: "audius", sourceId: "9", url: null, playback: "queue" };
+  assert.equal(store.addSourcesToSong("a", [youtube, audius]), 1);
+
+  const [one, two] = JSON.parse(backing[KEY]!);
+  assert.deepEqual(one.songs[0].sources, [youtube, audius]);
+  assert.deepEqual(one.songs[1].sources, []);
+  assert.deepEqual(two.songs[0].sources, []);
+  // Not an edit the reader made, so the library keeps its order.
+  assert.equal(one.updatedAt, "2026-01-02");
+
+  // Nothing new the second time round, so nothing is written.
+  assert.equal(store.addSourcesToSong("a", [audius]), 0);
+});
