@@ -1,39 +1,33 @@
-export interface BackoffOptions {
+interface BackoffOptions {
   defaultSeconds: number;
   maxSeconds: number;
   now?: () => number;
 }
 
-export interface Backoff {
-  remainingSeconds(): number;
-  trip(retryAfter: string | null): number;
-}
+export type Backoff = ReturnType<typeof createBackoff>;
 
 export function parseRetryAfter(value: string | null, now: number): number | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
   if (/^\d+$/.test(trimmed)) return Number(trimmed);
-  if (!/[a-z]/i.test(trimmed)) return null;
 
-  const at = Date.parse(trimmed);
-  if (Number.isNaN(at)) return null;
-  return Math.max(0, Math.ceil((at - now) / 1000));
+  const at = /[a-z]/i.test(trimmed) ? Date.parse(trimmed) : NaN;
+  return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000));
 }
 
 export function isBackoffSignal(status: number, retryAfter: string | null): boolean {
   return status === 429 || (status === 503 && Boolean(retryAfter?.trim()));
 }
 
-export function createBackoff({ defaultSeconds, maxSeconds, now = Date.now }: BackoffOptions): Backoff {
+export function createBackoff({ defaultSeconds, maxSeconds, now = Date.now }: BackoffOptions) {
   let until = 0;
 
   return {
-    remainingSeconds() {
-      const left = until - now();
-      return left > 0 ? Math.ceil(left / 1000) : 0;
+    remainingSeconds(): number {
+      return Math.max(0, Math.ceil((until - now()) / 1000));
     },
 
-    trip(retryAfter) {
+    trip(retryAfter: string | null): number {
       const at = now();
       const asked = parseRetryAfter(retryAfter, at);
       const seconds = Math.min(maxSeconds, Math.max(1, asked ?? defaultSeconds));

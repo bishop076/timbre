@@ -1,41 +1,20 @@
-export interface HostPool {
-  order(): string[];
-  down(host: string): void;
-  up(host: string): void;
-}
+export type HostPool = ReturnType<typeof createHostPool>;
 
-export function createHostPool(
-  hosts: readonly string[],
-  coolDownMs: number,
-  now: () => number = Date.now,
-): HostPool {
+export function createHostPool(hosts: readonly string[], coolDownMs: number, now = Date.now) {
   const cooling = new Map<string, number>();
 
   return {
-    order() {
+    order(): string[] {
       const at = now();
-      const ready: string[] = [];
-      const resting: string[] = [];
-
-      for (const host of hosts) {
-        const until = cooling.get(host);
-        if (until === undefined || until <= at) {
-          cooling.delete(host);
-          ready.push(host);
-        } else {
-          resting.push(host);
-        }
-      }
-
-      resting.sort((a, b) => cooling.get(a)! - cooling.get(b)!);
-      return [...ready, ...resting];
+      const readyAt = (host: string) => Math.max(at, cooling.get(host) ?? at);
+      return [...hosts].sort((a, b) => readyAt(a) - readyAt(b));
     },
 
-    down(host) {
+    down(host: string): void {
       cooling.set(host, now() + coolDownMs);
     },
 
-    up(host) {
+    up(host: string): void {
       cooling.delete(host);
     },
   };

@@ -1,40 +1,51 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 
 import { cover } from "../artwork-url";
+import { useLatest } from "./embed";
 import { usePlayerControls } from "./player-context";
+
+const ACTIONS: MediaSessionAction[] = [
+  "play",
+  "pause",
+  "previoustrack",
+  "nexttrack",
+  "seekto",
+  "seekbackward",
+  "seekforward",
+];
+
+const REPORTS = ["durationchange", "seeked", "play", "pause", "ratechange"] as const;
+
+function set(session: MediaSession, action: MediaSessionAction, handler: MediaSessionActionHandler | null) {
+  try {
+    session.setActionHandler(action, handler);
+  } catch {}
+}
 
 export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): void {
   const { current, hasNext, next, previous, playingPreview } = usePlayerControls();
-
-  const actions = useRef({ next, previous });
-  useEffect(() => {
-    actions.current = { next, previous };
-  }, [next, previous]);
+  const actions = useLatest({ next, previous });
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return;
-    const session = navigator.mediaSession;
-    if (!current) {
-      session.metadata = null;
-      return;
-    }
-
-    const art = cover(current.artworkUrl, 512);
-    session.metadata = new MediaMetadata({
-      title: playingPreview ? `${current.title} (preview)` : current.title,
-      artist: current.artists.join(", "),
-      album: current.album ?? "",
-      artwork: art ? [{ src: art, sizes: "512x512" }] : [],
-    });
+    const art = current && cover(current.artworkUrl, 512);
+    navigator.mediaSession.metadata = current
+      ? new MediaMetadata({
+          title: playingPreview ? `${current.title} (preview)` : current.title,
+          artist: current.artists.join(", "),
+          album: current.album ?? "",
+          artwork: art ? [{ src: art, sizes: "512x512" }] : [],
+        })
+      : null;
   }, [current, playingPreview]);
 
   useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    const session = navigator.mediaSession;
-    set(session, "nexttrack", hasNext ? () => actions.current.next() : null);
-  }, [hasNext]);
+    if ("mediaSession" in navigator) {
+      set(navigator.mediaSession, "nexttrack", hasNext ? () => actions.current.next() : null);
+    }
+  }, [hasNext, actions]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -69,44 +80,17 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
           position: Math.min(element.currentTime, element.duration),
           playbackRate: element.playbackRate || 1,
         });
-      } catch {
-      }
+      } catch {}
     };
-    element?.addEventListener("durationchange", report);
-    element?.addEventListener("seeked", report);
-    element?.addEventListener("play", report);
-    element?.addEventListener("pause", report);
-    element?.addEventListener("ratechange", report);
+    for (const type of REPORTS) element?.addEventListener(type, report);
 
     return () => {
-      element?.removeEventListener("durationchange", report);
-      element?.removeEventListener("seeked", report);
-      element?.removeEventListener("play", report);
-      element?.removeEventListener("pause", report);
-      element?.removeEventListener("ratechange", report);
+      for (const type of REPORTS) element?.removeEventListener(type, report);
       for (const action of ACTIONS) set(session, action, null);
       session.metadata = null;
       try {
         session.setPositionState();
-      } catch {
-      }
+      } catch {}
     };
-  }, [audioRef]);
-}
-
-const ACTIONS: MediaSessionAction[] = [
-  "play",
-  "pause",
-  "previoustrack",
-  "nexttrack",
-  "seekto",
-  "seekbackward",
-  "seekforward",
-];
-
-function set(session: MediaSession, action: MediaSessionAction, handler: MediaSessionActionHandler | null) {
-  try {
-    session.setActionHandler(action, handler);
-  } catch {
-  }
+  }, [audioRef, actions]);
 }
