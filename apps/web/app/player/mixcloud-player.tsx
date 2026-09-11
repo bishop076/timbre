@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { hideWhenBroken } from "../artwork";
 import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
 
@@ -149,6 +150,7 @@ export function MixcloudPlayer({
           src={artworkUrl}
           alt=""
           aria-hidden
+          {...hideWhenBroken}
           className="min-h-0 w-full flex-1 rounded-[var(--r-sm)] object-cover"
         />
       ) : (

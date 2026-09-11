@@ -76,8 +76,8 @@ export function SongRow({
   return (
     <li
       onContextMenu={onContextMenu}
-      className={`group flex items-center rounded-lg px-2 transition ${scale.row} ${
-        isCurrent ? "bg-[var(--accent-wash)]" : "hover:bg-[var(--surface-2)]"
+      className={`group relative isolate flex items-center px-2 ${scale.row} before:absolute before:inset-0 before:-z-10 before:rounded-lg before:transition ${
+        isCurrent ? "before:bg-[var(--accent-wash)]" : "hover:before:bg-[var(--surface-2)]"
       }`}
     >
       {rankPlays ? null : gutter}
