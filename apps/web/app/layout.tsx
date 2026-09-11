@@ -126,6 +126,18 @@ try {
   r.dataset.mode = m;
 
   /*
+   * A cached picture as a CSS url(), or null. User-editable storage, so only a
+   * data:image/ URL is replayed -- anything else could point the page at a
+   * remote host. JSON.stringify does the quoting: it produces a valid CSS
+   * string token whatever the value holds, so a quote planted in storage
+   * cannot end the url() early. local-images.ts quotes it the same way.
+   */
+  var thumb = function (key) {
+    var v = localStorage.getItem(key);
+    return v && v.indexOf("data:image/") === 0 ? "url(" + JSON.stringify(v) + ")" : null;
+  };
+
+  /*
    * The profile, handed to CSS before the first paint: the cached avatar and the
    * monogram underneath it, then the display name.
    *
@@ -134,11 +146,19 @@ try {
    * Each property is consumed by one rule; see profile/avatar.tsx and the
    * .profile-name rule in globals.css.
    */
-  var a = localStorage.getItem("timbre:thumb-avatar");
-  if (a && a.indexOf("data:image/") === 0) {
-    r.style.setProperty("--avatar-thumb", 'url("' + a + '")');
+  var a = thumb("timbre:thumb-avatar");
+  if (a) {
+    r.style.setProperty("--avatar-thumb", a);
     r.style.setProperty("--avatar-letter", "0");
   }
+
+  /*
+   * The profile banner, for the header in profile/profile-view.tsx. Without it
+   * a banner reader got a frame of plain ground: the wash is not recorded when
+   * there is a banner, and the picture itself waited on hydration.
+   */
+  var b = thumb("timbre:thumb-banner");
+  if (b) r.style.setProperty("--banner-thumb", b);
 
   var mono = read("timbre:avatar-mono");
   if (mono) {

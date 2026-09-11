@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { runInNewContext } from "node:vm";
 
 /*
  * The boot script runs at global scope in the document head, so every `var` it
@@ -83,6 +84,62 @@ test("no backtick can appear inside the inline scripts", () => {
   for (const body of scriptBodies()) {
     assert.ok(!body.includes("`"), "a backtick inside the boot script would end the literal");
   }
+});
+
+/**
+ * Runs the theme script against a stand-in `<html>` and a stand-in `localStorage`, and hands
+ * back the custom properties it set. Run rather than read, because what matters is what a
+ * stored value turns into — and a planted value is what these tests are about.
+ */
+function replay(stored: Record<string, string>): Record<string, string> {
+  const properties: Record<string, string> = {};
+  const documentElement = {
+    dataset: {} as Record<string, string>,
+    style: {
+      setProperty: (key: string, value: string) => {
+        properties[key] = value;
+      },
+    },
+  };
+  const localStorage = { getItem: (key: string) => (key in stored ? stored[key]! : null) };
+
+  runInNewContext(scriptBodies()[0]!, { document: { documentElement }, localStorage });
+  return properties;
+}
+
+const BANNER = "data:image/webp;base64,UklGRhYAAABXRUJQVlA4";
+
+test("a cached banner is replayed for the profile header, quoted as a CSS string", () => {
+  const properties = replay({ "timbre:thumb-banner": BANNER });
+  assert.equal(properties["--banner-thumb"], `url("${BANNER}")`);
+});
+
+test("only a data:image/ URL is replayed — storage is the reader's to edit", () => {
+  // Anything else would point a background at a host of whoever wrote the value's choosing.
+  for (const planted of ["https://example.com/pixel.png", "javascript:alert(1)", " data:image/png;base64,AA"]) {
+    const properties = replay({ "timbre:thumb-banner": planted, "timbre:thumb-avatar": planted });
+    assert.equal(properties["--banner-thumb"], undefined, `replayed ${planted}`);
+    assert.equal(properties["--avatar-thumb"], undefined, `replayed ${planted}`);
+  }
+});
+
+test("a quote planted in a thumbnail cannot close the url() early", () => {
+  // Concatenated between literal quotes, as the avatar's was, this value ended the string
+  // and left the rest as CSS. Escaped, it stays one (broken) URL.
+  const planted = 'data:image/png;base64,AA") , url("https://example.com/x.png';
+  const properties = replay({ "timbre:thumb-banner": planted, "timbre:thumb-avatar": planted });
+
+  const expected = `url(${JSON.stringify(planted)})`;
+  assert.equal(properties["--banner-thumb"], expected);
+  assert.equal(properties["--avatar-thumb"], expected);
+  assert.ok(expected.includes('\\"'), "the inner quote is escaped");
+});
+
+test("no banner, no banner variable", () => {
+  const properties = replay({ "timbre:thumb-avatar": BANNER });
+  assert.equal(properties["--banner-thumb"], undefined);
+  assert.equal(properties["--avatar-thumb"], `url("${BANNER}")`, "the avatar is unaffected");
+  assert.equal(properties["--avatar-letter"], "0");
 });
 
 test("the boot scripts are wrapped in try/catch", () => {
