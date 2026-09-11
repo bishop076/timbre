@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.14.1 — 12 September 2026
+
+### Fixed
+
+- **player** — play Spotify inside Timbre behind the album cover, in the theme's colours
+
 ## 0.14.0 — 12 September 2026
 
 ### Added
