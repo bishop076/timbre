@@ -27,7 +27,7 @@ const ok = (text: string) => ({ ok: true, status: 200, text: async () => text })
 
 function stubFetch(
   t: TestContext,
-  respond: (url: string, init?: { signal?: AbortSignal }) => Promise<unknown>,
+  respond: (url: string, init?: { signal?: AbortSignal; headers?: { range?: string } }) => Promise<unknown>,
 ) {
   return t.mock.method(globalThis, "fetch", respond as typeof fetch).mock;
 }
@@ -45,6 +45,22 @@ test("without the blob it falls back to the last bundle, then caches the id", as
   );
   assert.equal(await resolve(), ID);
   assert.equal(fetches.callCount(), 2, "not re-crawled on the next search");
+});
+
+test("bundles are read as a 64 KB prefix first, and whole only when every prefix misses", async (t) => {
+  const asked: [string, string | undefined][] = [];
+  stubFetch(t, async (url, init) => {
+    asked.push([url, init?.headers?.range]);
+    if (url === "https://soundcloud.com") return ok(BUNDLES);
+    return ok(init?.headers?.range ? "no id in the first 64 KB" : `client_id:"${ID}"`);
+  });
+  assert.equal(await createClientIdResolver("UA", 5_000)(), ID);
+  assert.deepEqual(asked, [
+    ["https://soundcloud.com", undefined],
+    ["https://a-v2.sndcdn.com/assets/9-z.js", "bytes=0-65535"],
+    ["https://a-v2.sndcdn.com/assets/0-a.js", "bytes=0-65535"],
+    ["https://a-v2.sndcdn.com/assets/9-z.js", undefined],
+  ]);
 });
 
 test("the homepage's own hydration blob is read, and no bundle is fetched", async (t) => {

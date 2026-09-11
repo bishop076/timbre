@@ -9,6 +9,7 @@ interface SoundCloudApiTrack {
   title?: string;
   duration?: number;
   policy?: string;
+  media?: { transcodings?: { snipped?: boolean }[] };
   permalink_url?: string;
   artwork_url?: string | null;
   user?: { username?: string };
@@ -22,8 +23,12 @@ interface SoundCloudOEmbed {
   html?: string;
 }
 
+function isClip({ policy, media }: SoundCloudApiTrack): boolean {
+  return policy === "SNIP" || Boolean(media?.transcodings?.some((transcoding) => transcoding.snipped));
+}
+
 function fromApiTrack(raw: SoundCloudApiTrack): SourceTrack | null {
-  if (!raw.id || !raw.title || raw.policy === "SNIP") return null;
+  if (!raw.id || !raw.title || isClip(raw)) return null;
   const artist = raw.publisher_metadata?.artist?.trim() || raw.user?.username?.trim();
   return {
     source: "soundcloud",

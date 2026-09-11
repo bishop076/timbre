@@ -1,6 +1,7 @@
 const TTL_MS = 4 * 60 * 60 * 1000;
 const CRAWL_BUDGET_MS = 15_000;
 const RETRY_AFTER_MS = 5 * 60 * 1000;
+const BUNDLE_PREFIX = "bytes=0-65535";
 const HYDRATION_PATTERN = /\{"hydratable":"apiClient","data":\{"id":"([A-Za-z0-9]{32})"/;
 const ASSET_PATTERN = /src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g;
 const CLIENT_ID_PATTERN = /client_id[:=]"([A-Za-z0-9]{20,})"/;
@@ -13,9 +14,8 @@ export function clientIdFrom(javascript: string): string | null {
   return CLIENT_ID_PATTERN.exec(javascript)?.[1] ?? null;
 }
 
-async function text(url: string, userAgent: string, signal: AbortSignal): Promise<string | null> {
+async function text(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<string | null> {
   try {
-    const headers = { "user-agent": userAgent };
     const response = await fetch(url, { headers, cache: "no-store", signal });
     return response.ok ? await response.text() : null;
   } catch {
@@ -25,15 +25,19 @@ async function text(url: string, userAgent: string, signal: AbortSignal): Promis
 
 async function fetchClientId(userAgent: string): Promise<string | null> {
   const signal = AbortSignal.timeout(CRAWL_BUDGET_MS);
-  const home = await text("https://soundcloud.com", userAgent, signal);
+  const headers = { "user-agent": userAgent };
+  const home = await text("https://soundcloud.com", headers, signal);
   if (!home) return null;
 
   const hydrated = HYDRATION_PATTERN.exec(home)?.[1];
   if (hydrated) return hydrated;
 
-  for (const src of assetScripts(home).reverse()) {
-    const found = clientIdFrom((await text(src, userAgent, signal)) ?? "");
-    if (found) return found;
+  const bundles = assetScripts(home).reverse();
+  for (const read of [{ ...headers, range: BUNDLE_PREFIX }, headers]) {
+    for (const src of bundles) {
+      const found = clientIdFrom((await text(src, read, signal)) ?? "");
+      if (found) return found;
+    }
   }
   return null;
 }
