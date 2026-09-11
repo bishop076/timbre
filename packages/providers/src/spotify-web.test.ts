@@ -5,8 +5,14 @@ import { MemoryBucketStore, ProviderError, RateLimiter } from "@timbre/core";
 
 import {
   albumFromResponse,
+  chunkUrl,
+  collectionFromEmbed,
   fetchSpotifyCollection,
+  hashesFromBundle,
+  hashesFromUpstream,
+  healedSpotifyHashes,
   isFresh,
+  SPOTIFY_OPERATIONS,
   pathfinderUrl,
   playlistFromResponse,
   resetSpotifyWebSession,
@@ -186,7 +192,7 @@ test("a 401 is retried once on a new token, since tokens can die before their st
   }
 });
 
-test("a retired query hash fails loudly rather than looking like no results", async () => {
+test("a retired hash with no findable successor fails loudly rather than looking like no results", async () => {
   const stub = stubFetch([
     { match: "/embed/track/", respond: html(embedPage("tok", 50 * 60_000)) },
     { match: "operationName=searchDesktop", respond: json({ errors: [{ message: "PersistedQueryNotFound" }] }) },
@@ -313,4 +319,138 @@ test("the query travels as a persisted-query GET naming the operation and its ha
   assert.equal(url.searchParams.get("operationName"), "searchDesktop");
   assert.deepEqual(JSON.parse(url.searchParams.get("variables")!), { searchTerm: "a&b" });
   assert.equal(JSON.parse(url.searchParams.get("extensions")!).persistedQuery.version, 1);
+});
+
+// --- Mending itself ----------------------------------------------------------------------
+
+const NEW_SEARCH = "a".repeat(64);
+const NEW_ALBUM = "b".repeat(64);
+const NEW_PLAYLIST = "d".repeat(64);
+const MAIN ="https://open.spotifycdn.com/cdn/build/web-player/web-player.2c51c6eb.js";
+
+/**
+ * The web player's main bundle, reduced to the two things discovery reads: persisted-query
+ * definitions, and the webpack loader naming the lazy chunk `searchDesktop` lives in. The
+ * loader's shape is copied from the live bundle of 2026-09-11.
+ */
+const MAIN_BUNDLE = [
+  `let n=new i.l("getAlbum","query","${NEW_ALBUM}",null),a=new i.l("queryAlbumTracks","query","${"c".repeat(64)}",null);`,
+  `const p=new i.l("fetchPlaylist","query","${NEW_PLAYLIST}",null);`,
+  `u.u=e=>""+(({1328:"xpui-pip-mini-player",4406:"xpui-routes-search",2706:"xpui-routes-recent-searches"})[e]||e)`,
+  `+"."+({1328:"0a1b2c3d",2706:"11223344",4406:"6c2f9e1a",9932:"7a16468d"})[e]+".js",u.miniCssF=e=>"x"`,
+].join("");
+const SEARCH_CHUNK = `var q=new s.l("searchDesktop","query","${NEW_SEARCH}",null);`;
+
+test("persisted-query definitions are read out of a web-player script", () => {
+  assert.deepEqual(hashesFromBundle(MAIN_BUNDLE), { album: NEW_ALBUM, playlist: NEW_PLAYLIST });
+  assert.deepEqual(hashesFromBundle(SEARCH_CHUNK), { search: NEW_SEARCH });
+});
+
+test("the search chunk is located through the loader's name and hash maps", () => {
+  assert.equal(
+    chunkUrl(MAIN_BUNDLE, MAIN, "xpui-routes-search"),
+    "https://open.spotifycdn.com/cdn/build/web-player/xpui-routes-search.6c2f9e1a.js",
+  );
+  assert.equal(chunkUrl("no loader here", MAIN, "xpui-routes-search"), null);
+});
+
+test("SpotifyScraper's table is read too, in its own Python shape", () => {
+  const python = `SEARCH_OPERATION = Operation(\n    "searchDesktop",\n    "${NEW_SEARCH}",\n    lambda query: {},\n)\n"album": Operation(\n        "getAlbum",\n        "${NEW_ALBUM}",`;
+  assert.deepEqual(hashesFromUpstream(python), { search: NEW_SEARCH, album: NEW_ALBUM });
+});
+
+test("a retired hash is replaced from Spotify's own bundle and the query retried", async () => {
+  const stub = stubFetch([
+    { match: "/embed/track/", respond: html(embedPage("tok", 50 * 60_000)) },
+    { match: "operationName=searchDesktop", respond: json({ errors: [{ message: "PersistedQueryNotFound" }] }) },
+    { match: "open.spotify.com/search", respond: html(`<script src="${MAIN}"></script>`) },
+    { match: "web-player.2c51c6eb.js", respond: html(MAIN_BUNDLE) },
+    { match: "xpui-routes-search.6c2f9e1a.js", respond: html(SEARCH_CHUNK) },
+    { match: "operationName=searchDesktop", respond: json(SEARCH) },
+  ]);
+  try {
+    assert.equal((await searchSpotifyWeb(ctx, "x")).length, 1);
+    const retried = new URL(stub.calls.at(-1)!.url);
+    assert.equal(JSON.parse(retried.searchParams.get("extensions")!).persistedQuery.sha256Hash, NEW_SEARCH);
+    assert.deepEqual(healedSpotifyHashes(), { search: NEW_SEARCH });
+    // Nothing went to the upstream table: the bundle answered for everything asked.
+    assert.ok(!stub.calls.some((call) => call.url.includes("githubusercontent")));
+  } finally {
+    stub.restore();
+  }
+});
+
+test("when Spotify's bundle cannot be read, SpotifyScraper's table supplies the successor", async () => {
+  const stub = stubFetch([
+    { match: "/embed/track/", respond: html(embedPage("tok", 50 * 60_000)) },
+    { match: "operationName=searchDesktop", respond: json({ errors: [{ message: "PersistedQueryNotFound" }] }) },
+    { match: "SpotifyScraper", respond: html(`SEARCH_OPERATION = Operation(\n    "searchDesktop",\n    "${NEW_SEARCH}",`) },
+    { match: "operationName=searchDesktop", respond: json(SEARCH) },
+  ]);
+  try {
+    assert.equal((await searchSpotifyWeb(ctx, "x")).length, 1);
+    assert.deepEqual(healedSpotifyHashes(), { search: NEW_SEARCH });
+  } finally {
+    stub.restore();
+  }
+});
+
+test("the table starts from hashes shaped like hashes, one per operation used", () => {
+  for (const operation of Object.values(SPOTIFY_OPERATIONS)) assert.match(operation.sha256, /^[0-9a-f]{64}$/);
+});
+
+/** An album's embed page, in the shape measured live on 2026-09-11. */
+const ALBUM_EMBED = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
+  props: {
+    pageProps: {
+      state: {
+        data: {
+          entity: {
+            name: "Discovery",
+            subtitle: "Daft Punk",
+            releaseDate: { isoString: "2001-03-12T00:00:00Z" },
+            visualIdentity: { image: [{ url: "https://img/300", maxWidth: 300 }, { url: "https://img/640", maxWidth: 640 }] },
+            trackList: [
+              {
+                uri: `spotify:track:${TRACK_ID}`,
+                title: "One More Time",
+                subtitle: "Daft Punk, Romanthony",
+                duration: 320357,
+                isPlayable: true,
+                audioPreview: { url: "https://p.scdn.co/mp3-preview/abc" },
+              },
+              { uri: "spotify:track:5W3cjX2J3tjhG8zb6u0qHn", title: "Gone", isPlayable: false },
+            ],
+          },
+        },
+      },
+    },
+  },
+})}</script>`;
+
+test("an embed page's track list stands in for pathfinder, preview clips included", () => {
+  const album = collectionFromEmbed("album", ALBUM_ID, ALBUM_EMBED);
+  assert.equal(album?.title, "Discovery");
+  assert.equal(album?.by, "Daft Punk");
+  assert.equal(album?.year, "2001");
+  assert.equal(album?.coverUrl, "https://img/640");
+  assert.equal(album?.tracks.length, 1);
+  assert.deepEqual(album?.tracks[0]?.artists, ["Daft Punk", "Romanthony"]);
+  assert.equal(album?.tracks[0]?.previewUrl, "https://p.scdn.co/mp3-preview/abc");
+  assert.equal(collectionFromEmbed("album", ALBUM_ID, "<html></html>"), null);
+});
+
+test("an album still opens when pathfinder is down, from its embed page", async () => {
+  const stub = stubFetch([
+    { match: "/embed/track/", respond: html(embedPage("tok", 50 * 60_000)) },
+    { match: "operationName=getAlbum", respond: json({}, 503) },
+    { match: `/embed/album/${ALBUM_ID}`, respond: html(ALBUM_EMBED) },
+  ]);
+  try {
+    const album = await fetchSpotifyCollection(ctx, "album", ALBUM_ID);
+    assert.equal(album?.title, "Discovery");
+    assert.equal(album?.tracks[0]?.sourceId, TRACK_ID);
+  } finally {
+    stub.restore();
+  }
 });
