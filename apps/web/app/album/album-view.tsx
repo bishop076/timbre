@@ -15,19 +15,8 @@ import type { Song } from "../types";
 import type { AlbumDetail } from "@/lib/discography";
 import { formatDuration } from "../duration";
 
-/**
- * A release and its running order.
- *
- * Rows carry Deezer identity only, so nothing here is playable where it stands
- * — picking one hands it to the player, which searches for a copy it can drive.
- * That resolution is invisible and takes about as long as any other first play,
- * which is why the rows do not advertise it.
- */
-
 export function AlbumView({ album }: { album: AlbumDetail }) {
   const { play, current, state } = usePlayerControls();
-  // The shapes agree structurally; the cast keeps the wire type out of the
-  // player's vocabulary rather than widening `Song` to know about Deezer.
   const songs = album.songs as unknown as Song[];
 
   return (
@@ -74,8 +63,6 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
                 <PlayIcon className="size-4" />
                 Play
               </button>
-              {/* Keyed to the release, as on a collection page: a "Saved" carried over from
-                  the last album would refuse to save this one. */}
               <SaveAsPlaylist key={album.id} name={`${album.title} — ${album.artist}`} songs={songs} />
             </div>
           )}
@@ -97,7 +84,6 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
                 onPlay={() => play(song, songs)}
                 isCurrent={isCurrent}
                 isPlaying={state === "playing"}
-                // No artwork: every row here is under the one cover in the header.
                 thumbnail={false}
                 rank={
                   isCurrent && state === "playing" ? (

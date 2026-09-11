@@ -17,22 +17,11 @@ import { SOURCE_TAG } from "./source-tag";
 import { useTaste } from "./taste-store";
 import { artistKey, listNames } from "@/lib/genre-tally";
 
-// Fetched when a tab opens. The genre chart is not here at all — the server page renders
-// it and passes it in, so it costs no JavaScript. The split
-// must be here, not `explore/page.tsx` — this Next version won't code-split a Client
-// Component that a Server Component imports dynamically.
 const BarChart = dynamic(() => import("./bar-chart").then((m) => m.BarChart));
 const ChartGraph = dynamic(() => import("./chart-graph").then((m) => m.ChartGraph));
 import type { ChartTrack } from "@/lib/discover";
 import type { Rankings } from "@/lib/rankings";
 
-/*
- * Rankings — a rail of views down the side. No source publishes chart history keyless and
- * there is no server to accumulate it, so every view is one week's standings, never a
- * trend. Movement is the exception, and labelled personal.
- */
-
-/** Snapshot key for the fused ranking. Named, not a bare `-1` — see `chart-memory.ts`. */
 const FUSED_RANKING = -1;
 
 type ViewId = "yours" | "mix" | "spread" | "songs" | "artists" | "agreement";
@@ -57,26 +46,19 @@ export function RankingsView({
   embedded = false,
 }: {
   rankings: Rankings;
-  /** Song id to the Deezer genre charts it is on. */
   songGenres: Record<string, number[]>;
   genreNames: Record<number, string>;
   share: { artist: string; entries: number; best: number }[];
   agree: { shared: number; only: { chart: string; count: number }[]; total: number };
-  /* Rendered by the server page — see genre-mix-view.tsx for why. */
   genreMix: React.ReactNode;
   chart: ChartTrack[];
-  /** Rendered inside another page rather than as one. Explore embeds it; `/rankings` is the direct link. */
   embedded?: boolean;
 }) {
   const taste = useTaste();
   const [picked, setPicked] = useState<ViewId | null>(null);
-  // A listener's own view leads once their genres are known; otherwise the graph does — a
-  // rankings page that opens on a list is a list with a menu. Derived rather than set, so it
-  // follows the history arriving after hydration and yields the moment anything is pressed.
   const view: ViewId = picked ?? (taste.genres.length > 0 ? "yours" : genreMix ? "mix" : "songs");
   const current = VIEWS.find((entry) => entry.id === view)!;
 
-  // The failure state respects `embedded` too, or a page with an <h1> gets a second.
   if (rankings.songs.length === 0) {
     return (
       <div className={embedded ? "" : "mx-auto w-full max-w-6xl px-4 py-16 sm:px-7"}>
@@ -118,10 +100,6 @@ export function RankingsView({
       </p>
 
       <div className="mt-5 flex flex-col gap-5 @3xl:flex-row @3xl:gap-7">
-        {/*
-          Chips wrap on a phone, a column on a wide screen. Never side-scroll them:
-          a label clipped at the panel edge reads as broken, not as scrollable.
-        */}
         <nav
           aria-label="Ranking views"
           className="-mx-1 flex shrink-0 flex-wrap gap-1.5 px-1 @3xl:mx-0 @3xl:w-52 @3xl:flex-col @3xl:flex-nowrap"
@@ -167,14 +145,8 @@ export function RankingsView({
   );
 }
 
-/** How many of a listener's genres the view narrows to. Past three it is most of the chart. */
 const YOUR_GENRES = 3;
 
-/**
- * The fused ranking with only what this listener would pick out of it: songs by artists in
- * their history, and songs charting in their top genres. Numbered by their place in the whole
- * ranking, so "#4" still means fourth overall — renumbering would claim a chart of one's own.
- */
 function YoursView({
   rankings,
   songGenres,
@@ -261,8 +233,6 @@ function SongsView({ rankings }: { rankings: Rankings }) {
   const { play, current, state } = usePlayerControls();
   const songs = rankings.songs;
 
-  // A reserved key, not a genre id: the fused ranking against a genre snapshot reports
-  // movement that never happened. Genre ids are non-negative, so this can't collide.
   const snapshot = useChartSnapshot(FUSED_RANKING, songs);
 
   return (
@@ -289,14 +259,10 @@ function SongsView({ rankings }: { rankings: Rankings }) {
               <>
                 <Movement delta={movementOf(snapshot, song.id, song.position)} />
 
-                {/* Which charts carried it, and where — a badge pair means two audiences agreed. */}
                 <div className="hidden shrink-0 items-center gap-1 @lg:flex">
                   {song.charts.map((chart) => {
                     const style = sourceStyle(chart);
                     return (
-                      // Same tone as every other source name — see `source-tag.tsx`. The
-                      // chart position rides along, which is what makes this one different
-                      // from a plain `<SourceTag>`.
                       <span
                         key={chart}
                         title={`#${song.positions[chart]} on ${style.label}`}
@@ -308,8 +274,6 @@ function SongsView({ rankings }: { rankings: Rankings }) {
                   })}
                 </div>
 
-                {/* The positions above name the charts; these play from those services. The
-                    same names twice, but only on hover — see `ROW_BADGES`. */}
                 <SourceBadges song={song} className={ROW_BADGES} />
 
                 <AddToPlaylist
@@ -325,7 +289,6 @@ function SongsView({ rankings }: { rankings: Rankings }) {
   );
 }
 
-/** Who holds the most places — a count of chart slots, not an estimate of listening hours. */
 function ArtistsView({
   share,
   total,
@@ -364,7 +327,6 @@ function ArtistsView({
   );
 }
 
-/** How much the charts agree — the measurement the ranking rests on, shown rather than asserted. */
 function AgreementView({
   agree,
   rankings,
@@ -376,7 +338,6 @@ function AgreementView({
 
   return (
     <>
-      {/* A single number, so it is a figure rather than a one-bar chart. */}
       <p className="text-4xl font-extrabold tracking-tight">{percent}%</p>
       <p className="mt-1 max-w-xl text-xs leading-relaxed text-[var(--fg-dim)]">
         of the {agree.total} ranked songs appear on more than one chart.
@@ -409,7 +370,6 @@ function AgreementView({
   );
 }
 
-/** Chart position against popularity. Deezer's chart, since the score is Deezer's own measure. */
 function SpreadView({ chart }: { chart: ChartTrack[] }) {
   const { play } = usePlayerControls();
 

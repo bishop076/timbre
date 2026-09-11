@@ -17,7 +17,6 @@ function press(
   });
 }
 
-/** A stand-in for an event target — `isTypingTarget` is duck-typed so this works. */
 function element(tagName: string, attributes: Record<string, string> = {}) {
   return {
     tagName,
@@ -28,7 +27,6 @@ function element(tagName: string, attributes: Record<string, string> = {}) {
 
 test("space toggles playback, under either key name", () => {
   assert.equal(press(" "), "toggle");
-  // Older Firefox and Edge report this instead.
   assert.equal(press("Spacebar"), "toggle");
 });
 
@@ -49,7 +47,6 @@ test("keys Timbre does not claim are left alone", () => {
 });
 
 test("modified chords belong to the browser, not to Timbre", () => {
-  // Cmd+← is "go back" and Ctrl+← is "previous word".
   assert.equal(press("ArrowLeft", { metaKey: true }), null);
   assert.equal(press("ArrowLeft", { ctrlKey: true }), null);
   assert.equal(press("ArrowRight", { altKey: true }), null);
@@ -80,7 +77,6 @@ test("typing a space into a field must not pause the music", () => {
 });
 
 test("space on a focused button activates it rather than the player", () => {
-  // Stealing Space here would break every button in the app for keyboard users.
   assert.equal(isTypingTarget(element("BUTTON")), true);
   assert.equal(isTypingTarget(element("A")), true);
 });
@@ -97,8 +93,6 @@ test("elements standing in for controls via role are respected", () => {
 });
 
 test("arrows on a focused slider seek or set the volume, and must not also skip", () => {
-  // Both sliders are `<div role="slider">` with their own keydown, and the transport binds
-  // window in the capture phase: claiming the key here ran the seek *and* changed track.
   const slider = element("DIV", { role: "slider" });
   assert.equal(isTypingTarget(slider), true);
   for (const key of ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"]) {
@@ -118,8 +112,6 @@ test("ordinary containers do not swallow the shortcut", () => {
 });
 
 test("a target from another realm is still classified correctly", () => {
-  // Why this is duck-typed: an element inside one of the app's iframes fails
-  // `instanceof HTMLElement` against the parent's constructor.
   const foreign = Object.create(null) as Record<string, unknown>;
   foreign.tagName = "INPUT";
   assert.equal(isTypingTarget(foreign), true);

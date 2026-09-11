@@ -1,19 +1,9 @@
-# Typecheck, test and build on every push.
-#
-# Two jobs rather than one, because Timbre is two runtimes that fail
-# independently: `ytmusicapi` is unofficial and tracks YouTube's private web
-# API, so the sidecar can break on a day nothing in the web app changed. Kept
-# separate, a red tick names which half is wrong before anyone opens a log.
-
 name: CI
 
 on:
   push:
     branches: ["**"]
   pull_request:
-
-# A new push makes the previous run's answer irrelevant. Cancelling it keeps a
-# branch from queueing behind its own stale builds.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,26 +12,10 @@ jobs:
   web:
     name: Web (typecheck, test, build)
     runs-on: ubuntu-latest
-    # A hung install or a build waiting on a socket that will never answer would
-    # otherwise sit here until the six-hour default, holding the concurrency slot
-    # against every later push. The whole job takes about four minutes.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # The build needs YTMUSIC_SHARED_SECRET, and needs it at *build* time:
-      # prerendering /explore registers the providers, which validates the env
-      # schema. Without it the build fails on that page, not at runtime.
-      # (`dotenv -e` on a missing file is fine — it exits 0 and runs anyway.)
-      #
-      # Written before the checks rather than just before the build: the env
-      # schema is validated at first use, and the first use moves. Ordering the
-      # file after `typecheck` meant a check that started reading env would fail
-      # here and nowhere else, which is the least useful place to find out.
-      #
-      # Placeholders only. The build must never need real credentials: a run that
-      # can only pass with secrets cannot run on a fork's pull request. Nothing
-      # here reaches a real service — the build is verified against a dead port.
       - name: Write a placeholder .env
         run: |
           cat > .env <<'EOF'
@@ -49,8 +23,6 @@ jobs:
           YTMUSIC_SHARED_SECRET=ci-placeholder
           EOF
 
-      # Reads packageManager from package.json, so the version is pinned in one
-      # place rather than drifting between here and local machines.
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -60,30 +32,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # `typecheck` runs `next typegen` first, because layout.tsx uses
-      # `LayoutProps<"/">` — a global Next generates into .next/types. A machine
-      # that has built before already has it and passes; a clean checkout does
-      # not, which is exactly the difference between a laptop and CI. The fix
-      # lives in the package script rather than here, so a fresh clone behaves
-      # the same way.
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
 
-      # The build type-checks again and catches what `tsc --noEmit` cannot:
-      # prerender-time failures in route and page modules.
-      #
-      # `/explore` is prerendered, so this step really does fetch Deezer and
-      # Apple from the runner. It is allowed to: every chart goes through
-      # `Promise.allSettled` and a list that does not answer lands in `failed`,
-      # so an upstream outage prerenders an empty chart rather than failing the
-      # build. Verified by building against a dead sidecar port.
       - run: pnpm build
 
   ytmusic:
     name: Sidecar (lint, tests)
     runs-on: ubuntu-latest
-    # Lint, 55 tests and a dependency audit, no network and no build — a minute on a cold cache.
     timeout-minutes: 10
     defaults:
       run:
@@ -91,35 +48,16 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # uv rather than pip, for one reason: `uv.lock`. `pip install -e ".[dev]"`
-      # re-resolved the whole graph on every run against ranges with no upper
-      # bound, so no two runs were guaranteed the same dependencies and a bad
-      # release upstream landed here with no review. Vercel reads the same lock
-      # at deploy time, so CI and production now install the same versions.
-      #
-      # It also fetches its own CPython, which is why `setup-python` is gone.
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          # Keyed on the lock, not the manifest: the manifest states ranges and
-          # does not change when a resolved version does, so caching on it served
-          # stale wheels after every upgrade.
           enable-cache: true
           cache-dependency-glob: apps/ytmusic/uv.lock
 
-      # `--locked` refuses to re-resolve. A lock that has drifted from
-      # pyproject.toml fails here, rather than being silently corrected into a
-      # deployment nobody reviewed.
-      #
-      # 3.11 is the floor from pyproject.toml. Testing the oldest supported
-      # version is what stops a newer-syntax dependency slipping in unnoticed.
       - run: uv sync --locked --extra dev --python 3.11
 
       - run: uv run ruff check .
       - run: uv run pytest -q
 
-      # The JavaScript side has had `pnpm audit` since the beginning and this side
-      # had nothing. Audited from an export of the lock rather than from the live
-      # environment, because a uv-created venv has no pip for pip-audit to ask.
       - name: Audit the locked dependencies
         run: |
           uv export --frozen --extra dev --no-emit-project \

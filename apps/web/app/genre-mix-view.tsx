@@ -2,15 +2,6 @@ import { StackedColumns } from "./stacked-columns";
 import { RANK_BANDS } from "@/lib/rank-bands";
 import type { GenreMix } from "@/lib/rankings";
 
-/**
- * Explore's default view, rendered on the server.
- *
- * It lives outside `rankings-view.tsx` because that file is `"use client"` — and
- * anything a client component imports is compiled into the client bundle, however
- * static it is. This chart never changes after paint, so the page renders it and
- * passes it in as a node instead. That keeps the chart, `RANK_BANDS` and the column
- * mapping out of every Explore visitor's JavaScript.
- */
 export function GenreMixView({ mix }: { mix: GenreMix[] }) {
   if (mix.length === 0) {
     return (
@@ -21,8 +12,6 @@ export function GenreMixView({ mix }: { mix: GenreMix[] }) {
     );
   }
 
-  // Eight is the most that stays legible at the narrowest width — the chart fits its
-  // container, so more columns only means thinner ones.
   const top = mix.slice(0, 8);
 
   return (

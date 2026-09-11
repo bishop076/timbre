@@ -8,7 +8,6 @@ import { PlayIcon } from "./icons";
 import { useSongMenu } from "./player/song-menu";
 import type { Song } from "./types";
 
-/** Row scale: `sm` for chart lists, `md` for library lists, `lg` for search results. */
 export type SongRowSize = "sm" | "md" | "lg";
 
 const SCALE = {
@@ -44,7 +43,6 @@ const SCALE = {
   },
 } as const;
 
-/** One song in a list: play target, artwork, title over a subtitle, trailing controls. */
 export function SongRow({
   song,
   onPlay,
@@ -60,24 +58,17 @@ export function SongRow({
   song: Song;
   onPlay: () => void;
   isCurrent: boolean;
-  /** Whether the player is playing; only read when `isCurrent`. */
   isPlaying: boolean;
-  /** Leading gutter — a number, or anything else 24px wide. Absent when undefined. */
   rank?: ReactNode;
-  /** Put the gutter inside the play button, so pressing the number also plays. */
   rankPlays?: boolean;
   subtitle: ReactNode;
   trailing?: ReactNode;
   size?: SongRowSize;
-  /** `false` for a tracklist already sitting under one cover. */
   thumbnail?: boolean;
 }) {
   const scale = SCALE[size];
   const showing = isCurrent && isPlaying;
 
-  // Every list of songs gets the same right-click menu by getting it here — search results,
-  // an album, a playlist, the charts. Queueing from search was the ask; there is no reason
-  // the other four should behave differently, and one insertion point cannot drift.
   const { onContextMenu, menu } = useSongMenu(song);
 
   const gutter =
@@ -106,10 +97,6 @@ export function SongRow({
 
         {thumbnail && (
           <span className={`relative shrink-0 ${scale.thumb}`}>
-            {/* Sized but not proxied: `Artwork` proxies, and a pre-proxied URL would defeat
-                its retry, which matches on the original YouTube hostname. The placeholder
-                tone is the row's own — these rows are `hover:bg-[var(--surface-2)]`, so
-                Artwork's default tile vanishes under the cursor. */}
             <Artwork
               src={sized(song.artworkUrl, 112)}
               className="size-full rounded-md"

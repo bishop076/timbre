@@ -14,8 +14,6 @@ import type { Discover } from "@/lib/discover";
 import type { Radio } from "@/lib/radios";
 import { seededShuffle } from "@/lib/rotation";
 
-/** Explore — shelves that follow what you play, Featured cards, rows of pills, then the
- * charts. All Deezer's and keyless; picking a track resolves a copy Timbre can drive. */
 export function DiscoverView({
   initial,
   radios,
@@ -24,23 +22,16 @@ export function DiscoverView({
 }: {
   initial: Discover;
   radios: Radio[];
-  /** The hour the server rendered in — seeds the stations' order, so both sides agree. */
   rotation: number;
-  /* The charts already rendered, not the data: as props the page had to await the slowest
-   * thing on it first. A `ReactNode` because a client file cannot import a server one. */
   rankings: ReactNode;
 }) {
   const taste = useTaste();
-  // A listener's genres lead both rows. Empty until the browser has read its history, so the
-  // server's order and the first client render agree; the rows reorder once it has.
   const yours = taste.genres.map((genre) => genre.id);
 
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4">
       <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Explore</h1>
 
-      {/* Keeps the charts heading below the fold at any size. The subtraction is chrome this
-          page does not own; 12rem over-allowed and left half a heading peeking over the edge. */}
       <div className="min-h-[calc(100dvh-9rem)]">
         <ExploreForYou genres={initial.genres} />
 
@@ -48,7 +39,6 @@ export function DiscoverView({
 
         <PillSection
           title="Genres"
-          // `0` is the catalogue-wide chart, already the first Featured card.
           pills={yoursFirst(
             initial.genres.filter((entry) => entry.id !== 0),
             (entry) => entry.id,
@@ -63,8 +53,6 @@ export function DiscoverView({
           shuffleable
         />
 
-        {/* One row, not one per genre: grouping put "Pop" as a heading directly under the
-            same word as a pill. */}
         <PillSection
           title="Stations"
           pills={interleave(radios, rotation, yours).map((radio) => ({
@@ -83,8 +71,6 @@ export function DiscoverView({
   );
 }
 
-/** Featured — artwork floating over a colour field which is that same artwork blurred, so
- * a card is tinted by what it holds without a palette being sampled. */
 function Featured({ data }: { data: Discover }) {
   const cards: {
     key: string;
@@ -137,7 +123,6 @@ function Featured({ data }: { data: Discover }) {
     });
   }
 
-  // Deezer publishes no charting playlists for some genres, so a short row is padded.
   if (cards.length < 4) {
     for (const genre of data.genres.filter((entry) => entry.id !== 0).slice(0, 5)) {
       cards.push({
@@ -160,15 +145,11 @@ function Featured({ data }: { data: Discover }) {
 
         return (
           <Link key={card.key} href={card.href} className="group w-[15rem] shrink-0 sm:w-[20rem]">
-            {/* 4:3 — at 16:10 the cover shrank to fit and the card became mostly background. */}
             <div className="press relative aspect-[4/3] w-full overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)]">
               {backdrop && (
                 <>
-                  {/* Scaled past the frame so the blur has no edge to feather against — one
-                      that can see the border shows as a pale halo in the corners. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    // 120px is generous behind a blur-3xl: it discards finer detail anyway.
                     src={coverSrc(backdrop, 120) ?? undefined}
                     alt=""
                     aria-hidden
@@ -184,9 +165,8 @@ function Featured({ data }: { data: Discover }) {
               )}
 
               {card.image ? (
-                // eslint-disable-next-line @next/next/no-img-element -- artwork comes from arbitrary source CDNs
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  // 76% of a card that tops out around 300px, so 500 device pixels.
                   src={coverSrc(card.image, 500) ?? undefined}
                   alt=""
                   loading="lazy"
@@ -194,9 +174,6 @@ function Featured({ data }: { data: Discover }) {
                   className="absolute left-1/2 top-1/2 aspect-square h-[76%] -translate-x-1/2 -translate-y-1/2 rounded-[4px] object-cover shadow-[0_8px_28px_rgba(0,0,0,0.5)]"
                 />
               ) : (
-                /* Positioned by this wrapper, not a class on <Collage>: its root is `relative`
-                   and Tailwind emits `.relative` after `.absolute`, so a passed-in
-                   `absolute inset-0` lost the cascade and the card collapsed to its backdrop. */
                 <div className="absolute inset-0">
                   <Collage covers={card.covers ?? []} className="size-full" rounded="" />
                 </div>
@@ -221,7 +198,6 @@ function Featured({ data }: { data: Discover }) {
   );
 }
 
-/** A titled row of pills. "View all" opens the rest in place — there is no index page. */
 function PillSection({
   title,
   pills,
@@ -229,10 +205,8 @@ function PillSection({
   shuffleable = false,
 }: {
   title: string;
-  /** `yours`: in a genre this browser plays — marked, since the order alone does not say why. */
   pills: { key: string; label: string; href: string; yours?: boolean }[];
   initial: number;
-  /** Adds the dice. Only worth it where the list is long enough to surprise. */
   shuffleable?: boolean;
 }) {
   const router = useRouter();
@@ -252,8 +226,6 @@ function PillSection({
             <button
               type="button"
               onClick={() => {
-                // Drawn in a handler, never during render: a random value taken while
-                // rendering differs between React's two passes and between server and browser.
                 const pick = pills[Math.floor(Math.random() * pills.length)];
                 if (pick) router.push(pick.href);
               }}
@@ -298,27 +270,16 @@ function PillSection({
   );
 }
 
-/** `items` with those whose genre is in `yours` moved to the front, in `yours`' order; the rest
- * keep theirs. */
 function yoursFirst<T>(items: T[], genreOf: (item: T) => number, yours: number[]): T[] {
   const rank = (item: T) => {
     const index = yours.indexOf(genreOf(item));
     return index === -1 ? yours.length : index;
   };
-  // `sort` is stable, so equal ranks keep their incoming order.
   return items.slice().sort((a, b) => rank(a) - rank(b));
 }
 
-/** Stations each of a listener's top genres puts in front of the round-robin. */
 const LEAD_STATIONS = 3;
 
-/**
- * Stations round-robin, one genre at a time — Deezer returns them grouped, so the first nine
- * in order are all Pop. Each genre's stations are shuffled by the hour and the genres'
- * turns rotated by it too, so the nine on show change hourly. A listener's two top genres
- * go first, a few stations each, before the round-robin starts. Seeded, not random: this
- * runs during render, on the server and again in the browser, and the two must agree.
- */
 function interleave(radios: Radio[], rotation: number, yours: number[]): Radio[] {
   const byGenre = new Map<number, Radio[]>();
   for (const radio of radios) {
@@ -327,7 +288,6 @@ function interleave(radios: Radio[], rotation: number, yours: number[]): Radio[]
     else byGenre.set(radio.genreId, [radio]);
   }
 
-  // Seeded by genre, not position, so a genre's own order holds when a listener's reorder.
   const queues = new Map(
     [...byGenre].map(([genre, list]) => [genre, seededShuffle(list, rotation * 13 + genre)]),
   );
@@ -339,7 +299,6 @@ function interleave(radios: Radio[], rotation: number, yours: number[]): Radio[]
 
   const rotated = yoursFirst(seededShuffle([...queues.keys()], rotation), (genre) => genre, yours);
   const rest = rotated.map((genre) => queues.get(genre)!);
-  // Capped: the full list runs past a hundred, and "View all" should open a choice.
   for (let round = 0; out.length < 36; round += 1) {
     const before = out.length;
     for (const queue of rest) {

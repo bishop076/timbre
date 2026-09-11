@@ -3,14 +3,6 @@ import Link from "next/link";
 import { getEnv, hasSoundCloud } from "@/lib/env";
 import { SOURCE_STYLES } from "../sources";
 
-/**
- * **Rendered per request, not prerendered.** This page now reports whether SoundCloud's
- * catalogue search is on, and that is a runtime fact: the Dockerfile builds with no
- * SoundCloud variables set and `next start` receives them from the environment afterwards.
- * Left static, the build would bake "the operator has not turned it on" into the HTML and
- * the honesty page would keep saying it after the operator turned it on — the same staleness
- * this branch exists to end, just moved from the source to the build.
- */
 export const dynamic = "force-dynamic";
 
 export const metadata = {
@@ -19,12 +11,6 @@ export const metadata = {
     "What Timbre is, what it deliberately does not do, and who actually serves the music.",
 };
 
-// The honesty page, carrying three obligations: attribution — every embedded service
-// requires its name shown and traffic able to reach it, as a term of use — a plain
-// statement of non-affiliation, and the mobile limit, since playback stops when a phone
-// locks and a reader who finds that out mid-song concludes the app is broken.
-
-/** Where a reader goes to hear the catalogue at its own source. */
 const SOURCES = [
   {
     id: "ytmusic",
@@ -54,24 +40,10 @@ const SOURCES = [
   {
     id: "soundcloud",
     href: "https://soundcloud.com",
-    // Filled in per deployment — see `soundcloudRole`.
     role: "",
   },
 ] as const;
 
-/**
- * **SoundCloud's entry is the one that depends on the deployment, so it is not a constant.**
- *
- * This page's whole job is to be accurate about who serves the music, and this line had gone
- * stale: it still read *"Timbre can play a SoundCloud track you already found, but cannot
- * find one for you"*, which stopped being true when `SOUNDCLOUD_DIRECT_API` and
- * `SOUNDCLOUD_API_BASE` arrived. The README was corrected for exactly this and the About page
- * was not, so the honesty page was the last place still carrying the wrong claim.
- *
- * Written as a branch rather than re-corrected, because both sentences are true somewhere:
- * search is off in the shipped default and on here, and `hasSoundCloud` is the same test
- * `/api/health` reports.
- */
 function soundcloudRole(searchable: boolean): string {
   if (!searchable) {
     return "Playback only, on this deployment. Paste a SoundCloud link into the search box and it plays, in SoundCloud's own player. What is missing is the catalogue search, which the operator has not turned on — so Timbre can play a SoundCloud track you already found, but cannot find one for you.";
@@ -91,8 +63,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function AboutPage() {
-  // A server component, so the page can report what this deployment actually does rather
-  // than what the default does.
   const searchable = hasSoundCloud(getEnv());
 
   return (

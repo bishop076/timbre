@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-/** Layered surfaces over borders, a runtime accent sampled from the artwork, one radius scale. */
-
 :root {
   --bg: #eef0f6;
   --surface-1: #fbfcfe;
@@ -23,31 +21,14 @@
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
 
-  /* Player-bar clearance for the floating video. Measured — 96px on phones, 62px on
-     desktop — and rounded up: undershooting puts the video behind the controls. */
   --bar-h: 6rem;
   --nav-h: 4rem;
 
-  /*
-   * The notch, the home indicator and the landscape ears.
-   *
-   * `layout.tsx` asks for `viewport-fit=cover` and an `appleWebApp.statusBarStyle` of
-   * `black-translucent`, which together hand the app the whole screen — including the
-   * parts of it the hardware covers. That is only an improvement if the chrome then keeps
-   * out of them, and nothing did: an installed Timbre drew its bottom nav underneath the
-   * home indicator, so the labels sat behind the bar and the tap target was a third
-   * shorter than it measured.
-   *
-   * The fallbacks are what a desktop browser gets, where `env()` resolves to nothing and
-   * a bare `var(--safe-b)` in a `calc()` would invalidate the whole declaration.
-   */
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
 
-  /* The hard edge: solid border plus unblurred offset shadow, which survives being
-     recoloured by the artwork. Light defaults — over near-black the ink goes black. */
   --edge: 2px;
   --ink: hsl(228 12% 62%);
   --drop: 1px 1px 0 hsl(228 14% 52% / 0.16);
@@ -55,7 +36,6 @@
   --drop-lg: 2px 2px 0 hsl(228 14% 52% / 0.16);
 }
 
-/* The desktop bar is one row, so it needs far less clearance. */
 @media (min-width: 64rem) {
   :root {
     --bar-h: 4.25rem;
@@ -64,8 +44,6 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Opposite ink on a dark ground, or the shadow disappears into the
-       background it is meant to lift away from. */
     --ink: hsl(0 0% 0%);
     --drop: 3px 3px 0 hsl(0 0% 0% / 0.75);
     --drop-sm: 2px 2px 0 hsl(0 0% 0% / 0.75);
@@ -73,7 +51,6 @@
   }
 }
 
-/** A bordered, offset-shadowed block. The base unit of the whole interface. */
 .slab {
   border: var(--edge) solid var(--ink);
   box-shadow: var(--drop);
@@ -83,19 +60,10 @@
   box-shadow: var(--drop-sm);
 }
 
-/** A slab edged in the line tone, since the dark ink vanishes against the darkest
- * surfaces. Must stay declared after `.slab`: both are single-class selectors, so order
- * decides, and `.slab`'s `border` shorthand would overwrite the border-color. */
 .slab-soft {
   border-color: var(--line);
 }
 
-/**
- * A tile's frame — a song, a release, an artist. The cover sits inside it with its title, so
- * a shelf reads as a row of objects rather than pictures with captions hanging under them.
- * A slab on a light ground; on a dark one the edge takes the line tone and the shadow goes,
- * since black ink on near-black is an outline with nothing to lift it off.
- */
 .tile-card {
   border: var(--edge) solid var(--ink);
   box-shadow: var(--drop);
@@ -109,14 +77,10 @@
 .tile-card:hover {
   background: var(--surface-2);
 }
-/* Sinks like `.press`, but its own rule: `.press` sets `transition` too, and being declared
-   later it would drop the background fade above. */
 .tile-card:active {
   transform: translate(1px, 1px);
   box-shadow: 0 0 0 var(--ink);
 }
-/* A wash of the foreground rather than a surface token: the card sits on the content panel,
-   whose gradient is lighter than `--surface-1`, so a surface fill read as a hole, not a card. */
 :root[data-theme="dark"] .tile-card {
   border-width: 1px;
   border-color: color-mix(in srgb, var(--fg) 9%, transparent);
@@ -127,8 +91,6 @@
   background: color-mix(in srgb, var(--fg) 8%, transparent);
 }
 
-/** The picture inside a card: edged in the same ink on a light ground, bare on a dark one,
- * where the card's own soft edge already frames it. */
 .tile-cover {
   border: var(--edge) solid var(--ink);
 }
@@ -136,7 +98,6 @@
   border: 0;
 }
 
-/* Pressable things sink into their own shadow rather than scaling. */
 .press {
   transition:
     transform 0.09s var(--ease),
@@ -147,8 +108,6 @@
   box-shadow: 0 0 0 var(--ink);
 }
 
-/* Travel must match the shadow it sinks into: light grounds cast 1px, so a 2px press
-   overshoots and the control jumps past its resting place before springing back. */
 :root[data-theme="light"] .press:active:not(:disabled) {
   transform: translate(1px, 1px);
 }
@@ -170,9 +129,6 @@
   }
 }
 
-/* The reader's choice before JavaScript runs: `data-theme` is stamped on <html> by a
-   blocking script in `layout.tsx`, and without a complete palette here the page paints
-   the *system* scheme — a white flash for anyone on a light OS running a dark theme. */
 :root[data-theme="dark"] {
   --bg: #08080a;
   --surface-1: #101014;
@@ -192,8 +148,6 @@
   --drop-sm: 2px 2px 0 hsl(0 0% 0% / 0.75);
   --drop-lg: 5px 5px 0 hsl(0 0% 0% / 0.75);
 
-  /* How far up the profile banner fades into the page; long, since near-black meeting
-     near-black has no edge to give away. */
   --banner-fade: 45%;
 }
 
@@ -216,12 +170,9 @@
   --drop-sm: 1px 1px 0 hsl(228 14% 52% / 0.16);
   --drop-lg: 2px 2px 0 hsl(228 14% 52% / 0.16);
 
-  /* Much shorter than the dark ramp's 45%, which over a pale surface drags a band of
-     near-white across the photograph and reads as a washed-out image. */
   --banner-fade: 26%;
 }
 
-/* Pastel's ground, so even the first frame is soft rather than stark white. */
 :root[data-theme="light"][data-mode="pastel"] {
   --bg: #f7f4fb;
   --surface-1: #fffdff;
@@ -242,13 +193,10 @@
   --drop-lg: 2px 2px 0 hsl(268 22% 58% / 0.14);
 }
 
-/* Only what a utility consumes; colours are read as arbitrary values from the
-   properties above, so one palette swap recolours everything. */
 @theme inline {
   --font-mono: var(--font-geist-mono);
 }
 
-/* Also on <html>, so the page colour is the app's own from the first paint. */
 html {
   background: var(--bg);
 }
@@ -261,29 +209,11 @@ body {
   text-rendering: optimizeLegibility;
   overscroll-behavior: none;
 
-  /*
-   * Three of the four insets. `html` keeps painting `--bg` behind them, so each reads as
-   * the app's own margin rather than a gap — which is the whole reason `layout.tsx` asks
-   * for a `black-translucent` status bar: the ground shows through it instead of a white
-   * band. Nothing was inset before, so the status bar simply sat on top of the first row.
-   *
-   * The *bottom* is deliberately not here. That edge belongs to <BottomNav> and the
-   * desktop player bar, which have to keep their own backgrounds bleeding down into the
-   * home indicator while their contents stay above it; a padding here would float both
-   * off the edge and show a strip of page under them.
-   *
-   * `box-sizing` is border-box under Tailwind's preflight, so this narrows the content box
-   * and nothing below has to know: `h-full` still resolves against it.
-   */
   padding-top: var(--safe-t);
   padding-left: var(--safe-l);
   padding-right: var(--safe-r);
 }
 
-/** The routed content fades in — never the shell. Opacity only; a transform would move
- * the panel the shell has positioned. Keyed on the pathname in `app-shell.tsx`: an
- * animation runs when its element is created, so without a new element per route React
- * reuses the node and nothing plays. */
 .page-in {
   animation: page-in 0.22s var(--ease) both;
 }
@@ -300,8 +230,6 @@ body {
   }
 }
 
-/* The browser's clear button cannot be recoloured, only removed; Timbre draws its own.
-   The input type stays `search` — assistive tech and mobile keyboards read it. */
 input[type="search"]::-webkit-search-cancel-button,
 input[type="search"]::-webkit-search-decoration,
 input[type="search"]::-webkit-search-results-button,
@@ -310,7 +238,6 @@ input[type="search"]::-webkit-search-results-decoration {
   appearance: none;
 }
 
-/* The accent moves with the artwork, so anything tinted eases rather than snaps. */
 .tint {
   transition:
     background-color 0.6s var(--ease),
@@ -318,11 +245,7 @@ input[type="search"]::-webkit-search-results-decoration {
     border-color 0.6s var(--ease);
 }
 
-/** The ambient wash behind the content panel — one diffuse light in the current accent. */
 .ambient {
-  /* The wash below is inset by -20% and this element scrolls vertically, which forces
-     `overflow-x` to `auto` — so a decorative glow produced a real horizontal scrollbar
-     (265px on a 1324px panel). Clipping the axis lets it spread for free. */
   overflow-x: hidden;
 }
 
@@ -338,8 +261,6 @@ input[type="search"]::-webkit-search-results-decoration {
   z-index: 0;
 }
 
-/** The cover blurred into a gradient: a large blur averages, so it lays out the sleeve's
- * palette where those colours sit. `scale()` hides the transparent edge the blur drags in. */
 .ambient::after {
   content: "";
   position: absolute;
@@ -361,8 +282,6 @@ input[type="search"]::-webkit-search-results-decoration {
   z-index: 0;
 }
 
-/* Light needs the opposite exposure. Keyed on `data-theme`, since the ground is the
-   reader's choice; the media query is the pre-hydration fallback. */
 @media (prefers-color-scheme: light) {
   .ambient::after {
     filter: blur(120px) saturate(1.9) brightness(1.3);
@@ -380,13 +299,10 @@ input[type="search"]::-webkit-search-results-decoration {
   opacity: 0.36;
 }
 
-/* Neutral means neutral: this is the largest tint in the app. */
 :root[data-neutral="true"] .ambient::after {
   display: none;
 }
 
-/* Less of the cover, not differently exposed — at this opacity it overwhelms a
-   96%-light ground. */
 :root[data-theme="light"][data-mode="pastel"] .ambient::after {
   filter: blur(140px) saturate(1.35) brightness(1.45);
   opacity: 0.3;
@@ -398,18 +314,10 @@ input[type="search"]::-webkit-search-results-decoration {
   }
 }
 
-/**
- * The profile, drawn before React exists — its data lives in browser storage, so name,
- * picture and counts landed a frame late and the rail jumped. Each stand-in must be
- * pixel-identical to what React renders next, so the unit is the text node, not the line.
- * `:empty` stops the rule applying by itself, so the two can never both show.
- */
 .replay:empty::after {
   content: var(--replay, "");
 }
 
-/** Home's personalised shelves, held open before React reads the history — otherwise
- * they arrive above the charts and push the page down. Unset on a first visit. */
 .for-you-pending {
   display: none;
 }
@@ -418,7 +326,6 @@ input[type="search"]::-webkit-search-results-decoration {
   display: block;
 }
 
-/** The profile's playlist section before storage answers; neither shows on a first visit. */
 .saved-none,
 .saved-some {
   display: none;
@@ -432,21 +339,9 @@ input[type="search"]::-webkit-search-results-decoration {
   display: grid;
 }
 
-/*
- * Snapped, so cards never come to rest half-cut.
- *
- * **This rule is the only thing that decides the snapping, and it cannot be overridden from
- * a class list.** Everything in this file sits outside `@layer`, and unlayered CSS beats
- * every layered rule whatever the source order — so Tailwind's `snap-x` and
- * `snap-proximity`, which live in `@layer utilities`, lose to it. A shelf carried that pair
- * for a while and it did nothing; the trap is that swapping it for `snap-mandatory` would
- * also do nothing, silently. Change the axis or the strictness here.
- */
 .shelf {
   scrollbar-width: none;
   scroll-snap-type: x proximity;
-  /* Scroll anchoring off: "Recently played" prepends the newest song, and anchoring
-     pushed that new tile past the left edge to hold the older ones still. */
   overflow-anchor: none;
 }
 .shelf::-webkit-scrollbar {
@@ -456,8 +351,6 @@ input[type="search"]::-webkit-search-results-decoration {
   scroll-snap-align: start;
 }
 
-/* Hidden, not styled: Chrome ignores every `::-webkit-scrollbar` rule once
-   `scrollbar-width` is set. Scrolling itself is untouched. */
 .scroller,
 .scroller-quiet {
   scrollbar-width: none;
@@ -492,8 +385,6 @@ input[type="search"]::-webkit-search-results-decoration {
   }
 }
 
-/** A symbol of playback, not a meter — the sound is in a cross-origin iframe, so Web
- * Audio has nothing to analyse. At 0.9s it flailed hard enough to read as real data. */
 .eq span {
   display: block;
   width: 2px;
@@ -523,21 +414,6 @@ input[type="search"]::-webkit-search-results-decoration {
     transition: none;
   }
 
-  /*
-   * Tailwind's two animations, which this block had never reached: the file has always been
-   * careful about its own keyframes and silent about the ones the utilities bring. Fifteen
-   * skeletons pulse on a cold page and four spinners turn, and neither asked whether the
-   * reader wanted them to.
-   *
-   * They are not treated alike. A skeleton is decoration, so it stops dead, held at the
-   * opacity its pulse averages so it still reads as a placeholder rather than as content
-   * that failed to arrive. The spinner does not stop — it is the only thing saying a track
-   * is still being resolved, and a frozen spinner reads as a hung app. It slows instead,
-   * which is what the preference actually asks for: less motion, not less information.
-   *
-   * Unlayered, so these win over the utilities in `@layer utilities` whatever the order —
-   * the same reason `.shelf` above owns its own scroll snapping.
-   */
   .animate-pulse {
     animation: none;
     opacity: 0.75;
@@ -547,9 +423,6 @@ input[type="search"]::-webkit-search-results-decoration {
   }
 }
 
-/** Softens the panel's bottom edge so a row at the fold is not sliced through; bottom
- * only, since fading the sticky search bar looks broken. 32px sits between two shipped
- * failures: 12px still slices, 20px ate the last line of a fully scrolled page. */
 .scroll-fade {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent 100%);
 }

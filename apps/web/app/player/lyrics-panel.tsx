@@ -28,10 +28,6 @@ import {
 import { Empty } from "./panel-tabs";
 import { usePlayer } from "./player-context";
 
-// Lyrics that follow the music: a line is current from its own timestamp until the next,
-// and the panel keeps it in view without fighting a reader who has scrolled away. Neither
-// provider always has timings, so plain text is a first-class fallback.
-
 interface Alternative {
   id: number;
   trackName: string;
@@ -41,8 +37,6 @@ interface Alternative {
   synced: boolean;
 }
 
-/** Where one song's lyrics are asked for, or null with no song. The URL doubles as the
- * identity of the request: it names the provider and everything that provider matches on. */
 function lyricsUrl(
   song: Song | null,
   provider: LyricsProvider,
@@ -68,10 +62,7 @@ function lyricsUrl(
 }
 
 function useLyrics(url: string | null): { answer: LyricsAnswer | null; loading: boolean } {
-  // Stored with its request, so "loading" is derived: a URL with no answer yet.
   const [state, setState] = useState<{ url: string; answer: LyricsAnswer } | null>(null);
-  // Bumped to ask again after "busy". The busy answer stays up meanwhile, so the retry does
-  // not flash "Looking for lyrics…" over it.
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -89,8 +80,6 @@ function useLyrics(url: string | null): { answer: LyricsAnswer | null; loading: 
       )
       .then((answer) => setState({ url, answer }))
       .catch((cause: unknown) => {
-        // Settle even on failure: unset kept `loading` true for the rest of the song, so
-        // an offline moment showed "Looking for lyrics…" forever.
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setState({ url, answer: { kind: "failed" } });
       });
@@ -98,8 +87,6 @@ function useLyrics(url: string | null): { answer: LyricsAnswer | null; loading: 
     return () => aborter.abort();
   }, [url, attempt]);
 
-  // "Busy" is a promise of lyrics later, so it is kept: ask again once the wait is over. Keyed
-  // on the state object, not the seconds, so a second busy answer schedules a second retry.
   useEffect(() => {
     if (!state || state.url !== url || state.answer.kind !== "busy") return;
     const timer = setTimeout(
@@ -116,11 +103,9 @@ function useLyrics(url: string | null): { answer: LyricsAnswer | null; loading: 
 export function LyricsPanel() {
   const { current, position, seek, videoId, activeSource } = usePlayer();
 
-  // Keyed by the recording, so a fix survives the same song arriving from another source.
   const prefKey = current ? songKey(current.title, current.artists[0] ?? "") : "";
   const pref = useLyricsPref(prefKey);
 
-  // YouTube Music is on offer only for a song with a YouTube copy.
   const playing = activeSource === "ytmusic" ? videoId : null;
   const youtube = current ? hasYouTube(current.sources, playing) : false;
   const provider = activeProvider(pref.provider, youtube);
@@ -134,23 +119,18 @@ export function LyricsPanel() {
   const container = useRef<HTMLDivElement>(null);
   const activeLine = useRef<HTMLButtonElement>(null);
 
-  // Stops chasing the song for a while, or the next timestamp yanks the view back.
   const [following, setFollowing] = useState(true);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lines = lyrics?.synced ?? null;
 
-  // Applied to the playhead, not the lines: same result, no rebuilt array. A positive
-  // offset means the words arrive late, so time moves to meet them.
   const at = position + (pref.offset ?? 0);
 
-  /** The last line whose timestamp has passed. */
   const activeIndex = useMemo(() => {
     if (!lines || lines.length === 0) return -1;
     let low = 0;
     let high = lines.length - 1;
     let found = -1;
-    // Binary search: hundreds of lines, re-run on every position tick.
     while (low <= high) {
       const mid = (low + high) >> 1;
       if (lines[mid]!.at <= at) {
@@ -170,8 +150,6 @@ export function LyricsPanel() {
     const line = activeLine.current;
     if (!box || !line) return;
 
-    // Arithmetic, not `scrollIntoView`: that scrolls every scrollable ancestor, so the
-    // whole app lurches with the panel.
     box.scrollTo({
       top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
       behavior: "smooth",
@@ -195,8 +173,6 @@ export function LyricsPanel() {
   }
 
   if (!lyrics || (lyrics.instrumental && !lyrics.plain && !lines)) {
-    // No toolbar without lyrics, so the other provider is offered here — the likeliest
-    // moment a reader wants it is when this one came back empty or busy.
     const switchTo = other && (
       <>
         <br />
@@ -249,11 +225,6 @@ export function LyricsPanel() {
         ref={container}
         onWheel={onUserScroll}
         onTouchMove={onUserScroll}
-        /*
-          Padded by roughly half the pane so the first and last lines can reach the
-          centre. `vh`, not `%` — percentage padding resolves against the containing
-          block's *width*, so it would shrink as the panel narrowed.
-        */
         className="scroller-quiet relative min-h-0 flex-1 overflow-y-auto px-4 py-[38vh] sm:px-5"
       >
         {lines.map((line, index) => {
@@ -264,10 +235,7 @@ export function LyricsPanel() {
               key={`${line.at}-${index}`}
               ref={isActive ? activeLine : undefined}
               type="button"
-              // Seeks to the line — the reason these are buttons, not <p>.
               onClick={() => seek(line.at)}
-              // Weight and opacity rather than hue: the accent shifts with the artwork, so
-              // colour-only emphasis can vanish into the tint.
               className={`block w-full origin-left py-2 text-left text-lg font-extrabold leading-tight sm:py-2.5 sm:text-xl transition-all duration-500 ease-[var(--ease)] @lg:text-[1.6rem] ${
                 isActive
                   ? "scale-100 text-[var(--fg)] opacity-100"
@@ -276,7 +244,6 @@ export function LyricsPanel() {
                     : "scale-[0.97] text-[var(--fg-dim)] opacity-55 hover:opacity-85"
               }`}
             >
-              {/* A timed blank must still occupy its slot or the highlight jumps early. */}
               {line.text || <span className="opacity-40">♪</span>}
             </button>
           );
@@ -311,12 +278,6 @@ export function LyricsPanel() {
   );
 }
 
-/**
- * The correction bar above the words, collapsed by default. Two fixes, because lyrics are
- * wrong in two ways: the wrong song, fixed by choosing another version — another LRCLIB
- * record, or YouTube Music's — and the right words at the wrong moment, fixed by shifting
- * the timing.
- */
 function LyricsToolbar({
   song,
   prefKey,
@@ -333,24 +294,19 @@ function LyricsToolbar({
   prefKey: string;
   lyrics: Lyrics | null;
   provider: LyricsProvider;
-  /** The song has a YouTube upload, so YouTube Music's version can be offered. */
   youtubeAvailable: boolean;
-  /** The LRCLIB record this song is pinned to, if any. Kept while YouTube Music is chosen. */
   chosenId: number | undefined;
   offset: number;
   open: boolean;
   onToggle: () => void;
   synced: boolean;
 }) {
-  // Stored with its song, so a stale list is not returned when the track changes. `busyFor`
-  // marks a list LRCLIB refused to give, which is not the same as one it does not have.
   const [found, setFound] = useState<{
     key: string;
     list: Alternative[];
     busyFor?: number;
   } | null>(null);
 
-  // On open, never on a track change: that would double every song's requests.
   useEffect(() => {
     if (!open || !song || found?.key === prefKey) return;
 
@@ -378,8 +334,6 @@ function LyricsToolbar({
     return () => aborter.abort();
   }, [open, song, prefKey, found]);
 
-  // A refused list is forgotten once LRCLIB's wait is over, so an open drawer asks again —
-  // and not before, or the effect above would ask in a loop.
   useEffect(() => {
     if (!found?.busyFor) return;
     const timer = setTimeout(() => setFound(null), retryDelayMs(found.busyFor));
@@ -390,8 +344,6 @@ function LyricsToolbar({
   const busy = found?.key === prefKey && Boolean(found.busyFor);
   const loading = open && alternatives === null;
 
-  // YouTube Music names no match, only its licensor — and that credit is owed wherever its
-  // words are shown.
   const label =
     provider === "ytmusic"
       ? [PROVIDER_NAMES.ytmusic, lyrics?.attribution].filter(Boolean).join(" · ")
@@ -431,8 +383,6 @@ function LyricsToolbar({
               <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
                 Timing
               </span>
-              {/* Half a second a step: smaller is imperceptible against a line
-                  that lasts three, larger overshoots on the first press. */}
               <button
                 type="button"
                 onClick={() => setLyricsOffset(prefKey, offset - 0.5)}
@@ -465,8 +415,6 @@ function LyricsToolbar({
             Other versions
           </p>
 
-          {/* YouTube Music first: it is one version, not a list, and it does not wait on
-              LRCLIB — which matters most exactly when LRCLIB is the one that is busy. */}
           {youtubeAvailable && (
             <button
               type="button"
@@ -521,7 +469,6 @@ function LyricsToolbar({
                     </span>
                     <span className="block truncate text-[10px] text-[var(--fg-dim)]">
                       {[
-                        // Named only beside YouTube Music, where two sources share the list.
                         youtubeAvailable ? PROVIDER_NAMES.lrclib : null,
                         option.artistName,
                         option.albumName,

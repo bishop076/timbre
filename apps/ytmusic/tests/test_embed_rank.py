@@ -1,13 +1,3 @@
-"""The embed rank, and what it decides survives `limit`.
-
-The rank does two jobs at once: it orders the candidates the player walks, and
-it chooses which of them are cut off by `limit`. The second is the one that
-fails silently — nothing errors, the search just returns worse copies — so the
-route is exercised end to end here with a stub client, not only the lookup.
-
-The tiers are those measured in RESEARCH-2026-08-20 G-5.
-"""
-
 from app.models import SearchRequest, Track
 from app.routes import search as search_route
 from app.routes.search import _embed_rank
@@ -62,9 +52,6 @@ class StubClient:
 
 
 def test_the_artists_own_upload_survives_the_limit(monkeypatch) -> None:
-    # The measured shape of "Fred again Delilah": user re-uploads first, the
-    # artist's own OFFICIAL_SOURCE_MUSIC upload near the end. At "unknown" it was
-    # cut by limit=10 while ten re-uploads survived.
     songs = [result("atv", "MUSIC_VIDEO_TYPE_ATV", "song")]
     videos = [result(f"ugc{index}", "MUSIC_VIDEO_TYPE_UGC") for index in range(14)]
     videos.append(result("own", "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC"))

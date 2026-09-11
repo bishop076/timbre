@@ -6,9 +6,7 @@ import { albumAddsSomething } from "./song-subtitle.ts";
 test("a single's album repeats its title and is not worth printing", () => {
   assert.equal(albumAddsSomething("This Was Your Song - Single", "This Was Your Song"), false);
   assert.equal(albumAddsSomething("Toonami - EP", "Toonami"), false);
-  // Apple sometimes omits the suffix entirely, which is the same repetition.
   assert.equal(albumAddsSomething("Inside (feat. Shogonodo)", "Inside (feat. Shogonodo)"), false);
-  // Accents and case must not make a repeat look like new information.
   assert.equal(albumAddsSomething("Nausicaä", "Nausicaa"), false);
 });
 

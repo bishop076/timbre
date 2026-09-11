@@ -32,8 +32,6 @@ test("records that are not songs are dropped", () => {
   assert.equal(songs.length, 0);
 });
 
-// The payloads from docs/SECURITY.md S-11: each used to pass the container check and throw
-// in a render far from here.
 test("wrongly typed elements are repaired, not trusted", () => {
   const [song] = usableSongs([
     { ...GOOD, artists: [1, "Oasis", null], artworkUrl: 1, durationMs: "long", album: {}, isrc: 7 },
@@ -52,7 +50,6 @@ test("sources that are not sources are dropped, and a bad playback reads as a li
   assert.deepEqual(song?.sources, [{ source: "audius", sourceId: "9", url: null, playback: "link" }]);
 });
 
-// S-15: both of these are valid https, which is why the scheme alone was never the check.
 test("a link that does not belong to its source is dropped", () => {
   const [song] = usableSongs([
     {
@@ -86,7 +83,6 @@ test("covers must come from a host the proxy serves, or an Audius content node",
     isArtwork("https://audius-content-10.figment.io/content/01JVSGMQ32Z7MX262JJZVAK0NZ/480x480.jpg"),
     true,
   );
-  // A tracking pixel on a stranger's host, which the browser would otherwise load directly.
   assert.equal(isArtwork("https://attacker.example/beacon.png"), false);
   assert.equal(isArtwork("http://i.ytimg.com/vi/a/hq.jpg"), false);
   assert.equal(isArtwork("data:image/png;base64,AAAA"), false);

@@ -4,7 +4,6 @@ import { test } from "node:test";
 import type { Song } from "../types";
 import { insertAfter, moveWithin, removeAt } from "./queue-ops.ts";
 
-/** Only the id matters here; the rest is shape the functions never read. */
 function song(id: string): Song {
   return {
     id,
@@ -20,7 +19,6 @@ function song(id: string): Song {
 
 const ids = (songs: Song[]) => songs.map((entry) => entry.id).join("");
 
-/** a b c d e, playing "c". */
 function fixture() {
   return { queue: ["a", "b", "c", "d", "e"].map(song), index: 2 };
 }
@@ -39,7 +37,6 @@ test("removing a song behind the playhead keeps the same song playing", () => {
   const edit = removeAt(queue, index, 0)!;
 
   assert.equal(ids(edit.queue), "bcde");
-  // The index has to shift down with the list, or playback silently jumps.
   assert.equal(edit.index, 1);
   assert.equal(edit.queue[edit.index]!.id, "c");
   assert.equal(edit.play, null);
@@ -89,7 +86,6 @@ test("moving the playing song carries playback with it", () => {
 
 test("moving a song across the playhead from below shifts it back", () => {
   const { queue, index } = fixture();
-  // "a" (behind) jumps to the end (ahead), so everything between slides down.
   const edit = moveWithin(queue, index, 0, 4)!;
 
   assert.equal(ids(edit.queue), "bcdea");
@@ -108,8 +104,6 @@ test("a one-step nudge moves exactly one place", () => {
   const { queue, index } = fixture();
   const edit = moveWithin(queue, index, 3, 4)!;
 
-  // `to` counts against the list minus the moved song, which is what stops
-  // "down by one" collapsing into a no-op.
   assert.equal(ids(edit.queue), "abced");
   assert.equal(edit.queue[edit.index]!.id, "c");
 });
@@ -123,8 +117,6 @@ test("moves that change nothing or land outside the list are no-ops", () => {
 });
 
 test("the song under the playhead survives every single-step move", () => {
-  // The invariant the index arithmetic exists to preserve, checked exhaustively
-  // rather than at the few points a hand-written case would reach.
   for (let index = 0; index < 5; index += 1) {
     for (let from = 0; from < 5; from += 1) {
       for (let to = 0; to < 5; to += 1) {

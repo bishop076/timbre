@@ -1,9 +1,3 @@
-"""URL parsing for /resolve.
-
-Pure logic, no network. This is the code most likely to be fed hostile or
-malformed input, since it accepts anything a user pastes.
-"""
-
 import pytest
 
 from app.routes.search import extract_video_id
@@ -40,7 +34,7 @@ def test_keeps_other_query_parameters_out_of_the_way() -> None:
         "",
         "   ",
         "not a url",
-        "https://example.com/watch?v=" + VALID_ID,  # right shape, wrong host
+        "https://example.com/watch?v=" + VALID_ID,
         "https://soundcloud.com/artist/track",
         "https://youtu.be/",
         "https://www.youtube.com/watch?v=tooshort",
@@ -55,5 +49,4 @@ def test_rejects_anything_else(url: str) -> None:
 
 
 def test_rejects_ids_with_illegal_characters() -> None:
-    # Correct length, but '!' is not in the video-id alphabet.
     assert extract_video_id("abcdefghij!") is None

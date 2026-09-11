@@ -1,16 +1,3 @@
-"""Radio flattening and continuation.
-
-The watch queue is a different shape from search results, and the difference is
-silent: `to_track` returns None for every watch item rather than raising. These
-tests pin the three aliased keys and the seed/dedupe rules, because a
-regression in either would show up as "the radio is empty" with no error
-anywhere.
-
-WATCH_TRACK is copied from a real `get_watch_playlist` response (ytmusicapi
-1.12.2), including the fields that are *absent* — there is no `resultType`, no
-`duration`, no `thumbnails`, no `album` and no `isExplicit` on any watch item.
-"""
-
 from app.models import Track
 from app.normalize import to_related_track, to_watch_track, to_watch_tracks
 from app.routes.radio import continuation
@@ -64,8 +51,6 @@ def test_reads_artwork_from_the_singular_thumbnail_key() -> None:
 
 
 def test_preserves_video_type() -> None:
-    """The ranker demotes art tracks. Dropping this field makes every candidate
-    compare equal, which is exactly how the search ranking sat inert (B-3)."""
     result = to_watch_track(WATCH_TRACK)
     assert result is not None
     assert result.video_type == "MUSIC_VIDEO_TYPE_OMV"
@@ -96,8 +81,6 @@ def test_watch_tracks_survives_a_non_list() -> None:
 
 
 def test_related_items_flatten_without_any_duration() -> None:
-    """`parse_song_flat` emits no duration at all. That is tolerated, and it is
-    why related tracks merge more loosely than search results do."""
     result = to_related_track(RELATED_TRACK)
     assert result is not None
     assert result.duration_seconds is None
@@ -105,7 +88,6 @@ def test_related_items_flatten_without_any_duration() -> None:
 
 
 def test_related_drops_non_songs() -> None:
-    """Sections mix songs with playlists and artists, which have no videoId."""
     assert to_related_track({"title": "Pop's Biggest Hits", "playlistId": "RDC123"}) is None
     assert to_related_track({"title": "ZAYN", "browseId": "UC789"}) is None
 
@@ -116,7 +98,6 @@ def test_continuation_drops_the_seed_when_it_leads() -> None:
 
 
 def test_continuation_drops_the_seed_wherever_it_sits() -> None:
-    """ytmusicapi documents no ordering guarantee, so position is not trusted."""
     tracks = [track("bbbbbbbbbbb"), track("aaaaaaaaaaa"), track("ccccccccccc")]
     assert [t.video_id for t in continuation(tracks, "aaaaaaaaaaa", 10)] == [
         "bbbbbbbbbbb",

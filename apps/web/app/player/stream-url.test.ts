@@ -11,8 +11,6 @@ test("an Audius stream starts on the primary host and keeps the play-count overr
 });
 
 test("the fallback is the same stream, path and query intact, on the next host", () => {
-  // The query is the part that must survive: dropping `skip_play_count=false` on the retry
-  // would play the song and credit nobody for it.
   const first = streamUrlFor("audius", "jaKgV");
   const second = nextStreamHost(first);
   assert.equal(second, "https://discoveryprovider.audius.co/v1/tracks/jaKgV/stream?skip_play_count=false");

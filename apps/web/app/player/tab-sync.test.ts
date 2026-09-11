@@ -52,14 +52,9 @@ function report(overrides: Partial<OwnerReport> = {}): OwnerReport {
   };
 }
 
-/** A tab that has claimed at `at`, as its own model sees it. */
 function owner(self: string, at: number): SyncModel {
   return localState(initialModel(self), "playing", at).model;
 }
-
-// ---------------------------------------------------------------------------------------
-// Validation
-// ---------------------------------------------------------------------------------------
 
 test("a well-formed message survives the wire", () => {
   const message: Message = { type: "state", from: "a", at: 5, report: report() };
@@ -70,7 +65,6 @@ test("anything that is not this protocol's message is dropped", () => {
   for (const junk of [null, 1, "claim", [], {}, { type: "claim", from: "a", at: 1 }]) {
     assert.equal(parseMessage(junk), null, JSON.stringify(junk));
   }
-  // Another build's protocol version, however plausible the rest of it looks.
   assert.equal(parseMessage({ v: 2, type: "hello", from: "a" }), null);
   assert.equal(parseMessage({ v: 1, type: "hello", from: "" }), null);
   assert.equal(parseMessage({ v: 1, type: "claim", from: "a", at: Number.NaN }), null);
@@ -119,13 +113,8 @@ test("a handoff whose index would land on the wrong song is refused", () => {
   assert.equal(handoff([song("x"), song("y")], 2), null, "out of range");
   assert.equal(handoff([song("x"), song("y")], 0.5), null, "not a position");
   assert.equal(handoff([], 0), null, "nothing to play");
-  // Dropping the broken entry would move index 1 from "y" to nothing, so the whole thing goes.
   assert.equal(handoff([null, song("y")], 1), null);
 });
-
-// ---------------------------------------------------------------------------------------
-// Ownership
-// ---------------------------------------------------------------------------------------
 
 test("the later claim wins, and a same-millisecond tie still has one winner", () => {
   assert.ok(newer({ tab: "a", at: 2 }, { tab: "b", at: 1 }));
@@ -171,7 +160,6 @@ test("two claims that cross leave exactly one tab playing", () => {
 });
 
 test("the owner's repeated reports do not pause anything twice", () => {
-  // The only pause available is the player's toggle, so a second one would start it again.
   const deposed = receive(owner("a", 100), { type: "claim", from: "b", at: 200 }, PLAYING, 200).model;
   const again = receive(deposed, { type: "state", from: "b", at: 200, report: report() }, PLAYING, 201);
   assert.equal(again.effect, null);
@@ -207,14 +195,9 @@ test("an owner carrying on — a buffer draining, the next song — does not re-
   const resumed = localState(buffering, "playing", 160);
   assert.equal(resumed.message, null);
 
-  // After a pause, playing again *is* a press of play.
   const paused = localState(resumed.model, "paused", 170).model;
   assert.equal(localState(paused, "playing", 180).message?.type, "claim");
 });
-
-// ---------------------------------------------------------------------------------------
-// Mirroring
-// ---------------------------------------------------------------------------------------
 
 test("an empty tab mirrors the owner from its first report", () => {
   const step = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000);
@@ -281,10 +264,6 @@ test("leaving announces itself only from the owner", () => {
   assert.deepEqual(leaving(owner("a", 100)).message, { type: "gone", from: "a" });
   assert.equal(leaving(initialModel("a")).message, null);
 });
-
-// ---------------------------------------------------------------------------------------
-// Taking over
-// ---------------------------------------------------------------------------------------
 
 test("taking over asks the owner, which hands its queue to the asker", () => {
   const mirror = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000).model;

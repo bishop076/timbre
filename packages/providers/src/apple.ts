@@ -1,9 +1,3 @@
-/*
- * Apple Music, via the iTunes Search API and the Marketing Tools RSS feeds. No key, but
- * the tightest rate limit of any source — ~20 requests/minute/IP, answered with 403 rather
- * than 429. No ISRC is exposed, so Apple contributes artwork rather than identity.
- */
-
 import type { SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
 import { createRequester } from "./request.ts";
@@ -16,7 +10,6 @@ interface ITunesTrack {
   trackTimeMillis?: number;
   artworkUrl100?: string;
   trackViewUrl?: string;
-  /** A thirty-second clip the Search API publishes for exactly this purpose. */
   previewUrl?: string;
   trackExplicitness?: string;
 }
@@ -29,7 +22,6 @@ interface RssEntry {
   url?: string;
 }
 
-/** Apple serves artwork at whatever size the URL asks for; the feeds hand back a soft 100×100. */
 function upsizeArtwork(url: string | undefined, size = 400): string | null {
   if (!url) return null;
   return url.replace(/\/\d+x\d+bb\./, `/${size}x${size}bb.`);
@@ -60,7 +52,6 @@ function fromRss(raw: RssEntry): SourceTrack | null {
     title: raw.name,
     artists: raw.artistName ? [raw.artistName] : [],
     album: null,
-    // The RSS feeds carry no duration; the matcher tolerates null over a mismatch.
     durationMs: null,
     isrc: null,
     url: raw.url ?? null,
@@ -70,7 +61,6 @@ function fromRss(raw: RssEntry): SourceTrack | null {
 }
 
 export interface AppleConfig {
-  /** Storefront country code. Charts and availability differ by market. */
   country?: string;
 }
 
@@ -78,7 +68,6 @@ const get = createRequester({
   id: "apple",
   label: "Apple Music",
   init: cachePolicy,
-  // 403 is Apple's exceeded rate limit, not a permission problem.
   classify: (status) => (status === 403 ? "rate_limited" : "transient"),
 });
 

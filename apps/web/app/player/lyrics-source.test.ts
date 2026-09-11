@@ -9,8 +9,6 @@ import {
   retryDelayMs,
 } from "./lyrics-source.ts";
 
-// Every line of text here is an invented placeholder: real lyrics are licensed text.
-
 const video = (sourceId: string) => ({ source: "ytmusic", sourceId, videoType: "MUSIC_VIDEO_TYPE_OMV" });
 const artTrack = (sourceId: string) => ({ source: "ytmusic", sourceId, videoType: "MUSIC_VIDEO_TYPE_ATV" });
 const untyped = (sourceId: string) => ({ source: "ytmusic", sourceId });

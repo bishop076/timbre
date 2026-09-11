@@ -7,10 +7,6 @@ import { usePlayerControls } from "./player-context";
 import { VOLUME_STEP } from "./transport-keys";
 import { pixelDelta, wheelSteps } from "./wheel-step";
 
-/**
- * Output level — desktop only, since a phone's hardware keys own volume. Muting is drawn
- * as a level of zero, so the control can never show a level you cannot hear.
- */
 export function Volume() {
   const { volume, muted, setVolume, toggleMute } = usePlayerControls();
   const trackRef = useRef<HTMLDivElement>(null);
@@ -22,21 +18,14 @@ export function Volume() {
   const applyFrom = (clientX: number) => {
     const box = trackRef.current?.getBoundingClientRect();
     if (!box || box.width <= 1) return;
-    // Divided by `width - 1`: addressable positions run 0 to `width - 1`, so the full
-    // width mapped the far right to 98 — a visually full fill sitting under maximum.
     setVolume(((clientX - box.left) / (box.width - 1)) * 100);
   };
 
-  // `setVolume` takes an absolute value, so a handler closing over `level` reads a stale
-  // number the moment two wheel events land in one frame — every trackpad flick.
   const levelRef = useRef(level);
   useEffect(() => {
     levelRef.current = level;
   }, [level]);
 
-  // A native listener with `passive: false`, not React's `onWheel` — React registers
-  // wheel handlers at the root as passive, so `preventDefault` is ignored and the page
-  // scrolls behind the control.
   useEffect(() => {
     const node = rootRef.current;
     if (!node) return;
@@ -51,7 +40,6 @@ export function Volume() {
       carried = rest;
       if (steps === 0) return;
 
-      // Scrolling up is a negative delta and means louder, hence the subtraction.
       setVolume(levelRef.current - steps * VOLUME_STEP);
     };
 
@@ -81,8 +69,6 @@ export function Volume() {
         aria-valuemax={100}
         aria-valuenow={level}
         aria-valuetext={muted ? "Muted" : `${level}%`}
-        // Pointer capture rather than window listeners, so a drag that leaves the
-        // track — most drags on a control this small — keeps working.
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           setDragging(true);
@@ -95,18 +81,7 @@ export function Volume() {
           event.currentTarget.releasePointerCapture(event.pointerId);
           setDragging(false);
         }}
-        // A touch that turns into a scroll, or an OS gesture, ends with `pointercancel` and
-        // never `pointerup`. Without this the drag stayed armed, and every later hover over
-        // the track changed the volume with no button held.
         onPointerCancel={() => setDragging(false)}
-        /*
-         * Every key here is also a scroll key, and this slider is focusable, so the page
-         * moved underneath the reader on each press: Up and Down scrolled a line, Home and
-         * End threw the panel to its ends. Handling a key now means consuming it.
-         *
-         * Structured as one decision rather than four independent `if`s so there is exactly
-         * one place that knows whether the press was ours.
-         */
         onKeyDown={(event) => {
           const to =
             event.key === "ArrowRight" || event.key === "ArrowUp"
@@ -123,7 +98,6 @@ export function Volume() {
           event.preventDefault();
           setVolume(to);
         }}
-        // Taller than the visible bar — a 10px target is unusable.
         className="group flex h-8 w-16 cursor-pointer touch-none items-center xl:w-24"
       >
         <div className="slab-sm relative h-2.5 w-full overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">

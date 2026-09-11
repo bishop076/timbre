@@ -27,7 +27,6 @@ const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
 const TRACK_ID = "0DiWol3AO6WpXZgp0goxAV";
 const ALBUM_ID = "2noRn2Aes5aoNVsU6iWThc";
 
-/** An embed page, reduced to the one script tag this reads. */
 function embedPage(token: string, expiresInMs: number): string {
   const data = {
     props: {
@@ -43,7 +42,6 @@ function embedPage(token: string, expiresInMs: number): string {
   return `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></html>`;
 }
 
-/** A search answer in the shape measured live on 2026-09-11, trimmed to what is read. */
 const SEARCH = {
   data: {
     searchV2: {
@@ -72,7 +70,6 @@ const SEARCH = {
               },
             },
           },
-          // Withdrawn where the server sits: its embed would show an error, so it is dropped.
           {
             item: {
               data: {
@@ -94,7 +91,6 @@ interface Route {
   respond: () => Response;
 }
 
-/** Serves canned responses per URL substring, in order, and records what was asked for. */
 function stubFetch(routes: Route[]) {
   const calls: { url: string; auth: string | null }[] = [];
   const original = globalThis.fetch;
@@ -154,7 +150,6 @@ test("a search bootstraps one token and sends it as the bearer", async () => {
   ]);
   try {
     assert.equal((await searchSpotifyWeb(ctx, "one more time")).length, 1);
-    // A second search reuses the session instead of fetching another embed page.
     await searchSpotifyWeb(ctx, "discovery");
     assert.equal(stub.calls.filter((call) => call.url.includes("/embed/")).length, 1);
     assert.equal(stub.calls[1]?.auth, "Bearer tok-1");
@@ -321,18 +316,11 @@ test("the query travels as a persisted-query GET naming the operation and its ha
   assert.equal(JSON.parse(url.searchParams.get("extensions")!).persistedQuery.version, 1);
 });
 
-// --- Mending itself ----------------------------------------------------------------------
-
 const NEW_SEARCH = "a".repeat(64);
 const NEW_ALBUM = "b".repeat(64);
 const NEW_PLAYLIST = "d".repeat(64);
 const MAIN ="https://open.spotifycdn.com/cdn/build/web-player/web-player.2c51c6eb.js";
 
-/**
- * The web player's main bundle, reduced to the two things discovery reads: persisted-query
- * definitions, and the webpack loader naming the lazy chunk `searchDesktop` lives in. The
- * loader's shape is copied from the live bundle of 2026-09-11.
- */
 const MAIN_BUNDLE = [
   `let n=new i.l("getAlbum","query","${NEW_ALBUM}",null),a=new i.l("queryAlbumTracks","query","${"c".repeat(64)}",null);`,
   `const p=new i.l("fetchPlaylist","query","${NEW_PLAYLIST}",null);`,
@@ -373,7 +361,6 @@ test("a retired hash is replaced from Spotify's own bundle and the query retried
     const retried = new URL(stub.calls.at(-1)!.url);
     assert.equal(JSON.parse(retried.searchParams.get("extensions")!).persistedQuery.sha256Hash, NEW_SEARCH);
     assert.deepEqual(healedSpotifyHashes(), { search: NEW_SEARCH });
-    // Nothing went to the upstream table: the bundle answered for everything asked.
     assert.ok(!stub.calls.some((call) => call.url.includes("githubusercontent")));
   } finally {
     stub.restore();
@@ -399,7 +386,6 @@ test("the table starts from hashes shaped like hashes, one per operation used", 
   for (const operation of Object.values(SPOTIFY_OPERATIONS)) assert.match(operation.sha256, /^[0-9a-f]{64}$/);
 });
 
-/** An album's embed page, in the shape measured live on 2026-09-11. */
 const ALBUM_EMBED = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({
   props: {
     pageProps: {

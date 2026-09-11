@@ -8,18 +8,9 @@ import type { Song } from "../types";
 import { saveAsPlaylist } from "./save-collection";
 import { usePlaylists } from "./store";
 
-/**
- * "Save as playlist" for a page of songs: one press, a local playlist named after the page.
- *
- * Renders as two items of a wrapping flex row — the button, then a full-width line for the
- * confirmation — so it sits among the page's other actions and the notice drops beneath them.
- * Pressed once per visit: a second press would make a second copy, which nobody means to.
- */
 export function SaveAsPlaylist({ name, songs }: { name: string; songs: readonly Song[] }) {
   const [saved, setSaved] = useState<{ id: string; name: string; count: number } | null>(null);
   const [empty, setEmpty] = useState(false);
-  // A full browser storage is reported by the store rather than thrown, and it lands after
-  // the first song that did not fit — so it is read from there, and only once this has saved.
   const { error } = usePlaylists();
 
   function save() {
