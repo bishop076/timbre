@@ -51,6 +51,14 @@ function recordCounts(counts: Counts): void {
   }
 }
 
+// What lies over a banner so the header's text stays legible. Two gradients kept separate —
+// combined into one ramp, the light ground's fade to near-white dissolved the picture into a
+// pale band. One constant because the pre-hydration replay draws it too, and must match.
+const BANNER_SCRIM = [
+  `linear-gradient(to top, var(--surface-1) 0%, transparent var(--banner-fade, 45%))`,
+  `linear-gradient(to top, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0.1) 100%)`,
+].join(", ");
+
 /** The profile page — header wash, name, counts and saved playlists, all local. */
 export function ProfileView({
   /** The name as the server knew it, from the cookie. Null if it was never set. */
@@ -142,7 +150,7 @@ export function ProfileView({
             : { backgroundImage: ready ? wash : "var(--profile-wash, none)" }
         }
       >
-        {local.banner && (
+        {local.banner ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element -- a local data URL, never a remote host */}
             <img
@@ -150,20 +158,26 @@ export function ProfileView({
               alt=""
               className="absolute inset-0 -z-10 size-full object-cover"
             />
-            {/* Two gradients kept separate — combined into one ramp, the light
-                ground's fade to near-white dissolved the picture into a pale band. */}
-            <div
-              aria-hidden
-              className="absolute inset-0 -z-10"
-              style={{
-                background: [
-                  `linear-gradient(to top, var(--surface-1) 0%, transparent var(--banner-fade, 45%))`,
-                  `linear-gradient(to top, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0.1) 100%)`,
-                ].join(", "),
-              }}
-            />
+            <div aria-hidden className="absolute inset-0 -z-10" style={{ background: BANNER_SCRIM }} />
           </>
-        )}
+        ) : !hydrated ? (
+          /* The banner before React can read storage, from `--banner-thumb`, which the boot
+             script stamps from the cached thumbnail — the avatar's `--avatar-thumb`, for the
+             header. One layer standing in for the two above: `cover` and `center` crop a
+             background exactly as `object-cover` crops the picture, and the gradients ignore
+             both.
+
+             **`var(--banner-thumb)` has no fallback on purpose.** Unset, it makes the whole
+             declaration invalid, and `background-image` falls to `none` — scrim included — so
+             a reader without a banner gets nothing here rather than a dark band. A fallback of
+             `none` would keep the scrim. From hydration React decides, as the avatar does, so
+             a variable left behind by a removed picture is never read. */
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-10 bg-cover bg-center"
+            style={{ backgroundImage: `${BANNER_SCRIM}, var(--banner-thumb)` }}
+          />
+        ) : null}
 
         {/* Always visible on touch, where there is no hover; `focus-within` keeps the
             group up so tabbing to one does not hide it. */}
