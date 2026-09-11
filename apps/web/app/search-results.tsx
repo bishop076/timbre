@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { spotifyCollectionPath } from "./spotify/collection-link";
+import { pastedCollectionOf } from "./pasted-collection";
 import { SpotifySection } from "./spotify/spotify-section";
 
 import { ArtistLink } from "./artist-link";
@@ -67,9 +67,11 @@ export function SearchResults() {
         return;
       }
 
-      // A Spotify album or playlist is a page of its own, not a song to resolve — the card
-      // below links to it, and asking /api/resolve would only answer "not a track".
-      if (spotifyCollectionPath(trimmed)) {
+      // An album or playlist is a page of its own, not a song to resolve — the card below
+      // links to it, and asking /api/resolve would only answer "not a track". Unless the link
+      // names a song as well, as a YouTube `watch?v=…&list=…` does: that song still resolves.
+      const pasted = pastedCollectionOf(trimmed);
+      if (pasted && !pasted.withSong) {
         setResults(null);
         setLoading(false);
         setError(null);
@@ -129,7 +131,7 @@ export function SearchResults() {
   }, [query]);
 
   const hasQuery = query.trim().length > 0;
-  const pastedCollection = spotifyCollectionPath(query);
+  const pastedCollection = pastedCollectionOf(query);
   const songs = results?.songs ?? [];
 
   // Guarded on `attempted > 0`: optional, and `0 === 0` declares a false total outage.
@@ -184,6 +186,11 @@ export function SearchResults() {
               <span className="text-[var(--fg-dim)]">Spotify</span> link and it plays here.
               Neither can be searched — only opened.
             </p>
+            {/* Said for the same reason: a playlist link is the one thing search cannot find. */}
+            <p className="mx-auto mt-2 max-w-md text-[var(--fg-faint)]">
+              A <span className="text-[var(--fg-dim)]">YouTube</span> playlist link opens the whole
+              list.
+            </p>
           </div>
         )}
 
@@ -197,10 +204,10 @@ export function SearchResults() {
           >
             <span>
               <span className="block text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-                Spotify {pastedCollection.kind}
+                {pastedCollection.service} {pastedCollection.noun}
               </span>
               <span className="mt-0.5 block text-sm font-semibold">
-                Open this {pastedCollection.kind} in Timbre
+                Open this {pastedCollection.noun} in Timbre
               </span>
             </span>
             <span aria-hidden className="text-lg text-[var(--fg-dim)]">→</span>
