@@ -4,7 +4,12 @@ A vulnerability pass over Timbre, mapped to the **OWASP Top 10:2025**.
 
 *Reviewed 2026-08-18, against `1b90b08`. **Second pass 2026-08-21**, against
 `daf4756` — the first one run against a live deployment rather than a working
-tree, which is how S-7 was caught.*
+tree, which is how S-7 was caught. **Third pass 2026-09-11**, against `8abfc8e`
+(local `main`, seven commits ahead of `origin/main`) and the live deployment —
+S-9 onward. Its statuses were updated on 2026-09-11 against `6f3b6ae`, and its
+file:line citations re-pointed there, because the files `8abfc8e` was read at have
+since been trimmed: comments stripped, code simplified. The SHAs of the first two
+passes predate the history rewrites and no longer resolve.*
 
 This is a different question from [EXPOSURE.md](EXPOSURE.md). That file asks what
 a public deployment *spends* and what it *risks by policy*. This one asks whether
@@ -41,6 +46,25 @@ a deadline, so one silent host could hold a search open until the platform kille
 it. Both were fixed the same day they were found. Notably, S-8's lesson was
 already written down *in this repository*, in the one file that had hit it — and
 had not been generalised to the path every adapter uses.
+
+**The third pass found no disclosure and no script execution either.** Three
+MEDIUMs, all availability or integrity of the reader's own browser: the outbound
+limiter queued without a deadline, so one client inside its own rate limit could
+stall every search on an instance (S-9, measured); three server-rendered pages
+called no `guard()` and turned out to be uncached on every hit (S-10, confirmed
+live); and the S-1 class was back one level down — a shared playlist file could
+still crash pages for good, through a field *inside* a song rather than the song
+itself (S-11). The rest was LOW. Two "verified correct" rows below no longer held
+and were marked. And E-14's prescribed ten minutes — flipping the CSP to enforcing —
+was three weeks overdue: live headers on 2026-09-11 still said `Report-Only`.
+
+**Most of it was fixed the same day.** S-11, S-12, S-14, S-15, S-16 and S-17 are
+closed, and both stale rows hold again. S-9, S-10, S-13, S-18 and S-19 are partly
+fixed, and each says what is left: the largest is that the artist page still runs
+the full search fan-out on the server for every new name (S-10). E-14 is still
+open. The first sweep for it found that enforcing would have broken the Deezer and
+Apple Music players, and that is fixed; the policy stays `Report-Only` until a sweep
+can also exercise YouTube, SoundCloud and Mixcloud playback.
 
 ---
 
@@ -422,6 +446,585 @@ reproduce.
 
 ---
 
+# Third pass — 2026-09-11
+
+Static review of everything that changed since the second pass (~140 files: Spotify
+search and collections, Explore, radio, taste, the service worker, the canary), a
+re-check of the earlier "verified correct" claims, local proofs against the real
+modules, and plain `GET`s against the live deployment. Nothing was sent anywhere
+else: no `pnpm audit`/`pip-audit` (both upload the dependency list), no `POST` to
+either deployment; advisories were read by hand. Nothing was fixed in the pass
+itself.
+
+**Updated 2026-09-11, against `6f3b6ae`.** The fixes landed the same day, and each
+entry now opens with its status: what was fixed, in which commit, and what is still
+open. The account under it is the finding as reported, in the past tense where the
+code has changed. Every file:line points at the current file, and where the pass
+quoted a comment the trim has since removed, the text says so.
+
+---
+
+# S-9 · One client inside its own rate limit can stall every search on an instance `PARTLY FIXED`
+
+**Severity:** `MEDIUM` — A06:2025 Insecure Design. Availability. **Measured.**
+
+**Fixed for search in `b18028f`.** `acquire` now takes a wait bound and a signal
+(`packages/core/src/limiter.ts:97-112`). A caller whose slot lies further off than its
+bound is refused at once instead of queued (`:125`), and one that aborts while waiting
+hands its slot back (`:105-111`). `createRequester` starts its deadline *before* it
+waits and passes the same deadline as the bound (`packages/providers/src/request.ts:38-42`),
+so the 6 seconds now cover the queue as well as the fetch. A source with no free slot
+in time fails as `rate_limited`. The burst below is now a regression test
+(`packages/providers/src/registry.test.ts:84`): the next search returns in under a
+second, with Apple reported as rate-limited.
+
+**Still open:** the Spotify lookups do not go through `createRequester`. `quietly()`
+(`packages/providers/src/spotify.ts:24-43`) and `get()` and `pathfinder()`
+(`packages/providers/src/spotify-web.ts:36,130`) still call `acquire` with no wait
+bound. So `/api/spotify`, `/api/spotify/search` and the Spotify collection pages can
+still queue without limit, tightest behind MusicBrainz's bucket of one request per
+1.1s (`spotify.ts:9,33`). Spotify is not a `searchAll` source, so search itself is
+covered.
+
+`RateLimiter.acquire` waited until a token was free, however long that took: no
+maximum wait, no queue cap, no signal. And `createRequester` acquired *before* it
+built S-8's 6-second deadline, so the deadline covered the fetch and never the queue
+in front of it.
+
+Apple's bucket is 5 tokens refilling at 0.3/s (`limiter.ts:47`), 18 a minute.
+`searchAll` waits for every provider under `Promise.allSettled` (`registry.ts:47`), so
+a search is as slow as its Apple call, and the Apple call was as slow as the queue.
+Every distinct query costs one Apple token; `guard()` allows 60 a minute per client
+(`apps/web/lib/api.ts:14`).
+
+Proof — the real `searchAll` and `RateLimiter`, `fetch` stubbed to answer instantly, so
+every second measured is queue:
+
+```
+burst of 12 distinct searches; the next reader's search took 26.7s (fetch stubbed to 0ms)
+predicted by Apple's bucket (capacity 5, 0.3/s): 26.7s
+```
+
+At `guard()`'s own ceiling — one distinct query a second from one address — the backlog
+grew by 42 a minute and each minute added 140s to the wait. After about two minutes a
+search from *anyone* on that instance waited past Vercel's 300s limit and ended in a
+platform timeout. Nothing reached Apple faster than it should; the limiter did exactly
+its job. The defect was that "wait your turn" had no upper bound, and a search waits
+for its slowest source. S-10 removed even the per-client ceiling.
+
+Two smaller consequences of the same shape: an aborted caller (radio passes
+`request.signal`) kept its place in the queue, because `throwIfAborted` was checked
+once, before `acquire`; and ordinary traffic did this too, only slower — a debounced
+search box sends a distinct query per pause, and more than ~18 a minute per instance
+started the same backlog.
+
+**Fix:** bound the wait. Give `acquire` a `maxWaitMs` (the deadline) and an optional
+signal; when the computed wait would exceed it, throw `ProviderError(id,
+"rate_limited")` at once instead of sleeping. The search then reports "Apple is
+rate-limited" — which the UI already renders — and returns on time. Apple carries no
+ISRC and plays only as a link (`packages/providers/src/apple.ts:37,40`), so shedding it
+under load costs almost nothing. Regression test: the burst above must leave the next
+search under the deadline.
+
+---
+
+# S-10 · Three server-rendered pages call no `guard()`, and are uncached on every hit `PARTLY FIXED`
+
+**Severity:** `MEDIUM` — A06:2025 Insecure Design. Cost and availability. **Confirmed
+live.**
+
+**Partly fixed in `b18028f`**: steps 1 and 3 below, the first in a different form.
+
+- The artist, album and collection pages declare `dynamic = "force-static"` beside
+  their `revalidate` (`apps/web/app/artist/[name]/page.tsx:14-15`,
+  `apps/web/app/album/[id]/page.tsx:8-9`, `apps/web/app/collection/[kind]/[id]/page.tsx:19-20`),
+  which is the second of the two ways the reference cited below gives, so a repeat of a
+  URL is served from the ISR cache. The album page also gained a `revalidate` of an hour.
+- `apps/web/proxy.ts` meters all three through `guard()` (`proxy.ts:5-11`), on a
+  separate `pages` budget of 120 a minute per client rather than the API's 60
+  (`apps/web/lib/api.ts:14`).
+- An artist page on which no source answered throws to a retry notice
+  (`artist/[name]/page.tsx:39-43`, `artist/[name]/error.tsx`), so the new cache does
+  not keep an empty page for an hour.
+
+`/collection/ytmusic-playlist/[id]`, added after this pass, renders through the same
+collection page and is covered by both.
+
+**Still open:**
+
+- **Step 2.** The artist page still runs `searchAll` on the server for every new slug
+  (`artist/[name]/page.tsx:27-31`). Each fresh `/artist/<anything>` is still a full
+  fan-out that shares nothing with the search cache: metered per address now, and
+  bounded in time by S-9's fix, but not moved to the browser.
+- **A failure can be cached like an answer** on the album and collection pages.
+  `deezer()` returns `null` for "not found" and "failed" alike
+  (`apps/web/lib/deezer.ts:15-28`), and each page turns `null` into `notFound()`
+  (`album/[id]/page.tsx:19-20`, `collection/[kind]/[id]/page.tsx:36-37`). The Spotify
+  and YouTube Music collections catch to `null` the same way
+  (`apps/web/lib/collection.ts:225,261-263`). On a force-static page that result can be
+  cached like any other render.
+
+EXPOSURE.md Part 3 audits "the routes anyone can call" and means `app/api/*`. Pages are
+routes too:
+
+| Page | Per request | Declares |
+|---|---|---|
+| `/artist/[name]` | `searchAll(…, 40)` — the full fan-out: a sidecar invocation, an Apple token, Audius, Mixcloud, Deezer — plus Deezer's artist, albums and related | `revalidate = 3600` |
+| `/collection/spotify-album\|spotify-playlist/[id]` | Spotify pathfinder (a token bootstrap on a cold instance), then the embed-page fallback | `revalidate = 900` |
+| `/collection/genre\|radio\|playlist\|mood/[id]` | several Deezer calls | `revalidate = 900` |
+| `/album/[id]` | a Deezer album | — |
+
+None called `guard()`, so none was metered at all. And the `revalidate` exports were
+inert — E-6 again, on pages. The `generateStaticParams` reference shipped in
+`node_modules/next` says a dynamic segment is cached on first visit only if the page
+returns an empty array from `generateStaticParams` or declares `force-static`; none of
+these did either. Measured on the live deployment, two consecutive `GET`s of the same
+fresh URL and one of each other kind:
+
+```
+/artist/zz-sec-probe-…          private, no-cache, no-store   X-Vercel-Cache: MISS   2.41s
+/artist/zz-sec-probe-… (again)  private, no-cache, no-store   X-Vercel-Cache: MISS   1.62s
+/album/302127                   private, no-cache, no-store   X-Vercel-Cache: MISS
+/collection/genre/132           private, no-cache, no-store   X-Vercel-Cache: MISS
+/explore                        public, max-age=0, …          X-Vercel-Cache: PRERENDER
+```
+
+So `/artist/<anything>` was `/api/search` with the guard and the shared cache taken
+off — and it fed S-9's queue directly. It is also reachable *through other people's
+browsers*: any page can embed `<img src="…/artist/x1">`, and every visitor spends one
+render from their own address, which no per-address limit can see, including the one
+added since.
+
+**Fix, in order:**
+
+1. `export async function generateStaticParams() { return []; }` on all three, so a repeat
+   of a URL is served from the CDN as the `revalidate` already promises. A *new* slug is
+   still a fresh render, so this is necessary, not sufficient.
+2. Take the search off the artist page's server render: render the Deezer part, and let
+   the song list come from `/api/search?q=<name>` in the browser — guarded, and sharing
+   the search cache with everyone who typed the name.
+3. If pages still fan out after that, meter them in `proxy.ts` (Next 16's middleware)
+   against the same limiter.
+
+---
+
+# S-11 · A shared playlist can still break pages for good — through the fields inside a song `FIXED`
+
+**Severity:** `MEDIUM` — A10:2025. The S-1 class, one level down. **Proven** against the
+real modules.
+
+**Fixed in `79940b9`.** `usableSongs` now rebuilds each song field by field
+(`apps/web/app/song-shape.ts:4-43`). `artists` keeps strings only, each `sources` entry
+must be an object with string `source` and `sourceId` (`:60-79`), and covers and
+fallbacks go through `usableArtwork` (`:91-97`). A bad *field* is repaired; a record
+that is not a song is dropped. `isPlayed` checks the artist elements and the cover's
+type (`apps/web/app/player/history-store.ts:20-28`), `isKnown` checks every release
+(`apps/web/app/taste-store.ts:28-45`), and `proxied()` and `sized()` return `null` for
+a non-string (`apps/web/app/artwork-url.ts:12,43`). The three payloads below are
+regression tests in `apps/web/app/song-shape.test.ts`. The same commit closed most of
+S-15.
+
+S-1's fix, `usableSongs`, checked that `id` and `title` were strings and that `artists`
+and `sources` were arrays. It did not check what was *in* them, and did not look at
+`artworkUrl`, `artworkFallbacks` or `from` at all. The import and the storage read both
+go through it, so whatever it admitted was saved and came back on every load.
+
+Three payloads, each in an otherwise ordinary export file:
+
+- **`artworkUrl: 1`** (or `true`, `{}`). `summarise` (`apps/web/app/playlists/store.ts:36-44`)
+  kept any truthy value as a cover (`:41`), and `proxied()` called `url.startsWith` on it
+  (`artwork-url.ts:13`): *"url.startsWith is not a function"*, during render, wherever
+  playlist covers draw — `/library`, `/profile`, `/playlist/[id]` and the sidebar's
+  Playlists tab. Reproduced: the import returned 1, the record was persisted, the throw
+  followed.
+- **`sources: [null]`** — `<SourceBadges>` read `source.source`
+  (`apps/web/app/source-badges.tsx:24-25`) on the playlist page.
+- **`artists: [1]`** — the quiet one. It rendered and played. Once it had played,
+  `recordPlay` wrote it into `timbre:history` (`apps/web/app/player/player-context.tsx:691`),
+  whose own check read only `id` and `title`; from then on `useTaste` handed `1` to
+  `normalizeLoose`, by way of `artistKey` (`taste-store.ts:96-97`,
+  `apps/web/lib/genre-tally.ts:3`, `packages/core/src/normalize.ts:34-44`), and every
+  Explore load threw *"input.normalize is not a function"*. Storage-to-throw was proven;
+  the play step was traced by reading.
+
+There was still only `global-error.tsx`, so each of these cost the whole shell rather
+than one panel. (The only segment boundary since is S-10's retry notice on the artist
+page.) S-2's backup-before-reset meant nothing was lost for good — but the reader had
+to find the reset, and see S-16 for what that backup carried until its fix.
+
+**Fix:** `usableSongs` checks element types — `artists` strings only; each `sources`
+entry an object with string `source` and `sourceId` and string-or-null `url` and
+`previewUrl`; `artworkUrl` string-or-null; `artworkFallbacks` strings only — dropping a
+bad *element* rather than the song where the song survives it. The same for `isPlayed`
+in `history-store.ts` and for `releases` in `taste-store.ts`'s `isKnown`
+(`releases: [null]` also throws on Explore). And `proxied()` returns null for a
+non-string instead of trusting its type. The payloads above are the regression tests.
+
+---
+
+# S-12 · Next.js 16.3.0 is inside two critical advisories published 2026-09-08 `FIXED`
+
+**Severity:** `MEDIUM` for this deployment — critical upstream, mostly unreachable here.
+A03:2025.
+
+**Fixed in `5c56e98`.** `next` and `eslint-config-next` are `16.3.3`
+(`apps/web/package.json:21,33`), and `pnpm-lock.yaml` resolves `next@16.3.3`. The
+dev-server exposure below closes per checkout: a working tree is covered once it has
+run `pnpm install` since.
+
+`apps/web/package.json` pinned `next: 16.3.0`. Read from GitHub's advisory API directly,
+not from a summary:
+
+| Advisory | What | Affected | Fixed |
+|---|---|---|---|
+| GHSA-2xp9-vwfh-vxw4 | Unauthenticated RCE in the Image Optimization API through AVIF (`libheif` under `sharp`) | `>=16.0.0 <16.3.3` | 16.3.3 |
+| GHSA-p293-qw3h-jr36 · CVE-2026-75604 | Unauthenticated RCE on **Windows-hosted** servers, App and Pages Router without Cache Components | `>=16.0.0 <16.3.3` | 16.3.3 |
+
+**Where Timbre stood:**
+
+- **Hosted — not reachable, as far as it can be checked from outside.** `/_next/image` is
+  answered by Vercel's own optimizer (its error body is `INVALID_IMAGE_OPTIMIZE_REQUEST`),
+  which serves only query-free local files: `?url=/icon-192.png` → 200,
+  `?url=/api/art?u=…` → 400. With no `images` config there is no remote pattern, and no
+  local file an outsider controls. Production is Linux.
+- **This machine — treat as reachable.** `pnpm dev` is `next dev` on Windows, bound to
+  `127.0.0.1`. Loopback keeps other hosts out, not the browser on the same machine: any
+  page open in another tab can send requests to `127.0.0.1:3000`. Whether that is enough
+  depends on the exploit's shape, which the advisory does not publish. Several sessions
+  run this dev server daily.
+- **The Docker escape hatch** runs `next start` with `sharp` in-process — both apply if it
+  is ever used.
+
+**Fix:** `next` (and `eslint-config-next`) to `16.3.3` or later. The cheapest change in
+this document, and the first to do. Until then, do not leave `pnpm dev` running
+unattended.
+
+---
+
+# S-13 · The release job runs every dependency's code while holding a write token `PARTLY FIXED`
+
+**Severity:** `MEDIUM` — A03:2025 Software Supply Chain Failures.
+
+**Fixed in `d00121a`, except the token's scope.** `release.yml` is two jobs now.
+`verify` (`.github/workflows/release.yml:12-45`) holds `contents: read`, checks out with
+`persist-credentials: false`, and runs the install, the checks, the build and the
+`docker build`. `release` (`:47-108`) `needs: verify` and holds `contents: write`. It
+checks out without persisting credentials, sets up Node with no cache, and installs
+nothing. Git sees the workflow token only in the push, which is `--atomic` and names
+`main` and the tag explicitly (`:70-83`); `RELEASE_TOKEN`, or the workflow token when it
+is not set, goes only to `gh release create` (`:85-104`). `ci.yml` declares `contents: read` (`:8-9`) and neither
+of its checkouts persists credentials. The canary's install job holds `contents: read`
+only; its issue is filed from a separate job with `issues: write`, no checkout and no
+install (`.github/workflows/spotify-canary.yml:49-98`).
+
+**Still open:** make `RELEASE_TOKEN` a fine-grained token scoped to this repository.
+That is a GitHub setting, not a file, and only the repository owner can change it.
+
+S-3 pinned the actions; this is the job they ran in. `release.yml` declared
+`contents: write` for its one job, checked out without `persist-credentials: false` —
+so the token sat in `.git/config` — and then ran `pnpm install`, `typecheck`, `lint`,
+`test`, `build` and a `docker build` (the steps that are now the `verify` job,
+`release.yml:24-45`) before `node scripts/release.mts` and the push. Every package in
+that graph, and every build script `allowBuilds` admitted, ran with that token on disk,
+on the runner `RELEASE_TOKEN` was delivered to. That is the shape of the tj-actions and
+Shai-Hulud token thefts. `release.mts` imports only Node built-ins, so the job that
+writes needs no install at all.
+
+**Fix:** split it. A `verify` job — `contents: read`, `persist-credentials: false` — runs
+install, checks and build. A `release` job — `needs: verify`, `contents: write` — checks
+out and runs `node scripts/release.mts`, then commits, tags and pushes: no
+`pnpm install`, no setup-node cache. Make `RELEASE_TOKEN` a fine-grained token scoped to
+this repository. While there: `ci.yml` had no `permissions:` block (it inherited the
+repository default), and the canary's checkout left its `issues: write` token in
+`.git/config` through `pnpm install` — `persist-credentials: false` on both; the `gh`
+steps already take `GH_TOKEN` from the environment. And push the release with
+`--atomic`, so a `main` that moved mid-run cannot leave a tag pointing off-branch.
+
+---
+
+# S-14 · The sidecar reads and parses the body before it checks the secret `FIXED`
+
+**Severity:** `LOW` on Vercel, `MEDIUM` on the Docker path. A06:2025. **Measured
+locally.**
+
+**Fixed in `173feae`.** The secret is checked by a pure-ASGI middleware,
+`RequireSharedSecret` (`apps/ytmusic/app/security.py:23-55`, installed at
+`apps/ytmusic/app/main.py:10`), before any route or body is touched. Every path but
+`/health` answers 401 at once without a matching secret. A declared `Content-Length`
+over 16 KB, or one that is not a number, gets a 413 (`security.py:39-43`), and a body
+sent without one is counted as it streams and refused past the same cap (`:45-53`).
+With no secret, a malformed body, a valid one and one 400 times the cap all get a 401
+with nothing read (`apps/ytmusic/tests/test_security.py:92-101`). Both halves below are
+closed.
+
+FastAPI 0.141.1 reads and JSON-decodes a route's body before it resolves the route's
+dependencies (`fastapi/routing.py`, the body block ahead of `solve_dependencies`), and
+the secret check, `require_shared_secret`, was a dependency. So:
+
+- A 400 MB `POST /search` with **no secret** was read in full before the 401; the local
+  server went from 60 MB to 865 MB resident. uvicorn sets no body limit and the
+  Dockerfile's `CMD` adds none (`apps/ytmusic/Dockerfile:20`). On Vercel the platform's
+  4.5 MB request cap bounded it; in a container, a few parallel uploads exhausted memory
+  with no credential at all.
+- No secret and `{bad` → **422** `json_invalid`; no secret and valid JSON → 401. An
+  unauthenticated caller could tell the framework — the same class of tell S-7 removed.
+
+**Fix:** a small pure-ASGI middleware that runs `matches()` on the header before the body
+is read, for every path but `/health`, and refuses a `Content-Length` over ~16 KB with a
+413 (capping chunked bodies too). It closes both.
+
+---
+
+# S-15 · Imported songs link and load wherever the file says `FIXED`
+
+**Severity:** `LOW` — phishing and tracking. No script execution.
+
+**Fixed in `79940b9` and `b18028f`.** Every stored or imported song passes
+`usableSong` (S-11), which now also checks where its URLs point
+(`apps/web/app/song-shape.ts:45-115`). A source's `url` is kept only if it is `https:`
+on that source's own hosts (`:47-56,68`), and a `previewUrl` only if it comes from a
+catalogue's CDN (`:58,69-70`). A cover (`artworkUrl`, each fallback, and an artist
+context's `imageUrl`) is kept only if it is `https:` on a host `/api/art` proxies
+(`:91-95`). An Audius-shaped cover path on any other host is rewritten onto
+`api.audius.co` rather than trusted (`:88-89,96`, from `b18028f`), so a planted cover can
+no longer be a request to the file author's server. The lookalike *Open on Spotify* link
+and the tracking cover below are both dropped, on import and on read. What remains is
+by design: `proxied()` still passes an unlisted `https:` host straight to the browser
+(`apps/web/app/artwork-url.ts:11-15`), for covers that arrive live from the providers
+rather than from a file.
+
+Neither `sources[].url` nor `artworkUrl`/`previewUrl` was checked for scheme or host, on
+import or on read.
+
+- **Links.** `sources[].url` becomes the "Open on <Service>" arrow
+  (`apps/web/app/source-badges.tsx:52-62`), the "Can't play this here ↗" banner
+  (`apps/web/app/player/now-playing.tsx:170-176,216-226`) and the copy-link button
+  (`apps/web/app/shell/source-link.tsx:25-49`).
+  `{source: "spotify", url: "https://accounts-spotify.example/login"}` rendered as *Open
+  on Spotify* — a credible lure in an app with a real Spotify sign-in. `javascript:`
+  does **not** work: React 19.2 replaces it in `href`, `src` and `action` with a URL
+  that throws (`react-dom-client.production.js`), in production as well as development.
+- **Artwork.** Since the Audius work, `proxied()` passes any `https:` host that is not on
+  the allowlist straight to the browser (`artwork-url.ts:11-15`) — on purpose, since
+  Audius content nodes cannot be enumerated. So an imported `artworkUrl` was fetched by
+  the victim's browser from the file author's host every time `/library` or `/profile`
+  rendered: address, user agent, time. Several players draw artwork in plain `<img>`
+  without `proxied()` at all, and `previewUrl` goes into an `<audio>` element. For
+  imported data that contradicted `apps/web/app/privacy/page.tsx:71` ("No analytics,
+  tracking pixels or advertising identifiers"), and it made the "Hostile artwork URLs"
+  row below stale.
+
+**Fix:** on import and on read, keep a source's `url` only when it is `https:` on that
+source's own domain — or rebuild it from `sourceId`, which every source can. Drop
+imported artwork and preview URLs whose host is neither in `ALLOWED_HOSTS` nor of the
+Audius content-node shape.
+
+---
+
+# S-16 · The Spotify connection leaks into places its token store says it never goes `FIXED`
+
+**Severity:** `LOW`.
+
+**Fixed in `d57c4a6`.** The crash screen's backup leaves out every `timbre:spotify*` key
+(`apps/web/app/global-error.tsx:9-13`). The service worker no longer handles anything
+under `/spotify/` (`apps/web/sw/sw.ts:34`). The callback checks `state` before it reads
+`error`, and shows a fixed sentence for any code but `access_denied`
+(`apps/web/app/spotify/connection.ts:51-55`). Of the two cache fixes offered below, the
+first was taken, so every other navigation is still cached under its full URL
+(`sw.ts:36,51-53`). A crafted callback link still ends a sign-in in progress, because
+the verifier and state are cleared before any check (`connection.ts:49`), but it can no
+longer choose the words.
+
+When the pass was written, `token-store.ts` opened with a comment saying the tokens are
+"never sent anywhere". The trim removed the comment; the "Spotify OAuth (PKCE)" row below
+is what checks the claim. Two paths put the tokens, or what mints them, somewhere else:
+
+- **The crash screen's backup.** `global-error.tsx` wrote every `timbre:*` key, raw,
+  into `timbre-storage-backup.json` (`:7-23`) — including `timbre:spotify`, the access
+  **and refresh** token. The screen calls that file the only way back (`:84-88`), which
+  makes it exactly the file a reader keeps, or sends to whoever offered to help.
+  **Fix:** leave `timbre:spotify*` out of the dump. A reconnect is cheap; a leaked
+  refresh token is not.
+- **The service worker's shell cache.** Every successful same-origin navigation was
+  cached under its full URL (`sw.ts:51-53`, `networkFirst`), except `/api/*` and
+  `/profile`. So `/spotify/callback?code=…&state=…` landed in `timbre-v3-shell` — after
+  the callback page went out of its way to strip the code from history
+  (`apps/web/app/spotify/callback/page.tsx:24`). Low: the code is single-use and useless
+  without the PKCE verifier. **Fix:** skip `/spotify/`, or key navigations without their
+  query string (which also stops the cache growing with every artist and collection ever
+  visited).
+
+**Related, and not a leak:** the callback printed the `error` query parameter verbatim,
+before any state check —
+`/spotify/callback?error=Your%20account%20is%20locked.%20Verify%20at%20spotify-help.example`
+showed that sentence under "Spotify could not connect", and cancelled a sign-in in
+progress. Plain text, not a link. **Fix:** map Spotify's documented error codes to fixed
+sentences, and ignore `error` when `state` does not match.
+
+---
+
+# S-17 · Smaller server-side gaps `FIXED`
+
+**Severity:** `LOW` each. Hardening — none is reachable through the UI today.
+
+**Fixed in `d57c4a6` and `18583c7`**, point by point, at the lines cited below. One
+deliberate difference from the fixes as written: `/api/resolve` and the two predicates
+accept `http:` as well as `https:`, so a pasted `http://` link keeps working, while
+`javascript:` and `data:` are refused (`apps/web/app/api/resolve/route.ts:10`).
+`spotifyCollectionOf` no longer exists; the trim deleted it as dead code (`7c0d2ee`).
+Its browser-side counterpart, `spotifyCollectionPath`
+(`apps/web/app/spotify/collection-link.ts:3-14`), still checks only the hostname, but
+all it returns is an internal `/collection/spotify-…/<22 alphanumerics>` path, so a
+scheme has nowhere to go.
+
+- **URL predicates accepted any scheme.** `isSoundCloudUrl`
+  (`packages/providers/src/soundcloud.ts:47-55`), `spotifyTrackId`
+  (`packages/providers/src/spotify.ts:45-53`) and `spotifyCollectionOf` checked
+  `hostname` only, and WHATWG parsing gives `javascript://soundcloud.com/%0aalert(1)`
+  the hostname `soundcloud.com`. `/api/resolve`'s `z.url()` (zod 4.4.3) accepted
+  `javascript:` — verified. Were SoundCloud's oEmbed ever to answer for such a URL,
+  `resolve` would have echoed it back as the song's `url`. Three things stood in front
+  of that — the search box resolves only `^https?://`
+  (`apps/web/app/search-results.tsx:56`), `/api/resolve` is uncached, React neutralises
+  `javascript:` hrefs — but the server should not be leaning on the client. **Fix:**
+  require `https:` in all three, and `z.url({ protocol: /^https$/ })`.
+- **Link URLs built by concatenation.** `` `${WEB}${raw.permalink}` `` and
+  `` `${WEB}${raw.key}` ``, now built with `URL.parse` and kept only on their own origin
+  (`packages/providers/src/audius.ts:54-57`, `packages/providers/src/mixcloud.ts:13,17,27`):
+  a value starting `@evil.example/` made the host `evil.example`. The platforms generate
+  those values, so this was theoretical. **Fix:** `new URL(path, WEB)`, then check the
+  host.
+- **`/collection/playlist/<id>` had no numeric check** (`apps/web/lib/collection.ts:79-104`,
+  the check now at `:80`), unlike its `genre` and `radio` neighbours. The id arrives
+  decoded, so `..%2Fuser%2F5` walked to another path on `api.deezer.com`. The host is
+  fixed and the data public — content spoofing at most, and any public Deezer playlist
+  already puts a stranger's title on a Timbre page. **Fix:** `/^\d+$/`.
+- **`/api/spotify`'s memo key joined fields with `:`**
+  (`apps/web/app/api/spotify/route.ts:23`), and titles contain colons, so two different
+  lookups could share a key and the first answer served both for the instance's life.
+  Exploiting it needed the resolver to answer the attacker's split with a wrong-but-real
+  id. **Fix:** `JSON.stringify([isrc, artist, album, title])`.
+- **Spotify's hash self-repair trusted two unpinned sources**
+  (`packages/providers/src/spotify-web.ts:9-10,237-238`): SpotifyScraper's table from
+  `raw.githubusercontent.com/…/master`, and a bundle URL read out of the page with no
+  host check. The table is now read at a pinned commit, and the bundle is fetched only
+  from `open.spotifycdn.com` (`:8,238`), its search chunk resolved against that same URL
+  (`:204`). Whoever controlled either source chose which of Spotify's persisted queries
+  Timbre ran; the answer is still shape-parsed into tracks, so the reach was wrong
+  results, not code. **Fix:** pin the bundle host (`open.spotifycdn.com`) and pin the
+  table to a commit — the canary already says when the table goes stale.
+
+---
+
+# S-18 · Sidecar robustness `PARTLY FIXED`
+
+**Severity:** `LOW` each. **Measured locally**, with a dummy secret and a fake client —
+nothing reached YouTube.
+
+**Fixed in `173feae`, except two things.** Video ids are matched with `fullmatch`
+throughout, and `resolve` drops an upstream `videoId` that fails the pattern. A
+`RequestValidationError` handler returns the issues without their `input`
+(`apps/ytmusic/app/main.py:13-18`). Numeric fields use `isdecimal()`, and the thumbnail
+and its `width` and `height` are type-checked before use. Both images are pinned by
+digest, uv by version, and the lock is exported with hashes and installed with
+`--require-hashes`. `.dockerignore` carries every pattern the fix below asks for. Each
+of these is at the lines cited below.
+
+**Still open: the secret-strength check only warns, deliberately.** A secret under 32
+characters logs a warning at boot instead of refusing to start
+(`apps/ytmusic/app/config.py:4,18-23`). The length of the secret deployed on Vercel could
+not be verified, and refusing to boot would have taken the sidecar down on the next
+deploy. It can become a refusal once the deployed secret is known to be long enough.
+**Also still open: uv itself is installed without a hash** (`apps/ytmusic/Dockerfile:10`).
+It is pinned by version only, so the tool that checks the hashes is not itself checked
+against one.
+
+What the pass found:
+
+- **`VIDEO_ID` admitted a trailing newline.** `^[A-Za-z0-9_-]{11}$` with `.match`
+  (now `apps/ytmusic/app/routes/search.py:17,61-84`, unanchored, with `fullmatch`):
+  Python's `$` matches before a final `\n`, and `parse_qs` decodes `%0A`, so
+  `watch?v=dQw4w9WgXcQ%0A` reached `get_song` with the newline and could come back as
+  `"video_id"`. No injection — the id travels in a JSON body to a fixed endpoint — but
+  the web side puts `video_id` into a URL unencoded (`packages/providers/src/ytmusic.ts:55`).
+  `RadioRequest`'s pydantic pattern is unaffected. **Fix:** `fullmatch`, and check
+  upstream's `videoId` against the same pattern (now `search.py:103-105`).
+- **A lone surrogate was a 500, not a 422** (behind the secret): pydantic rejects
+  `"\ud800"`, FastAPI's default handler echoed the input back, and rendering it raised
+  `UnicodeEncodeError` — S-7's shape, behind auth. **Fix:** a `RequestValidationError`
+  handler that omits `input`, which also stops echoing 2,000-character inputs.
+- **Odd upstream shapes were 500s:** a list-valued `thumbnail` and `lengthSeconds="²"`
+  passing `isdigit()` then failing `int()` in `resolve` (now `search.py:107-118`), the
+  same `isdigit()` in `normalize.py`'s display-duration parse, and a string thumbnail
+  `width` (now `apps/ytmusic/app/normalize.py:7-18,46`). YouTube generates those fields,
+  so this was robustness, not attack — but at the pass `normalize.py`'s docstring
+  promised to degrade a moved or vanished field to `None` rather than fail the request.
+  The trim removed the docstring; `apps/ytmusic/tests/test_normalize.py:78` and
+  `apps/ytmusic/tests/test_url_extraction.py:79` now hold the code to it. **Fix:** `isdecimal()`,
+  `isinstance` checks, and drop the item that fails rather than the response.
+- **No minimum secret strength** (`require_secrets`, `config.py:11-24`, booted on
+  `dummy`). With no rate limit and no 401 logging (E-12), a weak secret on the container
+  path is guessable. **Fix:** refuse to start below 32 characters.
+- **Dockerfiles.** `python:3.12-slim` and `node:22-slim` were pinned by tag, not digest
+  (now `apps/ytmusic/Dockerfile:1`, `Dockerfile:1`); `pip install uv` unpinned; the lock
+  exported `--no-hashes` (now `apps/ytmusic/Dockerfile:10-12`). `.dockerignore` excluded
+  `.env*` at the context root only, so a nested `apps/*/.env`, a `.vercel/` (which holds
+  an OIDC token once linked), `notes/` or a local `.next-*` build would have entered the
+  root image through `COPY . .` — none existed. **Fix:** digests, `uv==<ver>`,
+  `--require-hashes`; add `**/.env*`, `!**/.env.example`, `**/.vercel`, `notes`,
+  `**/.next-*` and `*.pem` (now `.dockerignore:1-5,16`).
+
+---
+
+# S-19 · Tooling and repository hygiene `PARTLY FIXED`
+
+**Severity:** `LOW`.
+
+**Fixed in `5c56e98` and `d00121a`, except the `.env` leftovers.** `packageManager` is
+`pnpm@11.11.0` (`package.json:20`). `.gitignore` adds `.env~`, `*.bak`, `*.pem`,
+`*.key`, `id_rsa*`, `id_ed25519*`, `secrets.json` and `.npmrc` (`.gitignore:16-23`);
+every name listed below now checks as ignored with `git check-ignore`, at the root and
+under `apps/ytmusic`. `.github/dependabot.yml` moves the npm, uv and Actions
+dependencies weekly. The `esbuild` build allowance is gone (`pnpm-workspace.yaml:5-7`).
+The canary wraps each detail in inline code, with backticks and runs of whitespace
+(newlines included) collapsed to a space and `|` escaped
+(`scripts/spotify-canary.mts:152,165`).
+
+**Not re-checked: the `.env` leftovers.** `.env` is untracked, so no commit shows
+whether the four keys are gone. This item stays open until someone confirms it.
+
+- **pnpm 11.10.0** (`packageManager` in `package.json:20`) was inside
+  GHSA-c59q-g84q-2gj5 · CVE-2026-82392 (`>=11.0.0 <11.11.0`, high): a crafted
+  `pnpm-lock.yaml` writes files outside the project on install. The unusual part here
+  is how many agent sessions edit the lockfile. **Fix:** `pnpm@11.11.0` or later.
+- **`.gitignore`** did not cover `*.pem` at the root or under `apps/ytmusic` (only
+  `apps/web/.gitignore` did), nor `id_rsa`, `.env~`, `env.bak`, `secrets.json` or
+  `.npmrc` — each checked with `git check-ignore`. `.env`, `.env.*` and `.vercel` were
+  covered.
+- **No `.github/dependabot.yml`**, though S-3 relied on Dependabot to move the SHA pins,
+  and so did a comment in `release.yml` that the trim has since removed. The twelve pins
+  were right — each resolved against its tag — and nothing would have updated them.
+- **`allowBuilds: esbuild: true`** (`pnpm-workspace.yaml`) pre-approved a build script
+  for a package no longer in the lockfile; if it returned as a transitive dependency, its
+  postinstall would run unasked. Remove it.
+- **The canary pasted Spotify's text into GitHub issues**
+  (`scripts/spotify-canary.mts:165`, escaping only `|`): titles and error text from a
+  third-party catalogue could carry links, images and `@mentions` into an issue. Private
+  repository, so mentions reach nobody outside it; hashes are hex-checked, so the code
+  fence holds; no `${{ }}` reaches a shell. **Fix:** inline-code each detail and strip
+  newlines and backticks.
+- **`.env` holds four keys nothing reads** — `DATABASE_URL` (a local Postgres),
+  `AUTH_SECRET`, `TIMBRE_ENCRYPTION_KEY`, `EMAIL_*`; `RUNNING.md` already calls them
+  leftovers. Harmless, but a secret nobody uses is one nobody rotates. Delete them,
+  editing `.env` in place.
+- **Secrets in history — re-checked, still clean.** Every commit on every ref, including
+  `backup/*` and `refs/original`, scanned for key, token, private-key, connection-string
+  and long hex/base64 patterns. The only hits are three placeholder `postgresql://` URLs
+  (`Dockerfile`, `docs/DEPLOY.md`, `.env.example`). No `.env`, `.pem` or `.vercel` file
+  has ever been committed.
+
+---
+
 # Verified correct — do not re-investigate
 
 Each of these is a place a vulnerability would normally be, and is not.
@@ -431,15 +1034,25 @@ Each of these is a place a vulnerability would normally be, and is not.
 | **DOM XSS** | Exactly one `dangerouslySetInnerHTML` (`app/layout.tsx:246`), and it renders a module constant with no interpolation of any kind. **No `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `eval`, or `new Function` anywhere** in `apps/web` or `packages`. | grep across all `.ts`/`.tsx` |
 | **postMessage** | **No `message` listeners and no `postMessage` calls in the entire codebase.** For an app built around two third-party iframe players, this is the single most likely XSS hole and it is absent — the vendor SDKs own that channel and Timbre never opens its own. | grep across all `.ts`/`.tsx` |
 | **SSRF via `/api/resolve`** | The user's URL is never fetched. The YouTube path posts it to the sidecar, which regex-extracts an 11-character video id against a host allowlist (`routes/search.py:139-166`) and only ever calls `get_song(id)`. The SoundCloud path gates on `isSoundCloudUrl` and then passes the URL as a *query parameter* to a fixed oEmbed endpoint. Neither reaches an attacker-chosen host. | read both providers end to end |
-| **Hostile artwork URLs** | Every cover renders through `<Artwork>`, which always calls `proxied()` — so an imported `artworkUrl` pointing at an attacker's host goes to `/api/art`, fails the allowlist, 403s, and falls back to the placeholder. Non-HTTPS URLs pass through unproxied, but `javascript:` cannot execute in `img src` and `http:` is blocked as mixed content on an HTTPS deployment. | read `artwork.tsx` + `artwork-url.ts` |
+| **Hostile artwork URLs** | **Holds again, by a different route — S-15, fixed in `79940b9` and `b18028f`.** The pass found this stale: `proxied()` passes an unlisted `https:` host straight to the browser (`apps/web/app/artwork-url.ts:11-15`), so the 403 below no longer happened. `proxied()` still does that, but an imported or stored cover no longer gets that far: it is kept only on a host `/api/art` proxies, or as an Audius content path rewritten onto `api.audius.co` (`apps/web/app/song-shape.ts:88-97`), and dropped otherwise, before it is saved or drawn. Script still cannot run from an `img src`. *Original row:* Every cover renders through `<Artwork>`, which always calls `proxied()` — so an imported `artworkUrl` pointing at an attacker's host goes to `/api/art`, fails the allowlist, 403s, and falls back to the placeholder. Non-HTTPS URLs pass through unproxied, but `javascript:` cannot execute in `img src` and `http:` is blocked as mixed content on an HTTPS deployment. | read `artwork.tsx` + `artwork-url.ts`; since S-15, `song-shape.ts` |
 | **Prototype pollution** | The import spreads parsed JSON (`{...playlist}`). Object spread uses `CreateDataProperty`, so a `__proto__` key becomes an ordinary own property rather than mutating the prototype. Not exploitable. | language semantics + read |
 | **ReDoS** | No nested-quantifier patterns in any regex in `core`, `providers`, `lib` or `app`. The LRC timestamp parser — the one regex applied to untrusted upstream text on the server — is `\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]`, linear. | pattern scan across the tree |
-| **JS dependencies** | `pnpm audit` — **no known vulnerabilities**, at every severity level. | ran it |
+| **JS dependencies** | **Holds again for the two advisories that made it stale — S-12 and S-19, fixed in `5c56e98`.** The pass found `next` 16.3.0 and `pnpm` 11.10.0 each inside an advisory published after this row was written; they are now 16.3.3 and 11.11.0, the fixed versions. `pnpm audit` was not re-run (it uploads the dependency list), so the rest of this row still dates from 2026-08-21. *Original row:* `pnpm audit` — **no known vulnerabilities**, at every severity level. | ran it (2026-08-21) |
 | **Secrets in history** | `.env` has never been committed on any branch. Every commit matching `YTMUSIC_SHARED_SECRET=` is `.env.example`, documentation, or the CI placeholder `ci-placeholder`. | `git log --all` pickaxe |
 | **Timing attacks** | `hmac.compare_digest` on the shared secret, results accumulated rather than short-circuited so a rotation cannot leak *which* secret matched. Correct — but this row read the comparison for timing and missed that its arguments could raise. See **S-7**. | read |
 | **Input bounds** | Enforced at both edges. Pydantic: query ≤ 500 chars, `limit` 1–50, `video_id` regex-pinned, URL ≤ 2000. Zod on every web route: same shape. Profile images are capped at 25 MB (5 MB animated) before decode. | read `models.py`, all 8 routes, `image-resize.ts` |
 | **Error disclosure** | The sidecar maps every upstream failure to a flat `502 "YouTube Music <action> failed."` and logs the detail server-side rather than returning it (`errors.py:14-22`). No stack traces, no upstream text, no version. FastAPI's `/docs`, `/redoc` and `/openapi.json` are all explicitly disabled. | read `errors.py`, `main.py` |
 | **Access control & CSRF** | Largely inapplicable **by design**, and that is worth stating: there are no accounts, no sessions, no server-side user state, and no authenticated state-changing endpoint. Every mutation happens in the visitor's own browser against their own storage. There is nothing for a forged cross-site request to accomplish. | architecture |
+| **DOM XSS, re-checked 2026-09-11** | Still exactly one `dangerouslySetInnerHTML` (`layout.tsx`, a constant), still no `innerHTML`, `srcdoc`, `document.write`, `eval`, `new Function`, string timers, `message` listeners, `postMessage` or `BroadcastChannel` in `app`, `sw` or `lib`. And a layer the first row did not count: React 19.2 rewrites `javascript:` in `href`, `src`, `action` and `formAction` to a URL that throws, in production too — which is why S-15 is phishing rather than XSS. | grep + `react-dom-client.production.js` |
+| **Embed and stream URLs** | Every id reaching an iframe, a pop-up or an `<audio>` is `encodeURIComponent`-ed onto a fixed host — Spotify panel, Mixcloud, SoundCloud, Apple/Deezer, Audius. The raw cases (Archive paths, Spotify's `createController` URI, YouTube's `loadVideoById`) can only change a path on their own host. | read every player |
+| **Spotify OAuth (PKCE)** | `state` is 32 random characters compared before the code is exchanged; verifier and state live in `sessionStorage` and are removed on first read; each code is exchanged once; the redirect URI is the origin plus a fixed path; there is no `next`/`returnTo`; tokens go only to `accounts.spotify.com` and `api.spotify.com`, never to `/api/*` or a log. What S-16 added was where copies ended up, not a flaw in the flow; since its fix the callback also checks `state` before it reads `error`. | read `pkce.ts`, `connection.ts`, `callback/page.tsx` |
+| **The anonymous Spotify token** | Held in server memory only (`packages/providers/src/spotify-web.ts:72`), never serialised, never in a response — `/api/spotify/search` returns mapped tracks. Collection ids are pinned to 22 alphanumerics before any fetch (`spotify-web.ts:498`). | read |
+| **Server-side Deezer paths** | Every id reaching `api.deezer.com` is numeric-checked, validated against the published genre list, or regex-extracted from a profile URL — `/collection/playlist` too since S-17's fix (`apps/web/lib/collection.ts:80`). | read `lib/*` |
+| **Sidecar authentication** | `/search`, `/resolve` and `/radio` return 401 without the secret; only `GET /health` is open, with a fixed body; `/docs`, `/redoc`, `/openapi.json` 404. `"dummy, ,,other,"` parses to `('dummy','other')`, so an empty secret can never match; missing, empty, whitespace, `café` headers all 401 (S-7 holds). 200k fuzzed URLs through the id extractor raised nothing. Since S-14 the check is one middleware in front of every path but `/health` (`apps/ytmusic/app/security.py:23-55`), so the `/playlist` and `/lyrics` routes added after this pass are covered the same way. | run locally, dummy secret; since S-14, `apps/ytmusic/tests/test_security.py` |
+| **Python dependencies** | fastapi 0.141.1, starlette 1.6.0, pydantic 2.13.4, uvicorn 0.52.3, ytmusicapi 1.12.2, requests 2.34.2, urllib3 2.7.0, h11 0.16.0, idna 3.18, python-dotenv 1.2.3 — none inside a published advisory. urllib3 2.7.0 is exactly the fixed version for its 2026 pair, so do not let it slide back. | advisory pages, read by hand |
+| **React Server Components advisories** | Next 16.3.0 bundled `react-server-dom-*` from a canary built after every RSC advisory to date, including CVE-2025-55182 ("React2Shell") and GHSA-wx67-qw84-cm4g; `react`/`react-dom` 19.2.8 is the patched line. The Turbopack single-locale proxy bypass (GHSA-6gpp-xcg3-4w24) was fixed in 16.2.11, and there was no `proxy.ts` to bypass then. There is one now — S-10's page meter, `apps/web/proxy.ts` — and 16.3.3 (S-12) is past that fix. 16.3.3 bundles `react-server-dom-*` `19.3.0-canary-cbb046ab-20260731`; that build has not been re-checked against the advisories. | GitHub advisory API |
+| **GitHub Actions** | All twelve `uses:` were full SHAs matching their tag comments. S-13's split brings the count to fifteen, all still full SHAs; the two new actions, `actions/upload-artifact` v7.0.1 and `actions/download-artifact` v8.0.1, resolve to their pinned SHAs (`git ls-remote`, 2026-09-11); no `pull_request_target` or `workflow_run`; `release.mts` writes only integer version parts to `GITHUB_OUTPUT`; every script uses `execFileSync` with argument arrays; `vercel-ignore.sh` only `case`-matches the commit message. S-13 is about the job's *credentials*, not these. | read + public action repos |
+| **ReDoS, new regexes** | Every single-argument normaliser in `@timbre/core` run over adversarial 300-character inputs: slowest 3.2 ms. The new patterns in `spotify-web.ts` build their dynamic `RegExp`s from digits or constants only. | measured |
 
 ---
 
@@ -471,6 +1084,51 @@ What that leaves, none of it a vulnerability:
   export promises a cache they do not have. EXPOSURE **E-6**.
 - **E-4**, the per-instance limiters, remains a knowing design trade rather than a
   defect. Revisit only if traffic makes it real.
+
+## Third pass, 2026-09-11
+
+**Updated 2026-09-11, against `6f3b6ae`.** The pass itself was a report; the fixes
+landed the same day.
+
+- **Fixed:** S-11 (`79940b9`), S-12 (`5c56e98`), S-14 (`173feae`), S-15 (`79940b9`,
+  `b18028f`), S-16 (`d57c4a6`) and S-17 (`d57c4a6`, `18583c7`). Both "verified correct"
+  rows the pass marked stale hold again.
+- **Partly fixed**, and what is left of each:
+  - **S-9** (`b18028f`) — search is bounded, but `spotify.ts` and `spotify-web.ts` still
+    call `acquire` without a wait bound.
+  - **S-10** (`b18028f`) — the pages are cached and metered, but the artist page still
+    runs `searchAll` on the server for every new slug; moving that to the browser is the
+    step left. And a failed album or collection lookup can be cached like an answer,
+    because `lib/deezer.ts` cannot tell "not found" from "failed".
+  - **S-13** (`d00121a`) — `RELEASE_TOKEN` should be a fine-grained token scoped to this
+    repository: a GitHub setting only the owner can change.
+  - **S-18** (`173feae`) — a short secret only warns at boot, on purpose, because the
+    deployed secret's length could not be verified; and `uv` itself is installed without
+    a hash.
+  - **S-19** (`5c56e98`, `d00121a`) — the `.env` leftovers cannot be confirmed from a
+    commit.
+- **Open from before:** E-14. The CSP is still `Report-Only` (`apps/web/next.config.ts:70`).
+  The first sweep found `frame-src` missing `widget.deezer.com` and
+  `embed.music.apple.com`, so enforcing would have broken Play on Deezer and Apple
+  Music. Both are listed now (`6f3b6ae`, `next.config.ts:49`). The policy stays
+  `Report-Only` because that sweep could not exercise YouTube, SoundCloud or Mixcloud
+  playback from the network it ran on. The art proxy's `u` is still unsigned, and the
+  sidecar still logs no 401s.
+
+What is left, in order of consequence over effort:
+
+1. **E-14** — sweep a page that plays from YouTube, SoundCloud and Mixcloud, from a
+   network where they play, then flip the CSP to enforcing. It has only grown in value,
+   because the page now also loads the Spotify Web Playback SDK. Note what it can and
+   cannot do: the player scripts it allows run *in* the page, so it narrows where a
+   stolen token can be sent (`connect-src https:` is wide — tighten that too), not
+   whether those vendors' scripts can read it.
+2. **S-10** — move the artist page's song list to `/api/search` in the browser, and let
+   the album and collection pages tell a failed lookup from a missing one.
+3. **S-9** — give the Spotify callers the same wait bound.
+4. **S-13** — scope `RELEASE_TOKEN` to this repository.
+5. Everything else — the S-18 refusal and `uv` hash, the S-19 `.env` leftovers — is
+   hardening, best done when the files are open for another reason.
 
 ## Sources
 
