@@ -65,8 +65,8 @@ Three things follow, and none of them is obvious from the code:
 - **The warm-up is per `YTMusic` instance, not per process.** A second client
   created in the same process pays the full 3.1s again. That makes the `_clients`
   cache in `app/client.py` load-bearing for latency, not just tidiness, and it is
-  why the slot count should stay small and fixed. Anything that clears it —
-  including `reset_client()` — re-pays the warm-up per slot.
+  why the slot count should stay small and fixed. Anything that clears it
+  re-pays the warm-up per slot.
 - **Budget ~3.3s for the first search after a cold start, and ~0.9s after.** Two
   concurrent upstream searches on two slots warm in parallel, so a cold container
   pays roughly one warm-up, not two.
