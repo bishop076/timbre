@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
+import { nextStreamHost } from "./stream-url";
 import { useMediaSession } from "./use-media-session";
 
 // The player Timbre owns. YouTube and SoundCloud hand back an iframe and an API to poke at
@@ -74,6 +75,12 @@ export function ProgressiveAudioPlayer({
   const coverKey = artworkUrl ?? "";
   const cover = covers[skipped.key === coverKey ? skipped.count : 0] ?? null;
 
+  // The stream on a second Audius host, after the first refused before a note played. Held
+  // with the URL it replaces, like `skipped` above, so a new track starts on the primary
+  // again without an effect to reset it.
+  const [retry, setRetry] = useState<{ key: string; url: string } | null>(null);
+  const src = retry && retry.key === streamUrl ? retry.url : streamUrl;
+
   const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
     handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
@@ -101,25 +108,42 @@ export function ProgressiveAudioPlayer({
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !streamUrl) return;
+    if (!audio || !streamUrl || !src) return;
+
+    // One retry per track, on the next host, and only before anything has played. A dead
+    // host fails at load; a stream that breaks mid-song is a different failure, and
+    // restarting it from zero somewhere else is no better than the controller's own ladder.
+    const fallback = src === streamUrl ? nextStreamHost(src) : null;
+    let started = false;
 
     const onTime = () => {
       // `duration` is NaN until metadata lands, and a NaN progress bar renders as a full one.
       if (Number.isFinite(audio.duration)) handlers.current.handleProgress(audio.currentTime, audio.duration);
     };
     const onPlay = () => handlers.current.handleStateChange("playing");
+    const onPlaying = () => {
+      started = true;
+    };
     const onPause = () => handlers.current.handleStateChange("paused");
     const onEnded = () => handlers.current.handleEnded();
     const onError = () => {
-      // Gated, withdrawn and region-locked uploads all arrive here indistinguishably — the
-      // element reports a code, never a reason. Worth retrying: unlike SoundCloud there *is*
-      // somewhere to go, since the controller can look the same song up on YouTube Music.
+      // The element reports a code, never a reason, so a dead host and a gated upload look
+      // the same from here. Gated uploads are filtered out at search, which makes the dead
+      // host the likelier of the two — and the other costs one extra request to rule out.
+      if (fallback && !started) {
+        setRetry({ key: streamUrl, url: fallback });
+        return;
+      }
+      // Gated, withdrawn and region-locked uploads all arrive here indistinguishably. Worth
+      // retrying: unlike SoundCloud there *is* somewhere to go, since the controller can
+      // look the same song up on YouTube Music.
       handlers.current.handleError("That track wouldn't play.", true);
     };
 
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("durationchange", onTime);
     audio.addEventListener("play", onPlay);
+    audio.addEventListener("playing", onPlaying);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
@@ -136,6 +160,10 @@ export function ProgressiveAudioPlayer({
         handlers.current.handleStateChange("paused");
         return;
       }
+      // A source that failed to load rejects `play()` as well as firing `error`, and `error`
+      // is the one that decides whether another host is tried. Reporting here too would send
+      // the controller down the ladder while the retry is already loading.
+      if (fallback && cause instanceof DOMException && cause.name === "NotSupportedError") return;
       handlers.current.handleError("That track wouldn't start.", true);
     });
 
@@ -144,11 +172,12 @@ export function ProgressiveAudioPlayer({
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("durationchange", onTime);
       audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
     };
-  }, [streamUrl]);
+  }, [src, streamUrl]);
 
   useEffect(() => {
     registerSeek((seconds) => {
@@ -195,7 +224,7 @@ export function ProgressiveAudioPlayer({
           }
         />
       ) : null}
-      <audio ref={audioRef} src={streamUrl ?? undefined} preload="auto" className="sr-only">
+      <audio ref={audioRef} src={src ?? undefined} preload="auto" className="sr-only">
         {title ? <track kind="metadata" label={title} /> : null}
       </audio>
     </div>

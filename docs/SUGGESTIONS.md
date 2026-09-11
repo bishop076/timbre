@@ -300,9 +300,17 @@ does not carry the guarantee its architecture implies.
 
 ---
 
-## S-10 · Hardcode the Audius discovery fallback list `PROMISING`
+## S-10 · Hardcode the Audius discovery fallback list `BUILT 2026-09-11`
 
 *Measured 2026-08-19. The smallest real availability win on this list.*
+
+> **Built 2026-09-11**, after G-9 in `RESEARCH-2026-08-20.md` confirmed the second day and a
+> third sample the day it shipped found all four answering search with `200` and `/stream`
+> with `302`. `AUDIUS_HOSTS` in `audius.ts` asks the next host on a refused connection, a 5xx
+> or an unreadable body — never on a 4xx — and benches a failed host for a minute so later
+> requests skip it. A timeout benches the host without asking the next in the same request,
+> since it has already cost six seconds. The player retries a stream that fails to load on
+> the next host once (`stream-url.ts`). Still no discovery from `/health_check`.
 
 `packages/providers/src/audius.ts` points at a single hostname. Three more serve
 identical results with `ACAO: *`:
