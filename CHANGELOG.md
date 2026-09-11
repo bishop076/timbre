@@ -10,6 +10,52 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.13.0 — 11 September 2026
+
+### Added
+
+- **player** — show what another tab is playing, and move it here
+- **player** — keep one Timbre tab audible and let the others follow it
+- **lyrics** — switch a song's lyrics between LRCLIB and YouTube Music
+- **lyrics** — fetch YouTube Music's lyrics through the sidecar
+- **ui** — float the shelf arrows over the row's edges, and only where it scrolls
+- **audius** — keep searching and playing Audius when its main host is down
+- **album** — save an album as a playlist from its page
+- **playlists** — save any collection page as a playlist
+- **web** — open a pasted YouTube or YouTube Music playlist as a collection
+- **ytmusic** — read public YouTube playlists and albums through the sidecar
+- **artist** — show who an artist is, from Wikipedia, under About
+- **player** — put speed and the sleep timer behind one button in both transports
+- **player** — pause after a set time or at the end of the track
+- **player** — play faster or slower where the source allows it
+- **stats** — show your top artists, top songs and listening days
+- **stats** — count every play and when it happened, on this device only
+- **library** — carry liked songs in a backup and in the spreadsheet
+- **library** — list liked songs on their own page, first in the library
+- **library** — like a song from the player bar, the phone's transport and the right-click menu
+- **library** — keep liked songs in the browser, one per recording
+- **player** — remember the source you picked for a song until the tab closes
+- **ui** — let album, artist, chart and collection rows play from a chosen source
+- **player** — keep the working copy in a saved playlist when its song had to be rescued
+- **library** — back up your name and pictures with the playlists, or export a spreadsheet
+- **player** — name the track on the lock screen and let media keys skip it
+- **settings** — choose whether a queue plays on into the radio, and where the player opens
+
+### Fixed
+
+- **artist** — key the streamed biography slot
+- **lyrics** — stop asking LRCLIB while it says 429, and say the lyrics are busy
+- **profile** — draw the banner on the first paint instead of a frame later
+- **search** — rank an artist's own uploads with official videos, and podcasts below songs
+- **library** — read saved playlists before any write, and save a whole list in one
+- **web** — check every field of a stored or imported song, and where its links point
+
+### Faster
+
+- **player** — find the next song's playable copy while this one is still playing
+
+7 further changes under the hood — refactoring, docs and tests.
+
 ## 0.12.0 — 11 September 2026
 
 ### Added
