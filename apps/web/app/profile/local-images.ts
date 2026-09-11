@@ -305,6 +305,22 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
   emit();
 }
 
+/** The stored picture itself, for a backup. `null` when there is none or storage is blocked —
+ * a backup without a picture is still a backup. */
+export async function readLocalImage(kind: ImageKind): Promise<Blob | null> {
+  try {
+    return (await run<Blob | undefined>("readonly", (store) => store.get(kind))) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether this browser holds a picture, answered synchronously from the thumbnail — for a
+ * decision that cannot wait for IndexedDB, like whether an import may fill the profile in. */
+export function hasLocalImage(kind: ImageKind): boolean {
+  return readThumb(kind) !== null;
+}
+
 /** Forgets a picture, falling the profile back to its derived appearance. */
 export function clearLocalImage(kind: ImageKind): void {
   // First: a thumbnail left behind is re-read and the picture comes back for a frame.
