@@ -57,7 +57,19 @@ function isKnown(value: unknown): value is Known {
   return (
     typeof entry.at === "number" &&
     (entry.genreId === null || typeof entry.genreId === "number") &&
-    Array.isArray(entry.releases)
+    Array.isArray(entry.releases) &&
+    // Each release, not only the list — `releases: [null]` threw in Explore (S-11).
+    entry.releases.every(
+      (release) =>
+        typeof release === "object" &&
+        release !== null &&
+        typeof release.id === "number" &&
+        typeof release.title === "string" &&
+        typeof release.artist === "string" &&
+        typeof release.kind === "string" &&
+        typeof release.date === "string" &&
+        (release.coverUrl === null || typeof release.coverUrl === "string"),
+    )
   );
 }
 

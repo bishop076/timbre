@@ -19,7 +19,9 @@ import { ALLOWED_HOSTS } from "@/lib/artwork-proxy";
  * from the same nodes to the same browser.
  */
 export function proxied(url: string | null | undefined): string | null {
-  if (!url) return null;
+  // Typed at runtime as well: stored songs have carried a number here, and `startsWith` on
+  // one threw during render on every view that draws a cover (docs/SECURITY.md S-11).
+  if (typeof url !== "string" || !url) return null;
   if (!url.startsWith("https://")) return url;
 
   try {
@@ -43,7 +45,7 @@ const RESIZABLE_HOSTS = /(^|\.)dzcdn\.net$/i;
 /** A cover URL rewritten to ask for a `px`-wide copy — only ever downward, since asking for
  * more than the source offered buys an upscale: more bytes for a softer picture. */
 export function sized(url: string | null | undefined, px: number): string | null {
-  if (!url) return null;
+  if (typeof url !== "string" || !url) return null;
 
   try {
     if (!RESIZABLE_HOSTS.test(new URL(url).hostname)) return url;
