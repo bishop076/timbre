@@ -35,7 +35,10 @@ export function loadGlobal<T>(src: string, read: () => T | undefined): () => Pro
       if (api) resolve(api);
       else reject(new Error(`${src} loaded without its API.`));
     });
-    script.addEventListener("error", () => reject(new Error(`${src} was blocked.`)));
+    script.addEventListener("error", () => {
+      script.remove();
+      reject(new Error(`${src} was blocked.`));
+    });
   });
 }
 

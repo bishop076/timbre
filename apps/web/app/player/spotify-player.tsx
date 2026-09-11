@@ -59,9 +59,11 @@ declare global {
 const loadApi = loadOnce<SpotifyIFrameApi>((resolve, reject) => {
   window.onSpotifyIframeApiReady = resolve;
   if (findScript(API_SRC)) return;
-  addScript(API_SRC, document.body).addEventListener("error", () =>
-    reject(new Error("Spotify embed API blocked.")),
-  );
+  const script = addScript(API_SRC, document.body);
+  script.addEventListener("error", () => {
+    script.remove();
+    reject(new Error("Spotify embed API blocked."));
+  });
 });
 
 export function SpotifyPlayer({
