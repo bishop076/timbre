@@ -46,8 +46,9 @@ function fromApiTrack(raw: SoundCloudApiTrack): SourceTrack | null {
 
 function isSoundCloudUrl(raw: string): boolean {
   try {
-    const host = new URL(raw).hostname.replace(/^www\./, "");
-    return host === "soundcloud.com" || host === "m.soundcloud.com";
+    const url = new URL(raw);
+    const host = url.hostname.replace(/^www\./, "");
+    return /^https?:$/.test(url.protocol) && (host === "soundcloud.com" || host === "m.soundcloud.com");
   } catch {
     return false;
   }
