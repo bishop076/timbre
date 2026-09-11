@@ -51,6 +51,11 @@ function artworkMirrors(primary: string | undefined, mirrors: string[] | undefin
   }
 }
 
+function permalinkUrl(permalink: string | undefined): string | null {
+  const url = permalink ? URL.parse(permalink, "https://audius.co") : null;
+  return url?.origin === "https://audius.co" ? url.href : null;
+}
+
 function toSourceTrack(raw: AudiusTrack): SourceTrack {
   const artist = raw.user?.name?.trim() || raw.user?.handle?.trim();
   const artwork = raw.artwork?.["480x480"] ?? raw.artwork?.["1000x1000"] ?? raw.artwork?.["150x150"];
@@ -62,7 +67,7 @@ function toSourceTrack(raw: AudiusTrack): SourceTrack {
     album: null,
     durationMs: raw.duration ? raw.duration * 1000 : null,
     isrc: raw.isrc?.trim() || null,
-    url: raw.permalink ? `https://audius.co${raw.permalink}` : null,
+    url: permalinkUrl(raw.permalink),
     artworkUrl: artwork ?? null,
     artworkFallbacks: artworkMirrors(artwork, raw.artwork?.mirrors),
     playback: "queue",

@@ -31,7 +31,7 @@ sw.addEventListener("fetch", (event) => {
   const { origin, pathname } = new URL(request.url);
 
   if (request.method !== "GET" || origin !== sw.location.origin) return;
-  if (pathname.startsWith("/api/") || /^\/profile(\/|$)/.test(pathname)) return;
+  if (pathname.startsWith("/api/") || /^\/(profile|spotify)(\/|$)/.test(pathname)) return;
   if (pathname.startsWith("/_next/static/")) event.respondWith(cacheFirst(request));
   else if (request.mode === "navigate") event.respondWith(networkFirst(request));
 });

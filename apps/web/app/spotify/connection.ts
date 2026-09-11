@@ -9,6 +9,7 @@ const STATE_KEY = "timbre:spotify:state";
 const CLIENT_ID_KEY = "timbre:spotify:client-id";
 const STORAGE_BLOCKED =
   "This browser is blocking session storage, so the sign-in cannot be completed.";
+const REFUSED = "Spotify refused the sign-in.";
 
 export function spotifyClientId(): string | null {
   const fromEnv = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID?.trim();
@@ -47,14 +48,14 @@ export async function completeConnect(params: URLSearchParams): Promise<string |
   const expected = readItem(STATE_KEY, "sessionStorage");
   if (!writeSession(VERIFIER_KEY, null) || !writeSession(STATE_KEY, null)) return STORAGE_BLOCKED;
 
+  if (!verifier || !expected) return "This sign-in was started in a different tab.";
+  if (params.get("state") !== expected) return "The sign-in came back with the wrong state.";
+
   const denied = params.get("error");
-  if (denied) return denied === "access_denied" ? "Sign-in was cancelled." : denied;
+  if (denied) return denied === "access_denied" ? "Sign-in was cancelled." : REFUSED;
 
   const code = params.get("code");
   if (!code) return "Spotify did not send a code back.";
-
-  if (!verifier || !expected) return "This sign-in was started in a different tab.";
-  if (params.get("state") !== expected) return "The sign-in came back with the wrong state.";
 
   const clientId = spotifyClientId();
   if (!clientId) return "No Spotify client id is set.";
@@ -63,7 +64,7 @@ export async function completeConnect(params: URLSearchParams): Promise<string |
     saveSpotifyTokens(await exchangeCode({ clientId, redirectUri: redirectUri(), code, verifier }));
     return null;
   } catch (cause) {
-    return cause instanceof Error ? cause.message : "Spotify refused the sign-in.";
+    return cause instanceof Error ? cause.message : REFUSED;
   }
 }
 

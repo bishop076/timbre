@@ -51,6 +51,20 @@ test("a 5xx from the first host is answered by the next", async () => {
   });
 });
 
+test("a track links to audius.co, and a permalink that would leave it gets no link", async () => {
+  const permalinks = ["/someone/delilah-edit", "@evil.example/x", "//evil.example/x", "https://evil.example/x"];
+  const data = permalinks.map((permalink, index) => ({ ...found.data[0], id: String(index), permalink }));
+  await withHosts({ [PRIMARY]: json({ data }) }, async (provider) => {
+    const urls = (await provider.search!(ctx, "delilah", 5)).map((track) => track.url);
+    assert.deepEqual(urls, [
+      "https://audius.co/someone/delilah-edit",
+      "https://audius.co/@evil.example/x",
+      null,
+      null,
+    ]);
+  });
+});
+
 test("a host that failed is not asked first again until its cool-down ends", async () => {
   await withHosts({ [PRIMARY]: json({}, 502) }, async (provider, asked) => {
     await provider.search!(ctx, "one", 5);

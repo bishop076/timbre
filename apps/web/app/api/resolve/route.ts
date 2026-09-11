@@ -7,7 +7,7 @@ import { getProviderRuntime } from "@/lib/providers";
 export const dynamic = "force-dynamic";
 
 export const GET = queryRoute(
-  z.object({ url: z.url({ error: "A track URL is required." }).max(2000) }),
+  z.object({ url: z.url({ protocol: /^https?$/, error: "A track URL is required." }).max(2000) }),
   "A valid track URL is required.",
   async ({ url }, request) => {
     const track = await resolveUrl({ ...getProviderRuntime(), signal: request.signal }, url);
