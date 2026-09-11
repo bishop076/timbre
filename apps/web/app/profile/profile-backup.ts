@@ -4,23 +4,15 @@ import { dataUrlToBlob, type ProfileExport } from "./profile-file";
 import { hasLocalImage, readLocalImage, setLocalImage, type ImageKind } from "./local-images";
 import { getDisplayName, setDisplayName } from "./local-profile";
 
-function toDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
 async function picture(kind: ImageKind): Promise<string | null> {
   const blob = await readLocalImage(kind);
   if (!blob) return null;
-  try {
-    return await toDataUrl(blob);
-  } catch {
-    return null;
-  }
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
 }
 
 export async function exportProfile(): Promise<ProfileExport | null> {

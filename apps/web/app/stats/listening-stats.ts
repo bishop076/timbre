@@ -24,19 +24,6 @@ export function playsFrom(
   return plays;
 }
 
-export interface ArtistStat {
-  key: string;
-  name: string;
-  plays: number;
-  songs: number;
-}
-
-export interface SongStat {
-  song: PlayedSong;
-  plays: number;
-  lastAt: number | null;
-}
-
 export interface ListeningStats {
   total: number;
   dated: number;
@@ -44,8 +31,8 @@ export interface ListeningStats {
   first: number | null;
   last: number | null;
   days: number;
-  artists: ArtistStat[];
-  songs: SongStat[];
+  artists: { key: string; name: string; plays: number; songs: number }[];
+  songs: { song: PlayedSong; plays: number }[];
   weekdays: number[];
 }
 
@@ -54,11 +41,7 @@ export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as con
 function artistsOf(song: PlayedSong): string[] {
   const names: unknown = song.artists;
   if (!Array.isArray(names)) return [];
-  return names.filter((name): name is string => typeof name === "string" && name.trim() !== "");
-}
-
-function keyOf(name: string): string {
-  return artistKey(name) || name.trim().toLowerCase();
+  return names.flatMap((name) => (typeof name === "string" && name.trim() ? [name.trim()] : []));
 }
 
 function dayOf(at: number): number {
@@ -67,37 +50,28 @@ function dayOf(at: number): number {
 }
 
 export function listeningStats(plays: readonly Play[]): ListeningStats {
-  const artists = new Map<string, { name: string; plays: number; songs: Set<string>; order: number }>();
-  const songs = new Map<string, SongStat & { order: number }>();
+  const artists = new Map<string, { name: string; plays: number; songs: Set<string> }>();
+  const songs = new Map<string, ListeningStats["songs"][number]>();
   const weekdays = [0, 0, 0, 0, 0, 0, 0];
   let dated = 0;
   let first: number | null = null;
   let last: number | null = null;
 
-  plays.forEach((play, order) => {
-    const { song, at } = play;
-
-    const counted = songs.get(song.id);
-    if (counted) {
-      counted.plays += 1;
-      if (at !== null && (counted.lastAt === null || at > counted.lastAt)) counted.lastAt = at;
-    } else {
-      songs.set(song.id, { song, plays: 1, lastAt: at, order });
-    }
+  for (const { song, at } of plays) {
+    const counted = songs.get(song.id) ?? { song, plays: 0 };
+    counted.plays += 1;
+    songs.set(song.id, counted);
 
     const credited = new Set<string>();
     for (const name of artistsOf(song)) {
-      const key = keyOf(name);
+      const key = artistKey(name) || name.toLowerCase();
       if (credited.has(key)) continue;
       credited.add(key);
 
-      const artist = artists.get(key);
-      if (artist) {
-        artist.plays += 1;
-        artist.songs.add(song.id);
-      } else {
-        artists.set(key, { name: name.trim(), plays: 1, songs: new Set([song.id]), order });
-      }
+      const artist = artists.get(key) ?? { name, plays: 0, songs: new Set<string>() };
+      artist.plays += 1;
+      artist.songs.add(song.id);
+      artists.set(key, artist);
     }
 
     if (at !== null) {
@@ -106,7 +80,7 @@ export function listeningStats(plays: readonly Play[]): ListeningStats {
       if (last === null || at > last) last = at;
       weekdays[(new Date(at).getDay() + 6) % 7] += 1;
     }
-  });
+  }
 
   return {
     total: plays.length,
@@ -119,18 +93,9 @@ export function listeningStats(plays: readonly Play[]): ListeningStats {
         ? 0
         : Math.round((dayOf(last) - dayOf(first)) / 86_400_000) + 1,
     artists: [...artists]
-      .sort(
-        ([, a], [, b]) => b.plays - a.plays || b.songs.size - a.songs.size || a.order - b.order,
-      )
-      .map(([key, artist]) => ({
-        key,
-        name: artist.name,
-        plays: artist.plays,
-        songs: artist.songs.size,
-      })),
-    songs: [...songs.values()]
-      .sort((a, b) => b.plays - a.plays || a.order - b.order)
-      .map(({ song, plays: count, lastAt }) => ({ song, plays: count, lastAt })),
+      .sort(([, a], [, b]) => b.plays - a.plays || b.songs.size - a.songs.size)
+      .map(([key, artist]) => ({ key, ...artist, songs: artist.songs.size })),
+    songs: [...songs.values()].sort((a, b) => b.plays - a.plays),
     weekdays,
   };
 }

@@ -96,10 +96,17 @@ def request(playlist_id: str = COMMUNITY["id"], limit: int = 100) -> PlaylistReq
     return PlaylistRequest(playlist_id=playlist_id, limit=limit)
 
 
-def test_returns_tracks_in_the_search_wire_shape(stub) -> None:
-    stub(COMMUNITY)
-    result = route.playlist(request())
+def test_carries_the_playlist_and_its_tracks_in_the_search_wire_shape(stub) -> None:
+    client = stub(COMMUNITY)
+    result = route.playlist(request(limit=50))
 
+    assert client.calls == [(COMMUNITY["id"], 50)]
+    assert result.id == COMMUNITY["id"]
+    assert result.title == COMMUNITY["title"]
+    assert result.author == "Hitet Shqip"
+    assert result.year == "2026"
+    assert result.track_count == 60
+    assert result.thumbnail_url == "https://yt3.googleusercontent.com/p=s1200"
     assert [track.video_id for track in result.tracks] == ["uk_E_RieeWA", "bbbbbbbbbbb"]
     first = result.tracks[0]
     assert first.artists == ["lilibu"]
@@ -107,18 +114,6 @@ def test_returns_tracks_in_the_search_wire_shape(stub) -> None:
     assert first.duration_seconds == 143
     assert first.video_type == "MUSIC_VIDEO_TYPE_ATV"
     assert first.thumbnail_url == "https://lh3.googleusercontent.com/a=w120-h120-l90-rj"
-
-
-def test_carries_the_playlists_own_details(stub) -> None:
-    stub(COMMUNITY)
-    result = route.playlist(request())
-
-    assert result.id == COMMUNITY["id"]
-    assert result.title == COMMUNITY["title"]
-    assert result.author == "Hitet Shqip"
-    assert result.year == "2026"
-    assert result.track_count == 60
-    assert result.thumbnail_url == "https://yt3.googleusercontent.com/p=s1200"
 
 
 def test_an_album_list_borrows_its_first_songs_sleeve_at_a_useful_size(stub) -> None:
@@ -130,53 +125,33 @@ def test_an_album_list_borrows_its_first_songs_sleeve_at_a_useful_size(stub) -> 
     assert result.thumbnail_url == "https://lh3.googleusercontent.com/a=w544-h544-l90-rj"
 
 
-def test_asks_upstream_for_the_id_and_limit_given(stub) -> None:
-    client = stub(COMMUNITY)
-    route.playlist(request(limit=50))
-    assert client.calls == [(COMMUNITY["id"], 50)]
-
-
 def test_truncates_to_the_limit(stub) -> None:
     stub({**COMMUNITY, "tracks": [{**ITEM, "videoId": f"{index:011d}"} for index in range(5)]})
     assert len(route.playlist(request(limit=3)).tracks) == 3
 
 
-def test_greyed_out_songs_are_dropped() -> None:
-    assert to_playlist_track({**ITEM, "isAvailable": False}) is None
-    assert to_playlist_track(ITEM) is not None
+@pytest.mark.parametrize(
+    "item", [{**ITEM, "isAvailable": False}, {**ITEM, "videoId": None}, "not a dict"]
+)
+def test_greyed_out_or_unusable_items_are_dropped(item) -> None:
+    assert to_playlist_track(item) is None
 
 
-def test_an_item_without_an_id_is_dropped() -> None:
-    assert to_playlist_track({**ITEM, "videoId": None}) is None
-    assert to_playlist_track("not a dict") is None
-
-
-def test_a_playlist_youtube_will_not_show_is_a_404(stub) -> None:
-    stub(error=MISSING)
+@pytest.mark.parametrize(
+    ("answer", "error", "status_code"),
+    [
+        (None, MISSING, 404),
+        (None, REARRANGED, 502),
+        (None, ConnectionError("reset by peer"), 502),
+        ([], None, 502),
+    ],
+    ids=["hidden playlist", "broken parser", "other failure", "non-dict answer"],
+)
+def test_upstream_failures(stub, answer, error, status_code) -> None:
+    stub(answer, error)
     with pytest.raises(HTTPException) as caught:
         route.playlist(request())
-    assert caught.value.status_code == 404
-
-
-def test_a_parser_youtube_has_broken_is_a_502_not_a_404(stub) -> None:
-    stub(error=REARRANGED)
-    with pytest.raises(HTTPException) as caught:
-        route.playlist(request())
-    assert caught.value.status_code == 502
-
-
-def test_any_other_upstream_failure_is_a_502(stub) -> None:
-    stub(error=ConnectionError("reset by peer"))
-    with pytest.raises(HTTPException) as caught:
-        route.playlist(request())
-    assert caught.value.status_code == 502
-
-
-def test_a_non_dict_answer_is_a_502(stub) -> None:
-    stub([])
-    with pytest.raises(HTTPException) as caught:
-        route.playlist(request())
-    assert caught.value.status_code == 502
+    assert caught.value.status_code == status_code
 
 
 def test_is_missing_reads_only_a_failure_at_the_root() -> None:
