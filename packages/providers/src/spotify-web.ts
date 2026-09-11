@@ -11,12 +11,20 @@
 //
 // **Whose design this is.** Ported from SpotifyScraper (github.com/AliAkhtari78/SpotifyScraper,
 // MIT), whose daily live canary is the best early warning there is for this surface breaking.
-// Its `api/pathfinder.py` is the upstream for the operation hashes below: when a lookup starts
-// failing with `PersistedQueryNotFound`, the new hash is probably already there.
 //
-// **Still Spotify's private surface.** The hashes rotate and the payload shapes drift, so every
-// failure here abstains or throws a classified error — it never takes a page down. Tracks keep
-// `playback: "manual"`: this changes how Spotify is *found*, not how it plays. See `spotify.ts`.
+// **Still Spotify's private surface, so it mends itself where it can.** Three things break it,
+// and each has an answer here rather than a code change:
+//
+// - **A query hash is retired** (`PersistedQueryNotFound`). The current hash is read out of
+//   Spotify's own web-player bundle — the file that has to know it — with SpotifyScraper's
+//   table as the second source, and the query is retried. See `discoverHashes`.
+// - **The token is refused** (`401`). A fresh one is fetched and the query retried once.
+// - **Pathfinder is down or reshaped.** Albums and playlists fall back to the embed page's own
+//   track list, which needs no token at all. Search has no such page; the reader's own account
+//   is its fallback, in `spotify-section.tsx`.
+//
+// `scripts/spotify-canary.mts` exercises all of it against the real service every day.
+// Tracks keep `playback: "manual"`: this changes how Spotify is *found*, not how it plays.
 
 import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
 
@@ -32,16 +40,24 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
 /**
- * Every pathfinder operation Timbre uses, and the only place their hashes live — a rotation
- * is a one-line change. Copied from SpotifyScraper v3.9 and verified live 2026-09-11.
+ * Every pathfinder operation Timbre uses, and the hashes it starts from. Read out of Spotify's
+ * own web-player bundle on 2026-09-11 (`web-player.2c51c6eb.js` and its `xpui-routes-search`
+ * chunk) — the newest, so the last to be retired. When one is, `discoverHashes` finds its
+ * successor at runtime and the canary says so; updating this table then saves every server
+ * instance that discovery.
  */
 export const SPOTIFY_OPERATIONS = {
-  search: { name: "searchDesktop", sha256: "eff59fa0a3d026b88b56fddbcf4bdfa16a186b8175a5c1a358c072e053c2e5b0" },
-  album: { name: "getAlbum", sha256: "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10" },
-  playlist: { name: "fetchPlaylist", sha256: "a65e12194ed5fc443a1cdebed5fabe33ca5b07b987185d63c72483867ad13cb4" },
+  search: { name: "searchDesktop", sha256: "db61238974d27839a136c9dc02bfdbe3fab7635f21cf85976ebff9a1ee281345" },
+  album: { name: "getAlbum", sha256: "6a74b456cd1735c9193d9e8ec8cc5184cad7ce13572210315229db3975964361" },
+  playlist: { name: "fetchPlaylist", sha256: "86dde7b9d9356e2369414647cf6950cfed96e778e129cfdfc99aea6c1613b3b0" },
 } as const;
 
-type OperationKey = keyof typeof SPOTIFY_OPERATIONS;
+export type OperationKey = keyof typeof SPOTIFY_OPERATIONS;
+
+/** Operation names as Spotify spells them, mapped back to the keys above. */
+const KEY_BY_NAME = Object.fromEntries(
+  Object.entries(SPOTIFY_OPERATIONS).map(([key, operation]) => [operation.name, key as OperationKey]),
+) as Record<string, OperationKey>;
 
 // --- The anonymous session ---------------------------------------------------------------
 
@@ -142,11 +158,26 @@ async function anonymousToken(ctx: SearchContext, force = false): Promise<string
 
 // --- Pathfinder --------------------------------------------------------------------------
 
+/**
+ * Hashes found at runtime to replace retired ones, by operation. Per server instance, like the
+ * token, and never persisted: a rebuilt instance starts from the table, which the canary keeps
+ * current, and only pays for discovery if the table has gone stale.
+ */
+const healed: Partial<Record<OperationKey, string>> = {};
+
+/** The hash to send for an operation: a discovered replacement, else the table's. */
+function hashFor(operation: OperationKey): string {
+  return healed[operation] ?? SPOTIFY_OPERATIONS[operation].sha256;
+}
+
 /** The persisted-query GET for an operation. Exported for the tests. */
-export function pathfinderUrl(operation: OperationKey, variables: Record<string, unknown>): string {
-  const { name, sha256 } = SPOTIFY_OPERATIONS[operation];
+export function pathfinderUrl(
+  operation: OperationKey,
+  variables: Record<string, unknown>,
+  sha256: string = hashFor(operation),
+): string {
   const params = new URLSearchParams({
-    operationName: name,
+    operationName: SPOTIFY_OPERATIONS[operation].name,
     variables: JSON.stringify(variables),
     extensions: JSON.stringify({ persistedQuery: { version: 1, sha256Hash: sha256 } }),
   });
@@ -156,23 +187,25 @@ export function pathfinderUrl(operation: OperationKey, variables: Record<string,
 /**
  * One pathfinder query's `data`, or null when Spotify says the thing does not exist.
  *
- * A `401` is retried once with a fresh token: a token can be revoked before its stated expiry,
- * and the first request after that is how anyone finds out. Anything else is classified and
- * thrown, so the caller can say *why* rather than show an empty list.
+ * Two failures are mended and retried, once each: a `401` gets a fresh token (a token can be
+ * revoked before its stated expiry, and the first request after is how anyone finds out), and a
+ * retired hash gets its successor from `discoverHashes`. Anything else is classified and thrown,
+ * so the caller can say *why* rather than show an empty list.
  */
 async function pathfinder<T>(
   ctx: SearchContext,
   operation: OperationKey,
   variables: Record<string, unknown>,
 ): Promise<T | null> {
-  const url = pathfinderUrl(operation, variables);
+  let refreshed = false;
+  let rediscovered = false;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (;;) {
     ctx.signal?.throwIfAborted();
-    const token = await anonymousToken(ctx, attempt > 0);
+    const token = await anonymousToken(ctx, refreshed);
     await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
 
-    const response = await fetch(url, {
+    const response = await fetch(pathfinderUrl(operation, variables), {
       signal: deadlineSignal(ctx.signal),
       cache: "no-store",
       headers: {
@@ -185,7 +218,13 @@ async function pathfinder<T>(
       },
     });
 
-    if (response.status === 401 && attempt === 0) continue;
+    if (response.status === 401) {
+      if (refreshed) {
+        throw new ProviderError("spotify", "auth_expired", "Spotify refused a freshly issued anonymous token.", { status: 401 });
+      }
+      refreshed = true;
+      continue;
+    }
     if (response.status === 404) return null;
     if (response.status === 429) {
       throw new ProviderError("spotify", "rate_limited", "Spotify is rate-limiting this server.", { status: 429 });
@@ -197,19 +236,161 @@ async function pathfinder<T>(
     }
 
     const body = (await response.json()) as { data?: T; errors?: { message?: string }[] };
-    if (body.errors?.some((error) => error.message === "PersistedQueryNotFound")) {
-      // Spotify rotated the hash. Loud on purpose: this is the one failure that needs a code
-      // change, and it looks exactly like "no results" if it is swallowed.
-      throw new ProviderError(
-        "spotify",
-        "unknown",
-        `Spotify retired the ${SPOTIFY_OPERATIONS[operation].name} query. The hash in spotify-web.ts needs updating.`,
-      );
-    }
-    return body.data ?? null;
-  }
+    if (!body.errors?.some((error) => error.message === "PersistedQueryNotFound")) return body.data ?? null;
 
-  throw new ProviderError("spotify", "auth_expired", "Spotify refused a freshly issued anonymous token.", { status: 401 });
+    // Spotify retired the hash. Find its successor once; if that finds nothing new, fail loudly,
+    // because swallowed this looks exactly like "no results".
+    if (!rediscovered) {
+      rediscovered = true;
+      const stale = hashFor(operation);
+      const found = (await discoverHashes(ctx))[operation];
+      if (found && found !== stale) {
+        healed[operation] = found;
+        continue;
+      }
+    }
+    throw new ProviderError(
+      "spotify",
+      "unknown",
+      `Spotify retired the ${SPOTIFY_OPERATIONS[operation].name} query and no replacement could be found.`,
+    );
+  }
+}
+
+// --- Finding a retired hash's successor --------------------------------------------------
+
+/** Where Spotify's web player is served; its script tags name the current bundle. */
+const WEB_PLAYER = "https://open.spotify.com/search";
+
+/** SpotifyScraper's table — the second source, maintained by a person with a daily canary. */
+const UPSTREAM_TABLE =
+  "https://raw.githubusercontent.com/AliAkhtari78/SpotifyScraper/master/src/spotify_scraper/api/pathfinder.py";
+
+/** A lazy chunk of the bundle, by its webpack name: `searchDesktop` is defined in this one. */
+const SEARCH_CHUNK = "xpui-routes-search";
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/**
+ * Every `new X("name","query","hash",…)` persisted-query definition in a web-player script,
+ * for the operations Timbre uses. Pure.
+ */
+export function hashesFromBundle(js: string): Partial<Record<OperationKey, string>> {
+  const found: Partial<Record<OperationKey, string>> = {};
+  for (const match of js.matchAll(/"(\w+)","query","([0-9a-f]{64})"/g)) {
+    const key = KEY_BY_NAME[match[1]!];
+    if (key && !found[key]) found[key] = match[2]!;
+  }
+  return found;
+}
+
+/**
+ * The URL of a named lazy chunk, read out of the main bundle's webpack loader —
+ * `u.u=e=>""+({…id:"name"…}[e]||e)+"."+{…id:"hash"…}[e]+".js"`, the chunk served from the
+ * same directory as the main bundle. Null when the loader no longer looks like that. Pure.
+ */
+export function chunkUrl(mainJs: string, mainUrl: string, name: string): string | null {
+  const at = mainJs.indexOf(`:"${name}"`);
+  if (at === -1) return null;
+  const id = /(\d+)$/.exec(mainJs.slice(Math.max(0, at - 12), at))?.[1];
+  const end = mainJs.indexOf('+".js"', at);
+  if (!id || end === -1) return null;
+  const hash = new RegExp(`[{,]${id}:"([0-9a-f]{8,20})"`).exec(mainJs.slice(at, end))?.[1];
+  return hash ? new URL(`${name}.${hash}.js`, mainUrl).toString() : null;
+}
+
+/** SpotifyScraper's `Operation("name", "hash", …)` definitions, for the operations Timbre uses. Pure. */
+export function hashesFromUpstream(python: string): Partial<Record<OperationKey, string>> {
+  const found: Partial<Record<OperationKey, string>> = {};
+  for (const match of python.matchAll(/Operation\(\s*"(\w+)",\s*"([0-9a-f]{64})"/g)) {
+    const key = KEY_BY_NAME[match[1]!];
+    if (key && !found[key]) found[key] = match[2]!;
+  }
+  return found;
+}
+
+/** How long a discovery answers for. Long enough that a burst of failures shares one. */
+const DISCOVERY_TTL_MS = 30 * 60 * 1000;
+
+export interface DiscoveredHashes {
+  hashes: Partial<Record<OperationKey, string>>;
+  /** Which source supplied each — for the canary, which reports the bundle one failing. */
+  from: Partial<Record<OperationKey, "bundle" | "upstream">>;
+}
+
+let discovered: { at: number; result: DiscoveredHashes } | null = null;
+let discovering: Promise<DiscoveredHashes> | null = null;
+
+/**
+ * The hashes Spotify's web player is using right now, falling back to SpotifyScraper's table
+ * for any it could not find. Only reached after a `PersistedQueryNotFound`, never on the happy
+ * path: the main bundle is ~4MB. Measured 2026-09-11 — the main bundle carries `getAlbum` and
+ * `fetchPlaylist`, and `searchDesktop` lives in the `xpui-routes-search` chunk (75KB), found
+ * through the loader's name map rather than by fetching all 150-odd chunks.
+ */
+export async function discoverHashes(ctx: SearchContext): Promise<Partial<Record<OperationKey, string>>> {
+  return (await discoverHashesFrom(ctx)).hashes;
+}
+
+/** The same, saying where each hash came from. */
+export async function discoverHashesFrom(ctx: SearchContext, fresh = false): Promise<DiscoveredHashes> {
+  if (!fresh && discovered && Date.now() - discovered.at < DISCOVERY_TTL_MS) return discovered.result;
+
+  discovering ??= (async () => {
+    const result: DiscoveredHashes = { hashes: {}, from: {} };
+    const adopt = (found: Partial<Record<OperationKey, string>>, source: "bundle" | "upstream") => {
+      for (const [key, hash] of Object.entries(found) as [OperationKey, string][]) {
+        if (result.hashes[key] || !SHA256.test(hash)) continue;
+        result.hashes[key] = hash;
+        result.from[key] = source;
+      }
+    };
+    const text = async (url: string) => {
+      await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+      // Generous: this is a 4MB script, fetched once per retirement rather than per request.
+      const response = await fetch(url, {
+        signal: deadlineSignal(undefined, 20_000),
+        cache: "no-store",
+        headers: { "User-Agent": USER_AGENT },
+      });
+      return response.ok ? response.text() : null;
+    };
+
+    try {
+      const page = await text(WEB_PLAYER);
+      const mainUrl = page ? /src="([^"]+\/web-player\.[0-9a-f]+\.js)"/.exec(page)?.[1] : undefined;
+      const main = mainUrl ? await text(mainUrl) : null;
+      if (main && mainUrl) {
+        adopt(hashesFromBundle(main), "bundle");
+        const chunk = result.hashes.search ? null : chunkUrl(main, mainUrl, SEARCH_CHUNK);
+        const search = chunk ? await text(chunk) : null;
+        if (search) adopt(hashesFromBundle(search), "bundle");
+      }
+    } catch {
+      // The bundle moved or would not load. The upstream table is the second chance.
+    }
+
+    if (Object.keys(result.hashes).length < Object.keys(SPOTIFY_OPERATIONS).length) {
+      try {
+        const table = await text(UPSTREAM_TABLE);
+        if (table) adopt(hashesFromUpstream(table), "upstream");
+      } catch {
+        // Both sources down: the caller reports the retirement as it stands.
+      }
+    }
+
+    discovered = { at: Date.now(), result };
+    return result;
+  })().finally(() => {
+    discovering = null;
+  });
+
+  return discovering;
+}
+
+/** Hashes this instance has had to discover, by operation — empty while the table is current. */
+export function healedSpotifyHashes(): Partial<Record<OperationKey, string>> {
+  return { ...healed };
 }
 
 // --- Payload shapes, as much of them as anything here reads ------------------------------
@@ -403,26 +584,135 @@ export function playlistFromResponse(id: string, data: RawPlaylist | null): Spot
   };
 }
 
-/** The first page of an album or playlist — up to 100 tracks, the most a collection page shows. */
+interface EmbedTrack {
+  uri?: string;
+  title?: string;
+  /** The artists, comma-joined — the embed carries no list. */
+  subtitle?: string;
+  /** Milliseconds. */
+  duration?: number;
+  isPlayable?: boolean;
+  audioPreview?: { url?: string };
+}
+
+interface EmbedEntity {
+  name?: string;
+  title?: string;
+  /** The artist for an album, the owner for a playlist. */
+  subtitle?: string;
+  releaseDate?: { isoString?: string };
+  trackList?: EmbedTrack[];
+  coverArt?: { sources?: RawImage[] };
+  visualIdentity?: { image?: { url?: string; maxWidth?: number }[] };
+}
+
+/**
+ * An album or playlist from its embed page, which carries the whole track list in its
+ * `__NEXT_DATA__` and needs no token at all — the fallback for when pathfinder is refusing,
+ * reshaped, or retired past rescue. Poorer than the pathfinder answer (one sleeve for every
+ * track, artists as one string), but it also carries each track's preview clip. Pure.
+ */
+export function collectionFromEmbed(kind: SpotifyCollectionKind, id: string, html: string): SpotifyCollection | null {
+  const payload = /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
+  if (!payload?.[1]) return null;
+
+  let entity: EmbedEntity | undefined;
+  try {
+    const data = JSON.parse(payload[1]) as { props?: { pageProps?: { state?: { data?: { entity?: EmbedEntity } } } } };
+    entity = data.props?.pageProps?.state?.data?.entity;
+  } catch {
+    return null;
+  }
+
+  const title = (entity?.name ?? entity?.title)?.trim();
+  if (!entity || !title) return null;
+
+  const images = entity.visualIdentity?.image ?? [];
+  const cover =
+    pickCover(entity.coverArt?.sources) ??
+    [...images].sort((a, b) => (b.maxWidth ?? 0) - (a.maxWidth ?? 0)).find((image) => image.url)?.url ??
+    null;
+  const list = entity.trackList ?? [];
+
+  const tracks = compact(
+    list.map((track): SourceTrack | null => {
+      const trackId = idFromUri(track.uri, "track");
+      const name = track.title?.trim();
+      if (!trackId || !name || track.isPlayable === false) return null;
+      return {
+        source: "spotify",
+        sourceId: trackId,
+        title: name,
+        artists: (track.subtitle ?? "")
+          .split(",")
+          .map((artist) => artist.trim())
+          .filter(Boolean),
+        album: kind === "album" ? title : null,
+        durationMs: track.duration ?? null,
+        isrc: null,
+        url: `https://open.spotify.com/track/${trackId}`,
+        artworkUrl: cover,
+        playback: "manual",
+        previewUrl: track.audioPreview?.url ?? null,
+      };
+    }),
+  );
+
+  return {
+    kind,
+    id,
+    title,
+    by: entity.subtitle?.trim() || null,
+    year: kind === "album" ? (entity.releaseDate?.isoString?.slice(0, 4) ?? null) : null,
+    coverUrl: cover,
+    total: list.length,
+    tracks,
+  };
+}
+
+/** The embed page itself. Its own fetch rather than the bootstrap's, whose page is a track. */
+export async function fetchSpotifyCollectionFromEmbed(ctx: SearchContext, kind: SpotifyCollectionKind, id: string): Promise<SpotifyCollection | null> {
+  await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+  const response = await fetch(`https://open.spotify.com/embed/${kind}/${id}`, {
+    signal: deadlineSignal(ctx.signal),
+    cache: "no-store",
+    headers: { "User-Agent": USER_AGENT, "Accept-Language": "en" },
+  });
+  return response.ok ? collectionFromEmbed(kind, id, await response.text()) : null;
+}
+
+/**
+ * The first page of an album or playlist — up to 100 tracks, the most a collection page
+ * shows. Pathfinder first, for its per-track sleeves and artist lists; the embed page when
+ * pathfinder throws. Not when it answers "no such thing": the embed would only say the same.
+ * `fallback: false` is for the canary, which has to see pathfinder fail rather than be rescued.
+ */
 export async function fetchSpotifyCollection(
   ctx: SearchContext,
   kind: SpotifyCollectionKind,
   id: string,
+  { fallback = true }: { fallback?: boolean } = {},
 ): Promise<SpotifyCollection | null> {
   if (!/^[A-Za-z0-9]{22}$/.test(id)) return null;
 
-  if (kind === "album") {
-    const data = await pathfinder<RawAlbum>(ctx, "album", { uri: `spotify:album:${id}`, locale: "", offset: 0, limit: 50 });
-    return albumFromResponse(id, data);
-  }
+  try {
+    if (kind === "album") {
+      const data = await pathfinder<RawAlbum>(ctx, "album", { uri: `spotify:album:${id}`, locale: "", offset: 0, limit: 50 });
+      return albumFromResponse(id, data);
+    }
 
-  const data = await pathfinder<RawPlaylist>(ctx, "playlist", {
-    uri: `spotify:playlist:${id}`,
-    offset: 0,
-    limit: 100,
-    enableWatchFeedEntrypoint: false,
-  });
-  return playlistFromResponse(id, data);
+    const data = await pathfinder<RawPlaylist>(ctx, "playlist", {
+      uri: `spotify:playlist:${id}`,
+      offset: 0,
+      limit: 100,
+      enableWatchFeedEntrypoint: false,
+    });
+    return playlistFromResponse(id, data);
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    if (!fallback) throw cause;
+    return fetchSpotifyCollectionFromEmbed(ctx, kind, id);
+  }
 }
 
 /** `/album/{22}` or `/playlist/{22}`, in any of the forms `spotifyTrackId` accepts for tracks. */
@@ -440,8 +730,11 @@ export function spotifyCollectionOf(raw: string): { kind: SpotifyCollectionKind;
   }
 }
 
-/** Forgets the session. For tests, which need each case to bootstrap from its own stub. */
+/** Forgets the session and anything discovered. For tests, which need each case to bootstrap from its own stub. */
 export function resetSpotifyWebSession(): void {
   current = null;
   pending = null;
+  discovered = null;
+  discovering = null;
+  for (const key of Object.keys(healed) as OperationKey[]) delete healed[key];
 }
