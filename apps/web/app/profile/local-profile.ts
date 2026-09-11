@@ -77,6 +77,11 @@ export function useLocalProfile(): LocalProfile {
   return useLocalStore(store);
 }
 
+/** The display name, read outside a render — for a backup being written from a click. */
+export function getDisplayName(): string | null {
+  return store.getSnapshot().name;
+}
+
 // The name, in a cookie as well as in storage — the one thing that lets the server render
 // the right page, since it cannot see `localStorage` and every reload showed a stranger
 // called "Profile" for a frame. Only the name: a thumbnail would be kilobytes on every
