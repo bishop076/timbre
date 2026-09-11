@@ -87,6 +87,34 @@ test("an art track is demoted below an official video that ranked equally", () =
   assert.equal(recommend(lists, { limit: 2 })[0]!.title, "Official");
 });
 
+/** One song per kind, each reached by a single list at the same rank, so the only thing
+ * separating their scores is what kind of upload they are. */
+function scoreOfKind(videoType: string | null): number {
+  const lists = [list(`only-${videoType}`, [track("Same", "Alpha", { videoType })])];
+  return scoreCandidates(lists)[0]!.score;
+}
+
+test("an official artist-channel upload scores with official videos, above re-uploads", () => {
+  // G-5: at "unknown" the artist's own upload scored below every user re-upload of it.
+  const official = scoreOfKind("MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC");
+  assert.equal(official, scoreOfKind("MUSIC_VIDEO_TYPE_OMV"));
+  assert.ok(official > scoreOfKind("MUSIC_VIDEO_TYPE_UGC"));
+});
+
+test("a podcast episode and the shoulder tier score below an art track", () => {
+  // At "unknown" both outscored every art track, which is the song itself.
+  const art = scoreOfKind("MUSIC_VIDEO_TYPE_ATV");
+  assert.ok(scoreOfKind("MUSIC_VIDEO_TYPE_PODCAST_EPISODE") < art);
+  assert.ok(scoreOfKind("MUSIC_VIDEO_TYPE_SHOULDER") < art);
+});
+
+test("an unrecognised kind still sits between user uploads and art tracks", () => {
+  const unknown = scoreOfKind("MUSIC_VIDEO_TYPE_SOMETHING_NEW");
+  assert.equal(unknown, scoreOfKind(null));
+  assert.ok(unknown < scoreOfKind("MUSIC_VIDEO_TYPE_UGC"));
+  assert.ok(unknown > scoreOfKind("MUSIC_VIDEO_TYPE_ATV"));
+});
+
 test("one artist holding every top score does not take every top slot", () => {
   // Alpha holds ranks 1-3 in both lists; the alternatives are ranked below all of them.
   const ranking = [

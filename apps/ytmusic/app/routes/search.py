@@ -35,10 +35,26 @@ VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 # Lower sorts first. Official music videos were never barred in testing; art
 # tracks were the only class that was. Anything whose type is missing or
 # unrecognised sits between the two rather than being trusted or punished.
+#
+# `OFFICIAL_SOURCE_MUSIC` ranks with OMV for what it *is*, not for a bar rate:
+# sampled, it is the artist's own channel — Fred again..'s own "Delilah" and his
+# Tiny Desk. Left at "unknown" it sat below every user re-upload, and on the
+# query the player itself fires for that song it landed 19th of 20 and was cut
+# by the `limit` below while ten re-uploads survived. (RESEARCH-2026-08-20 G-5.)
+#
+# `PODCAST_EPISODE` ranks below art tracks: a podcast episode is not a degraded
+# song, it is not a song, and at "unknown" it outranked every art track of the
+# song that was actually asked for. Ranked rather than filtered, so a search
+# that finds nothing else still answers with something. `SHOULDER`, a fifth tier
+# seen three times in about seven hundred results and never sampled, goes with
+# it: an unexamined tier should not outrank the one known to be the song.
 _EMBED_RANK = {
     "MUSIC_VIDEO_TYPE_OMV": 0,  # official music video
+    "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC": 0,  # official artist-channel upload
     "MUSIC_VIDEO_TYPE_UGC": 1,  # user upload
     "MUSIC_VIDEO_TYPE_ATV": 3,  # auto-generated Topic art track — barred ~7%
+    "MUSIC_VIDEO_TYPE_PODCAST_EPISODE": 4,  # not a song at all
+    "MUSIC_VIDEO_TYPE_SHOULDER": 4,  # unsampled, see above
 }
 _EMBED_RANK_UNKNOWN = 2
 

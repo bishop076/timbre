@@ -17,11 +17,21 @@ const RRF_K = 60;
 const CONSENSUS_WEIGHT = 0.5;
 
 /** How much an upload's kind moves it. Measured over 64 uploads: art tracks barred from
- * embedding ~7% of the time, official videos never. Mild, or the feature tilts to videos. */
+ * embedding ~7% of the time, official videos never. Mild, or the feature tilts to videos.
+ *
+ * The same tiers as the sidecar's `_embed_rank`, and for the same reasons
+ * (RESEARCH-2026-08-20 G-5): `OFFICIAL_SOURCE_MUSIC` is the artist's own channel, so it
+ * scores with `OMV` rather than below every re-upload; a podcast episode is not a song, and
+ * `SHOULDER` is an unsampled tier that should not outscore the one known to be the song.
+ * Both sit below art tracks rather than being dropped, since a recommendation is still a
+ * recommendation — they simply lose any tie with the song itself. */
 const PLAYABILITY: Record<string, number> = {
   MUSIC_VIDEO_TYPE_OMV: 1.15,
+  MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC: 1.15,
   MUSIC_VIDEO_TYPE_UGC: 1.0,
   MUSIC_VIDEO_TYPE_ATV: 0.8,
+  MUSIC_VIDEO_TYPE_PODCAST_EPISODE: 0.6,
+  MUSIC_VIDEO_TYPE_SHOULDER: 0.6,
 };
 const PLAYABILITY_UNKNOWN = 0.95;
 
