@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
 import { useMediaSession } from "./use-media-session";
 
@@ -84,6 +85,19 @@ export function ProgressiveAudioPlayer({
     if (!audio) return;
     audio.volume = Math.min(1, Math.max(0, (muted ? 0 : volume) / 100));
   }, [volume, muted]);
+
+  // `defaultPlaybackRate` as well as `playbackRate`: loading a new `src` resets the rate to
+  // the default, so setting only the live one lost it on every track change. Pitch is held
+  // so 1.25× is the same voice talking faster rather than a higher one. Browsers do that by
+  // default already; it is set here because the control is worthless without it.
+  const speed = useSpeed();
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.preservesPitch = true;
+    audio.defaultPlaybackRate = speed;
+    audio.playbackRate = speed;
+  }, [speed, streamUrl]);
 
   useEffect(() => {
     const audio = audioRef.current;

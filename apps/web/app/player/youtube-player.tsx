@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { log } from "../logs.ts";
+import { publishYouTubeRates, speedToApply, useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
 import { stalledAt } from "./youtube-stall.ts";
 
@@ -34,6 +35,11 @@ interface YTPlayer {
   getPlayerState(): number;
   /** How much of the video is buffered, 0–1. Still zero after {@link STALL_MS} is the stall. */
   getVideoLoadedFraction(): number;
+  /** Documented, but optional like the three above: a build without them only loses speed. */
+  setPlaybackRate?(rate: number): void;
+  getPlaybackRate?(): number;
+  /** `[1]` for a video YouTube will not play at any other speed. */
+  getAvailablePlaybackRates?(): number[];
   destroy(): void;
 }
 
@@ -285,6 +291,37 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
     if (readyRef.current) playerRef.current?.setVolume(level);
   }, [level]);
 
+  const speed = useSpeed();
+  const speedRef = useRef(speed);
+
+  /**
+   * Hands YouTube the preferred speed if this video offers it, normal speed if not, and
+   * reports what it does offer so the menu can say.
+   *
+   * Run on every PLAYING rather than once per load: `loadVideoById` does not promise to keep
+   * the rate, and PLAYING is the first moment `getAvailablePlaybackRates` describes the new
+   * video rather than the last one. Setting only when the rate differs keeps the
+   * BUFFERING → PLAYING a rate change can cause from coming straight back here to do it again.
+   */
+  const applySpeed = useCallback(() => {
+    const player = playerRef.current;
+    const id = videoIdRef.current;
+    if (!player || !readyRef.current || !id) return;
+    try {
+      const available = player.getAvailablePlaybackRates?.() ?? [];
+      publishYouTubeRates(id, available);
+      const rate = speedToApply(speedRef.current, available);
+      if (player.getPlaybackRate?.() !== rate) player.setPlaybackRate?.(rate);
+    } catch {
+      // Mid-teardown. The next PLAYING tries again.
+    }
+  }, []);
+
+  useEffect(() => {
+    speedRef.current = speed;
+    applySpeed();
+  }, [speed, applySpeed]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || playerRef.current) return;
@@ -362,6 +399,7 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
               captionTimers.current = CAPTION_RETRIES.map((delay) =>
                 setTimeout(() => unloadCaptions(playerRef.current), delay),
               );
+              applySpeed();
             }
             // Only PLAYING takes the cover down, and only a settled state puts it back:
             // a seek runs PLAYING → BUFFERING → PLAYING, so treating BUFFERING as stopped
@@ -441,7 +479,7 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
       readyRef.current = false;
       host.remove();
     };
-  }, [clearStall, watchForStall]);
+  }, [applySpeed, clearStall, watchForStall]);
 
   useEffect(() => {
     /*
