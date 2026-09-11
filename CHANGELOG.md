@@ -10,6 +10,13 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.13.3 — 12 September 2026
+
+### Fixed
+
+- **search** — stop saying Spotify cannot be searched
+- **player** — an instrumental, a cover or a fan video is not a copy of the song
+
 ## 0.13.2 — 12 September 2026
 
 ### Fixed
