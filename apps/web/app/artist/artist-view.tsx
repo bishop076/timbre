@@ -1,18 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ArtistLink } from "../artist-link";
 import { toArtistSlug } from "../artist-slug";
-import Link from "next/link";
 
-import { Artwork } from "../artwork";
 import { Shelf } from "../shelf";
 import { ExternalIcon, NoteIcon, PlayIcon } from "../icons";
 import { AddToQueue } from "../player/add-to-queue";
 import { usePlayerControls } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { TILE } from "../song-card";
 import { SongRow } from "../song-row";
+import { ArtistCard, ReleaseCard } from "../tile-cards";
 import { sourceStyle } from "../sources";
 import { albumAddsSomething } from "./song-subtitle";
 import type { Song } from "../types";
@@ -23,9 +23,6 @@ import { formatDuration } from "../duration";
 // The artist page's surface. Songs are a plain ranked list rather than shelves of albums,
 // because Timbre's sources do not agree on album membership — YouTube Music often has none
 // at all. Playing any row queues the rest behind it.
-
-/** One tile's width, shared by every shelf on the page. */
-const TILE = "w-[7rem] shrink-0 snap-start sm:w-[10.5rem]";
 
 /** Songs shown before the reader asks for the rest. */
 const SONG_LIMIT = 10;
@@ -60,9 +57,16 @@ export function ArtistView({
 }) {
   const { play, current, state } = usePlayerControls();
 
+  // Every song queued from this page says so, which is what lets "Recently played" show this
+  // artist once instead of a run of their songs. Tagged here, the one page that knows.
+  const queueable = useMemo<Song[]>(() => {
+    const from = { kind: "artist" as const, name, imageUrl };
+    return songs.map((song) => ({ ...song, from }));
+  }, [songs, name, imageUrl]);
+
   // Ten, then a button: forty rows pushed the discography below where anyone looked.
   const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? songs : songs.slice(0, SONG_LIMIT);
+  const visible = showAll ? queueable : queueable.slice(0, SONG_LIMIT);
 
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6">
@@ -99,7 +103,7 @@ export function ArtistView({
             {songs.length > 0 && (
               <button
                 type="button"
-                onClick={() => play(songs[0]!, songs)}
+                onClick={() => play(queueable[0]!, queueable)}
                 className="slab-sm press inline-flex items-center gap-2 rounded-[var(--r-full)] px-5 py-2.5 text-sm font-bold text-[var(--accent-fg)]"
                 style={{ background: "var(--accent)" }}
               >
@@ -143,7 +147,7 @@ export function ArtistView({
               <SongRow
                 key={song.id}
                 song={song}
-                onPlay={() => play(song, songs)}
+                onPlay={() => play(song, queueable)}
                 isCurrent={current?.id === song.id}
                 isPlaying={state === "playing"}
                 // The album only when it is not the title again — see `albumAddsSomething`.
@@ -204,24 +208,14 @@ export function ArtistView({
           >
             {group.map((release) => (
               <div key={release.id} className={TILE}>
-                <Link
+                <ReleaseCard
                   href={`/album/${release.id}`}
-                  className="block snap-start rounded-[var(--r-lg)] p-2 transition hover:bg-[var(--surface-2)]"
-                >
-                  <Artwork
-                    src={release.coverUrl}
-                    className="slab aspect-square w-full rounded-[var(--r-md)]"
-                    iconClassName="size-7"
-                  />
-                  <span className="mt-2.5 block truncate text-[13px] font-semibold">
-                    {release.title}
-                  </span>
-                  <span className="block truncate text-xs text-[var(--fg-dim)]">
-                    {[release.year, release.trackCount ? `${release.trackCount} tracks` : null]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </span>
-                </Link>
+                  coverUrl={release.coverUrl}
+                  title={release.title}
+                  subtitle={[release.year, release.trackCount ? `${release.trackCount} tracks` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                />
               </div>
             ))}
           </Shelf>
@@ -231,19 +225,9 @@ export function ArtistView({
       {related.length > 0 && (
         <Shelf title="Similar artists">
           {related.map((artist) => (
-            <div key={artist.name} className="w-28 shrink-0 snap-start">
+            <div key={artist.name} className={TILE}>
               {/* Keyed by name: Timbre's artist route belongs to no single service. */}
-              <Link
-                href={`/artist/${toArtistSlug(artist.name)}`}
-                className="block rounded-[var(--r-lg)] p-2 text-center transition hover:bg-[var(--surface-2)]"
-              >
-                <Artwork
-                  src={artist.imageUrl}
-                  className="slab aspect-square w-full rounded-[var(--r-full)]"
-                  iconClassName="size-6"
-                />
-                <span className="mt-2 block truncate text-[13px] font-semibold">{artist.name}</span>
-              </Link>
+              <ArtistCard href={`/artist/${toArtistSlug(artist.name)}`} name={artist.name} imageUrl={artist.imageUrl} />
             </div>
           ))}
         </Shelf>

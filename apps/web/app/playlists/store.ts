@@ -184,11 +184,17 @@ export function deletePlaylist(id: string): void {
   persist();
 }
 
-/** Appends a song. A repeat is allowed — refusing one is an editorial decision. */
+/**
+ * Appends a song. A repeat is allowed — refusing one is an editorial decision.
+ *
+ * Without `from`: that says which page a queue was started on, and a song saved from an
+ * artist's queue would otherwise count as "played from that artist" every time the playlist
+ * played it, folding the playlist into the artist's tile in "Recently played".
+ */
 export function addSongToPlaylist(id: string, song: Song): void {
   const playlist = all.find((item) => item.id === id);
   if (!playlist) return;
-  playlist.songs = [...playlist.songs, song];
+  playlist.songs = [...playlist.songs, { ...song, from: undefined }];
   touch(playlist);
   persist();
 }

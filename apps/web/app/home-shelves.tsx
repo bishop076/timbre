@@ -2,18 +2,18 @@
 
 import { useEffect, useState } from "react";
 
+import { toArtistSlug } from "./artist-slug";
+import { usePlayerControls } from "./player/player-context";
 import { useHistory, type PlayedSong } from "./player/history-store";
+import { recentItems } from "./recent-items";
 import { Shelf } from "./shelf";
-import { SongCard } from "./song-card";
+import { SongCard, TILE } from "./song-card";
+import { ArtistCard } from "./tile-cards";
 import { TileSkeletons } from "./tile-skeleton";
-import type { Song, SongsResponse } from "./types";
+import type { PlayContext, Song, SongsResponse } from "./types";
 
 // The home page's shelves. Split out of `search-results.tsx` so `/` no longer downloads
 // the search view and `/search` no longer downloads this.
-
-// One tile's width. At 9.5rem a phone showed barely two covers; 7rem fits three with
-// the fourth cut, which is the cue that says "this scrolls" without an arrow.
-const TILE = "w-[7rem] shrink-0 sm:w-[10.5rem]";
 
 /**
  * History is stored flat, so an entry is rebuilt into the least a card and the player need.
@@ -56,6 +56,8 @@ export function songFromHistory(entry: PlayedSong): Song {
     isrc: null,
     artworkUrl: entry.artworkUrl,
     sources: played,
+    // Kept, so a song replayed from history still counts as played from its artist.
+    ...(entry.from ? { from: entry.from } : {}),
   };
 }
 
@@ -92,16 +94,29 @@ function ForYou() {
   // `<html>` is the one thing the first paint can know, and `globals.css` gates on it.
   if (history.length === 0) return <ForYouPending />;
 
-  const recent: Song[] = history.slice(0, 12).map(songFromHistory);
+  // Songs played from an artist's page arrive as that artist — see `recent-items.ts`.
+  const items = recentItems(history, 12);
+  const recentSongs: Song[] = items.flatMap((item) => (item.kind === "song" ? [songFromHistory(item.entry)] : []));
+  const first = items[0];
 
   return (
     <>
-      <Shelf title="Recently played" caption="Only on this device" resetKey={recent[0]?.id}>
-        {recent.map((song) => (
-          <div key={song.id} className={TILE}>
-            <SongCard song={song} queue={recent} />
-          </div>
-        ))}
+      <Shelf
+        title="Recently played"
+        caption="Only on this device"
+        resetKey={first ? (first.kind === "song" ? first.entry.id : `artist:${first.artist.name}`) : undefined}
+      >
+        {items.map((item) =>
+          item.kind === "song" ? (
+            <div key={item.entry.id} className={TILE}>
+              <SongCard song={songFromHistory(item.entry)} queue={recentSongs} />
+            </div>
+          ) : (
+            <div key={`artist:${item.artist.name}`} className={TILE}>
+              <RecentArtist artist={item.artist} entries={item.entries} />
+            </div>
+          ),
+        )}
       </Shelf>
 
       {radio.length > 0 && seed && (
@@ -114,6 +129,29 @@ function ForYou() {
         </Shelf>
       )}
     </>
+  );
+}
+
+/**
+ * An artist you played from their page: their picture, a link back to them, and a play button
+ * for the songs of theirs you played there — newest first, still tagged with them, so playing
+ * them again keeps the tile where it is rather than scattering it into songs.
+ */
+function RecentArtist({ artist, entries }: { artist: PlayContext; entries: PlayedSong[] }) {
+  const { play, current, state } = usePlayerControls();
+  const songs = entries.map(songFromHistory);
+  const playing =
+    state === "playing" && current?.from?.kind === "artist" && current.from.name.toLowerCase() === artist.name.toLowerCase();
+
+  return (
+    <ArtistCard
+      href={`/artist/${toArtistSlug(artist.name)}`}
+      name={artist.name}
+      imageUrl={artist.imageUrl}
+      subtitle={entries.length === 1 ? "Artist · 1 song" : `Artist · ${entries.length} songs`}
+      onPlay={() => songs[0] && play(songs[0], songs)}
+      playing={playing}
+    />
   );
 }
 

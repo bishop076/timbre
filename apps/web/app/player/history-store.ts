@@ -10,6 +10,7 @@
  */
 
 import { createLocalStore, useLocalStore } from "../local-store.ts";
+import type { PlayContext } from "../types";
 
 export interface PlayedSong {
   id: string;
@@ -32,6 +33,9 @@ export interface PlayedSong {
   /** Needed by the sources whose player takes a link rather than an id — SoundCloud's
    * widget wants a permalink, not a track number. */
   url?: string | null;
+  /** The page it was played from — an artist's — when it was one. Absent for everything
+   * else, and for every row written before this existed. */
+  from?: PlayContext;
 }
 
 const HISTORY_KEY = "timbre:history";
