@@ -23,6 +23,10 @@ gate, and [BUGS.md](BUGS.md), which records ours.*
 > `4get.nadeko.net/api/v1/web?s=…`. Verified here: 10 results, first Spotify id
 > `1qPbGZqppFwLwcBC1JQ6Vr`. That id has now been produced by three independent
 > methods, which is the strongest signal in this document.
+>
+> **2026-09-11: Spotify is searchable now, for everyone — see R10.** The server reads the
+> anonymous token every embed page carries and searches Spotify's own GraphQL gateway with
+> it. R6 is still right that a *browser* cannot do this; the server can.
 
 ---
 
@@ -212,6 +216,31 @@ Both **cost an install**, which is the line the product is drawn on: Timbre is a
 Kept here because they are the only routes that reach 100%, not because they are recommended.
 
 ---
+
+### R10 · The embed page's own anonymous token, from the server — SHIPPED, Spotify
+
+Every `open.spotify.com/embed/track/{id}` page carries a short-lived anonymous bearer
+token in its `__NEXT_DATA__` (`props.pageProps.state.settings.session.accessToken`), there
+so the embed can call Spotify's GraphQL gateway, `api-partner.spotify.com/pathfinder/v1/query`.
+Timbre's server fetches the page, reads the token, and runs the same persisted queries the
+web player does: `searchDesktop`, `getAlbum`, `fetchPlaylist`. Measured 2026-09-11: search
+answers tracks, albums, artists and playlists; tokens arrive with anything from 8 to 55
+minutes left, handed out from a pool rather than cached.
+
+**Why this and not R6.** R6 mints tokens from a TOTP secret lifted out of Spotify's
+JavaScript. Spotify rotates the secret, and has sent a cease-and-desist over a repository that
+published it. Nothing here is minted or lifted — the embed page gives the token to anyone who
+loads it. The design and the operation hashes are ported from
+[SpotifyScraper](https://github.com/AliAkhtari78/SpotifyScraper) (MIT), whose daily live
+canary is the early warning for this surface; `wolfXspotify-API` and its original,
+`Casper-Tech-ke/sportify-api`, do the same job through the TOTP route with obfuscated source.
+
+**What it costs.** It is Spotify's private surface and it will break: the hashes rotate
+(`PersistedQueryNotFound` is reported by name rather than read as "no results"), and every
+search leaves by the deployment's one address. So the account route (R3) stays as the
+fallback, and the results stay in their own section with `manual` playback, exactly as a
+connected account's did. Implementation: `packages/providers/src/spotify-web.ts`,
+`/api/spotify/search`, and pasted album and playlist links opening as collections.
 
 ## Part 4 — What to do
 
