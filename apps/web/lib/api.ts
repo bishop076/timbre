@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createCache } from "./cache";
+import { log, scrub } from "./log";
 import { clientKey, createRateLimiter } from "./rate-limit";
 
 /**
@@ -78,7 +79,7 @@ function inboundLimiter() {
  * carries `Retry-After` because a client that does not know when to come back comes back
  * immediately, turning a throttle into the hot loop it was meant to stop. */
 export function guard(request: Request): Response | null {
-  return meter(request, inboundLimiter());
+  return meter(request, "api", inboundLimiter());
 }
 
 /** The same, on artwork's own budget. Kept apart so a burst of covers cannot spend the
@@ -86,6 +87,7 @@ export function guard(request: Request): Response | null {
 export function guardArtwork(request: Request): Response | null {
   return meter(
     request,
+    "artwork",
     (globalForApi.__timbreArtworkLimiter ??= createRateLimiter({
       limit: ARTWORK_RATE_LIMIT,
       windowMs: RATE_WINDOW_MS,
@@ -97,6 +99,7 @@ export function guardArtwork(request: Request): Response | null {
 export function guardHealth(request: Request): Response | null {
   return meter(
     request,
+    "health",
     (globalForApi.__timbreHealthLimiter ??= createRateLimiter({
       limit: HEALTH_RATE_LIMIT,
       windowMs: RATE_WINDOW_MS,
@@ -104,9 +107,24 @@ export function guardHealth(request: Request): Response | null {
   );
 }
 
-function meter(request: Request, limiter: ReturnType<typeof createRateLimiter>): Response | null {
+function meter(
+  request: Request,
+  budget: "api" | "artwork" | "health",
+  limiter: ReturnType<typeof createRateLimiter>,
+): Response | null {
   const verdict = limiter.check(clientKey(request));
   if (verdict.ok) return null;
+
+  // Once per client per window, and without the client: the question a log can answer is
+  // whether a limit is biting and where, and the address is who — which it has no need of.
+  // The pathname only, as every route under `/api` takes its input in the query string.
+  if (verdict.first) {
+    log("warn", "rate_limited", {
+      route: new URL(request.url).pathname,
+      budget,
+      retryAfterSeconds: verdict.retryAfterSeconds,
+    });
+  }
 
   return Response.json(
     { error: "Too many requests. Slow down and try again shortly." },
@@ -118,6 +136,22 @@ function meter(request: Request, limiter: ReturnType<typeof createRateLimiter>):
       },
     },
   );
+}
+
+/**
+ * Logs the sources a fan-out could not reach. They already travel to the reader as
+ * `failures`, which is what the UI's "Deezer is down" is built from — but that tells one
+ * reader, once, and this is the only record that a source has been failing for everyone
+ * all afternoon. Call it inside `cached()`, so a failure is one line however many readers
+ * shared the answer.
+ */
+export function reportFailures(
+  route: string,
+  failures: readonly { source: string; message: string }[],
+): void {
+  for (const failure of failures) {
+    log("warn", "upstream_failed", { route, source: failure.source, message: scrub(failure.message) });
+  }
 }
 
 /** Runs `produce` unless an identical call is cached or already in flight. One store serves
