@@ -3,7 +3,8 @@ import { test } from "node:test";
 
 import { MemoryBucketStore, RateLimiter } from "@timbre/core";
 
-import { interleaveByPlayability, recommendFrom, registerProvider } from "./registry.ts";
+import { createAppleProvider } from "./apple.ts";
+import { interleaveByPlayability, recommendFrom, registerProvider, searchAll } from "./registry.ts";
 import type { Playback, SourceId } from "./types.ts";
 
 function answer(id: SourceId, playback: Playback, count: number) {
@@ -78,4 +79,25 @@ test("a radio source that fails is reported to the caller's hook, and an abort i
   reported.length = 0;
   await recommendFrom({ limiter, report, signal: controller.signal }, { artist: "Fred again.." }, 5);
   assert.deepEqual(reported, []);
+});
+
+test("a burst that saturates one source fails that source alone, and the next search still returns on time", async () => {
+  registerProvider(createAppleProvider());
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => Response.json({ results: [] })) as typeof fetch;
+  const controller = new AbortController();
+  const ctx = { limiter: new RateLimiter(new MemoryBucketStore()), signal: controller.signal };
+  try {
+    const burst = Array.from({ length: 12 }, (_, index) => searchAll(ctx, `q${index}`, 5));
+    const started = performance.now();
+    const next = await searchAll(ctx, "a real reader", 5);
+    assert.ok(performance.now() - started < 1_000, "the next search waited out the queue");
+    assert.deepEqual(next.failures, [
+      { source: "apple", message: "Apple Music has no free request slot within 6s." },
+    ]);
+    controller.abort();
+    await Promise.all(burst);
+  } finally {
+    globalThis.fetch = original;
+  }
 });

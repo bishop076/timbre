@@ -12,6 +12,7 @@ import { ArtistView } from "../artist-view";
 import { creditNames } from "../credits";
 
 export const revalidate = 3600;
+export const dynamic = "force-static";
 
 type Props = { params: Promise<{ name: string }> };
 
@@ -24,15 +25,22 @@ export default async function ArtistPage({ params }: Props) {
   if (!name.trim()) notFound();
 
   const { limiter } = getProviderRuntime();
-  const [artist, results] = await Promise.all([
-    findArtist(name).catch(() => null),
-    searchAll({ limiter }, name, 40).catch(() => ({ tracks: [], failures: [] })),
+  const [found, searched] = await Promise.allSettled([
+    findArtist(name),
+    searchAll({ limiter }, name, 40),
   ]);
+  const artist = found.status === "fulfilled" ? found.value : null;
+  const results = searched.status === "fulfilled" ? searched.value : { tracks: [], failures: [] };
 
   const none = { releases: [], related: [] };
   const { releases, related } = artist ? await fetchDiscography(artist.url).catch(() => none) : none;
 
   const songs = mergeTracks(results.tracks);
+  const failed =
+    found.status === "rejected" || searched.status === "rejected" || results.failures.length > 0;
+  if (!artist && songs.length === 0 && failed) {
+    throw new Error("No source answered for this artist.");
+  }
   const theirs = songs.filter((song) =>
     song.artists.some((credited) => creditNames(name, credited)),
   );

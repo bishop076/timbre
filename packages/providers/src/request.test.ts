@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 
-import { ProviderError, type RateLimiter } from "@timbre/core";
+import { DEFAULT_POLICIES, MemoryBucketStore, ProviderError, RateLimiter } from "@timbre/core";
 
 import { createRequester, deadlineSignal, type RequesterOptions } from "./request.ts";
 import type { SearchContext } from "./types.ts";
@@ -20,14 +20,14 @@ function stubContext(signal?: AbortSignal): { ctx: SearchContext; acquired: stri
 }
 
 async function withFetch(
-  stub: () => Promise<Response>,
+  stub: (init?: RequestInit) => Promise<Response>,
   body: (calls: { target: string | URL; init?: RequestInit }[]) => Promise<void>,
 ): Promise<void> {
   const calls: { target: string | URL; init?: RequestInit }[] = [];
   const original = globalThis.fetch;
   globalThis.fetch = (async (target: string | URL, init?: RequestInit) => {
     calls.push({ target, init });
-    return stub();
+    return stub(init);
   }) as typeof fetch;
   try {
     await body(calls);
@@ -181,5 +181,51 @@ test("a caller that has already aborted spends no token and makes no request", (
       await assert.rejects(requester()(ctx, CHART), isAbortError);
       assert.deepEqual(acquired, [], "no token may be spent");
       assert.equal(calls.length, 0);
+    },
+  ));
+
+const drained = async (limiter: RateLimiter) => {
+  for (let i = 0; i < DEFAULT_POLICIES.deezer.capacity; i++) await requester()({ limiter }, CHART);
+};
+
+test("a source whose next slot is past its deadline is refused at once as rate-limited, not queued", () =>
+  withFetch(
+    async () => json({}),
+    async (calls) => {
+      const limiter = new RateLimiter(new MemoryBucketStore());
+      await drained(limiter);
+      await assert.rejects(requester({ deadlineMs: 20 })({ limiter }, CHART), {
+        kind: "rate_limited",
+        provider: "deezer",
+        message: "Deezer has no free request slot within 0.02s.",
+      });
+      assert.equal(calls.length, DEFAULT_POLICIES.deezer.capacity, "a refused request must not go out");
+    },
+  ));
+
+test("the wait for a slot counts against the deadline", () =>
+  withFetch(
+    (init) => (init?.signal?.aborted ? Promise.reject(init.signal.reason) : Promise.resolve(json({}))),
+    async () => {
+      const limiter = { acquire: () => sleep(40) } as unknown as RateLimiter;
+      await assert.rejects(requester({ deadlineMs: 20 })({ limiter }, CHART), {
+        kind: "transient",
+        message: "Deezer did not answer within 0.02s.",
+      });
+    },
+  ));
+
+test("a caller that aborts while waiting for a slot leaves at once, without a request", () =>
+  withFetch(
+    async () => json({}),
+    async (calls) => {
+      const limiter = new RateLimiter(new MemoryBucketStore());
+      await drained(limiter);
+      const controller = new AbortController();
+      const waiting = requester()({ limiter, signal: controller.signal }, CHART);
+      await sleep(5);
+      controller.abort();
+      await assert.rejects(waiting, isAbortError);
+      assert.equal(calls.length, DEFAULT_POLICIES.deezer.capacity);
     },
   ));
