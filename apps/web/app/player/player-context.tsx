@@ -30,6 +30,7 @@ import { takeTrackEndStop } from "./sleep-timer.ts";
 import { plausiblySameSong, sameTrack } from "./song-match";
 import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
+import { useTabSync } from "./use-tab-sync";
 import {
   getVolumeServerSnapshot,
   getVolumeSnapshot,
@@ -1704,6 +1705,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const registerSeek = useCallback((fn: ((seconds: number) => void) | null) => {
     seekRef.current = fn;
   }, []);
+
+  // Other Timbre tabs: one of them is audible, and an empty one shows and steers it. All of
+  // it lives in `tab-sync.ts`; this only lends it the queue and the controls.
+  useTabSync({
+    queue,
+    index,
+    current,
+    state,
+    hasNext,
+    activeSource,
+    playingPreview,
+    progress: () => progressSnapshot,
+    play,
+    toggle,
+    next,
+    previous,
+    seek,
+  });
 
   // No memo: with the tick in its own store this component re-renders only when one of these
   // changed. The callbacks are still individually memoised, so their identities are unchanged.
