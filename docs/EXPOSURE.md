@@ -361,8 +361,8 @@ distinguishes a caller still on the old one.
 
 **Severity:** low as written; high if the secret ever leaks.
 
-**`read`.** `apps/ytmusic/app/main.py:44-55` attaches `require_shared_secret` to
-both routers, and there is nothing behind it — no rate limit, no per-caller
+**`read`.** `RequireSharedSecret` in `apps/ytmusic/app/security.py` guards every route
+but `/health`, before any body is read, and there is nothing behind it — no rate limit, no per-caller
 accounting, no logging of repeated failures. Anyone holding the secret has the
 access the web app has, indefinitely and silently.
 

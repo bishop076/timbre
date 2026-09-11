@@ -4,15 +4,17 @@ from typing import Any
 from .models import Track
 
 
+def _area(thumbnail: dict) -> int:
+    width, height = thumbnail.get("width"), thumbnail.get("height")
+    return width * height if isinstance(width, int) and isinstance(height, int) else 0
+
+
 def _largest_thumbnail(raw: Any) -> str | None:
     thumbnails = raw.get("thumbnails")
     if not isinstance(thumbnails, list):
         return None
-    best = max(
-        (t for t in thumbnails if isinstance(t, dict) and t.get("url")),
-        key=lambda t: (t.get("width") or 0) * (t.get("height") or 0),
-        default=None,
-    )
+    usable = (t for t in thumbnails if isinstance(t, dict) and isinstance(t.get("url"), str))
+    best = max((t for t in usable if t["url"]), key=_area, default=None)
     return best["url"] if best else None
 
 
@@ -41,7 +43,7 @@ def _duration_seconds(raw: Any) -> int | None:
     if not isinstance(display, str):
         return None
     parts = display.strip().split(":")
-    if not all(part.isdigit() for part in parts) or not 2 <= len(parts) <= 3:
+    if not all(part.isdecimal() for part in parts) or not 2 <= len(parts) <= 3:
         return None
     return sum(int(part) * 60**power for power, part in enumerate(reversed(parts))) or None
 

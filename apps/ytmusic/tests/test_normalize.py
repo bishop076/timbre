@@ -57,6 +57,7 @@ def test_drops_results_that_cannot_be_played_or_matched(raw: object) -> None:
         ("", None),
         ("not:a:time", None),
         ("4:19:22:11", None),
+        ("4:1²", None),
     ],
 )
 def test_falls_back_to_the_display_duration(display: str | None, seconds: int | None) -> None:
@@ -72,6 +73,17 @@ def test_survives_every_optional_field_disappearing() -> None:
     assert track.album is None
     assert track.duration_seconds is None
     assert track.thumbnail_url is None
+
+
+def test_odd_thumbnail_fields_degrade_rather_than_fail() -> None:
+    thumbnails = [
+        {"url": "https://odd.example/x.jpg", "width": "wide", "height": 544},
+        {"url": ["https://list.example/x.jpg"], "width": 999, "height": 999},
+        {"url": "https://small.example/x.jpg", "width": 60, "height": 60},
+    ]
+    track = to_track({**SONG, "thumbnails": thumbnails})
+    assert track is not None
+    assert track.thumbnail_url == "https://small.example/x.jpg"
 
 
 def test_filters_separators_out_of_artist_lists() -> None:
