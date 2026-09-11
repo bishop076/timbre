@@ -5,7 +5,7 @@ import { MemoryBucketStore, RateLimiter } from "@timbre/core";
 
 import { createSpotifyProvider, findSpotifyTrackId } from "./spotify.ts";
 
-const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
+const context = () => ({ limiter: new RateLimiter(new MemoryBucketStore()) });
 const TRACK_ID = "0DiWol3AO6WpXZgp0goxAV";
 
 async function withRoutes(routes: Record<string, unknown>, run: (calls: string[]) => Promise<void>): Promise<void> {
@@ -16,7 +16,9 @@ async function withRoutes(routes: Record<string, unknown>, run: (calls: string[]
     calls.push(url);
     const hit = Object.keys(routes).find((match) => url.includes(match));
     if (!hit) return new Response("{}", { status: 404 });
-    const body = routes[hit];
+    const route = routes[hit];
+    const body = typeof route === "function" ? route() : route;
+    if (typeof body === "number") return new Response(null, { status: body });
     return typeof body === "string" ? new Response(body) : Response.json(body);
   }) as typeof fetch;
   try {
@@ -64,22 +66,40 @@ const lookupCases: [string, Record<string, unknown>, Parameters<typeof findSpoti
     null,
     ["/isrc/ZZAAA0000001"],
   ],
+  ["a MusicBrainz 404 means not there, and is not asked again", {}, { title: "Unknown", isrc: "ZZAAA0000002" }, null, ["/isrc/ZZAAA0000002"]],
+  [
+    "a MusicBrainz still busy on the second ask is an abstention, not a third ask",
+    { "/isrc/": 503 },
+    { title: "Busy", isrc: "GBAAA0000002" },
+    null,
+    ["/isrc/GBAAA0000002", "/isrc/GBAAA0000002"],
+  ],
   ["with neither an album nor an ISRC there is nothing to ask", {}, { title: "Just a title" }, null, []],
 ];
 
 for (const [name, routes, lookup, expected, asked] of lookupCases) {
   test(name, () =>
     withRoutes(routes, async (calls) => {
-      assert.equal(await findSpotifyTrackId(ctx, lookup), expected);
+      assert.equal(await findSpotifyTrackId(context(), lookup), expected);
       assert.equal(calls.length, asked.length);
       asked.forEach((part, index) => assert.ok(calls[index]?.includes(part), `${calls[index]} should carry ${part}`));
     }),
   );
 }
 
+test("a busy MusicBrainz is asked once more, no sooner than its next one-second turn", () => {
+  const askedAt: number[] = [];
+  const linked = { recordings: [{ id: "mbid-3", relations: [{ url: { resource: `https://open.spotify.com/track/${TRACK_ID}` } }] }] };
+  return withRoutes({ "/isrc/": () => (askedAt.push(Date.now()) === 1 ? 503 : linked) }, async () => {
+    assert.equal(await findSpotifyTrackId(context(), { title: "Busy", isrc: "GBAAA0000003" }), TRACK_ID);
+    assert.equal(askedAt.length, 2);
+    assert.ok(askedAt[1]! - askedAt[0]! >= 1_000, "MusicBrainz asks for one request a second");
+  });
+});
+
 const trackEmbed = (entity: unknown) =>
   `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { state: { data: { entity } } } } })}</script>`;
-const resolve = (url: string) => createSpotifyProvider().resolve!(ctx, url);
+const resolve = (url: string) => createSpotifyProvider().resolve!(context(), url);
 
 test("a pasted track takes its artist, length and largest cover from the embed page", () =>
   withRoutes(

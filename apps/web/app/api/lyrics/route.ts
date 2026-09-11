@@ -5,8 +5,6 @@ import { CACHE_CONTROL_DAY, json, queryRoute } from "@/lib/api";
 import { optionalQueryText, queryFlag, queryText } from "@/lib/query-text";
 import { createBackoff, isBackoffSignal, type Backoff } from "@/lib/upstream-backoff";
 
-export const revalidate = 86_400;
-
 const globalForLyrics = globalThis as unknown as { __timbreLrclibBackoff?: Backoff };
 
 function lrclibBackoff(): Backoff {

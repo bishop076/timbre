@@ -6,6 +6,7 @@ import { spotifyEmbedState, spotifySourceTrack } from "./spotify-web.ts";
 
 const TRACK_PATH = /^(?:\/intl-[a-z]{2,5})?(?:\/embed)?\/track\/([A-Za-z0-9]{22})\/?$/;
 const SPOTIFY_TRACK_URL = /open\.spotify\.com\/track\/([A-Za-z0-9]+)/;
+const MUSICBRAINZ_POLICY = { capacity: 1, refillPerSecond: 1000 / 1_100 };
 
 interface SpotifyEntity {
   title?: string;
@@ -26,10 +27,15 @@ async function quietly<T>(
   read: (response: Response) => Promise<T>,
   headers?: HeadersInit,
 ): Promise<T | null> {
+  const musicBrainz = url.startsWith("https://musicbrainz.org/");
   try {
-    await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
-    const response = await fetch(url, { signal: deadlineSignal(ctx.signal), cache: "no-store", headers });
-    return response.ok ? await read(response) : null;
+    for (let attempt = 0; ; attempt++) {
+      if (musicBrainz) await ctx.limiter.acquire("musicbrainz", MUSICBRAINZ_POLICY);
+      await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+      const response = await fetch(url, { signal: deadlineSignal(ctx.signal), cache: "no-store", headers });
+      if (response.ok) return await read(response);
+      if (!musicBrainz || attempt > 0 || response.status !== 503) return null;
+    }
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
     return null;

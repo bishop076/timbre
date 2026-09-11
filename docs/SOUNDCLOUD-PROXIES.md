@@ -140,7 +140,8 @@ maid.zone instance now costs about one result in six, with no error and nothing 
 That failure is invisible by construction — a degraded credential answers `200`, so nothing
 retries and nothing warns. The cheap detection is one request per credential: ask api-v2 for
 a known `AD_SUPPORTED` track and look at `policy`; `SNIP` means the credential is the
-degraded kind. Not built yet.
+degraded kind. Not built yet, and not buildable as stated: on 2026-09-11 a fresh direct id
+from a Japanese VPN exit got `SNIP` on the same track, so the egress can gate it too.
 
 ## If you are serverless and free, run neither
 

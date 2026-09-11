@@ -221,9 +221,10 @@ as `○ … 1h` rather than dynamic. Getting there meant the handler taking no
 caller to meter and no connection to abort. Reading `request.signal` off the
 build-time stub failed the build outright, which is how this was caught.
 
-**Still open** for `/api/radio`, `/api/artist` and `/api/lyrics`. Those genuinely
-read their query strings, so they cannot be static; they keep `s-maxage` and the
-inert `revalidate` should simply be removed from them.
+**Removed 2026-09-11** from `/api/radio`, `/api/artist` and `/api/lyrics`. They
+read their query strings, so they stay dynamic and keep `s-maxage`; Next 16 only
+reads a segment `revalidate` while prerendering, which these routes never are, so
+no caching changed.
 
 ---
 
@@ -611,8 +612,8 @@ from a Vercel address. What is left, ordered by consequence over effort:
    a bound. The rate limit stops the bleeding; this closes it.
 4. **E-12** — log the sidecar's 401s, so a brute-force attempt stops looking
    exactly like a misconfigured deploy.
-5. **E-6** — drop the inert `revalidate` from the three routes that cannot be
-   static, so nothing advertises a cache it does not have.
+5. **E-6** — done: the inert `revalidate` is gone from the three routes that
+   cannot be static, so nothing advertises a cache it does not have.
 6. **E-3 / E-4** — measure before acting. Log upstream status codes for a week;
    if Apple is not 403ing, the per-instance limiters are a trade worth keeping,
    and shared state is the thing this project is built to avoid.
