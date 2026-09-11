@@ -1,0 +1,86 @@
+# Checks the no-account Spotify search, albums, playlists and their self-repair against the
+# live service every day, and says so in an issue when anything needs a person.
+#
+# Spotify's own surface, not ours, is what moves here: the persisted-query hashes rotate and
+# the payloads drift on days nothing in this repository changed, so push-triggered CI cannot
+# see it. The report names the fix — usually a hash to paste into spotify-web.ts.
+#
+# One issue at a time, labelled `spotify-breakage`: a failure comments on the open one rather
+# than opening another every morning, and the first passing run closes it.
+#
+# Run it by hand from the Actions tab; tick "drill" to blank the search hash on purpose and
+# watch the whole alarm — self-repair, failing report, issue — work on a day nothing is broken.
+
+name: Spotify canary
+
+on:
+  schedule:
+    # Daily, off the hour: on-the-hour schedules are the ones GitHub delays when it is busy.
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+    inputs:
+      drill:
+        description: "Blank the search hash on purpose, to prove the alarm works"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spotify-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: Live Spotify checks
+    runs-on: ubuntu-latest
+    # About ten seconds of network. Anything near this limit is Spotify hanging, which the
+    # per-request deadlines should already have turned into a failure.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check Spotify
+        run: node scripts/spotify-canary.mts --report "$RUNNER_TEMP/spotify-canary.md" ${{ inputs.drill && '--drill' || '' }}
+
+      - name: Open or update the breakage issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          report="$RUNNER_TEMP/spotify-canary.md"
+          # A crash before the report was written still deserves an issue that says so.
+          [ -f "$report" ] || echo "The canary failed before it could write a report." > "$report"
+          printf '\n[Run log](%s)\n' "$RUN_URL" >> "$report"
+
+          gh label create spotify-breakage --color B60205 \
+            --description "The no-account Spotify path needs attention" 2>/dev/null || true
+
+          open=$(gh issue list --label spotify-breakage --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file "$report"
+          else
+            gh issue create --label spotify-breakage \
+              --title "Spotify canary: the no-account Spotify path needs attention" \
+              --body-file "$report"
+          fi
+
+      - name: Close the breakage issue once it passes again
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          for number in $(gh issue list --label spotify-breakage --state open --json number --jq '.[].number'); do
+            gh issue close "$number" --comment "Passing again: $RUN_URL"
+          done
