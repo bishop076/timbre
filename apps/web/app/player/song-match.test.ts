@@ -18,8 +18,6 @@ function song(title: string, artist = "", durationMs: number | null = null): Son
 }
 
 test("a search result that shares nothing with the song is refused", () => {
-  // The reported failure: a Mixcloud show would not play, its title went to YouTube Music,
-  // and the top result was played as though it were the song.
   const seed = song("I'm laughing, but I just might cry", "Jenny Macke Open Floor");
 
   assert.equal(plausiblySameSong(seed, song("Best Kittycat Song [OFFICIAL]", "Herr Fuchs")), false);
@@ -28,8 +26,6 @@ test("a search result that shares nothing with the song is refused", () => {
 });
 
 test("another upload of the same song still passes, which is the point", () => {
-  // Rejecting these would break the fall-through this guard exists to serve — every one is
-  // the same recording under a different upload's title.
   assert.equal(plausiblySameSong(song("Wonderwall"), song("Wonderwall - Remastered", "Oasis")), true);
   assert.equal(
     plausiblySameSong(song("As It Was (Official Video)"), song("As It Was", "Harry Styles")),
@@ -42,20 +38,15 @@ test("another upload of the same song still passes, which is the point", () => {
 });
 
 test("a one-word title needs the word, not two of them", () => {
-  // `Math.max(2, …)` would refuse every single-word title without the `hits === wanted.length`
-  // arm — and single-word titles are ordinary.
   assert.equal(plausiblySameSong(song("Redbone"), song("Redbone", "Childish Gambino")), true);
   assert.equal(plausiblySameSong(song("Redbone"), song("Alright", "Kendrick Lamar")), false);
 });
 
 test("a song with no title to compare is allowed through", () => {
-  // Refusing here would make an empty title unplayable rather than merely unverifiable.
   assert.equal(plausiblySameSong(song(""), song("Anything At All", "Someone")), true);
 });
 
 test("ordinary words shared with a stranger are not enough", () => {
-  // Reported: playing Lé Real's "This Was Your Song" started a children's song. It cleared
-  // the word test on *your* and *song* alone, which is exactly two hits — the threshold.
   assert.equal(
     plausiblySameSong(
       song("This Was Your Song", "Lé Real", 88_000),
@@ -64,7 +55,6 @@ test("ordinary words shared with a stranger are not enough", () => {
     false,
   );
 
-  // Same report, same cause: three hits on *because*, *of* and *you*.
   assert.equal(
     plausiblySameSong(
       song("Just Because of You (feat. Henneysee)", "Lé Real", 198_000),
@@ -75,8 +65,6 @@ test("ordinary words shared with a stranger are not enough", () => {
 });
 
 test("the artist's own upload still matches", () => {
-  // What the fall-through exists for, and what the artist test must not break: the same
-  // recording, uploaded under a title that names the artist.
   assert.equal(
     plausiblySameSong(
       song("2AM IN BOSTON", "Lé Real", 202_000),
@@ -87,7 +75,6 @@ test("the artist's own upload still matches", () => {
 });
 
 test("a label channel counts as the artist when the title credits them", () => {
-  // YouTube credits a channel, not a person, so the artist is looked for in the title too.
   assert.equal(
     plausiblySameSong(
       song("As It Was", "Harry Styles"),
@@ -98,7 +85,6 @@ test("a label channel counts as the artist when the title credits them", () => {
 });
 
 test("the same artist's different song is refused on length", () => {
-  // Shares *love* and *song*, by the same artist, and is nowhere near the same recording.
   assert.equal(
     plausiblySameSong(
       song("Another Love Song for Nobody", "Lé Real", 159_000),
@@ -109,8 +95,6 @@ test("the same artist's different song is refused on length", () => {
 });
 
 test("a decorated title and its plain one are one recording, either way round", () => {
-  // The reported bug: Related listed "Pandemonium (Visualizer Video)" while the queue held
-  // the same recording, so the panel showed the reader what was already coming.
   const upload = song("Pandemonium (Visualizer Video)", "NIKI");
   const plain = song("Pandemonium", "NIKI");
 
@@ -119,8 +103,6 @@ test("a decorated title and its plain one are one recording, either way round", 
 });
 
 test("two songs sharing only their decoration are not the same recording", () => {
-  // Both were in one NIKI radio, and the word test in `plausiblySameSong` matched them on
-  // *acoustic* and *version*, dropping a real suggestion. The base titles do not agree.
   const a = song("Strange Land (Acoustic Version)", "NIKI");
   const b = song("La La Lost You (Acoustic Version)", "NIKI");
 
@@ -130,7 +112,6 @@ test("two songs sharing only their decoration are not the same recording", () =>
 
 test("one artist's two songs are kept apart, and two artists' one title is too", () => {
   assert.equal(sameRecording(song("lowkey", "NIKI"), song("La La Lost You", "NIKI")), false);
-  // Distinct ids, as two different recordings really have — `song()` reuses the title.
   assert.equal(
     sameRecording(
       { ...song("Take Care", "NIKI"), id: "niki-take-care" },
@@ -141,8 +122,6 @@ test("one artist's two songs are kept apart, and two artists' one title is too",
 });
 
 test("a guest credit named on only one side still matches", () => {
-  // Catalogues disagree about whether a feature belongs in the title, the artist list, or
-  // neither, and the merge that produced these two lists is not guaranteed to agree either.
   assert.equal(
     sameRecording(song("Plans (feat. Vory)", "88rising"), song("Plans", "88rising")),
     true,
@@ -154,13 +133,7 @@ test("the same entry twice is caught on its id without parsing anything", () => 
   assert.equal(sameRecording(a, { ...a, title: "totally different" }), true);
 });
 
-// `sameTrack` is the queue's duplicate test. It exists because a song's id is not stable
-// across fetches — `merge.ts` builds it from the source that will play the song when there is
-// no ISRC — so the same recording reached the queue twice under two ids and played twice.
-
 test("the same recording under two ids is one queue entry", () => {
-  // What two radio fetches actually return: one merge ranked the official video first, the
-  // other an upload, so the ids differ while the song does not.
   const first = { ...song("Levitating", "Dua Lipa"), id: "levitating||dua lipa#ytmusic:aaa" };
   const second = { ...song("Levitating", "Dua Lipa"), id: "levitating||dua lipa#ytmusic:bbb" };
 
@@ -173,7 +146,6 @@ test("a feature credited one way and not the other is still one queue entry", ()
 });
 
 test("two different songs sharing a title are not one queue entry", () => {
-  // Distinct ids, or the shortcut at the top settles it before the names are ever compared.
   const niki = { ...song("Take Care", "NIKI"), id: "take care||niki#ytmusic:aaa" };
   const drake = { ...song("Take Care", "Drake"), id: "take care||drake#ytmusic:bbb" };
 
@@ -181,9 +153,6 @@ test("two different songs sharing a title are not one queue entry", () => {
 });
 
 test("a variant is a queue entry of its own, unlike a suggestion", () => {
-  // The one place `sameTrack` and `sameRecording` part company. Queueing the studio cut and
-  // the live take is a thing people do deliberately, and refusing the second looks broken;
-  // *suggesting* the live take of something already queued is just weak, so that one folds.
   const studio = song("Wonderwall", "Oasis");
   const live = song("Wonderwall (Live)", "Oasis");
 

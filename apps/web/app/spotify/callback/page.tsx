@@ -5,10 +5,6 @@ import { useEffect, useState } from "react";
 
 import { completeConnect } from "../connection.ts";
 
-// The exchange is single-use twice over: the verifier is removed from storage as it is
-// read, and Spotify spends the code. React runs an effect twice under StrictMode, so the
-// second run found an empty storage and reported "started in a different tab" over a
-// connection the first run had just saved. One exchange per code, shared by every run.
 const exchanges = new Map<string, Promise<string | null>>();
 
 function exchangeOnce(search: string): Promise<string | null> {
@@ -20,14 +16,6 @@ function exchangeOnce(search: string): Promise<string | null> {
   return pending;
 }
 
-/**
- * Where Spotify sends the reader back to.
- *
- * A page rather than a route handler because the exchange happens in the browser: the
- * verifier is in this tab's `sessionStorage` and the token must never reach the server.
- * Nothing is rendered from the query string, so the code and state cannot be echoed back
- * into the document.
- */
 export default function SpotifyCallback() {
   const [state, setState] = useState<{ done: boolean; error: string | null }>({
     done: false,
@@ -36,13 +24,9 @@ export default function SpotifyCallback() {
 
   useEffect(() => {
     let cancelled = false;
-    // Read from `location` rather than `useSearchParams`, which would force this route to
-    // opt out of static rendering for a value only the browser ever has.
     void exchangeOnce(window.location.search).then((error) => {
       if (cancelled) return;
       setState({ done: true, error });
-      // Drop the code from the address bar either way: it is single-use and spent, and it
-      // has no business surviving in history or in a shared URL.
       window.history.replaceState(null, "", "/spotify/callback");
     });
     return () => {

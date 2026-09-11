@@ -5,15 +5,8 @@ import { useRef, useState, type ReactNode } from "react";
 
 import { getPlaybackPrefs } from "./playback-prefs";
 
-// Fetched when their tab is first opened: a static import would bundle both, and this
-// panel is in the root shell, so that cost lands on every route. The default tab is
-// `queue`, passed in, so the common case downloads neither.
 const LyricsPanel = dynamic(() => import("./lyrics-panel").then((m) => m.LyricsPanel));
 const RelatedPanel = dynamic(() => import("./related-panel").then((m) => m.RelatedPanel));
-
-// The expanded player's right-hand column: three tabs over one pane. No Comments tab,
-// unlike YouTube Music — comments belong to the upload rather than the recording, they need
-// the keyed data API, and a fallback copy would show a different thread each time.
 
 const TABS = [
   { id: "queue", label: "Up next" },
@@ -23,8 +16,6 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]["id"];
 
-/** A pane with one line of explanation instead of content. Lives here because Lyrics and
- * Related both have four of these and had byte-identical copies. */
 export function Empty({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-10">
@@ -34,25 +25,11 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 export function PanelTabs({ queue }: { queue: ReactNode }) {
-  // Where it opens is Settings → General's; read once, so switching tabs is never undone
-  // under the reader. Safe from a hydration mismatch because this only mounts once a song
-  // is loaded, which the server never sees.
   const [active, setActive] = useState<TabId>(() =>
     getPlaybackPrefs().lyricsByDefault ? "lyrics" : "queue",
   );
   const list = useRef<HTMLDivElement>(null);
 
-  /**
-   * Arrow keys move between the tabs, which is the half of `role="tab"` that was missing.
-   *
-   * The roles were here already and the behaviour behind them was not, which is worse than
-   * having neither: a screen reader announced "tab, 1 of 3", the reader pressed Right
-   * expecting the next one, and nothing happened. Three plain buttons would at least have
-   * promised nothing. Home and End go to the ends, as the tabs pattern specifies.
-   *
-   * Selection follows focus — correct here because switching costs nothing to undo, and
-   * every pane is already mounted lazily on demand.
-   */
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     const from = TABS.findIndex((tab) => tab.id === active);
     const to =
@@ -67,7 +44,6 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
               : null;
 
     if (to === null) return;
-    // Or Left/Right would also scroll the pane underneath, and Home would jump it.
     event.preventDefault();
     setActive(TABS[to]!.id);
     list.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[to]?.focus();
@@ -92,8 +68,6 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
               type="button"
               aria-selected={selected}
               aria-controls={`panel-pane-${tab.id}`}
-              /* One tab stop for the whole set, not three: Tab should carry on past the
-                 tablist, and the arrows above are what walks it. */
               tabIndex={selected ? 0 : -1}
               onClick={() => setActive(tab.id)}
               className={`relative px-3 py-3 text-[11px] font-bold uppercase tracking-wider transition-colors ${
@@ -113,16 +87,6 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
         })}
       </div>
 
-      {/*
-        The pane the tab above points at. It has to exist as an element for `aria-controls`
-        to name, and every pane was previously a bare fragment sitting directly in this
-        column — so the wrapper carries exactly the flex classes those fragments were
-        relying on from the parent, and their `shrink-0` headers and `min-h-0 flex-1`
-        scrollers lay out against it unchanged.
-
-        Only the selected pane is mounted: the other two fetch on mount, so keeping them
-        alive fires two requests per track change.
-      */}
       <div
         role="tabpanel"
         id={`panel-pane-${active}`}

@@ -6,7 +6,6 @@ import { MAX_ENTRIES, afterFailure, afterPick, choiceKey, type SourceChoices } f
 const key = choiceKey({ title: "Delilah (pull me out of this)", artists: ["Fred again.."] });
 
 test("the same recording under a decorated title shares one key", () => {
-  // The case `songKey` misses: a YouTube upload's title against the catalogue's.
   assert.equal(
     choiceKey({ title: "As It Was (Official Video)", artists: ["Harry Styles"] }),
     choiceKey({ title: "As It Was", artists: ["Harry Styles"] }),
@@ -42,7 +41,6 @@ test("a clip or a pressed embed is a choice for now and changes nothing", () => 
 test("the remembered source failing forgets it, and nothing else does", () => {
   const choices: SourceChoices = { [key]: "soundcloud" };
   assert.deepEqual(afterFailure(choices, key, "soundcloud"), {});
-  // A clip pressed on top of the pick failed, not the pick.
   assert.equal(afterFailure(choices, key, "deezer"), choices);
   assert.equal(afterFailure(choices, "someone else", "soundcloud"), choices);
 });
@@ -52,7 +50,6 @@ test("the map is bounded, and a fresh pick counts as recent", () => {
   for (let index = 0; index < MAX_ENTRIES; index += 1) {
     choices = afterPick(choices, `song ${index}`, "soundcloud", "queue");
   }
-  // Re-picking the oldest moves it to the end, so the next eviction takes `song 1` instead.
   choices = afterPick(choices, "song 0", "audius", "queue");
   choices = afterPick(choices, "one more", "audius", "queue");
 

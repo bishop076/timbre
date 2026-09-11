@@ -4,8 +4,6 @@ import { z } from "zod";
 import { getProviderRuntime } from "@/lib/providers";
 import { guard } from "@/lib/api";
 
-// Turns a pasted URL into a song — the only way SoundCloud tracks enter Timbre, since its
-// search needs a paid account while its player needs none. See `docs/BLOCKED.md`.
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
@@ -29,7 +27,6 @@ export async function GET(request: Request) {
   const { limiter } = getProviderRuntime();
   const track = await resolveUrl({ limiter, signal: request.signal }, parsed.data.url);
 
-  // No provider claimed the URL — a 404, since the request was well-formed.
   if (!track) {
     return Response.json(
       { error: "That link isn't from a service Timbre can play." },
@@ -37,7 +34,6 @@ export async function GET(request: Request) {
     );
   }
 
-  // Through the merger even for one track, so the client has one Song shape.
   const [song] = mergeTracks([track]);
   return Response.json({ song });
 }

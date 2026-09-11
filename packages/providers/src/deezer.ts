@@ -1,7 +1,3 @@
-// Deezer. No authentication, and alone among the free sources its search results carry
-// **ISRCs** — which is what lets Timbre say two results are the same recording, since
-// YouTube Music exposes none. Audio is unplayable here, so tracks are `link`.
-
 import { ProviderError } from "@timbre/core";
 
 import type {
@@ -21,7 +17,6 @@ interface DeezerTrack {
   duration: number;
   isrc?: string;
   link?: string;
-  /** A thirty-second clip Deezer publishes on the same response. */
   preview?: string;
   explicit_lyrics?: boolean;
   artist?: { name?: string };
@@ -33,9 +28,6 @@ interface DeezerArtist {
   name: string;
 }
 
-// How far the similar-artist leg reaches. Deezer orders similar artists by confidence, so
-// the tail buys little variety, and every extra artist is another round trip on the
-// critical path of a track change.
 const SIMILAR_ARTISTS = 3;
 const TOP_PER_ARTIST = 5;
 
@@ -51,9 +43,6 @@ function toSourceTrack(raw: DeezerTrack): SourceTrack {
     url: raw.link ?? `https://www.deezer.com/track/${raw.id}`,
     artworkUrl: raw.album?.cover_big ?? raw.album?.cover_medium ?? null,
     playback: "link",
-    // Deezer hands this back on the search response Timbre already reads, so it costs
-    // nothing to keep. `playback` deliberately stays `link`: a clip must not rank or
-    // auto-advance as though it were the song.
     previewUrl: raw.preview || null,
   };
 }
@@ -62,7 +51,6 @@ const request = createRequester({
   id: "deezer",
   label: "Deezer",
   init: cachePolicy,
-  // Quota and validation failures arrive in a **200 body**, not a status code.
   checkBody: (body) => {
     const error = (body as { error?: { message?: string } } | null)?.error;
     if (error) throw new ProviderError("deezer", "transient", error.message ?? "Deezer error.");
@@ -72,8 +60,6 @@ const request = createRequester({
 const get = <T>(ctx: SearchContext, path: string): Promise<T> => request<T>(ctx, `${API}${path}`);
 
 export function createDeezerProvider(): SearchProvider {
-  /** Finds an artist by exact name — the search is fuzzy and returns tribute acts and
-   * similarly-named producers, so only a case-insensitive exact match passes. */
   async function findArtist(ctx: SearchContext, name: string): Promise<DeezerArtist | null> {
     const wanted = name.trim().toLowerCase();
     if (!wanted) return null;
@@ -103,18 +89,12 @@ export function createDeezerProvider(): SearchProvider {
       return (data.data ?? []).map(toSourceTrack);
     },
 
-    // Deezer's second opinion: the seed artist's top tracks, plus those of similar
-    // artists. Only an **artist** can seed it — `/track/{id}/related` is not a route and
-    // answers InvalidQueryException 600. And `/top`, not `/radio`: seeded on *As It Was*,
-    // artist radio shared zero tracks with YouTube Music's lists while top tracks shared
-    // six, and a list nothing agrees with cannot build a consensus.
     async radio(ctx, seed, limit): Promise<RankedList[]> {
       if (!seed.artist) return [];
 
       const match = await findArtist(ctx, seed.artist);
       if (!match?.id) return [];
 
-      // The ranker treats a missing list as an abstention, not evidence against.
       const [top, similar] = await Promise.allSettled([
         get<{ data?: DeezerTrack[] }>(ctx, `/artist/${match.id}/top?limit=${limit}`),
         get<{ data?: DeezerArtist[] }>(ctx, `/artist/${match.id}/related?limit=${SIMILAR_ARTISTS}`),
@@ -131,7 +111,6 @@ export function createDeezerProvider(): SearchProvider {
 
       if (similar.status === "fulfilled") {
         const artists = (similar.value.data ?? []).filter((entry) => entry.id).slice(0, SIMILAR_ARTISTS);
-        // Deezer's bucket is capacity 20 at 8/s, so these fit in one burst.
         const tops = await Promise.allSettled(
           artists.map((entry) =>
             get<{ data?: DeezerTrack[] }>(ctx, `/artist/${entry.id}/top?limit=${TOP_PER_ARTIST}`),

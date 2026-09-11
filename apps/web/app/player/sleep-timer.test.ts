@@ -36,7 +36,6 @@ test("the remaining time is minutes and seconds, an hour included", () => {
   assert.equal(formatRemaining(900), "15:00");
   assert.equal(formatRemaining(872), "14:32");
   assert.equal(formatRemaining(59), "0:59");
-  // Not 1:00:00 — the field would vanish a second later and shift the row.
   assert.equal(formatRemaining(3600), "60:00");
 });
 
@@ -53,7 +52,6 @@ test("a due timer pauses only what is playing, and waits out a load", () => {
   assert.equal(whenDue("playing"), "pause");
   assert.equal(whenDue("loading"), "wait");
   assert.equal(whenDue("resolving"), "wait");
-  // Toggling any of these would start the music the reader asked to stop.
   assert.equal(whenDue("paused"), "done");
   assert.equal(whenDue("idle"), "done");
   assert.equal(whenDue("unplayable"), "done");
@@ -72,7 +70,6 @@ test("the end-of-track stop is spent by the first ending", () => {
 
   sleepAtTrackEnd();
   assert.equal(takeTrackEndStop(), true);
-  // The next track plays on: one stop was asked for.
   assert.equal(takeTrackEndStop(), false);
 });
 

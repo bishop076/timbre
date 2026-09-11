@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import { stalledAt } from "./youtube-stall.ts";
 
-// `YT.PlayerState`, written out: the numbers are the API's and the names are the reason.
 const UNSTARTED = -1;
 const ENDED = 0;
 const PLAYING = 1;
@@ -12,7 +11,6 @@ const BUFFERING = 3;
 const CUED = 5;
 
 test("the measured stall: still trying, nothing buffered, position at zero", () => {
-  // B-18, as the IFrame API reported it: the two states alternate and both are stalls.
   assert.equal(stalledAt(BUFFERING, 0, 0), true);
   assert.equal(stalledAt(UNSTARTED, 0, 0), true);
 });

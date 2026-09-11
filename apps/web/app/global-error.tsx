@@ -1,24 +1,5 @@
 "use client";
 
-/**
- * The last boundary. Nothing catches what reaches here.
- *
- * Timbre reads five separate `localStorage` stores *during render*, through
- * `useSyncExternalStore` — so a record none of them can parse is not a broken page, it is a
- * throw in the render phase. The sidebar is mounted in the root layout, which puts that
- * throw above every route at once, and above a segment `error.tsx` too: only
- * `global-error` sits high enough to catch a root layout that will not render. That is why
- * this file exists rather than the more usual one. See docs/SECURITY.md, S-2.
- *
- * **It must not import from the rest of the app.** Every store, helper and component here
- * is a candidate for whatever went wrong, and a recovery screen that imports the thing it
- * is recovering from cannot render either. Plain DOM only, styles included: the boot
- * script lives in the layout this replaces, so none of the theme custom properties exist
- * by the time anyone reads this.
- */
-
-/** Everything the app owns is namespaced. Matched by prefix rather than listed, so a store
- * added later is cleared too — a list here would drift the moment someone forgot it. */
 const PREFIX = "timbre:";
 const DB_NAME = "timbre";
 const NAME_COOKIE = "timbre-name";
@@ -32,15 +13,6 @@ function ownedKeys(): string[] {
   return keys;
 }
 
-/**
- * A copy of everything, before anything is destroyed.
- *
- * The reason this button exists: the only recovery from a poisoned record used to be
- * clearing site data, which also deletes every playlist, the profile and the history — the
- * remedy destroyed exactly what it was meant to save. The values are written out **raw and
- * unparsed**, because whatever is in there is by definition something the app could not
- * read, and parsing it here would throw on the same record twice.
- */
 function download(): void {
   try {
     const dump: Record<string, string | null> = {};
@@ -55,8 +27,6 @@ function download(): void {
     link.click();
     URL.revokeObjectURL(url);
   } catch {
-    // Storage blocked, or no room to build the blob. The reset below still works, and
-    // saying so is the caption's job — there is nowhere useful to report this.
   }
 }
 
@@ -64,27 +34,16 @@ function reset(): void {
   try {
     for (const key of ownedKeys()) localStorage.removeItem(key);
   } catch {
-    // Blocked. Carry on: the picture store and the cookie are separate, and clearing
-    // what can be cleared is strictly better than stopping at the first refusal.
   }
 
-  // Profile pictures live in IndexedDB rather than localStorage — blobs at their real size
-  // instead of a third larger as base64 — so they need their own removal.
   try {
     indexedDB.deleteDatabase(DB_NAME);
   } catch {
-    /* Not fatal: nothing renders a picture that is not there. */
   }
 
-  // The display name is also a cookie, for the server's first paint. Left behind, the name
-  // outlives the profile it belonged to.
   document.cookie = `${NAME_COOKIE}=;path=/;max-age=0;SameSite=Lax`;
 
-  // A full document load, deliberately, and the one place `router.push` is the wrong tool:
-  // every store caches its first read in module scope, so a soft navigation would carry the
-  // same emptied-out snapshots — and the same broken React tree — straight into the next
-  // screen. Throwing the process away is the point.
-  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- see above
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   location.href = "/";
 }
 
@@ -96,7 +55,6 @@ export default function GlobalError({
   retry: () => void;
 }) {
   return (
-    // `global-error` replaces the root layout while it is active, so it owns these.
     <html lang="en">
       <body>
         <style>{`

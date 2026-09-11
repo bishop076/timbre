@@ -1,67 +1,45 @@
-# dependencies
 node_modules/
 .pnpm-store/
 
-# next
-#
-# The glob rather than a list: `distDir` is overridable so a production build can
-# be measured while the dev server keeps `.next` (see apps/web/next.config.ts),
-# and every such directory is build output. Naming them one at a time meant the
-# next `TIMBRE_DIST_DIR=.next-ci` showed up as 400 untracked files.
 .next/
 .next-*/
 out/
 next-env.d.ts
 
-# build output
 dist/
 build/
 *.tsbuildinfo
 
-# env — never commit; these hold provider secrets and the encryption key
 .env
 .env.*
 !.env.example
 
-# python (apps/ytmusic)
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-# build artifact from `pip install -e`
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
 
-# ytmusicapi auth artifacts — these are live credentials
 oauth.json
 browser.json
 headers_auth.json
 
-# editor / os
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
 
-# logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
 
-# Written by scripts/release.mts for the release workflow to read; not part of the tree.
 RELEASE_NOTES.md
 
-# The service worker the browser fetches. Transpiled from apps/web/sw/sw.ts by
-# next.config.ts every time Next starts; the .ts is the source, this is output.
 apps/web/public/sw.js
 
-# Planning and working notes. Kept on disk, deliberately out of the repository —
-# they are how the project was thought through, not how it is used or built.
 notes/
 
-# Vercel's local project link — `vercel link` writes the project and org ids here,
-# plus a `.env.local` carrying a short-lived OIDC token. Machine-specific, and the
-# token has no business in a public repository.
 .vercel

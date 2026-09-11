@@ -11,7 +11,6 @@ const CUSTOM_LIGHT: ThemeState = { mode: "custom", customHue: 12, customLight: t
 
 const COVER: Swatch = { hue: 190, sat: 0.55 };
 
-/** Every hue in an `hsl(h s% l%)` palette, so a mode can be checked as a whole. */
 function hues(palette: Record<string, string>): number[] {
   return Object.values(palette)
     .map((value) => /hsl\(\s*([\d.]+)/.exec(value)?.[1])
@@ -25,7 +24,6 @@ function light(palette: Record<string, string>, token: string): number {
   return value!;
 }
 
-/** The saturation percentage of one token. */
 function sat(palette: Record<string, string>, token: string): number {
   return Number(/hsl\(\s*[\d.]+\s+([\d.]+)%/.exec(palette[token]!)?.[1] ?? "0");
 }
@@ -61,7 +59,6 @@ test("dark grounds are dark and light grounds are light", () => {
 });
 
 test("text separates from the surface it sits on, in every mode", () => {
-  // Guards against a label at the same lightness as its background — invisible.
   for (const theme of [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const surface = light(palette, "--surface-1");
@@ -82,7 +79,6 @@ test("accent text separates from the accent behind it", () => {
 });
 
 test("surfaces step in a consistent direction", () => {
-  // Dark themes get lighter as they stack; pastel gets closer rather than darker.
   const dark = buildPalette(COVER, ALBUM);
   assert.ok(light(dark, "--bg") < light(dark, "--surface-1"));
   assert.ok(light(dark, "--surface-1") < light(dark, "--surface-2"));
@@ -98,12 +94,10 @@ test("pastel is gentler than the album ramp at the same hue", () => {
   const pastelBg = saturation(buildPalette(COVER, PASTEL)["--bg"]!);
   const albumBg = saturation(buildPalette(COVER, ALBUM)["--bg"]!);
 
-  // A pale surface shows hue readily, so the album ramp's saturation reads as neon.
   assert.ok(pastelBg < albumBg, `pastel bg saturation ${pastelBg}% should be under ${albumBg}%`);
 });
 
 test("light grounds keep an edge, but a soft one", () => {
-  // Too pale and the border vanishes; too dark and it is the dark ramp's harsh outline.
   for (const theme of [PASTEL, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const ink = light(palette, "--ink");
@@ -115,8 +109,6 @@ test("light grounds keep an edge, but a soft one", () => {
 });
 
 test("light grounds cast a short, translucent shadow", () => {
-  // A solid shadow doubles the edge's weight, and on a pale ground the offset itself
-  // reads as a second edge, so the throw has to shorten too.
   for (const theme of [PASTEL, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const drop = palette["--drop"]!;
@@ -132,13 +124,11 @@ test("light grounds cast a short, translucent shadow", () => {
 });
 
 test("the dark ground keeps its longer, solid throw", () => {
-  // Between near-black planes the offset is all that says one sits on the other.
   const drop = buildPalette(COVER, ALBUM)["--drop"]!;
   assert.ok(Number(/^(\d+)px/.exec(drop)?.[1]) >= 3, `dark --drop should keep its depth: ${drop}`);
 });
 
 test("the dark ground keeps its hard edge", () => {
-  // Over near-black there is no contrast to spend; the solid edge carries the panel.
   const palette = buildPalette(COVER, ALBUM);
   assert.ok(light(palette, "--ink") < 10, "dark ink stays near-black");
   assert.ok(light(palette, "--ink") < light(palette, "--surface-1"));
@@ -153,7 +143,6 @@ test("an extreme swatch is pulled back into a usable range", () => {
 });
 
 test("surfaces carry far less hue than the accent", () => {
-  // Otherwise a strong cover makes ground, panels and labels one loud colour.
   const palette = buildPalette({ hue: 300, sat: 0.7 }, ALBUM);
 
   assert.ok(

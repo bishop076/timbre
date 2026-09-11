@@ -7,18 +7,9 @@ import { useHistory } from "./player/history-store";
 import { setSearchQuery } from "./search-store";
 import { SUGGESTED_SEARCHES } from "./sources";
 
-// What to type, when nothing is typed. Artists you have played come first, then a rotating
-// sample of the built-in list, drawn once per mount so the row does not reshuffle under a
-// thumb already moving toward a chip.
-
-// A seed the client draws once and the server never does. `Math.random()` during render is
-// impure, and a module-level draw is worse — evaluated once per *server process*, so every
-// visitor gets that process's order in their HTML and a hydration mismatch when the
-// client's replaces it.
 let clientSeed = 0;
 
 function subscribeSeed(): () => void {
-  // Never changes after the first read, so there is nothing to notify about.
   return () => {};
 }
 
@@ -31,7 +22,6 @@ function getServerSeed(): number {
   return 0;
 }
 
-/** mulberry32 — small, fast, and good enough to order a handful of chips. */
 function seeded(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -60,7 +50,6 @@ export function SearchSuggestions({ className }: { className?: string }) {
     const pool = SUGGESTED_SEARCHES.filter(
       (candidate) => !played.some((artist) => artist.toLowerCase() === candidate.toLowerCase()),
     );
-    // Fisher–Yates: `sort(() => random - 0.5)` is measurably biased.
     const next = seeded(seed);
     const shuffled = [...pool];
     for (let i = shuffled.length - 1; i > 0; i -= 1) {
@@ -68,15 +57,11 @@ export function SearchSuggestions({ className }: { className?: string }) {
       [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
     }
 
-    // Four, not six: a row that wraps reads as a menu rather than a nudge.
     return [...played, ...shuffled].slice(0, 4);
-    // Keyed on the seed alone: re-sampling per song change would move the chips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seed]);
 
   return (
-    // `role` is not decoration: an `aria-label` on a bare <div> is ignored, so
-    // without it the label would announce to nobody.
     <div className={className} role="group" aria-label="Suggested searches">
       <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {suggestions.map((suggestion) => (

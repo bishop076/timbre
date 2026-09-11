@@ -38,10 +38,6 @@ test("the source that played is the one recorded, not the first one listed", () 
 });
 
 test("a song with no sources records the copy search found", () => {
-  // A history row written before sources were stored comes back with nothing to play, so the
-  // player searches. Recording nothing here left the row as broken as it arrived and every
-  // replay paid for the same search again. Cannot be driven in the browser harness: headless
-  // Chrome never starts the YouTube iframe, so `playing` never fires.
   assert.deepEqual(playedHandle(song([]), "ytmusic", "dQw4w9WgXcQ"), {
     source: "ytmusic",
     sourceId: "dQw4w9WgXcQ",
@@ -50,12 +46,10 @@ test("a song with no sources records the copy search found", () => {
 });
 
 test("nothing is recorded when there is no handle to record", () => {
-  // Better a row that falls back to searching than one asserting a source it never played.
   assert.equal(playedHandle(song([]), "ytmusic", null), null);
   assert.equal(playedHandle(song([]), null, null), null);
 });
 
 test("a source that did not play is not substituted for one that did", () => {
-  // Only YouTube gets the search fallback, because only YouTube is what `videoId` names.
   assert.equal(playedHandle(song([mixcloud]), "audius", null), null);
 });

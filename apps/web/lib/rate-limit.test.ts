@@ -35,7 +35,6 @@ test("a refusal never reports zero seconds", () => {
 
   limiter.check("a");
   time.advance(999);
-  // Retry-After: 0 invites an immediate retry that is certain to fail again.
   assert.equal(limiter.check("a").retryAfterSeconds, 1);
 });
 
@@ -50,7 +49,6 @@ test("the allowance returns when the window lapses", () => {
 });
 
 test("only the first refusal of a window is marked first", () => {
-  // What the log keys on: a loop refused sixty times a minute is one event, not sixty lines.
   const time = clock();
   const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: time.now });
 
@@ -81,8 +79,6 @@ test("lapsed clients are swept rather than evicting live ones", () => {
   limiter.check("c");
   assert.equal(limiter.size, 3);
 
-  // Everything above has lapsed, so a new client reclaims the map instead of
-  // pushing out someone still inside their window.
   time.advance(1001);
   limiter.check("d");
   assert.equal(limiter.size, 1);
@@ -99,8 +95,6 @@ test("the client is the first x-forwarded-for entry, not the proxy", () => {
   const request = new Request("https://timbre.example/api/search", {
     headers: { "x-forwarded-for": "203.0.113.7, 70.41.3.18, 150.172.238.178" },
   });
-  // The last entry is the nearest proxy — keying on it buckets every visitor
-  // behind that hop together.
   assert.equal(clientKey(request), "203.0.113.7");
 });
 

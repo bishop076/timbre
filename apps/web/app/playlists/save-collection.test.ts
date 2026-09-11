@@ -3,11 +3,6 @@ import { test } from "node:test";
 
 import type { Song } from "../types";
 
-/*
- * The store reads storage once per module instance, and `save-collection.ts` imports it
- * statically, so the stub has to exist before the first import and every test shares one
- * library. Each test below names its own playlist and looks only at that one.
- */
 const KEY = "timbre:playlists";
 const backing: Record<string, string> = {
   [KEY]: JSON.stringify([
@@ -41,7 +36,6 @@ function stored(): { id: string; name: string; songs: Record<string, unknown>[] 
   return JSON.parse(backing[KEY]!);
 }
 
-/** A collection row: a song plus the chart fields the page adds. */
 function row(id: string, extra: Record<string, unknown> = {}): Song {
   return {
     id,
@@ -70,8 +64,6 @@ test("saves every song, in order, under the collection's name", () => {
 });
 
 test("keeps the playlists already saved", () => {
-  // The store fills its list lazily and writes it back whole; saved before anything read it,
-  // the new playlist would have been the only one left.
   saveAsPlaylist("Another", [row("d")]);
   assert.ok(stored().some((playlist) => playlist.id === "already-here"));
 });
