@@ -8,6 +8,7 @@ import { Artwork } from "../artwork";
 import { PlayIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { SaveAsPlaylist } from "../playlists/save-as-playlist";
 import { SongRow } from "../song-row";
 import { ROW_BADGES, SourceBadges } from "../source-badges";
 import type { Song } from "../types";
@@ -63,15 +64,20 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
           </p>
 
           {songs.length > 0 && (
-            <button
-              type="button"
-              onClick={() => play(songs[0]!, songs)}
-              className="slab-sm press mt-4 inline-flex items-center gap-2 rounded-[var(--r-full)] px-5 py-2.5 text-sm font-bold text-[var(--accent-fg)]"
-              style={{ background: "var(--accent)" }}
-            >
-              <PlayIcon className="size-4" />
-              Play
-            </button>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => play(songs[0]!, songs)}
+                className="slab-sm press inline-flex items-center gap-2 rounded-[var(--r-full)] px-5 py-2.5 text-sm font-bold text-[var(--accent-fg)]"
+                style={{ background: "var(--accent)" }}
+              >
+                <PlayIcon className="size-4" />
+                Play
+              </button>
+              {/* Keyed to the release, as on a collection page: a "Saved" carried over from
+                  the last album would refuse to save this one. */}
+              <SaveAsPlaylist key={album.id} name={`${album.title} — ${album.artist}`} songs={songs} />
+            </div>
           )}
         </div>
       </header>
