@@ -64,6 +64,18 @@ test("a live take never merges into the studio version", () => {
   assert.equal(songs.length, 2);
 });
 
+test("an acoustic version never merges into the original, whatever the brackets", () => {
+  // The third variant the README names. Same length on purpose: duration is not what keeps
+  // these apart, the variant is.
+  const songs = mergeTracks([
+    track({ source: "ytmusic", title: "Wonderwall" }),
+    track({ source: "deezer", title: "Wonderwall (Acoustic)" }),
+    track({ source: "apple", title: "Wonderwall - Acoustic Version" }),
+  ]);
+
+  assert.equal(songs.length, 2, "the two acoustic copies agree with each other, not with the original");
+});
+
 test("durations that disagree keep recordings apart", () => {
   const songs = mergeTracks([
     track({ source: "ytmusic", durationMs: 259_000 }),
