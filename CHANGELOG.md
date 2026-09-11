@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.14.0 — 12 September 2026
+
+### Added
+
+- **settings** — move About and Privacy into Settings
+
+### Fixed
+
+- **ui** — give song, release and artist cards the site's slab edge on dark themes
+
 ## 0.13.3 — 12 September 2026
 
 ### Fixed
