@@ -10,6 +10,7 @@ import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { SiteLinks } from "../shell/site-links";
 import { ExportMenu } from "./export-menu";
+import { importLikedSongs } from "./likes-store";
 import { LikedTile } from "./liked-tile";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
@@ -50,13 +51,19 @@ export function LibraryView() {
     try {
       const data: unknown = JSON.parse(await file.text());
       const added = importPlaylists(data);
-      const lists = `${added} playlist${added === 1 ? "" : "s"}`;
+      const likes = importLikedSongs((data as { liked?: unknown }).liked);
+      const lists = [
+        added > 0 || likes === 0 ? `${added} playlist${added === 1 ? "" : "s"}` : null,
+        likes > 0 ? `${likes} liked song${likes === 1 ? "" : "s"}` : null,
+      ]
+        .filter(Boolean)
+        .join(" and ");
       const incoming = readProfileExport((data as { profile?: unknown }).profile);
 
       if (incoming && !hasLocalProfile()) {
         // Nothing here to lose, so a backup restores itself.
         await applyProfile(incoming);
-        setNotice(added > 0 ? `Imported ${lists} and your profile.` : "Imported your profile.");
+        setNotice(added > 0 || likes > 0 ? `Imported ${lists}, and your profile.` : "Imported your profile.");
       } else {
         if (incoming) setOffered(incoming);
         setNotice(`Imported ${lists}.`);
