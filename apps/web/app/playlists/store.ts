@@ -8,6 +8,7 @@
  */
 
 import { createLocalStore, useLocalStore } from "../local-store.ts";
+import { readProfileExport, type ProfileExport } from "../profile/profile-file.ts";
 import { usableSongs } from "../song-shape.ts";
 import type { Song } from "../types";
 
@@ -227,27 +228,43 @@ export function moveSong(id: string, from: number, to: number): void {
 // Moving between devices
 
 /** Everything, as a file — the only way to move a library to another machine or survive
- * clearing site data. Versioned so a format change can still read it. */
+ * clearing site data. Versioned so a format change can still read it.
+ *
+ * Version 2 adds the profile, optionally: a backup carries it, a list sent to a friend does
+ * not — the name and pictures are the one part of this file that is about a person. Version 1
+ * files still import; nothing in them changed meaning. */
 export interface PlaylistExport {
   format: "timbre.playlists";
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   playlists: LocalPlaylist[];
+  profile?: ProfileExport;
 }
 
-export function exportPlaylists(): PlaylistExport {
+export function exportPlaylists(extras: { profile?: ProfileExport | null } = {}): PlaylistExport {
   return {
     format: "timbre.playlists",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     playlists: all,
+    ...(extras.profile ? { profile: extras.profile } : {}),
   };
+}
+
+/** Every playlist in full, for an export that is not JSON — the CSV. */
+export function allPlaylists(): readonly LocalPlaylist[] {
+  return all;
 }
 
 export class ImportError extends Error {}
 
+/** The same ceiling the name field has; a file can say anything. */
+const MAX_NAME = 120;
+
 /** Merges an exported file back in, returning how many arrived. Merge rather than replace,
- * with new ids: importing must never silently overwrite what is already here. */
+ * with new ids: importing must never silently overwrite what is already here. A file that
+ * carries only a profile is still an export — the profile itself is applied by the caller,
+ * which has to ask before replacing one. */
 export function importPlaylists(data: unknown): number {
   const file = data as Partial<PlaylistExport>;
   if (!file || file.format !== "timbre.playlists" || !Array.isArray(file.playlists)) {
@@ -259,13 +276,18 @@ export function importPlaylists(data: unknown): number {
       typeof playlist?.name === "string" && Array.isArray(playlist?.songs),
   );
 
-  if (incoming.length === 0) throw new ImportError("That file has no playlists in it.");
+  if (incoming.length === 0) {
+    if (readProfileExport(file.profile)) return 0;
+    throw new ImportError("That file has no playlists in it.");
+  }
 
   const now = new Date().toISOString();
   all = [
+    // Rebuilt from the fields a playlist has rather than spread: whatever else the file
+    // carries would otherwise be persisted with it and re-exported for ever.
     ...incoming.map((playlist) => ({
-      ...playlist,
       id: crypto.randomUUID(),
+      name: playlist.name.trim().slice(0, MAX_NAME) || "Imported playlist",
       // Typed, not just defaulted: `?? now` accepted an object here, which then sorted
       // against a string in `state`.
       createdAt: typeof playlist.createdAt === "string" ? playlist.createdAt : now,
