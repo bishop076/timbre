@@ -9,6 +9,7 @@ import { AddToQueue } from "./player/add-to-queue";
 import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
+import { ROW_BADGES, SourceBadges } from "./source-badges";
 import { songFromHistory } from "./home-shelves";
 import { useHistory } from "./player/history-store";
 import { Shelf } from "./shelf";
@@ -141,6 +142,8 @@ export function CollectionView({ collection }: { collection: Collection }) {
                       {section.ranked && (
                         <Movement delta={movementOf(snapshot, track.id, track.position)} />
                       )}
+
+                      <SourceBadges song={track} className={ROW_BADGES} />
 
                       <AddToQueue
                         song={track}

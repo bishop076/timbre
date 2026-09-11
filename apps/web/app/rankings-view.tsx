@@ -11,6 +11,7 @@ import { Movement } from "./movement";
 import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { SongRow } from "./song-row";
+import { ROW_BADGES, SourceBadges } from "./source-badges";
 import { sourceStyle } from "./sources";
 import { SOURCE_TAG } from "./source-tag";
 import { useTaste } from "./taste-store";
@@ -242,6 +243,7 @@ function YoursView({
             trailing={
               <>
                 <span className={`${SOURCE_TAG} hidden shrink-0 @lg:inline`}>{why}</span>
+                <SourceBadges song={song} className={ROW_BADGES} />
                 <AddToPlaylist
                   song={song}
                   className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
@@ -305,6 +307,10 @@ function SongsView({ rankings }: { rankings: Rankings }) {
                     );
                   })}
                 </div>
+
+                {/* The positions above name the charts; these play from those services. The
+                    same names twice, but only on hover — see `ROW_BADGES`. */}
+                <SourceBadges song={song} className={ROW_BADGES} />
 
                 <AddToPlaylist
                   song={song}
