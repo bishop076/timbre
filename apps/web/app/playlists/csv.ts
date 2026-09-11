@@ -1,16 +1,10 @@
+import { formatClock } from "../duration.ts";
 import type { Song } from "../types";
-
-interface CsvPlaylist {
-  name: string;
-  songs: Song[];
-}
 
 const HEADER = ["Playlist", "#", "Title", "Artists", "Album", "Duration", "ISRC", "Sources", "Link"];
 
 function duration(ms: number | null): string {
-  if (!ms || ms <= 0) return "";
-  const seconds = Math.round(ms / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return ms && ms > 0 ? formatClock(Math.round(ms / 1000)) : "";
 }
 
 export function csvField(value: string): string {
@@ -18,7 +12,7 @@ export function csvField(value: string): string {
   return /[",\r\n]/.test(defused) ? `"${defused.replaceAll('"', '""')}"` : defused;
 }
 
-export function playlistsToCsv(playlists: readonly CsvPlaylist[]): string {
+export function playlistsToCsv(playlists: readonly { name: string; songs: Song[] }[]): string {
   const rows = [HEADER];
   for (const playlist of playlists) {
     playlist.songs.forEach((song, position) => {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef } from "react";
 
-import { createNotifier } from "../local-store.ts";
+import { createLocalStore, useLocalStore } from "../local-store.ts";
 import type { Song } from "../types";
 import type { PlayState } from "./player-context";
 import {
@@ -22,11 +22,11 @@ import {
   type Command,
   type Effect,
   type Message,
-  type OwnerReport,
+  type RemotePlayer,
   type SyncModel,
 } from "./tab-sync";
 
-export interface TabSyncPlayer {
+interface TabSyncPlayer {
   queue: Song[];
   index: number;
   current: Song | null;
@@ -42,52 +42,27 @@ export interface TabSyncPlayer {
   seek: (seconds: number) => void;
 }
 
-export interface RemotePlayer {
-  tab: string;
-  report: OwnerReport;
-}
-
-let remoteSnapshot: RemotePlayer | null = null;
-const remoteChanges = createNotifier();
-
-let outbox: { command: (command: Command) => void; takeOver: () => void } | null = null;
-
-function publishRemote(next: RemotePlayer | null): void {
-  if (next === remoteSnapshot) return;
-  remoteSnapshot = next;
-  remoteChanges.emit();
-}
-
-export function useRemotePlayer(): RemotePlayer | null {
-  return useSyncExternalStore(
-    remoteChanges.subscribe,
-    () => remoteSnapshot,
-    () => null,
-  );
-}
-
-export function commandRemote(command: Command): void {
-  outbox?.command(command);
-}
-
-export function takeOverRemote(): void {
-  outbox?.takeOver();
-}
-
-let tabId: string | null = null;
-
-function thisTab(): string {
-  tabId ??=
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2);
-  return tabId;
-}
-
 interface Link {
   model: SyncModel;
   post: (message: Message) => void;
-  commit: (model: SyncModel) => void;
+  commit: (step: { model: SyncModel; message?: Message | null }) => void;
+}
+
+const remote = createLocalStore<RemotePlayer | null>({ initial: null });
+let active: Link | null = null;
+let tabId: string | null = null;
+
+export function useRemotePlayer(): RemotePlayer | null {
+  return useLocalStore(remote);
+}
+
+export function commandRemote(command: Command): void {
+  const to = active?.model.remote?.tab;
+  if (active && to) active.post({ type: "command", from: active.model.self, to, command });
+}
+
+export function takeOverRemote(): void {
+  active?.commit(asking(active.model));
 }
 
 function announce(link: Link, player: TabSyncPlayer): void {
@@ -110,22 +85,9 @@ function announce(link: Link, player: TabSyncPlayer): void {
 }
 
 function run(command: Command, player: TabSyncPlayer): void {
-  switch (command.action) {
-    case "toggle":
-      player.toggle();
-      return;
-    case "next":
-      player.next();
-      return;
-    case "previous":
-      player.previous();
-      return;
-    case "seek": {
-      const { duration } = player.progress();
-      player.seek(duration > 0 ? Math.min(command.seconds, duration) : command.seconds);
-      return;
-    }
-  }
+  if (command.action !== "seek") return player[command.action]();
+  const { duration } = player.progress();
+  player.seek(duration > 0 ? Math.min(command.seconds, duration) : command.seconds);
 }
 
 export function useTabSync(player: TabSyncPlayer): void {
@@ -133,38 +95,36 @@ export function useTabSync(player: TabSyncPlayer): void {
   useEffect(() => {
     latest.current = player;
   });
-
-  const linkRef = useRef<Link | null>(null);
   const pendingSeek = useRef<{ id: string; position: number } | null>(null);
 
   useEffect(() => {
     if (typeof BroadcastChannel === "undefined") return;
 
     const channel = new BroadcastChannel(CHANNEL);
+    tabId ??= crypto.randomUUID?.() ?? Math.random().toString(36).slice(2);
     const link: Link = {
-      model: initialModel(thisTab()),
+      model: initialModel(tabId),
       post: (message) => channel.postMessage(wire(message)),
-      commit: (model) => {
+      commit: ({ model, message }) => {
         link.model = model;
-        publishRemote(model.remote);
+        remote.publish(model.remote);
+        if (message) link.post(message);
       },
     };
-    linkRef.current = link;
+    active = link;
+    const hello = () => link.post({ type: "hello", from: link.model.self });
 
     const perform = (effect: Effect | null) => {
-      if (!effect) return;
       const current = latest.current;
-      switch (effect.kind) {
+      switch (effect?.kind) {
         case "pause":
           if (current.state === "playing") current.toggle();
           return;
         case "announce":
-          announce(link, current);
-          return;
+          return announce(link, current);
         case "run":
-          run(effect.command, current);
-          return;
-        case "handoff": {
+          return run(effect.command, current);
+        case "handoff":
           if (!current.current) return;
           link.post({
             type: "handoff",
@@ -179,13 +139,11 @@ export function useTabSync(player: TabSyncPlayer): void {
           });
           if (current.state === "playing") current.toggle();
           return;
-        }
         case "adopt": {
           const { queue, index, position, prefer } = effect.handoff;
           const song = queue[index]!;
           pendingSeek.current = position >= 1 ? { id: song.id, position } : null;
           current.play(song, queue.slice(index + 1), prefer ?? undefined);
-          return;
         }
       }
     };
@@ -193,99 +151,62 @@ export function useTabSync(player: TabSyncPlayer): void {
     const onMessage = (event: MessageEvent) => {
       const message = parseMessage(event.data);
       if (!message) return;
-      const current = latest.current;
-      const step = receive(
-        link.model,
-        message,
-        { state: current.state, loaded: current.current !== null },
-        Date.now(),
-      );
-      link.commit(step.model);
+      const { state, current } = latest.current;
+      const step = receive(link.model, message, { state, loaded: current !== null }, Date.now());
+      link.commit(step);
       perform(step.effect);
     };
 
     const beat = window.setInterval(() => {
-      if (owns(link.model)) {
-        announce(link, latest.current);
-        return;
-      }
+      if (owns(link.model)) return announce(link, latest.current);
       const step = tick(link.model, Date.now());
-      link.commit(step.model);
-      if (step.ping) link.post({ type: "hello", from: link.model.self });
+      link.commit(step);
+      if (step.ping) hello();
     }, HEARTBEAT_MS);
 
-    const onPageHide = () => {
-      const step = leaving(link.model);
-      link.commit(step.model);
-      if (step.message) link.post(step.message);
-    };
+    const onPageHide = () => link.commit(leaving(link.model));
 
     const onPageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
-      link.post({ type: "hello", from: link.model.self });
-      const current = latest.current;
-      if (current.state !== "playing") return;
-      const step = localState({ ...link.model, sounding: false }, "playing", Date.now());
-      link.commit(step.model);
-      if (step.message) link.post(step.message);
+      hello();
+      if (latest.current.state !== "playing") return;
+      link.commit(localState({ ...link.model, sounding: false }, "playing", Date.now()));
     };
 
     channel.addEventListener("message", onMessage);
     window.addEventListener("pagehide", onPageHide);
     window.addEventListener("pageshow", onPageShow);
-
-    outbox = {
-      command: (command) => {
-        const to = link.model.remote?.tab;
-        if (to) link.post({ type: "command", from: link.model.self, to, command });
-      },
-      takeOver: () => {
-        const step = asking(link.model);
-        link.commit(step.model);
-        if (step.message) link.post(step.message);
-      },
-    };
-
-    link.post({ type: "hello", from: link.model.self });
+    hello();
 
     return () => {
       onPageHide();
       window.clearInterval(beat);
-      channel.removeEventListener("message", onMessage);
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
       channel.close();
-      linkRef.current = null;
-      outbox = null;
-      publishRemote(null);
+      active = null;
+      remote.publish(null);
     };
-  }, []);
+  }, [latest]);
 
   const { state, hasNext, index, seek } = player;
   const currentId = player.current?.id ?? null;
   const loaded = currentId !== null;
 
   useEffect(() => {
-    const link = linkRef.current;
-    if (!link) return;
-    const step = localSong(link.model, loaded);
-    link.commit(step.model);
-    if (step.message) link.post(step.message);
+    if (active) active.commit(localSong(active.model, loaded));
   }, [currentId, loaded]);
 
   useEffect(() => {
-    const link = linkRef.current;
-    if (!link) return;
-    const step = localState(link.model, state, Date.now());
-    link.commit(step.model);
-    if (step.message) link.post(step.message);
+    if (!active) return;
+    const step = localState(active.model, state, Date.now());
+    active.commit(step);
     if (step.pause) latest.current.toggle();
-  }, [state]);
+  }, [state, latest]);
 
   useEffect(() => {
-    const link = linkRef.current;
-    if (link) announce(link, latest.current);
-  }, [currentId, state, hasNext, index]);
+    if (active) announce(active, latest.current);
+  }, [currentId, state, hasNext, index, latest]);
 
   useEffect(() => {
     const pending = pendingSeek.current;
@@ -302,5 +223,5 @@ export function useTabSync(player: TabSyncPlayer): void {
       seek(pending.position);
     }, 100);
     return () => window.clearInterval(poll);
-  }, [currentId, state, seek]);
+  }, [currentId, state, seek, latest]);
 }

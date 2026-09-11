@@ -30,10 +30,14 @@ const backing: Record<string, string> = {
   removeEventListener() {},
 };
 
-const { saveAsPlaylist, songsToSave } = await import("./save-collection.ts");
+const { saveAsPlaylist } = await import("./save-collection.ts");
 
 function stored(): { id: string; name: string; songs: Record<string, unknown>[] }[] {
   return JSON.parse(backing[KEY]!);
+}
+
+function savedSongs(id: string) {
+  return stored().find((playlist) => playlist.id === id)!.songs;
 }
 
 function row(id: string, extra: Record<string, unknown> = {}): Song {
@@ -56,9 +60,8 @@ test("saves every song, in order, under the collection's name", () => {
   assert.equal(result.saved, 3);
   assert.equal(result.playlist.name, "Discovery");
 
-  const saved = stored().find((playlist) => playlist.id === result.playlist.id);
   assert.deepEqual(
-    saved?.songs.map((song) => song.id),
+    savedSongs(result.playlist.id).map((song) => song.id),
     ["a", "b", "c"],
   );
 });
@@ -72,11 +75,7 @@ test("stores songs without the page's chart fields or where they were played fro
   const result = saveAsPlaylist("Stripped", [
     row("e", { position: 4, popularity: 912_000, from: { kind: "artist", name: "Daft Punk", imageUrl: null } }),
   ]);
-  const [song] = stored().find((playlist) => playlist.id === result!.playlist.id)!.songs;
-  assert.equal(song!.id, "e");
-  assert.ok(!("position" in song!));
-  assert.ok(!("popularity" in song!));
-  assert.ok(!("from" in song!));
+  assert.deepEqual(savedSongs(result!.playlist.id), [row("e")]);
 });
 
 test("nothing to save leaves no empty playlist behind", () => {
@@ -86,22 +85,19 @@ test("nothing to save leaves no empty playlist behind", () => {
   assert.equal(stored().length, before);
 });
 
-test("a song with no source, or not shaped like one, is left out", () => {
-  const kept = songsToSave([
+test("a song with no source, or not shaped like one, is left out; a link-only song is kept", () => {
+  const deezer = { source: "deezer", sourceId: "1", url: "https://www.deezer.com/track/1", playback: "link" };
+  const result = saveAsPlaylist("Mixed", [
     row("g"),
     row("h", { sources: [] }),
     null as unknown as Song,
     { id: "i", title: "No artists" } as unknown as Song,
+    row("j", { sources: [deezer] }),
   ]);
   assert.deepEqual(
-    kept.map((song) => song.id),
-    ["g"],
+    savedSongs(result!.playlist.id).map((song) => song.id),
+    ["g", "j"],
   );
-});
-
-test("link-only songs are kept — the player finds a copy for them later", () => {
-  const deezer = row("j", { sources: [{ source: "deezer", sourceId: "1", url: "https://www.deezer.com/track/1", playback: "link" }] });
-  assert.equal(songsToSave([deezer]).length, 1);
 });
 
 test("an overlong name is cut to what the store's own field accepts", () => {

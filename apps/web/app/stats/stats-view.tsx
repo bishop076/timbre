@@ -9,6 +9,7 @@ import { toArtistSlug } from "../artist-slug";
 import { BarChart } from "../bar-chart";
 import { songFromHistory } from "../home-shelves";
 import { useHydrated } from "../hydrated";
+import { Caption, EmptyNotice, Notice, SectionTitle } from "../page-chrome";
 import { useHistory } from "../player/history-store";
 import { usePlayerControls } from "../player/player-context";
 import { SongRow } from "../song-row";
@@ -19,35 +20,36 @@ import { PLAY_LOG_LIMIT, usePlayLog } from "./play-log";
 
 const TOP = 10;
 
+const plural = (value: number, unit: string) => (value === 1 ? unit : `${unit}s`);
+
+const count = (value: number, unit: string) => `${value.toLocaleString()} ${plural(value, unit)}`;
+
 export function StatsView() {
   const hydrated = useHydrated();
   const history = useHistory();
   const log = usePlayLog();
   const stats = useMemo(() => listeningStats(playsFrom(log, history)), [log, history]);
-  const capped = log.plays.length >= PLAY_LOG_LIMIT;
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6">
       <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your listening</h1>
-      <p className="mt-1.5 text-xs leading-relaxed text-[var(--fg-faint)]">
-        Counted in this browser only, from what it has played.
-      </p>
+      <Caption className="mt-1.5">Counted in this browser only, from what it has played.</Caption>
 
       {!hydrated ? (
         <div className="for-you-pending" aria-hidden>
           <Pending />
         </div>
       ) : stats.total === 0 ? (
-        <p className="mt-8 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
+        <EmptyNotice className="mt-8">
           Nothing played on this device yet. Your most played artists and songs show up here
           once you have{" "}
           <Link href="/" className="font-semibold text-[var(--fg)] hover:underline">
             listened to a few
           </Link>
           .
-        </p>
+        </EmptyNotice>
       ) : (
-        <Stats stats={stats} capped={capped} />
+        <Stats stats={stats} capped={log.plays.length >= PLAY_LOG_LIMIT} />
       )}
     </div>
   );
@@ -56,18 +58,13 @@ export function StatsView() {
 function Stats({ stats, capped }: { stats: ListeningStats; capped: boolean }) {
   return (
     <>
-      <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--fg-dim)]">
-        {describeWindow(stats, capped)}
-      </p>
+      <Notice className="mt-4 max-w-2xl">{describeWindow(stats, capped)}</Notice>
 
       <dl className="mt-6 flex flex-wrap gap-x-10 gap-y-4">
-        <Figure label={stats.total === 1 ? "play" : "plays"} value={stats.total} />
-        <Figure label={stats.songs.length === 1 ? "song" : "songs"} value={stats.songs.length} />
-        <Figure
-          label={stats.artists.length === 1 ? "artist" : "artists"}
-          value={stats.artists.length}
-        />
-        {stats.days > 0 && <Figure label={stats.days === 1 ? "day" : "days"} value={stats.days} />}
+        <Figure unit="play" value={stats.total} />
+        <Figure unit="song" value={stats.songs.length} />
+        <Figure unit="artist" value={stats.artists.length} />
+        {stats.days > 0 && <Figure unit="day" value={stats.days} />}
       </dl>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:gap-10">
@@ -80,10 +77,10 @@ function Stats({ stats, capped }: { stats: ListeningStats; capped: boolean }) {
   );
 }
 
-function Figure({ label, value }: { label: string; value: number }) {
+function Figure({ unit, value }: { unit: string; value: number }) {
   return (
     <div className="flex flex-col-reverse">
-      <dt className="text-xs text-[var(--fg-dim)]">{label}</dt>
+      <dt className="text-xs text-[var(--fg-dim)]">{plural(value, unit)}</dt>
       <dd className="text-3xl font-extrabold tabular-nums tracking-tight">
         {value.toLocaleString()}
       </dd>
@@ -97,15 +94,11 @@ function TopArtists({ stats }: { stats: ListeningStats }) {
 
   return (
     <section className="@container min-w-0">
-      <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">Top artists</h2>
-      <p className="mb-3 mt-1 text-xs leading-relaxed text-[var(--fg-faint)]">
-        A song with two artists counts for both.
-      </p>
+      <SectionTitle>Top artists</SectionTitle>
+      <Caption className="mb-3 mt-1">A song with two artists counts for both.</Caption>
 
       {top.length === 0 ? (
-        <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
-          None of what you played named an artist.
-        </p>
+        <Notice>None of what you played named an artist.</Notice>
       ) : (
         <BarChart
           rows={top.map((artist) => ({
@@ -132,10 +125,8 @@ function TopSongs({ stats }: { stats: ListeningStats }) {
 
   return (
     <section className="@container min-w-0">
-      <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">Top songs</h2>
-      <p className="mb-3 mt-1 text-xs leading-relaxed text-[var(--fg-faint)]">
-        Playing one queues the rest of the list after it.
-      </p>
+      <SectionTitle>Top songs</SectionTitle>
+      <Caption className="mb-3 mt-1">Playing one queues the rest of the list after it.</Caption>
 
       <ul className="divide-y divide-[var(--line)]">
         {top.map((entry, index) => {
@@ -153,7 +144,7 @@ function TopSongs({ stats }: { stats: ListeningStats }) {
               subtitle={<ArtistLink artists={song.artists} />}
               trailing={
                 <span className={`${SOURCE_TAG} mr-1 shrink-0 tabular-nums`}>
-                  {entry.plays} {entry.plays === 1 ? "play" : "plays"}
+                  {entry.plays} {plural(entry.plays, "play")}
                 </span>
               }
             />
@@ -167,12 +158,12 @@ function TopSongs({ stats }: { stats: ListeningStats }) {
 function Weekdays({ stats }: { stats: ListeningStats }) {
   return (
     <section className="mt-10">
-      <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">When you listen</h2>
-      <p className="mb-4 mt-1 max-w-2xl text-xs leading-relaxed text-[var(--fg-faint)]">
+      <SectionTitle>When you listen</SectionTitle>
+      <Caption className="mb-4 mt-1 max-w-2xl">
         Plays by day of the week, in this device&rsquo;s time zone.
         {stats.undated > 0 &&
           ` ${stats.undated === 1 ? "The one song" : `The ${stats.undated} songs`} from before Timbre kept times ${stats.undated === 1 ? "is" : "are"} left out.`}
-      </p>
+      </Caption>
 
       <div className="max-w-2xl">
         <StackedColumns
@@ -189,11 +180,10 @@ function Weekdays({ stats }: { stats: ListeningStats }) {
 }
 
 function describeWindow(stats: ListeningStats, capped: boolean): string {
-  const count = (value: number, unit: string) =>
-    `${value.toLocaleString()} ${value === 1 ? unit : `${unit}s`}`;
+  const one = stats.undated === 1;
 
   if (stats.first === null || stats.last === null) {
-    const songs = stats.undated === 1 ? "The one song" : `The last ${count(stats.undated, "song")}`;
+    const songs = one ? "The one song" : `The last ${count(stats.undated, "song")}`;
     return `${songs} you played. Timbre has only just started counting plays on this device, so each counts once for now — the numbers fill in as you listen.`;
   }
 
@@ -207,8 +197,8 @@ function describeWindow(stats: ListeningStats, capped: boolean): string {
 
   const since = `${count(stats.dated, "play")} ${range}.`;
   if (stats.undated === 0) return since;
-  const rest = stats.undated === 1 ? "the one song" : `the ${count(stats.undated, "song")}`;
-  return `${since} Timbre started counting plays on ${from}; before that it kept only which songs you played, so ${rest} you have not played since ${stats.undated === 1 ? "counts" : "count"} once.`;
+  const rest = one ? "the one song" : `the ${count(stats.undated, "song")}`;
+  return `${since} Timbre started counting plays on ${from}; before that it kept only which songs you played, so ${rest} you have not played since ${one ? "counts" : "count"} once.`;
 }
 
 function formatDate(at: number): string {
@@ -220,21 +210,23 @@ function formatDate(at: number): string {
   });
 }
 
+const pulse = (size: string) => `${size} animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]`;
+
 function Pending() {
   return (
     <>
-      <div className="mt-4 h-4 w-2/3 max-w-md animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
+      <div className={pulse("mt-4 h-4 w-2/3 max-w-md")} />
       <div className="mt-6 flex gap-10">
         {Array.from({ length: 3 }, (_, index) => (
-          <div key={index} className="h-12 w-16 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
+          <div key={index} className={pulse("h-12 w-16")} />
         ))}
       </div>
       <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:gap-10">
         {Array.from({ length: 2 }, (_, column) => (
           <div key={column} className="flex flex-col gap-2">
-            <div className="mb-2 h-6 w-32 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
+            <div className={pulse("mb-2 h-6 w-32")} />
             {Array.from({ length: 6 }, (_, row) => (
-              <div key={row} className="h-6 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
+              <div key={row} className={pulse("h-6")} />
             ))}
           </div>
         ))}

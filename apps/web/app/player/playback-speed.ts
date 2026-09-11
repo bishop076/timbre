@@ -1,15 +1,10 @@
-import { useSyncExternalStore } from "react";
-
-import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
+import { createLocalStore, readItem, useLocalStore, writeItem } from "../local-store.ts";
 
 export const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
-
 export const NORMAL_SPEED = 1;
 
-const EPSILON = 0.001;
-
 function sameRate(a: number, b: number): boolean {
-  return Math.abs(a - b) < EPSILON;
+  return Math.abs(a - b) < 0.001;
 }
 
 export function parseSpeed(raw: unknown): number {
@@ -33,9 +28,12 @@ export function formatSpeed(rate: number): string {
   return `${Number(rate.toFixed(2))}×`;
 }
 
-export type SpeedSupport =
-  | { supported: true; speeds: number[] }
-  | { supported: false; reason: string };
+type SpeedSupport = { supported: true; speeds: number[] } | { supported: false; reason: string };
+
+interface YouTubeRates {
+  videoId: string;
+  rates: readonly number[];
+}
 
 export function speedSupport(playing: {
   activeSource: string | null;
@@ -56,32 +54,21 @@ export function speedSupport(playing: {
   if (playing.spotifyTrackId) return widget("Spotify");
   if (playing.subscription) return widget(playing.subscription === "apple" ? "Apple Music" : "Deezer");
   if (playing.streamUrl) return { supported: true, speeds: [...SPEEDS] };
+  if (!playing.videoId) return { supported: false, reason: "Nothing is playing." };
 
-  if (playing.videoId) {
-    const reported =
-      playing.youtubeRates?.videoId === playing.videoId ? playing.youtubeRates.rates : [];
-    const speeds = offeredSpeeds(reported);
-    if (speeds.length < 2) {
-      return { supported: false, reason: "YouTube only plays this video at normal speed." };
-    }
-    return { supported: true, speeds };
-  }
-
-  return { supported: false, reason: "Nothing is playing." };
+  const { youtubeRates } = playing;
+  const speeds = offeredSpeeds(youtubeRates?.videoId === playing.videoId ? youtubeRates.rates : []);
+  return speeds.length < 2
+    ? { supported: false, reason: "YouTube only plays this video at normal speed." }
+    : { supported: true, speeds };
 }
 
 const SPEED_KEY = "timbre:speed";
 
 const speedStore = createLocalStore<number>({
-  read: () => {
-    try {
-      return parseSpeed(window.localStorage.getItem(SPEED_KEY));
-    } catch {
-      return NORMAL_SPEED;
-    }
-  },
+  read: () => parseSpeed(readItem(SPEED_KEY)),
   initial: NORMAL_SPEED,
-  write: (rate) => window.localStorage.setItem(SPEED_KEY, String(rate)),
+  write: (rate) => writeItem(SPEED_KEY, String(rate)),
   keys: [SPEED_KEY],
 });
 
@@ -89,38 +76,24 @@ export function useSpeed(): number {
   return useLocalStore(speedStore);
 }
 
-export function getSpeed(): number {
-  return speedStore.getSnapshot();
-}
-
 export function writeSpeed(rate: number): void {
   speedStore.save(parseSpeed(rate));
 }
 
-export interface YouTubeRates {
-  videoId: string;
-  rates: readonly number[];
-}
-
-const rateReports = createNotifier();
-let youtubeRates: YouTubeRates | null = null;
+const rateStore = createLocalStore<YouTubeRates | null>({ initial: null });
 
 export function publishYouTubeRates(videoId: string, rates: readonly number[]): void {
+  const known = rateStore.getSnapshot();
   if (
-    youtubeRates?.videoId === videoId &&
-    youtubeRates.rates.length === rates.length &&
-    youtubeRates.rates.every((rate, at) => sameRate(rate, rates[at]!))
+    known?.videoId === videoId &&
+    known.rates.length === rates.length &&
+    known.rates.every((rate, at) => sameRate(rate, rates[at]!))
   ) {
     return;
   }
-  youtubeRates = { videoId, rates: [...rates] };
-  rateReports.emit();
+  rateStore.publish({ videoId, rates: [...rates] });
 }
 
 export function useYouTubeRates(): YouTubeRates | null {
-  return useSyncExternalStore(
-    rateReports.subscribe,
-    () => youtubeRates,
-    () => null,
-  );
+  return useLocalStore(rateStore);
 }

@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
 
 import { HeartFilledIcon } from "../icons";
-import { loadLikes, useLikes } from "./likes-store";
+import { useLikes } from "./likes-store";
 
 export function LikedCover({
-  className = "",
-  iconClassName = "size-8",
+  className,
+  iconClassName,
 }: {
-  className?: string;
-  iconClassName?: string;
+  className: string;
+  iconClassName: string;
 }) {
   return (
     <span
@@ -25,13 +24,7 @@ export function LikedCover({
 
 function useCount(): string {
   const { songs, settled } = useLikes();
-
-  useEffect(() => {
-    loadLikes();
-  }, []);
-
-  if (!settled) return "";
-  return `${songs.length} ${songs.length === 1 ? "song" : "songs"}`;
+  return settled ? `${songs.length} ${songs.length === 1 ? "song" : "songs"}` : " ";
 }
 
 export function LikedTile() {
@@ -48,7 +41,7 @@ export function LikedTile() {
           iconClassName="size-1/3"
         />
         <span className="mt-2.5 block truncate text-sm font-semibold">Liked songs</span>
-        <span className="block text-xs text-[var(--fg-dim)]">{count || " "}</span>
+        <span className="block text-xs text-[var(--fg-dim)]">{count}</span>
       </Link>
     </li>
   );
@@ -65,7 +58,7 @@ export function LikedRow() {
       <LikedCover className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]" iconClassName="size-4" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold">Liked songs</span>
-        <span className="block truncate text-[11px] text-[var(--fg-dim)]">{count || " "}</span>
+        <span className="block truncate text-[11px] text-[var(--fg-dim)]">{count}</span>
       </span>
     </Link>
   );

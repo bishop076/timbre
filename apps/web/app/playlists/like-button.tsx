@@ -1,19 +1,15 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useId } from "react";
 
 import { HeartFilledIcon, HeartIcon } from "../icons";
 import type { Song } from "../types";
-import { likeSong, loadLikes, unlikeSong, useIsLiked, useLikes } from "./likes-store";
+import { likeSong, unlikeSong, useIsLiked, useLikes } from "./likes-store";
 
 export function LikeButton({ song, className = "size-8" }: { song: Song; className?: string }) {
   const liked = useIsLiked(song);
   const { error } = useLikes();
   const described = useId();
-
-  useEffect(() => {
-    loadLikes();
-  }, []);
 
   return (
     <button

@@ -3,14 +3,12 @@ import { test } from "node:test";
 
 import { sameTrack } from "../player/song-match.ts";
 
+const KEY = "timbre:likes";
+
 let instance = 0;
 
-interface Storage {
-  [key: string]: string;
-}
-
-async function fresh(seed?: Storage, { full = false } = {}) {
-  const backing: Storage = { ...seed };
+async function fresh(seed: Record<string, string> = {}, { full = false } = {}) {
+  const backing = { ...seed };
 
   (globalThis as unknown as { window: unknown }).window = {
     localStorage: {
@@ -32,8 +30,6 @@ async function fresh(seed?: Storage, { full = false } = {}) {
   return { likes, backing };
 }
 
-const KEY = "timbre:likes";
-
 function song(id: string, title = `Track ${id}`, extra: Record<string, unknown> = {}) {
   return {
     id,
@@ -48,9 +44,10 @@ function song(id: string, title = `Track ${id}`, extra: Record<string, unknown> 
   };
 }
 
-function stored(backing: Storage) {
-  return JSON.parse(backing[KEY]!) as { id: string; from?: unknown }[];
-}
+const ids = (songs: { id: string }[]) => songs.map((entry) => entry.id);
+
+const stored = (backing: Record<string, string>) =>
+  JSON.parse(backing[KEY]!) as { id: string; from?: unknown }[];
 
 test("likes are stored newest first, without the page they were played from", async () => {
   const { likes, backing } = await fresh();
@@ -58,11 +55,9 @@ test("likes are stored newest first, without the page they were played from", as
   likes.likeSong(song("a", "First", { from: { kind: "artist", name: "NIKI" } }));
   likes.likeSong(song("b", "Second"));
 
-  assert.deepEqual(
-    stored(backing).map((entry) => entry.id),
-    ["b", "a"],
-  );
+  assert.deepEqual(ids(stored(backing)), ["b", "a"]);
   assert.equal(stored(backing)[1]!.from, undefined);
+  assert.equal(likes.getLikesState().error, null);
 });
 
 test("the same recording under another id is one like, and unliking it clears it", async () => {
@@ -72,7 +67,7 @@ test("the same recording under another id is one like, and unliking it clears it
   likes.likeSong(song("key#ytmusic:two", "Take Care (Official Video)"));
   assert.equal(likes.getLikedSongs().length, 1);
 
-  assert.equal(likes.toggleLike(song("key#ytmusic:two", "Take Care (Official Video)")), false);
+  likes.unlikeSong(song("key#ytmusic:two", "Take Care (Official Video)"));
   assert.equal(likes.getLikedSongs().length, 0);
 });
 
@@ -91,8 +86,9 @@ test("a shared ISRC is the same recording whatever the titles say", async () => 
 
   likes.likeSong(song("a", "Every Summertime", { isrc: "USRC12100001" }));
 
-  assert.equal(likes.isLikedIn(likes.getLikedSongs(), song("b", "EVERY SUMMERTIME (Live)", { isrc: "USRC12100001" })), true);
-  assert.equal(likes.isLikedIn(likes.getLikedSongs(), song("c", "Every Summertime", { isrc: "GBAYE0000001" })), false);
+  const liked = likes.getLikedSongs();
+  assert.equal(likes.isLikedIn(liked, song("b", "EVERY SUMMERTIME (Live)", { isrc: "USRC12100001" })), true);
+  assert.equal(likes.isLikedIn(liked, song("c", "Every Summertime", { isrc: "GBAYE0000001" })), false);
 });
 
 test("the index never answers differently from asking sameTrack of every entry", async () => {
@@ -123,24 +119,13 @@ test("the index never answers differently from asking sameTrack of every entry",
   }
 });
 
-test("a like starts from what is stored, not from an empty list", async () => {
-  const { likes, backing } = await fresh({ [KEY]: JSON.stringify([song("old")]) });
+test("a broken stored entry heals on read, and a like starts from what is stored", async () => {
+  const { likes, backing } = await fresh({ [KEY]: JSON.stringify([null, { id: "x" }, song("old")]) });
+
+  assert.deepEqual(ids(likes.getLikedSongs()), ["old"]);
 
   likes.likeSong(song("new"));
-
-  assert.deepEqual(
-    stored(backing).map((entry) => entry.id),
-    ["new", "old"],
-  );
-});
-
-test("a browser holding a broken entry heals on read", async () => {
-  const { likes } = await fresh({ [KEY]: JSON.stringify([null, { id: "x" }, song("ok")]) });
-
-  assert.deepEqual(
-    likes.getLikedSongs().map((entry: { id: string }) => entry.id),
-    ["ok"],
-  );
+  assert.deepEqual(ids(stored(backing)), ["new", "old"]);
 });
 
 test("running out of storage is reported, and the like still holds for the session", async () => {
@@ -151,14 +136,6 @@ test("running out of storage is reported, and the like still holds for the sessi
   const state = likes.getLikesState();
   assert.match(state.error ?? "", /Out of browser storage/);
   assert.equal(state.songs.length, 1);
-});
-
-test("a write that succeeds clears the report", async () => {
-  const { likes } = await fresh();
-
-  likes.likeSong(song("a"));
-
-  assert.equal(likes.getLikesState().error, null);
 });
 
 test("an import adds only what is new, after what is here, in the file's order", async () => {
@@ -176,10 +153,7 @@ test("an import adds only what is new, after what is here, in the file's order",
   ]);
 
   assert.equal(added, 2);
-  assert.deepEqual(
-    likes.getLikedSongs().map((entry: { id: string }) => entry.id),
-    ["mine", "x", "y"],
-  );
+  assert.deepEqual(ids(likes.getLikedSongs()), ["mine", "x", "y"]);
 });
 
 test("an import of something that is not a list adds nothing", async () => {

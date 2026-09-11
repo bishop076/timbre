@@ -1,6 +1,7 @@
 import { findBiography, type BiographyQuery } from "@/lib/biography";
 
 import { ExternalIcon } from "../icons";
+import { Notice } from "../page-chrome";
 
 export async function ArtistAbout(query: BiographyQuery) {
   const bio = await findBiography(query);
@@ -11,9 +12,7 @@ export async function ArtistAbout(query: BiographyQuery) {
       <h2 className="mb-2.5 px-1 text-lg font-extrabold tracking-tight sm:mb-3.5 sm:text-xl">About</h2>
 
       <div className="slab rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-4">
-        <p className="line-clamp-4 max-w-prose text-sm leading-relaxed text-[var(--fg-dim)]">
-          {bio.extract}
-        </p>
+        <Notice className="line-clamp-4 max-w-prose">{bio.extract}</Notice>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs">
           <a

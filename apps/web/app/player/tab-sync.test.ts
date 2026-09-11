@@ -56,9 +56,21 @@ function owner(self: string, at: number): SyncModel {
   return localState(initialModel(self), "playing", at).model;
 }
 
-test("a well-formed message survives the wire", () => {
-  const message: Message = { type: "state", from: "a", at: 5, report: report() };
-  assert.deepEqual(parseMessage(wire(message)), message);
+const CLAIM_B: Message = { type: "claim", from: "b", at: 200 };
+const STATE_A: Message = { type: "state", from: "a", at: 100, report: report() };
+const mirror = () => receive(initialModel("c"), STATE_A, IDLE, 1000).model;
+const deposedMidLoad = () => receive(initialModel("a"), CLAIM_B, LOADING, 200).model;
+
+test("well-formed messages survive the wire", () => {
+  const messages: Message[] = [
+    STATE_A,
+    CLAIM_B,
+    { type: "gone", from: "a" },
+    { type: "hello", from: "a" },
+    { type: "take", from: "c", to: "a" },
+    { type: "command", from: "c", to: "a", command: { action: "next" } },
+  ];
+  for (const message of messages) assert.deepEqual(parseMessage(wire(message)), message, message.type);
 });
 
 test("anything that is not this protocol's message is dropped", () => {
@@ -136,14 +148,14 @@ test("a claim is never behind the newest one heard, whatever the clock says", ()
 });
 
 test("a playing tab pauses when another tab starts playing", () => {
-  const step = receive(owner("a", 100), { type: "claim", from: "b", at: 200 }, PLAYING, 200);
+  const step = receive(owner("a", 100), CLAIM_B, PLAYING, 200);
   assert.deepEqual(step.effect, { kind: "pause" });
   assert.equal(step.model.claim?.tab, "b");
   assert.ok(!owns(step.model));
 });
 
 test("a paused tab gives up ownership quietly", () => {
-  const step = receive(owner("a", 100), { type: "claim", from: "b", at: 200 }, PAUSED, 200);
+  const step = receive(owner("a", 100), CLAIM_B, PAUSED, 200);
   assert.equal(step.effect, null, "nothing to pause — and a toggle would start it");
   assert.equal(step.model.claim?.tab, "b");
 });
@@ -160,13 +172,13 @@ test("two claims that cross leave exactly one tab playing", () => {
 });
 
 test("the owner's repeated reports do not pause anything twice", () => {
-  const deposed = receive(owner("a", 100), { type: "claim", from: "b", at: 200 }, PLAYING, 200).model;
+  const deposed = receive(owner("a", 100), CLAIM_B, PLAYING, 200).model;
   const again = receive(deposed, { type: "state", from: "b", at: 200, report: report() }, PLAYING, 201);
   assert.equal(again.effect, null);
 });
 
 test("a tab deposed mid-load pauses when the load lands, instead of claiming", () => {
-  const step = receive(owner("a", 100), { type: "claim", from: "b", at: 200 }, LOADING, 200);
+  const step = receive(owner("a", 100), CLAIM_B, LOADING, 200);
   assert.equal(step.effect, null, "nothing is playing yet");
 
   const landed = localState(step.model, "playing", 300);
@@ -176,16 +188,14 @@ test("a tab deposed mid-load pauses when the load lands, instead of claiming", (
 });
 
 test("a pending yield is dropped by a stop, so the next play is the reader's", () => {
-  const deposed = receive(initialModel("a"), { type: "claim", from: "b", at: 200 }, LOADING, 200).model;
-  const stopped = localState(deposed, "paused", 250).model;
+  const stopped = localState(deposedMidLoad(), "paused", 250).model;
   const pressed = localState(stopped, "playing", 300);
   assert.equal(pressed.pause, false);
   assert.equal(pressed.message?.type, "claim");
 });
 
 test("a pending yield is dropped when a new song is picked here", () => {
-  const deposed = receive(initialModel("a"), { type: "claim", from: "b", at: 200 }, LOADING, 200).model;
-  const picked = localSong(deposed, true).model;
+  const picked = localSong(deposedMidLoad(), true).model;
   assert.equal(localState(picked, "playing", 300).message?.type, "claim");
 });
 
@@ -200,37 +210,33 @@ test("an owner carrying on — a buffer draining, the next song — does not re-
 });
 
 test("an empty tab mirrors the owner from its first report", () => {
-  const step = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000);
+  const step = receive(initialModel("c"), STATE_A, IDLE, 1000);
   assert.equal(step.effect, null);
   assert.equal(step.model.remote?.tab, "a");
   assert.equal(step.model.remote?.report.song.title, "Song");
 });
 
 test("a deposed tab's last report is not mirrored", () => {
-  const mirror = receive(initialModel("c"), { type: "claim", from: "b", at: 200 }, IDLE, 1000).model;
-  const stale = receive(mirror, { type: "state", from: "a", at: 100, report: report() }, IDLE, 1001);
+  const following = receive(initialModel("c"), CLAIM_B, IDLE, 1000).model;
+  const stale = receive(following, STATE_A, IDLE, 1001);
   assert.equal(stale.model.remote, null);
 });
 
 test("a new owner replaces the one being mirrored", () => {
-  const mirror = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000).model;
-  const moved = receive(mirror, { type: "claim", from: "b", at: 200 }, IDLE, 1001).model;
+  const moved = receive(mirror(), CLAIM_B, IDLE, 1001).model;
   assert.equal(moved.remote, null, "a's song is no longer the one playing");
   assert.equal(moved.claim?.tab, "b");
 });
 
 test("the owner going away takes the mirror with it", () => {
-  const mirror = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000).model;
-  const gone = receive(mirror, { type: "gone", from: "a" }, IDLE, 1001).model;
+  const gone = receive(mirror(), { type: "gone", from: "a" }, IDLE, 1001).model;
   assert.equal(gone.remote, null);
   assert.equal(gone.claim, null);
 });
 
 test("an owner that falls silent is asked, then let go", () => {
-  const mirror = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000).model;
-
-  assert.equal(tick(mirror, 1000 + PING_AFTER_MS - 1).ping, false);
-  const asked = tick(mirror, 1000 + PING_AFTER_MS + 1);
+  assert.equal(tick(mirror(), 1000 + PING_AFTER_MS - 1).ping, false);
+  const asked = tick(mirror(), 1000 + PING_AFTER_MS + 1);
   assert.equal(asked.ping, true);
   assert.equal(tick(asked.model, 1000 + PING_AFTER_MS + 2).ping, false, "once per interval, not per tick");
 
@@ -266,8 +272,7 @@ test("leaving announces itself only from the owner", () => {
 });
 
 test("taking over asks the owner, which hands its queue to the asker", () => {
-  const mirror = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000).model;
-  const ask = asking(mirror);
+  const ask = asking(mirror());
   assert.deepEqual(ask.message, { type: "take", from: "c", to: "a" });
 
   const atOwner = receive(owner("a", 100), ask.message!, PLAYING, 1001);
@@ -279,18 +284,15 @@ test("taking over asks the owner, which hands its queue to the asker", () => {
   assert.equal(adopted.model.asked, null);
 });
 
-test("a handoff nobody asked for does not replace the queue", () => {
-  const handoff = { queue: [song("x")], index: 0, position: 0, prefer: null };
-  const step = receive(initialModel("c"), { type: "handoff", from: "a", to: "c", handoff }, IDLE, 1000);
-  assert.equal(step.effect, null);
-});
-
-test("a handoff that arrives after something was started here is dropped", () => {
-  const mirror = receive(initialModel("c"), { type: "state", from: "a", at: 100, report: report() }, IDLE, 1000).model;
-  const asked = asking(mirror).model;
-  const handoff = { queue: [song("x")], index: 0, position: 0, prefer: null };
-  const step = receive(asked, { type: "handoff", from: "a", to: "c", handoff }, LOADING, 1001);
-  assert.equal(step.effect, null);
+test("a handoff nobody asked for, or one after something was started here, is dropped", () => {
+  const handoff: Message = {
+    type: "handoff",
+    from: "a",
+    to: "c",
+    handoff: { queue: [song("x")], index: 0, position: 0, prefer: null },
+  };
+  assert.equal(receive(initialModel("c"), handoff, IDLE, 1000).effect, null);
+  assert.equal(receive(asking(mirror()).model, handoff, LOADING, 1001).effect, null);
 });
 
 test("a tab ignores its own messages", () => {

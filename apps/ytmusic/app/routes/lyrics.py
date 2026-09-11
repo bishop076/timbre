@@ -13,8 +13,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_LYRICS_SLOT = "lyrics"
 _mobile_lock = threading.Lock()
+
+_ASIDES = re.compile(
+    r"\s*[(\[][^)\]]*[)\]]|\s+-\s+.*$|\s+(?:feat\.?|ft\.|featuring)\s.*$", re.IGNORECASE
+)
 
 
 @router.post("/lyrics", response_model=LyricsResponse)
@@ -25,9 +28,7 @@ def lyrics(request: LyricsRequest) -> LyricsResponse:
         if art_track is not None:
             browse_id = lyrics_page([art_track])
 
-    if browse_id is None:
-        return LyricsResponse()
-    return to_lyrics(_fetch_lyrics(browse_id))
+    return LyricsResponse() if browse_id is None else to_lyrics(_fetch_lyrics(browse_id))
 
 
 def lyrics_page(video_ids: list[str]) -> str | None:
@@ -61,11 +62,6 @@ def find_art_track(title: str, artist: str) -> str | None:
     return None
 
 
-_ASIDES = re.compile(
-    r"\s*[(\[][^)\]]*[)\]]|\s+-\s+.*$|\s+(?:feat\.?|ft\.|featuring)\s.*$", re.IGNORECASE
-)
-
-
 def _match_key(text: str) -> str:
     spelled = _ASIDES.sub("", text).casefold().replace("&", "and")
     return "".join(char for char in spelled if char.isalnum())
@@ -73,13 +69,12 @@ def _match_key(text: str) -> str:
 
 def _fetch_lyrics(browse_id: str) -> object:
     with _mobile_lock:
-        client = get_client(_LYRICS_SLOT)
+        client = get_client("lyrics")
         try:
             found = client.get_lyrics(browse_id, timestamps=True)
         except Exception as error:  # noqa: BLE001
             logger.info("timed lyrics failed, trying the plain page: %s", error)
             found = None
-
         if found is not None:
             return found
 
@@ -98,17 +93,15 @@ def to_lyrics(raw: object) -> LyricsResponse:
     body = raw.get("lyrics")
 
     if raw.get("hasTimestamps") and isinstance(body, list):
-        lines = [line for line in (_timed_line(item) for item in body) if line is not None]
-        if lines:
-            lines.sort(key=lambda line: line.start_ms or 0)
-            return LyricsResponse(synced=True, lines=lines, attribution=attribution)
-        return LyricsResponse()
+        lines = [line for line in map(_timed_line, body) if line is not None]
+        if not lines:
+            return LyricsResponse()
+        lines.sort(key=lambda line: line.start_ms or 0)
+        return LyricsResponse(synced=True, lines=lines, attribution=attribution)
 
     if isinstance(body, str) and body.strip():
-        return LyricsResponse(
-            lines=[LyricLine(text=text) for text in body.strip("\n").splitlines()],
-            attribution=attribution,
-        )
+        lines = [LyricLine(text=text) for text in body.strip("\n").splitlines()]
+        return LyricsResponse(lines=lines, attribution=attribution)
 
     return LyricsResponse()
 

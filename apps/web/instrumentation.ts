@@ -7,7 +7,7 @@ export const onRequestError: Instrumentation.onRequestError = (error, request, c
     route: context.routePath,
     kind: context.routeType,
     method: request.method,
-    ...(context.revalidateReason ? { revalidate: context.revalidateReason } : {}),
+    revalidate: context.revalidateReason,
     ...describeError(error),
   });
 };

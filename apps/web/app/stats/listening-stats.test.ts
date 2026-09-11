@@ -33,7 +33,6 @@ test("a repeat is another play of the same song, not another song", () => {
       ["b", 1],
     ],
   );
-  assert.equal(stats.songs[0]!.lastAt, at(1));
 });
 
 test("artists group across case and accents, keep their latest spelling, and count songs apart from plays", () => {
@@ -126,8 +125,7 @@ test("a song with no usable artists still counts as a play", () => {
 });
 
 test("the log keeps the newest plays and forgets songs nothing refers to", () => {
-  let log = EMPTY_LOG;
-  log = appendPlay(log, song("a"), 1, 2);
+  let log = appendPlay(EMPTY_LOG, song("a"), 1, 2);
   log = appendPlay(log, song("b"), 2, 2);
   log = appendPlay(log, song("c"), 3, 2);
   assert.deepEqual(log.plays, [

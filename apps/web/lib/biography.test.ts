@@ -7,7 +7,6 @@ import {
   pickArtist,
   readSummary,
   sharesARelease,
-  sitelinkTitle,
   soleEntity,
   wikidataIdFrom,
 } from "./biography.ts";
@@ -18,21 +17,8 @@ const sades = [
   { id: "turkey", name: "Sade", score: 72 },
 ];
 
-test("the well-known namesake MusicBrainz is sure of, not the others", () => {
+test("the namesake MusicBrainz is sure of, accents aside, with the exact spelling winning a tie", () => {
   assert.equal(pickArtist("Sade", sades), "band");
-});
-
-test("a search that was only close picks nobody", () => {
-  const near = [
-    { id: "a", name: "radiohead 3", score: 57 },
-    { id: "b", name: "DJ Radiohead", score: 57 },
-  ];
-  assert.equal(pickArtist("Radiohead", near), null);
-  assert.equal(pickArtist("Flume", [{ id: "pt", name: "Flume", score: 80 }]), null);
-  assert.equal(pickArtist("Boiler Room", [{ id: "c", name: "Boiler Room Collective", score: 100 }]), null);
-});
-
-test("accents and punctuation do not stop a match, and the exact spelling wins a tie", () => {
   assert.equal(pickArtist("Sigur Ros", [{ id: "sr", name: "Sigur Rós", score: 100 }]), "sr");
   const two = [
     { id: "loose", name: "Sigur Ros", score: 100 },
@@ -41,12 +27,19 @@ test("accents and punctuation do not stop a match, and the exact spelling wins a
   assert.equal(pickArtist("sigur rós", two), "exact");
 });
 
-test("an empty name matches nothing", () => {
+test("a search that was only close, or an empty name, picks nobody", () => {
+  const near = [
+    { id: "a", name: "radiohead 3", score: 57 },
+    { id: "b", name: "DJ Radiohead", score: 57 },
+  ];
+  assert.equal(pickArtist("Radiohead", near), null);
+  assert.equal(pickArtist("Flume", [{ id: "pt", name: "Flume", score: 80 }]), null);
+  assert.equal(pickArtist("Boiler Room", [{ id: "c", name: "Boiler Room Collective", score: 100 }]), null);
   assert.equal(pickArtist("  ", sades), null);
   assert.equal(pickArtist("Sade", []), null);
 });
 
-test("Wikidata and English Wikipedia links are read out of MusicBrainz relations", () => {
+test("Wikidata and English Wikipedia links are read out of MusicBrainz relations, and nothing else", () => {
   const relations = [
     { type: "official homepage", url: { resource: "https://example.com/" } },
     { type: "wikipedia", url: { resource: "https://de.wikipedia.org/wiki/Boiler_Room" } },
@@ -55,17 +48,15 @@ test("Wikidata and English Wikipedia links are read out of MusicBrainz relations
   ];
   assert.equal(wikidataIdFrom(relations), "Q4938334");
   assert.equal(enwikiTitleFrom(relations), "Boiler Room (band)");
-  assert.equal(
-    enwikiTitleFrom([{ type: "wikipedia", url: { resource: "https://en.wikipedia.org/wiki/Sigur_R%C3%B3s" } }]),
-    "Sigur Rós",
-  );
-});
+  const escaped = { type: "wikipedia", url: { resource: "https://en.wikipedia.org/wiki/Sigur_R%C3%B3s" } };
+  assert.equal(enwikiTitleFrom([escaped]), "Sigur Rós");
 
-test("no links, or links to other things, give nothing", () => {
   assert.equal(wikidataIdFrom(undefined), null);
   assert.equal(enwikiTitleFrom([]), null);
-  assert.equal(wikidataIdFrom([{ type: "wikidata", url: { resource: "https://www.wikidata.org/wiki/Property:P2722" } }]), null);
-  assert.equal(enwikiTitleFrom([{ type: "discogs", url: { resource: "https://en.wikipedia.org/wiki/Radiohead" } }]), null);
+  const property = { type: "wikidata", url: { resource: "https://www.wikidata.org/wiki/Property:P2722" } };
+  assert.equal(wikidataIdFrom([property]), null);
+  const mislabelled = { type: "discogs", url: { resource: "https://en.wikipedia.org/wiki/Radiohead" } };
+  assert.equal(enwikiTitleFrom([mislabelled]), null);
 });
 
 test("a Deezer id claimed by exactly one entity names it; two claimants name nobody", () => {
@@ -73,13 +64,6 @@ test("a Deezer id claimed by exactly one entity names it; two claimants name nob
   assert.equal(soleEntity({ query: { search: [{ title: "Q658182" }, { title: "Q194187" }] } }), null);
   assert.equal(soleEntity({ query: { search: [] } }), null);
   assert.equal(soleEntity(null), null);
-});
-
-test("the enwiki sitelink is read from a wbgetentities answer", () => {
-  const body = { entities: { Q658182: { sitelinks: { enwiki: { title: "Sade (band)" } } } } };
-  assert.equal(sitelinkTitle(body, "Q658182"), "Sade (band)");
-  assert.equal(sitelinkTitle({ entities: { Q1: { sitelinks: {} } } }, "Q1"), null);
-  assert.equal(sitelinkTitle(null, "Q1"), null);
 });
 
 test("a name match needs a release in common to count", () => {
@@ -106,22 +90,14 @@ test("a standard article becomes a biography, with the stray spaces closed up", 
   assert.match(bio.extract, /Thom Yorke; the brothers/);
 });
 
-test("a disambiguation page is not a biography", () => {
-  assert.equal(
-    readSummary({
-      type: "disambiguation",
-      title: "Sade",
-      extract: "Sade may refer to:",
-      content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/Sade" } },
-    }),
-    null,
-  );
-});
-
-test("an article with no prose is not a biography, and the URL is rebuilt when absent", () => {
+test("a disambiguation page, or one with no prose, is not a biography", () => {
+  assert.equal(readSummary({ ...radiohead, type: "disambiguation", extract: "Sade may refer to:" }), null);
   assert.equal(readSummary({ ...radiohead, extract: "   " }), null);
   assert.equal(readSummary({ ...radiohead, type: "no-extract" }), null);
   assert.equal(readSummary(null), null);
+});
+
+test("the URL is rebuilt when absent, slashes escaped", () => {
   const bare = readSummary({ type: "standard", title: "AC/DC", extract: "AC/DC are an Australian rock band." });
   assert.equal(bare?.url, "https://en.wikipedia.org/wiki/AC%2FDC");
 });
