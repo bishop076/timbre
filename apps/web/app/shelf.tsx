@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChevronIcon } from "./icons";
+import { SectionHeader } from "./page-chrome";
 
 const ARROW =
   "slab-sm press absolute top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] pointer-fine:flex disabled:invisible";
@@ -15,7 +16,6 @@ export function Shelf({
 }: {
   title: string;
   caption?: string;
-
   resetKey?: string;
   children: React.ReactNode;
 }) {
@@ -24,8 +24,7 @@ export function Shelf({
   const [canRight, setCanRight] = useState(true);
 
   useEffect(() => {
-    if (resetKey === undefined) return;
-    row.current?.scrollTo({ left: 0, behavior: "smooth" });
+    if (resetKey !== undefined) row.current?.scrollTo({ left: 0, behavior: "smooth" });
   }, [resetKey]);
 
   useEffect(() => {
@@ -60,60 +59,43 @@ export function Shelf({
 
   function nudge(direction: 1 | -1) {
     const el = row.current;
-    if (!el) return;
+    if (!el?.firstElementChild) return;
 
     const tiles = [...el.children] as HTMLElement[];
-    if (tiles.length === 0) return;
-
-    const target = el.scrollLeft + direction * el.clientWidth * 0.8;
-
     const origin = tiles[0]!.offsetLeft;
-    let best = tiles[0]!;
-    for (const tile of tiles) {
-      if (Math.abs(tile.offsetLeft - origin - target) < Math.abs(best.offsetLeft - origin - target)) {
-        best = tile;
-      }
-    }
-
+    const target = el.scrollLeft + direction * el.clientWidth * 0.8;
+    const distance = (tile: HTMLElement) => Math.abs(tile.offsetLeft - origin - target);
+    const best = tiles.reduce((closest, tile) =>
+      distance(tile) < distance(closest) ? tile : closest,
+    );
     el.scrollTo({ left: best.offsetLeft - origin, behavior: "smooth" });
   }
 
   return (
     <section className="mb-6 sm:mb-9">
-      <div className="mb-2.5 flex items-center justify-between gap-4 px-1 sm:mb-3.5">
-        <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{title}</h2>
-
+      <SectionHeader title={title}>
         {caption && (
-          <p className="slab-sm hidden shrink-0 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--fg-dim)] @md:block">
+          <p className="slab-sm hidden rounded-[var(--r-full)] bg-[var(--surface-2)] px-2.5 py-1 text-[11px] font-semibold text-[var(--fg-dim)] @md:block">
             {caption}
           </p>
         )}
-      </div>
+      </SectionHeader>
 
       <div className="relative">
-        <button
-          type="button"
-          onClick={() => nudge(-1)}
-          disabled={!canLeft}
-          aria-label={`Scroll ${title} left`}
-          className={`${ARROW} left-2`}
-        >
-          <ChevronIcon className="size-5 rotate-90" />
-        </button>
-        <button
-          type="button"
-          onClick={() => nudge(1)}
-          disabled={!canRight}
-          aria-label={`Scroll ${title} right`}
-          className={`${ARROW} right-2`}
-        >
-          <ChevronIcon className="size-5 -rotate-90" />
-        </button>
+        {([-1, 1] as const).map((direction) => (
+          <button
+            key={direction}
+            type="button"
+            onClick={() => nudge(direction)}
+            disabled={direction < 0 ? !canLeft : !canRight}
+            aria-label={`Scroll ${title} ${direction < 0 ? "left" : "right"}`}
+            className={`${ARROW} ${direction < 0 ? "left-2" : "right-2"}`}
+          >
+            <ChevronIcon className={`size-5 ${direction < 0 ? "rotate-90" : "-rotate-90"}`} />
+          </button>
+        ))}
 
-        <div
-          ref={row}
-          className="shelf flex gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4"
-        >
+        <div ref={row} className="shelf flex gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4">
           {children}
         </div>
       </div>

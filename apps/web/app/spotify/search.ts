@@ -3,13 +3,6 @@
 import type { Song } from "../types";
 import { accessToken } from "./connection.ts";
 
-const SEARCH = "https://api.spotify.com/v1/search";
-
-interface SpotifyImage {
-  url?: string;
-  width?: number;
-}
-
 interface SpotifyTrack {
   id?: string;
   name?: string;
@@ -17,25 +10,27 @@ interface SpotifyTrack {
   external_ids?: { isrc?: string };
   external_urls?: { spotify?: string };
   artists?: { name?: string }[];
-  album?: { name?: string; images?: SpotifyImage[] };
+  album?: { name?: string; images?: { url?: string }[] };
 }
 
-function cover(images: SpotifyImage[] | undefined): string | null {
-  if (!images?.length) return null;
-  return (images[1] ?? images[0])?.url ?? null;
-}
+const REFUSALS: Record<number, string> = {
+  401: "Spotify signed this browser out. Connect again.",
+  403: "This Spotify app has not granted your account access. Development-mode apps allow five users.",
+  429: "Spotify is rate-limiting this app. Try again shortly.",
+};
 
 function toSong(track: SpotifyTrack): Song | null {
   if (!track.id || !track.name) return null;
+  const images = track.album?.images;
 
   return {
     id: `spotify:${track.id}`,
     title: track.name,
-    artists: (track.artists ?? []).map((artist) => artist.name).filter((name): name is string => Boolean(name)),
+    artists: (track.artists ?? []).flatMap((artist) => artist.name || []),
     album: track.album?.name ?? null,
     durationMs: track.duration_ms ?? null,
     isrc: track.external_ids?.isrc ?? null,
-    artworkUrl: cover(track.album?.images),
+    artworkUrl: (images?.[1] ?? images?.[0])?.url ?? null,
     sources: [
       {
         source: "spotify",
@@ -66,7 +61,7 @@ export async function searchSpotify(query: string, signal?: AbortSignal): Promis
   const params = new URLSearchParams({ q: query, type: "track", limit: "10" });
   let response: Response;
   try {
-    response = await fetch(`${SEARCH}?${params}`, {
+    response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
       headers: { authorization: `Bearer ${token}` },
       signal,
     });
@@ -75,21 +70,12 @@ export async function searchSpotify(query: string, signal?: AbortSignal): Promis
     return { kind: "error", message: "Could not reach Spotify." };
   }
 
-  if (response.status === 401) {
-    return { kind: "error", message: "Spotify signed this browser out. Connect again." };
+  if (!response.ok) {
+    const message = REFUSALS[response.status] ?? `Spotify answered ${response.status}.`;
+    return { kind: "error", message };
   }
-  if (response.status === 403) {
-    return {
-      kind: "error",
-      message: "This Spotify app has not granted your account access. Development-mode apps allow five users.",
-    };
-  }
-  if (response.status === 429) {
-    return { kind: "error", message: "Spotify is rate-limiting this app. Try again shortly." };
-  }
-  if (!response.ok) return { kind: "error", message: `Spotify answered ${response.status}.` };
 
   const body = (await response.json()) as { tracks?: { items?: SpotifyTrack[] } };
-  const songs = (body.tracks?.items ?? []).map(toSong).filter((song): song is Song => song !== null);
+  const songs = (body.tracks?.items ?? []).flatMap((track) => toSong(track) ?? []);
   return { kind: "ok", songs, from: "account" };
 }

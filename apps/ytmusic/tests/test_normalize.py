@@ -1,3 +1,5 @@
+import pytest
+
 from app.normalize import to_track, to_tracks
 
 SONG = {
@@ -23,46 +25,44 @@ def test_flattens_a_song() -> None:
     assert track.title == "Wonderwall"
     assert track.artists == ["Oasis"]
     assert track.duration_seconds == 259
-
-
-def test_picks_the_largest_thumbnail() -> None:
-    track = to_track(SONG)
-    assert track is not None
     assert track.thumbnail_url == "https://large.example/x.jpg"
 
 
 def test_keeps_videos_not_just_songs() -> None:
-    video = {**SONG, "resultType": "video"}
-    track = to_track(video)
+    track = to_track({**SONG, "resultType": "video"})
     assert track is not None
     assert track.result_type == "video"
 
 
-def test_drops_results_that_cannot_be_played_or_matched() -> None:
-    assert to_track({**SONG, "resultType": "album"}) is None
-    assert to_track({**SONG, "videoId": None}) is None
-    assert to_track({**SONG, "title": "  "}) is None
-    assert to_track(None) is None
-    assert to_track("nonsense") is None
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {**SONG, "resultType": "album"},
+        {**SONG, "videoId": None},
+        {**SONG, "title": "  "},
+        None,
+        "nonsense",
+    ],
+)
+def test_drops_results_that_cannot_be_played_or_matched(raw: object) -> None:
+    assert to_track(raw) is None
 
 
-def test_parses_duration_when_only_the_display_string_is_present() -> None:
-    track = to_track({**SONG, "duration_seconds": None, "duration": "4:19"})
+@pytest.mark.parametrize(
+    ("display", "seconds"),
+    [
+        ("4:19", 259),
+        ("1:02:03", 3723),
+        (None, None),
+        ("", None),
+        ("not:a:time", None),
+        ("4:19:22:11", None),
+    ],
+)
+def test_falls_back_to_the_display_duration(display: str | None, seconds: int | None) -> None:
+    track = to_track({**SONG, "duration_seconds": None, "duration": display})
     assert track is not None
-    assert track.duration_seconds == 259
-
-
-def test_parses_hour_long_durations() -> None:
-    track = to_track({**SONG, "duration_seconds": None, "duration": "1:02:03"})
-    assert track is not None
-    assert track.duration_seconds == 3723
-
-
-def test_survives_a_missing_or_malformed_duration() -> None:
-    for value in [None, "", "not:a:time", "4:19:22:11"]:
-        track = to_track({**SONG, "duration_seconds": None, "duration": value})
-        assert track is not None
-        assert track.duration_seconds is None
+    assert track.duration_seconds == seconds
 
 
 def test_survives_every_optional_field_disappearing() -> None:
@@ -86,11 +86,7 @@ def test_accepts_album_as_a_bare_string() -> None:
     assert track.album == "Morning Glory"
 
 
-def test_to_tracks_drops_unusable_entries_without_failing() -> None:
-    tracks = to_tracks([SONG, {"resultType": "artist"}, None, {**SONG, "videoId": None}])
-    assert len(tracks) == 1
-
-
-def test_to_tracks_handles_a_non_list() -> None:
+def test_to_tracks_drops_unusable_entries_and_non_lists() -> None:
+    assert len(to_tracks([SONG, {"resultType": "artist"}, None, {**SONG, "videoId": None}])) == 1
     assert to_tracks(None) == []
     assert to_tracks({"unexpected": "shape"}) == []

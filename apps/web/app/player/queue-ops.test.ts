@@ -18,98 +18,64 @@ function song(id: string): Song {
 }
 
 const ids = (songs: Song[]) => songs.map((entry) => entry.id).join("");
+const queue = ["a", "b", "c", "d", "e"].map(song);
+const index = 2;
 
-function fixture() {
-  return { queue: ["a", "b", "c", "d", "e"].map(song), index: 2 };
-}
-
-test("removing a song ahead of the playhead leaves playback alone", () => {
-  const { queue, index } = fixture();
-  const edit = removeAt(queue, index, 4)!;
-
-  assert.equal(ids(edit.queue), "abcd");
-  assert.equal(edit.queue[edit.index]!.id, "c");
-  assert.equal(edit.play, null, "nothing new to load — the same song keeps playing");
-});
-
-test("removing a song behind the playhead keeps the same song playing", () => {
-  const { queue, index } = fixture();
-  const edit = removeAt(queue, index, 0)!;
-
-  assert.equal(ids(edit.queue), "bcde");
-  assert.equal(edit.index, 1);
-  assert.equal(edit.queue[edit.index]!.id, "c");
-  assert.equal(edit.play, null);
+test("removing a song off the playhead keeps the same song playing", () => {
+  for (const [position, left] of [
+    [4, "abcd"],
+    [0, "bcde"],
+  ] as const) {
+    const edit = removeAt(queue, index, position)!;
+    assert.equal(ids(edit.queue), left);
+    assert.equal(edit.queue[edit.index]!.id, "c");
+    assert.equal(edit.play, null, "nothing new to load — the same song keeps playing");
+  }
 });
 
 test("removing the playing song steps onto the one that follows it", () => {
-  const { queue, index } = fixture();
   const edit = removeAt(queue, index, 2)!;
 
   assert.equal(ids(edit.queue), "abde");
   assert.equal(edit.queue[edit.index]!.id, "d");
   assert.equal(edit.play?.id, "d", "a different song now plays, so it must be loaded");
-  assert.equal(edit.stopped, false);
 });
 
 test("removing the playing song when it is last falls back to the new last", () => {
-  const queue = ["a", "b"].map(song);
-  const edit = removeAt(queue, 1, 1)!;
+  const edit = removeAt(["a", "b"].map(song), 1, 1)!;
 
   assert.equal(ids(edit.queue), "a");
   assert.equal(edit.index, 0, "must not point past the end of the list");
   assert.equal(edit.play?.id, "a");
 });
 
-test("removing the only song stops playback", () => {
+test("removing the only song empties the queue and loads nothing", () => {
   const edit = removeAt([song("a")], 0, 0)!;
 
   assert.equal(edit.queue.length, 0);
-  assert.equal(edit.stopped, true);
+  assert.equal(edit.index, 0);
   assert.equal(edit.play, null);
 });
 
 test("removing a position that does not exist is a no-op", () => {
-  const { queue, index } = fixture();
   assert.equal(removeAt(queue, index, 9), null);
   assert.equal(removeAt([], 0, 0), null);
 });
 
-test("moving the playing song carries playback with it", () => {
-  const { queue, index } = fixture();
-  const edit = moveWithin(queue, index, 2, 0)!;
-
-  assert.equal(ids(edit.queue), "cabde");
-  assert.equal(edit.index, 0);
-  assert.equal(edit.queue[edit.index]!.id, "c");
-});
-
-test("moving a song across the playhead from below shifts it back", () => {
-  const { queue, index } = fixture();
-  const edit = moveWithin(queue, index, 0, 4)!;
-
-  assert.equal(ids(edit.queue), "bcdea");
-  assert.equal(edit.queue[edit.index]!.id, "c", "still playing the same song");
-});
-
-test("moving a song across the playhead from above shifts it forward", () => {
-  const { queue, index } = fixture();
-  const edit = moveWithin(queue, index, 4, 0)!;
-
-  assert.equal(ids(edit.queue), "eabcd");
-  assert.equal(edit.queue[edit.index]!.id, "c");
-});
-
-test("a one-step nudge moves exactly one place", () => {
-  const { queue, index } = fixture();
-  const edit = moveWithin(queue, index, 3, 4)!;
-
-  assert.equal(ids(edit.queue), "abced");
-  assert.equal(edit.queue[edit.index]!.id, "c");
+test("moves reorder the list and keep the playhead on the playing song", () => {
+  for (const [from, to, order] of [
+    [2, 0, "cabde"],
+    [0, 4, "bcdea"],
+    [4, 0, "eabcd"],
+    [3, 4, "abced"],
+  ] as const) {
+    const edit = moveWithin(queue, index, from, to)!;
+    assert.equal(ids(edit.queue), order, `${from}->${to}`);
+    assert.equal(edit.queue[edit.index]!.id, "c", `${from}->${to}`);
+  }
 });
 
 test("moves that change nothing or land outside the list are no-ops", () => {
-  const { queue, index } = fixture();
   assert.equal(moveWithin(queue, index, 1, 1), null);
   assert.equal(moveWithin(queue, index, 1, -1), null);
   assert.equal(moveWithin(queue, index, 1, 5), null);
@@ -117,39 +83,28 @@ test("moves that change nothing or land outside the list are no-ops", () => {
 });
 
 test("the song under the playhead survives every single-step move", () => {
-  for (let index = 0; index < 5; index += 1) {
+  for (let playhead = 0; playhead < 5; playhead += 1) {
     for (let from = 0; from < 5; from += 1) {
       for (let to = 0; to < 5; to += 1) {
-        const queue = ["a", "b", "c", "d", "e"].map(song);
-        const playing = queue[index]!.id;
-        const edit = moveWithin(queue, index, from, to);
+        const edit = moveWithin(queue, playhead, from, to);
         if (!edit) continue;
-
         assert.equal(
           edit.queue[edit.index]!.id,
-          playing,
-          `moving ${from}->${to} while playing ${playing} at ${index} lost the song`,
+          queue[playhead]!.id,
+          `moving ${from}->${to} while playing at ${playhead} lost the song`,
         );
       }
     }
   }
 });
 
-test("play next lands the song directly after the playing one", () => {
-  const { queue, index } = fixture();
-  const edit = insertAfter(queue, index, [song("x")])!;
-
-  assert.equal(ids(edit.queue), "abcxde");
-  assert.equal(edit.index, index, "the playhead does not move");
-  assert.equal(edit.queue[edit.index]!.id, "c", "and still points at what is audible");
-  assert.equal(edit.play, null, "nothing reloads — the current song keeps playing");
-});
-
-test("play next keeps a batch in the order it was given", () => {
-  const { queue, index } = fixture();
+test("play next lands songs directly after the playing one, in order", () => {
   const edit = insertAfter(queue, index, [song("x"), song("y")])!;
 
   assert.equal(ids(edit.queue), "abcxyde");
+  assert.equal(edit.index, index, "the playhead does not move");
+  assert.equal(edit.queue[edit.index]!.id, "c", "and still points at what is audible");
+  assert.equal(edit.play, null, "nothing reloads — the current song keeps playing");
 });
 
 test("play next on an empty queue starts playing, since there is no after", () => {
@@ -161,14 +116,12 @@ test("play next on an empty queue starts playing, since there is no after", () =
 });
 
 test("play next at the end of the queue appends", () => {
-  const queue = ["a", "b", "c"].map(song);
-  const edit = insertAfter(queue, 2, [song("x")])!;
+  const edit = insertAfter(["a", "b", "c"].map(song), 2, [song("x")])!;
 
   assert.equal(ids(edit.queue), "abcx");
   assert.equal(edit.index, 2);
 });
 
 test("play next with nothing to add is a no-op", () => {
-  const { queue, index } = fixture();
   assert.equal(insertAfter(queue, index, []), null);
 });

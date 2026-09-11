@@ -18,12 +18,45 @@ import { TimbreMark } from "./brand";
 import { SiteLinks } from "./site-links";
 
 const NAV = [
-  { id: "home", label: "Home", icon: HomeIcon, href: "/" },
-  { id: "explore", label: "Explore", icon: CompassIcon, href: "/explore" },
-  { id: "library", label: "Library", icon: LibraryIcon, href: "/library" },
+  { label: "Home", icon: HomeIcon, href: "/" },
+  { label: "Explore", icon: CompassIcon, href: "/explore" },
+  { label: "Library", icon: LibraryIcon, href: "/library" },
 ];
 
 const FILTERS = ["Queue", "Playlists"] as const;
+
+function NavLinks({ sidebar = false }: { sidebar?: boolean }) {
+  const pathname = usePathname();
+  const { exitTheater } = usePlayerControls();
+
+  const items = sidebar ? NAV.filter((item) => item.href !== "/library") : NAV;
+  return items.map(({ label, icon: Icon, href }) => {
+    const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+    return (
+      <Link
+        key={href}
+        href={href}
+        onClick={exitTheater}
+        aria-current={active ? "page" : undefined}
+        className={
+          sidebar
+            ? `press flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-semibold ${
+                active
+                  ? "slab-sm tint text-[var(--accent-fg)]"
+                  : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+              }`
+            : `flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-bold ${
+                active ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
+              }`
+        }
+        style={sidebar && active ? { background: "var(--accent)" } : undefined}
+      >
+        <Icon className={sidebar ? "size-[18px] shrink-0" : "size-[22px]"} />
+        {label}
+      </Link>
+    );
+  });
+}
 
 export function Sidebar() {
   const { queue, current, play, exitTheater } = usePlayerControls();
@@ -32,13 +65,10 @@ export function Sidebar() {
   const hydrated = useHydrated();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
   const { playlists, settled } = usePlaylists();
-  const pathname = usePathname();
 
   useEffect(() => {
     void loadPlaylists();
   }, []);
-
-  const rows = filter === "Queue" ? queue : [];
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col gap-1.5 p-2 pb-1.5 lg:flex">
@@ -71,26 +101,7 @@ export function Sidebar() {
       </div>
 
       <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
-        {NAV.filter((item) => item.id !== "library").map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              onClick={exitTheater}
-              aria-current={active ? "page" : undefined}
-              className={`press flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-semibold ${
-                active
-                  ? "slab-sm tint text-[var(--accent-fg)]"
-                  : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
-              }`}
-              style={active ? { background: "var(--accent)" } : undefined}
-            >
-              <item.icon className="size-[18px] shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+        <NavLinks sidebar />
       </nav>
 
       <div className="slab flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)]">
@@ -102,7 +113,7 @@ export function Sidebar() {
           <LibraryIcon className="size-[18px] shrink-0" />
           <span className="text-sm font-bold">Your library</span>
           <span className="ml-auto text-xs font-semibold tabular-nums text-[var(--fg-faint)]">
-            {(filter === "Queue" ? rows.length : (playlists?.length ?? 0)) || ""}
+            {(filter === "Queue" ? queue.length : (playlists?.length ?? 0)) || ""}
           </span>
         </Link>
 
@@ -133,19 +144,19 @@ export function Sidebar() {
               <LikedRow />
               <PlaylistRows playlists={playlists} settled={settled} />
             </>
-          ) : rows.length === 0 ? (
+          ) : queue.length === 0 ? (
             <p className="px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]">
               Nothing queued. Play something and it shows up here.
             </p>
           ) : (
             <ul className="flex flex-col gap-0.5">
-              {rows.map((song) => {
+              {queue.map((song) => {
                 const isCurrent = current?.id === song.id;
                 return (
                   <li key={song.id}>
                     <button
                       type="button"
-                      onClick={() => play(song, rows)}
+                      onClick={() => play(song, queue)}
                       className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${
                         isCurrent ? "tint" : "hover:bg-[var(--surface-2)]"
                       }`}
@@ -228,28 +239,9 @@ function PlaylistRows({
 }
 
 export function BottomNav() {
-  const pathname = usePathname();
-  const { exitTheater } = usePlayerControls();
-
   return (
     <nav className="flex h-[calc(var(--nav-h)+var(--safe-b))] shrink-0 items-stretch border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] pb-[var(--safe-b)] lg:hidden">
-      {NAV.map((item) => {
-        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-        return (
-          <Link
-            key={item.id}
-            href={item.href}
-            onClick={exitTheater}
-            aria-current={active ? "page" : undefined}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-bold ${
-              active ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
-            }`}
-          >
-            <item.icon className="size-[22px]" />
-            {item.label}
-          </Link>
-        );
-      })}
+      <NavLinks />
     </nav>
   );
 }

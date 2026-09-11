@@ -2,24 +2,24 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 
+import type { Release, RelatedArtist } from "@/lib/discography";
+
+import { PlayRow } from "../album/album-view";
 import { ArtistLink } from "../artist-link";
 import { toArtistSlug } from "../artist-slug";
-
-import { Shelf } from "../shelf";
-import { ExternalIcon, NoteIcon, PlayIcon } from "../icons";
-import { AddToQueue } from "../player/add-to-queue";
+import { Artwork } from "../artwork";
+import { sized } from "../artwork-url";
+import { ExternalIcon } from "../icons";
+import { Caption, EmptyNotice, Page, PageHeader } from "../page-chrome";
 import { usePlayerControls } from "../player/player-context";
-import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { Shelf } from "../shelf";
 import { TILE } from "../song-card";
-import { SongRow } from "../song-row";
+import { SongActions, SongRow } from "../song-row";
 import { ROW_BADGES, SourceBadges } from "../source-badges";
-import { ArtistCard, ReleaseCard } from "../tile-cards";
 import { sourceStyle } from "../sources";
-import { albumAddsSomething } from "./song-subtitle";
+import { ArtistCard, ReleaseCard } from "../tile-cards";
 import type { Song } from "../types";
-import type { Release, RelatedArtist } from "@/lib/discography";
-import { cover as coverSrc } from "../artwork-url";
-import { formatDuration } from "../duration";
+import { albumAddsSomething } from "./song-subtitle";
 
 const SONG_LIMIT = 10;
 
@@ -28,7 +28,6 @@ const GROUPS: { heading: string; kinds: readonly string[] }[] = [
   { heading: "EPs", kinds: ["ep"] },
   { heading: "Singles", kinds: ["single"] },
 ];
-
 
 export function ArtistView({
   name,
@@ -54,85 +53,64 @@ export function ArtistView({
   about?: ReactNode;
 }) {
   const { play, current, state } = usePlayerControls();
+  const [showAll, setShowAll] = useState(false);
 
   const queueable = useMemo<Song[]>(() => {
     const from = { kind: "artist" as const, name, imageUrl };
     return songs.map((song) => ({ ...song, from }));
   }, [songs, name, imageUrl]);
-
-  const [showAll, setShowAll] = useState(false);
   const visible = showAll ? queueable : queueable.slice(0, SONG_LIMIT);
+  const source = sourceName && sourceStyle(sourceName).label;
 
   return (
-    <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6">
-      <header className="mb-5 flex flex-col gap-4 sm:mb-7 sm:gap-5 @lg:flex-row @lg:items-end">
-        <div className="slab size-24 shrink-0 overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)] sm:size-40">
-          {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={coverSrc(imageUrl, 640) ?? undefined} alt="" className="size-full object-cover" />
-          ) : (
-            <span className="flex size-full items-center justify-center text-[var(--fg-faint)]">
-              <NoteIcon className="size-10" />
-            </span>
+    <Page>
+      <PageHeader
+        art={
+          <Artwork
+            src={sized(imageUrl, 640)}
+            className="slab size-24 shrink-0 rounded-[var(--r-full)] sm:size-40"
+            iconClassName="size-10"
+            eager
+          />
+        }
+        eyebrow="Artist"
+        title={name}
+      >
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[var(--fg-faint)]">
+          {followers !== null && source && (
+            <span>{followers.toLocaleString()} followers on {source}</span>
           )}
+          <span>
+            {songs.length} {songs.length === 1 ? "song" : "songs"} Timbre can reach
+          </span>
         </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-            Artist
-          </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:mt-1.5 sm:text-3xl @lg:text-4xl">{name}</h1>
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[var(--fg-faint)]">
-            {followers !== null && sourceName && (
-              <span>
-                {followers.toLocaleString()} followers on {sourceStyle(sourceName).label}
-              </span>
-            )}
-            <span>
-              {songs.length} {songs.length === 1 ? "song" : "songs"} Timbre can reach
-            </span>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {songs.length > 0 && (
-              <button
-                type="button"
-                onClick={() => play(queueable[0]!, queueable)}
-                className="slab-sm press inline-flex items-center gap-2 rounded-[var(--r-full)] px-5 py-2.5 text-sm font-bold text-[var(--accent-fg)]"
-                style={{ background: "var(--accent)" }}
-              >
-                <PlayIcon className="size-4" />
-                Play
-              </button>
-            )}
-            {sourceUrl && sourceName && (
-              <a
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-full)] bg-[var(--surface-2)] px-4 py-2.5 text-sm font-semibold"
-              >
-                Open on {sourceStyle(sourceName).label}
-                <ExternalIcon className="size-3" />
-              </a>
-            )}
-          </div>
-        </div>
-      </header>
+        <PlayRow songs={queueable}>
+          {sourceUrl && source && (
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-full)] bg-[var(--surface-2)] px-4 py-2.5 text-sm font-semibold"
+            >
+              Open on {source}
+              <ExternalIcon className="size-3" />
+            </a>
+          )}
+        </PlayRow>
+      </PageHeader>
 
       {songs.length === 0 ? (
-        <p className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
+        <EmptyNotice>
           Nothing found for {name}. Try searching instead — the spelling may differ from the one
           Timbre was given.
-        </p>
+        </EmptyNotice>
       ) : (
         <>
           <h2 className="mb-3 text-xl font-extrabold tracking-tight">Songs</h2>
           {!filtered && (
-            <p className="mb-3 text-xs leading-relaxed text-[var(--fg-faint)]">
+            <Caption className="mb-3">
               No result credits {name} directly, so these are search matches for the name.
-            </p>
+            </Caption>
           )}
 
           <ul className="divide-y divide-[var(--line)]">
@@ -153,20 +131,7 @@ export function ArtistView({
                 trailing={
                   <>
                     <SourceBadges song={song} className={ROW_BADGES} />
-
-                    <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
-                      {formatDuration(song.durationMs)}
-                    </span>
-
-                    <AddToQueue
-                      song={song}
-                      className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-                    />
-
-                    <AddToPlaylist
-                      song={song}
-                      className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                    />
+                    <SongActions song={song} />
                   </>
                 }
               />
@@ -221,6 +186,6 @@ export function ArtistView({
       )}
 
       {about}
-    </div>
+    </Page>
   );
 }

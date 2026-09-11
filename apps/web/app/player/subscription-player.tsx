@@ -1,52 +1,39 @@
 "use client";
 
-import { useEffect } from "react";
+import { useTransport } from "./embed";
 
-import { usePlayerControls } from "./player-context";
-
-const APPLE_STOREFRONT = "us";
-
-function embedUrlFor(source: "apple" | "deezer", id: string): string {
-  const safe = encodeURIComponent(id);
-  return source === "apple"
-    ? `https://embed.music.apple.com/${APPLE_STOREFRONT}/song/${safe}`
-    : `https://widget.deezer.com/widget/dark/track/${safe}`;
-}
-
-const HEIGHT: Record<"apple" | "deezer", number> = { apple: 175, deezer: 300 };
-
-const LABEL: Record<"apple" | "deezer", string> = {
-  apple: "Apple Music player",
-  deezer: "Deezer player",
+const EMBEDS = {
+  apple: {
+    label: "Apple Music player",
+    height: 175,
+    base: "https://embed.music.apple.com/us/song",
+  },
+  deezer: {
+    label: "Deezer player",
+    height: 300,
+    base: "https://widget.deezer.com/widget/dark/track",
+  },
 };
 
 export function SubscriptionPlayer({
   track,
   size = "w-full",
 }: {
-  track: { source: "apple" | "deezer"; id: string } | null;
+  track: { source: keyof typeof EMBEDS; id: string } | null;
   size?: string;
 }) {
-  const { registerToggle, registerSeek } = usePlayerControls();
-
-  useEffect(() => {
-    registerToggle(null);
-    registerSeek(null);
-    return () => {
-      registerToggle(null);
-      registerSeek(null);
-    };
-  }, [registerToggle, registerSeek]);
+  useTransport(null);
 
   if (!track) return null;
+  const embed = EMBEDS[track.source];
 
   return (
     <div className={`flex items-center justify-center overflow-hidden bg-black ${size}`}>
       <iframe
-        src={embedUrlFor(track.source, track.id)}
-        title={LABEL[track.source]}
+        src={`${embed.base}/${encodeURIComponent(track.id)}`}
+        title={embed.label}
         width="100%"
-        height={HEIGHT[track.source]}
+        height={embed.height}
         frameBorder="0"
         loading="lazy"
         allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"

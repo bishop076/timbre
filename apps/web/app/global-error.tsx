@@ -1,23 +1,12 @@
 "use client";
 
-const PREFIX = "timbre:";
-const DB_NAME = "timbre";
-const NAME_COOKIE = "timbre-name";
-
 function ownedKeys(): string[] {
-  const keys: string[] = [];
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (key?.startsWith(PREFIX)) keys.push(key);
-  }
-  return keys;
+  return Object.keys(localStorage).filter((key) => key.startsWith("timbre:"));
 }
 
 function download(): void {
   try {
-    const dump: Record<string, string | null> = {};
-    for (const key of ownedKeys()) dump[key] = localStorage.getItem(key);
-
+    const dump = Object.fromEntries(ownedKeys().map((key) => [key, localStorage.getItem(key)]));
     const url = URL.createObjectURL(
       new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" }),
     );
@@ -26,23 +15,18 @@ function download(): void {
     link.download = "timbre-storage-backup.json";
     link.click();
     URL.revokeObjectURL(url);
-  } catch {
-  }
+  } catch {}
 }
 
 function reset(): void {
+  if (!confirm("Clear Timbre's playlists, profile and history from this browser?")) return;
   try {
     for (const key of ownedKeys()) localStorage.removeItem(key);
-  } catch {
-  }
-
+  } catch {}
   try {
-    indexedDB.deleteDatabase(DB_NAME);
-  } catch {
-  }
-
-  document.cookie = `${NAME_COOKIE}=;path=/;max-age=0;SameSite=Lax`;
-
+    indexedDB.deleteDatabase("timbre");
+  } catch {}
+  document.cookie = "timbre-name=;path=/;max-age=0;SameSite=Lax";
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   location.href = "/";
 }
@@ -66,9 +50,6 @@ export default function GlobalError({
             background: #0f0f14; color: #f4f3f8;
             font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
           }
-          @media (prefers-color-scheme: light) {
-            body { background: #eceaf4; color: #17161d; }
-          }
           .card { max-width: 34rem; }
           h1 { font-size: 1.4rem; margin: 0 0 .75rem; letter-spacing: -.01em; }
           p { margin: 0 0 1rem; opacity: .75; }
@@ -80,12 +61,13 @@ export default function GlobalError({
           }
           button.primary { background: currentColor; border-color: transparent; }
           button.primary span { color: #0f0f14; }
-          @media (prefers-color-scheme: light) {
-            button.primary span { color: #eceaf4; }
-          }
           code {
             font-family: ui-monospace, monospace; font-size: .8rem;
             opacity: .55; word-break: break-all;
+          }
+          @media (prefers-color-scheme: light) {
+            body { background: #eceaf4; color: #17161d; }
+            button.primary span { color: #eceaf4; }
           }
         `}</style>
 
@@ -106,22 +88,14 @@ export default function GlobalError({
               <span>Try again</span>
             </button>
             <button onClick={download}>Save a copy of my data</button>
-            <button
-              onClick={() => {
-                if (confirm("Clear Timbre's playlists, profile and history from this browser?")) {
-                  reset();
-                }
-              }}
-            >
-              Reset stored data
-            </button>
+            <button onClick={reset}>Reset stored data</button>
           </div>
 
-          {error.digest ? (
+          {error.digest && (
             <p style={{ marginTop: "1.5rem" }}>
               <code>{error.digest}</code>
             </p>
-          ) : null}
+          )}
         </main>
       </body>
     </html>

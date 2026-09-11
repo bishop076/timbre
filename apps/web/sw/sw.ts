@@ -3,10 +3,7 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 const VERSION = "timbre-v3";
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
-
 const PRECACHE = ["/", "/explore", "/library"];
-
-const PERSONAL = "/profile";
 
 sw.addEventListener("install", (event) => {
   void sw.skipWaiting();
@@ -31,44 +28,29 @@ sw.addEventListener("activate", (event) => {
 
 sw.addEventListener("fetch", (event) => {
   const { request } = event;
+  const { origin, pathname } = new URL(request.url);
 
-  if (request.method !== "GET") return;
-
-  const url = new URL(request.url);
-  if (url.origin !== sw.location.origin) return;
-  if (url.pathname.startsWith("/api/")) return;
-  if (url.pathname === PERSONAL || url.pathname.startsWith(`${PERSONAL}/`)) return;
-
-  if (url.pathname.startsWith("/_next/static/")) {
-    event.respondWith(cacheFirst(request));
-    return;
-  }
-
-  if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
-  }
+  if (request.method !== "GET" || origin !== sw.location.origin) return;
+  if (pathname.startsWith("/api/") || /^\/profile(\/|$)/.test(pathname)) return;
+  if (pathname.startsWith("/_next/static/")) event.respondWith(cacheFirst(request));
+  else if (request.mode === "navigate") event.respondWith(networkFirst(request));
 });
 
-async function cacheFirst(request: Request): Promise<Response> {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-
-  const response = await fetch(request);
+async function store(name: string, request: Request, response: Response): Promise<Response> {
   if (response.ok) {
-    const cache = await caches.open(ASSETS);
+    const cache = await caches.open(name);
     void cache.put(request, response.clone());
   }
   return response;
 }
 
+async function cacheFirst(request: Request): Promise<Response> {
+  return (await caches.match(request)) ?? store(ASSETS, request, await fetch(request));
+}
+
 async function networkFirst(request: Request): Promise<Response> {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(SHELL);
-      void cache.put(request, response.clone());
-    }
-    return response;
+    return await store(SHELL, request, await fetch(request));
   } catch {
     const cached = (await caches.match(request)) ?? (await caches.match("/"));
     if (cached) return cached;

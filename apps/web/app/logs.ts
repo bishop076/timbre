@@ -1,12 +1,10 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-
-import { createNotifier } from "./local-store.ts";
+import { createLocalStore, useLocalStore } from "./local-store.ts";
 
 export type LogLevel = "info" | "warn" | "error";
 
-export interface LogEntry {
+interface LogEntry {
   id: number;
   at: number;
   level: LogLevel;
@@ -14,30 +12,21 @@ export interface LogEntry {
 }
 
 const LIMIT = 100;
-
 const NONE: readonly LogEntry[] = [];
-
-const notifier = createNotifier();
-let entries: readonly LogEntry[] = NONE;
+const store = createLocalStore({ initial: NONE });
 let nextId = 1;
 
 export function log(level: LogLevel, message: string): void {
   try {
-    entries = [...entries, { id: nextId++, at: Date.now(), level, message }].slice(-LIMIT);
-    notifier.emit();
-  } catch {
-  }
+    const entry = { id: nextId++, at: Date.now(), level, message };
+    store.publish([...store.getSnapshot(), entry].slice(-LIMIT));
+  } catch {}
 }
 
 export function clearLogs(): void {
-  entries = NONE;
-  notifier.emit();
+  store.publish(NONE);
 }
 
 export function useLogs(): readonly LogEntry[] {
-  return useSyncExternalStore(
-    notifier.subscribe,
-    () => entries,
-    () => NONE,
-  );
+  return useLocalStore(store);
 }

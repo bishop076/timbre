@@ -5,50 +5,28 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 const git = (...args: string[]): string => execFileSync("git", args, { encoding: "utf8" });
+const lines = (text: string) => text.split("\n").map((line) => line.trim());
 
-const staged = git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
-  .split("\n")
-  .map((line) => line.trim())
-  .filter((line) => /\.(ts|tsx|mts|js|jsx)$/.test(line));
-
-if (staged.length === 0) process.exit(0);
-
-const known = new Set(
-  git("ls-files", "--cached").split("\n").map((line) => line.trim()).filter(Boolean),
+const staged = lines(git("diff", "--cached", "--name-only", "--diff-filter=ACMR")).filter((line) =>
+  /\.(ts|tsx|mts|js|jsx)$/.test(line),
 );
-for (const file of staged) known.add(file);
+const known = new Set([...lines(git("ls-files", "--cached")), ...staged]);
 
 const RELATIVE = /(?:from|import)\s*\(?\s*["'](\.[^"']+)["']/g;
-
 const CANDIDATES = ["", ".ts", ".tsx", ".mts", ".js", ".jsx", "/index.ts", "/index.tsx"];
 
-interface Problem {
-  file: string;
-  specifier: string;
-  onDisk: string | undefined;
-}
-
-const problems: Problem[] = [];
+const problems: { file: string; specifier: string; onDisk: string | undefined }[] = [];
 
 for (const file of staged) {
-  const source = git("show", `:${file}`);
-  const dir = path.posix.dirname(file);
+  const code = git("show", `:${file}`)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
-
-  for (const match of code.matchAll(RELATIVE)) {
-    const specifier = match[1];
-    if (specifier === undefined) continue;
-    const base = path.posix.normalize(path.posix.join(dir, specifier));
-    const resolved = CANDIDATES.map((suffix) => base + suffix).find((candidate) =>
-      known.has(candidate),
-    );
-    if (resolved) continue;
-
-    const onDisk = CANDIDATES.map((suffix) => base + suffix).find((candidate) =>
-      existsSync(candidate),
-    );
-    problems.push({ file, specifier, onDisk });
+  for (const [, specifier = ""] of code.matchAll(RELATIVE)) {
+    const base = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+    const candidates = CANDIDATES.map((suffix) => base + suffix);
+    if (candidates.some((candidate) => known.has(candidate))) continue;
+    problems.push({ file, specifier, onDisk: candidates.find((candidate) => existsSync(candidate)) });
   }
 }
 
