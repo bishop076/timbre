@@ -10,6 +10,18 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.13.2 — 12 September 2026
+
+### Fixed
+
+- **providers** — bound Spotify's and MusicBrainz's slot waits too
+
+### Faster
+
+- **artist** — load an artist's songs in the browser, through the cached search
+
+3 further changes under the hood — refactoring, docs and tests.
+
 ## 0.13.1 — 11 September 2026
 
 ### Fixed
