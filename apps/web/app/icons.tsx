@@ -346,3 +346,13 @@ export function MoonIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** Moves playback into this tab: a window with an arrow coming down into it. */
+export function PlayHereIcon({ className }: IconProps) {
+  return (
+    <svg {...stroked} className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" />
+      <path d="M3 8.5h18M12 11.5v5.5M9.25 14.25 12 17l2.75-2.75" />
+    </svg>
+  );
+}
