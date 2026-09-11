@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { interleaveByPlayability } from "./registry.ts";
+import { MemoryBucketStore, RateLimiter } from "@timbre/core";
+
+import { interleaveByPlayability, recommendFrom, registerProvider } from "./registry.ts";
 import type { Playback, SearchProvider, SourceId, SourceTrack } from "./types.ts";
 
 /** Only the two fields the interleaver reads. */
@@ -87,4 +89,31 @@ test("a source that answered with nothing contributes nothing", () => {
   ]);
 
   assert.deepEqual(out.map((track) => track.sourceId), ["ytmusic-1", "ytmusic-2"]);
+});
+
+test("a radio source that fails is reported to the caller's hook, and an abort is not", async () => {
+  // Registered here rather than in a helper because the registry is module state; node:test
+  // runs each file in its own process, so nothing leaks into another suite.
+  const failure = new Error("Deezer returned 503.");
+  registerProvider({
+    ...source("deezer", "link"),
+    radio: async () => {
+      throw failure;
+    },
+  });
+
+  const limiter = new RateLimiter(new MemoryBucketStore());
+  const reported: { event: string; fields: Record<string, unknown> }[] = [];
+  const report = (event: string, fields: Record<string, unknown>) => reported.push({ event, fields });
+
+  const songs = await recommendFrom({ limiter, report }, { artist: "Fred again.." }, 5);
+  assert.deepEqual(songs, [], "a failed source contributes nothing and throws nothing");
+  assert.deepEqual(reported, [{ event: "radio_failed", fields: { source: "deezer", error: failure } }]);
+
+  // The reader left: every source rejects at once, and none of them is at fault.
+  const controller = new AbortController();
+  controller.abort();
+  reported.length = 0;
+  await recommendFrom({ limiter, report, signal: controller.signal }, { artist: "Fred again.." }, 5);
+  assert.deepEqual(reported, []);
 });

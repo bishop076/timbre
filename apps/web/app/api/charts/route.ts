@@ -1,7 +1,7 @@
 import { chartAll, mergeTracks } from "@timbre/providers";
 
 import { getProviderRuntime } from "@/lib/providers";
-import { CACHE_CONTROL_HOUR } from "@/lib/api";
+import { CACHE_CONTROL_HOUR, reportFailures } from "@/lib/api";
 
 /**
  * What's popular right now, for the home page.
@@ -35,6 +35,8 @@ export const dynamic = "force-static";
 export async function GET() {
   const { limiter } = getProviderRuntime();
   const { tracks, failures, attempted } = await chartAll({ limiter }, 24);
+  // Once per revalidation, not per visitor — this runs an hour apart at most.
+  reportFailures("/api/charts", failures);
 
   return Response.json(
     { songs: mergeTracks(tracks), failures, attempted },

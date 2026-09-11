@@ -49,6 +49,21 @@ test("the allowance returns when the window lapses", () => {
   assert.equal(limiter.check("a").ok, true);
 });
 
+test("only the first refusal of a window is marked first", () => {
+  // What the log keys on: a loop refused sixty times a minute is one event, not sixty lines.
+  const time = clock();
+  const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: time.now });
+
+  limiter.check("a");
+  assert.equal(limiter.check("a").first, true);
+  assert.equal(limiter.check("a").first, false);
+  assert.equal(limiter.check("a").first, false);
+
+  time.advance(1001);
+  limiter.check("a");
+  assert.equal(limiter.check("a").first, true, "a new window is a new event");
+});
+
 test("one client being throttled does not affect another", () => {
   const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: clock().now });
 

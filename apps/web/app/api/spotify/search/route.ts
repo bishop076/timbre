@@ -2,7 +2,7 @@ import { ProviderError } from "@timbre/core";
 import { searchSpotifyWeb } from "@timbre/providers";
 import { z } from "zod";
 
-import { cached, guard } from "@/lib/api";
+import { cached, guard, reportFailures } from "@/lib/api";
 import { getProviderRuntime } from "@/lib/providers";
 import { queryText } from "@/lib/query-text";
 
@@ -34,7 +34,15 @@ export async function GET(request: Request) {
   try {
     // No caller signal, as `/api/search` does: a cached call is shared, and one reader typing
     // on must not cancel the answer another is waiting for.
-    const tracks = await cached(`spotify-web:${q.toLowerCase()}`, () => searchSpotifyWeb({ limiter }, q, 10));
+    // Reported inside the producer, so readers sharing one failed call are one line, not one each.
+    const tracks = await cached(`spotify-web:${q.toLowerCase()}`, () =>
+      searchSpotifyWeb({ limiter }, q, 10).catch((cause: unknown) => {
+        reportFailures("/api/spotify/search", [
+          { source: "spotify", message: cause instanceof Error ? cause.message : String(cause) },
+        ]);
+        throw cause;
+      }),
+    );
 
     const songs = tracks.map((track) => ({
       // Namespaced, like the account-backed search's: these render beside merged songs,

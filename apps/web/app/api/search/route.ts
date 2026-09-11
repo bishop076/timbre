@@ -1,7 +1,7 @@
 import { mergeTracks, searchAll } from "@timbre/providers";
 import { z } from "zod";
 
-import { cached, guard } from "@/lib/api";
+import { cached, guard, reportFailures } from "@/lib/api";
 import { queryText } from "@/lib/query-text";
 import { getProviderRuntime } from "@/lib/providers";
 
@@ -48,6 +48,7 @@ export async function GET(request: Request) {
 
     // Failures travel alongside results rather than thrown — one source being down is
     // normal — and `attempted` lets the client tell an outage from a search that matched nothing.
+    reportFailures("/api/search", failures);
     return { songs: mergeTracks(tracks), failures, attempted };
   });
 

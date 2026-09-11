@@ -20,6 +20,9 @@ export interface RateLimitVerdict {
   remaining: number;
   /** Seconds until the window resets. For the `Retry-After` header. */
   retryAfterSeconds: number;
+  /** On a refusal, whether it is this window's first. What a log wants: a stuck loop is one
+   * event, and a line per request it sends would bury every other line under it. */
+  first?: boolean;
 }
 
 interface Window {
@@ -74,6 +77,7 @@ export function createRateLimiter({
         ok: false,
         remaining: 0,
         retryAfterSeconds: Math.max(1, Math.ceil((existing.resetAt - at) / 1000)),
+        first: existing.count === limit + 1,
       };
     },
   };

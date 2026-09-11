@@ -83,6 +83,10 @@ export interface SearchContext {
    * route handler but wrong for a server component: one `no-store` fetch anywhere in a render
    * opts the whole route out of static generation, as `/explore` found despite `revalidate`. */
   revalidate?: number;
+  /** Where a failure nobody sees is reported — a radio source that failed renders as nothing
+   * at all. A function rather than a logger so this package stays free of the app's: the web
+   * app passes its JSON logger, and omitted means `console.warn`, so a script still hears it. */
+  report?: (event: string, fields: Record<string, unknown>) => void;
 }
 
 export interface SearchProvider {
