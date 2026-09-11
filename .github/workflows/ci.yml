@@ -54,6 +54,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Build the sidecar container, and discard it
+        run: docker build -t timbre-sidecar:ci-check .
+
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
