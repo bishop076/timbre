@@ -130,39 +130,6 @@
   border-color: var(--line);
 }
 
-.tile-card {
-  border: var(--edge) solid var(--ink);
-  box-shadow: var(--drop);
-  background: var(--surface-1);
-  border-radius: var(--r-lg);
-  transition:
-    background-color 0.2s var(--ease),
-    transform 0.09s var(--ease),
-    box-shadow 0.09s var(--ease);
-}
-.tile-card:hover {
-  background: var(--surface-2);
-}
-.tile-card:active {
-  transform: translate(1px, 1px);
-  box-shadow: 0 0 0 var(--ink);
-}
-/* Same slab as every other panel and button on a dark ground: the ink edge and hard drop
-   stay, and the fill steps up one surface so the card lifts off the content panel. */
-:root[data-theme="dark"] .tile-card {
-  background: var(--surface-2);
-}
-:root[data-theme="dark"] .tile-card:hover {
-  background: var(--surface-3);
-}
-:root[data-theme="dark"] .tile-card:active {
-  transform: translate(2px, 2px);
-}
-
-.tile-cover {
-  border: var(--edge) solid var(--ink);
-}
-
 .press {
   transition:
     transform 0.09s var(--ease),
