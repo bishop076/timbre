@@ -329,3 +329,20 @@ export function HeartIcon({ className }: IconProps) {
 export function HeartFilledIcon({ className }: IconProps) {
   return <svg {...stroked} fill="currentColor" className={className}><path d={HEART} /></svg>;
 }
+
+export function SpeedIcon({ className }: IconProps) {
+  return (
+    <svg {...stroked} className={className}>
+      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+      <path d="m12 14 4-4" />
+    </svg>
+  );
+}
+
+export function MoonIcon({ className }: IconProps) {
+  return (
+    <svg {...stroked} className={className}>
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z" />
+    </svg>
+  );
+}
