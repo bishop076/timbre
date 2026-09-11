@@ -90,11 +90,12 @@ function toSourceTrack(raw: SidecarTrack): SourceTrack {
   };
 }
 
-export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
-  const options: RequesterOptions = {
+/** How every sidecar request goes out: a POST with the shared secret, never cached. */
+function sidecarOptions(config: YtMusicConfig, deadlineMs?: number): RequesterOptions {
+  return {
     id: "ytmusic",
     label: "YouTube Music sidecar",
-    // Every call is a POST carrying the shared secret, and is never cached.
+    deadlineMs,
     init: () => ({
       method: "POST",
       headers: {
@@ -107,14 +108,23 @@ export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
     // worth retrying or falling back from; anything else is our bug.
     classify: (status) => (status === 502 ? "transient" : "unknown"),
   };
+}
 
-  const request = createRequester(options);
+/** A POST to one sidecar route. Shared so a route that is not a search — lyrics — goes out
+ * with the same secret, pacing and error classes rather than a second copy of them. */
+export type SidecarCall = <T>(ctx: SearchContext, path: string, body: unknown) => Promise<T>;
+
+export function createSidecarCall(config: YtMusicConfig, deadlineMs?: number): SidecarCall {
+  const request = createRequester(sidecarOptions(config, deadlineMs));
+  return <T>(ctx: SearchContext, path: string, body: unknown): Promise<T> =>
+    request<T>(ctx, new URL(path, config.baseUrl), { body: JSON.stringify(body) });
+}
+
+export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
+  const call = createSidecarCall(config);
   // `/playlist` is the one route whose 404 is an answer rather than a fault: the request was
   // fine and the playlist is not public. That status reads as null; every other stays an error.
-  const lookup = createRequester({ ...options, softStatuses: [404] });
-
-  const call = <T>(ctx: SearchContext, path: string, body: unknown): Promise<T> =>
-    request<T>(ctx, new URL(path, config.baseUrl), { body: JSON.stringify(body) });
+  const lookup = createRequester({ ...sidecarOptions(config), softStatuses: [404] });
 
   return {
     id: "ytmusic",

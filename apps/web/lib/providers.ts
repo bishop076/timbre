@@ -10,6 +10,7 @@ import {
   createClientIdResolver,
   createSoundCloudProvider,
   createSpotifyProvider,
+  createYtMusicLyrics,
   createYtMusicProvider,
   listProviders,
   registerProvider,
@@ -114,4 +115,17 @@ export function getProviderRuntime(): { limiter: RateLimiter } {
   if (listProviders().length === 0) registerAll();
 
   return { limiter: globalForProviders.__timbreLimiter };
+}
+
+/**
+ * YouTube Music's lyrics, from the sidecar. Not a registered provider — lyrics are not a
+ * search — but the same sidecar, secret and pacing bucket, so a room skipping tracks with the
+ * lyrics open cannot spend more of YouTube's patience than search is allowed to.
+ */
+export function getYtMusicLyrics() {
+  const env = getEnv();
+  return createYtMusicLyrics({
+    baseUrl: env.YTMUSIC_SERVICE_URL,
+    sharedSecret: env.YTMUSIC_SHARED_SECRET,
+  });
 }
