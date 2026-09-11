@@ -46,7 +46,7 @@ const CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `frame-src https://www.youtube-nocookie.com ${PLAYERS}`,
+  `frame-src https://www.youtube-nocookie.com https://widget.deezer.com https://embed.music.apple.com ${PLAYERS}`,
   "media-src 'self' https: blob:",
   "connect-src 'self' https:",
   "object-src 'none'",
