@@ -1346,6 +1346,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         source: handle?.source,
         sourceId: handle?.sourceId,
         url: handle?.url ?? null,
+        // Which page queued it, so "Recently played" can show that page instead of the song.
+        from: song.from,
       });
     },
     [queue, index, videoId, activeSource],

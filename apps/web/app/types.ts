@@ -26,6 +26,20 @@ export interface Song {
    * cover falls through them rather than showing a broken frame. */
   artworkFallbacks?: string[];
   sources: SourceTrack[];
+  /** The page this song was queued from, when it is worth going back to. Browser-only —
+   * never sent by or to the server — and set only by the page that queued it. */
+  from?: PlayContext;
+}
+
+/**
+ * Where a queue was started. An artist page tags its songs with the artist, so a run of them
+ * lands in "Recently played" as that artist rather than as a row of their songs — the way
+ * every service shows what you played *from*, not only what you played.
+ */
+export interface PlayContext {
+  kind: "artist";
+  name: string;
+  imageUrl: string | null;
 }
 
 export interface SongsResponse {
