@@ -464,7 +464,7 @@ quoted a comment the trim has since removed, the text says so.
 
 ---
 
-# S-9 · One client inside its own rate limit can stall every search on an instance `PARTLY FIXED`
+# S-9 · One client inside its own rate limit can stall every search on an instance `FIXED`
 
 **Severity:** `MEDIUM` — A06:2025 Insecure Design. Availability. **Measured.**
 
@@ -478,13 +478,12 @@ in time fails as `rate_limited`. The burst below is now a regression test
 (`packages/providers/src/registry.test.ts:84`): the next search returns in under a
 second, with Apple reported as rate-limited.
 
-**Still open:** the Spotify lookups do not go through `createRequester`. `quietly()`
-(`packages/providers/src/spotify.ts:24-43`) and `get()` and `pathfinder()`
-(`packages/providers/src/spotify-web.ts:36,130`) still call `acquire` with no wait
-bound. So `/api/spotify`, `/api/spotify/search` and the Spotify collection pages can
-still queue without limit, tightest behind MusicBrainz's bucket of one request per
-1.1s (`spotify.ts:9,33`). Spotify is not a `searchAll` source, so search itself is
-covered.
+**The Spotify lookups followed in `1e9a114`.** They did not go through
+`createRequester`, so `quietly()` in `spotify.ts` and `get()` and `pathfinder()` in
+`spotify-web.ts` still called `acquire` with no wait bound. All three now take their
+slot through `takeSlot` (`packages/providers/src/request.ts`), the same bounded wait the
+requester uses, refused as `rate_limited` past the 6-second deadline — MusicBrainz's
+one-request-per-1.1s bucket included.
 
 `RateLimiter.acquire` waited until a token was free, however long that took: no
 maximum wait, no queue cap, no signal. And `createRequester` acquired *before* it
@@ -550,13 +549,15 @@ live.**
 `/collection/ytmusic-playlist/[id]`, added after this pass, renders through the same
 collection page and is covered by both.
 
+**Step 2 landed in `45649bc`:** the artist page no longer runs `searchAll` on the
+server. It renders the artist, discography and biography from Deezer's fetch-cached
+lookups, and the browser loads the songs from `/api/search` — metered, and cached for
+two minutes — so a fresh `/artist/<anything>` no longer fans out to every source.
+
 **Still open:**
 
-- **Step 2.** The artist page still runs `searchAll` on the server for every new slug
-  (`artist/[name]/page.tsx:27-31`). Each fresh `/artist/<anything>` is still a full
-  fan-out that shares nothing with the search cache: metered per address now, and
-  bounded in time by S-9's fix, but not moved to the browser.
-- **A failure can be cached like an answer** on the album and collection pages.
+- **A failure can be cached like an answer** on the album and collection pages, and in
+  the artist page's header and discography.
   `deezer()` returns `null` for "not found" and "failed" alike
   (`apps/web/lib/deezer.ts:15-28`), and each page turns `null` into `notFound()`
   (`album/[id]/page.tsx:19-20`, `collection/[kind]/[id]/page.tsx:36-37`). The Spotify
@@ -935,9 +936,9 @@ characters logs a warning at boot instead of refusing to start
 (`apps/ytmusic/app/config.py:4,18-23`). The length of the secret deployed on Vercel could
 not be verified, and refusing to boot would have taken the sidecar down on the next
 deploy. It can become a refusal once the deployed secret is known to be long enough.
-**Also still open: uv itself is installed without a hash** (`apps/ytmusic/Dockerfile:10`).
-It is pinned by version only, so the tool that checks the hashes is not itself checked
-against one.
+**uv itself followed in `c124f7c`:** it now comes from `ghcr.io/astral-sh/uv:0.12.5`
+pinned by digest, in a build stage that never reaches the final image, and CI builds the
+sidecar image on every push.
 
 What the pass found:
 
@@ -1087,24 +1088,20 @@ What that leaves, none of it a vulnerability:
 
 ## Third pass, 2026-09-11
 
-**Updated 2026-09-11, against `6f3b6ae`.** The pass itself was a report; the fixes
-landed the same day.
+**Updated 2026-09-11, against `6f3b6ae`, and 2026-09-12, against `45649bc`.** The pass
+itself was a report; the fixes landed the same day and the next.
 
-- **Fixed:** S-11 (`79940b9`), S-12 (`5c56e98`), S-14 (`173feae`), S-15 (`79940b9`,
+- **Fixed:** S-9 (`b18028f`, `1e9a114`), S-11 (`79940b9`), S-12 (`5c56e98`), S-14 (`173feae`), S-15 (`79940b9`,
   `b18028f`), S-16 (`d57c4a6`) and S-17 (`d57c4a6`, `18583c7`). Both "verified correct"
   rows the pass marked stale hold again.
 - **Partly fixed**, and what is left of each:
-  - **S-9** (`b18028f`) — search is bounded, but `spotify.ts` and `spotify-web.ts` still
-    call `acquire` without a wait bound.
-  - **S-10** (`b18028f`) — the pages are cached and metered, but the artist page still
-    runs `searchAll` on the server for every new slug; moving that to the browser is the
-    step left. And a failed album or collection lookup can be cached like an answer,
-    because `lib/deezer.ts` cannot tell "not found" from "failed".
+  - **S-10** (`b18028f`, `45649bc`) — the pages are cached and metered and the artist
+    page's search runs in the browser, but a failed Deezer lookup can be cached like an
+    answer, because `lib/deezer.ts` cannot tell "not found" from "failed".
   - **S-13** (`d00121a`) — `RELEASE_TOKEN` should be a fine-grained token scoped to this
     repository: a GitHub setting only the owner can change.
-  - **S-18** (`173feae`) — a short secret only warns at boot, on purpose, because the
-    deployed secret's length could not be verified; and `uv` itself is installed without
-    a hash.
+  - **S-18** (`173feae`, `c124f7c`) — a short secret only warns at boot, on purpose,
+    because the deployed secret's length could not be verified.
   - **S-19** (`5c56e98`, `d00121a`) — the `.env` leftovers cannot be confirmed from a
     commit.
 - **Open from before:** E-14. The CSP is still `Report-Only` (`apps/web/next.config.ts:70`).
