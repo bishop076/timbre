@@ -49,6 +49,20 @@ function playLabel(kind: "queue" | "manual" | "preview", label: string): string 
   return `Play from ${label}`;
 }
 
+/**
+ * Placement for a list row that is not a search result — an album, a chart, an artist's
+ * songs. The playlist's placement, plus focus: shown on hover, and only once the list is wide.
+ *
+ * **Not gated on a song having two sources.** These rows mostly carry one — an album's or a
+ * genre chart's is Deezer's identity alone, a Spotify playlist's is Spotify's — and pressing
+ * the row sends it down the ladder to find a free copy. So even a lone name is a real
+ * alternative: that service's own player, which plays the whole song for a subscriber. Hidden
+ * at rest because on an album every row would repeat the same name, and below `@xl` because a
+ * phone's row has no room beside the title.
+ */
+export const ROW_BADGES =
+  "hidden opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 @xl:flex";
+
 export function SourceBadges({ song, className = "" }: { song: Song; className?: string }) {
   const { play } = usePlayerControls();
 
