@@ -10,32 +10,30 @@ export interface BucketState {
   updatedAtMs: number;
 }
 
-export type ConsumeResult =
-  | { ok: true; state: BucketState }
-  | { ok: false; state: BucketState; waitMs: number };
+export interface Reservation {
+  state: BucketState;
+  waitMs: number;
+}
 
 export function refill(state: BucketState, policy: BucketPolicy, nowMs: number): BucketState {
   const gained = (Math.max(0, nowMs - state.updatedAtMs) / 1000) * policy.refillPerSecond;
   return { tokens: Math.min(policy.capacity, state.tokens + gained), updatedAtMs: nowMs };
 }
 
-export function tryConsume(
+export function reserve(
   state: BucketState,
   policy: BucketPolicy,
   cost: number,
   nowMs: number,
-): ConsumeResult {
+): Reservation {
   if (cost > policy.capacity) {
     throw new RangeError(
       `Request costs ${cost} but bucket capacity is ${policy.capacity}; it could never succeed.`,
     );
   }
-  const filled = refill(state, policy, nowMs);
-  if (filled.tokens >= cost) {
-    return { ok: true, state: { tokens: filled.tokens - cost, updatedAtMs: nowMs } };
-  }
-  const waitMs = Math.ceil(((cost - filled.tokens) / policy.refillPerSecond) * 1000);
-  return { ok: false, state: filled, waitMs };
+  const tokens = refill(state, policy, nowMs).tokens - cost;
+  const waitMs = tokens >= 0 ? 0 : Math.ceil((-tokens / policy.refillPerSecond) * 1000);
+  return { state: { tokens, updatedAtMs: nowMs }, waitMs };
 }
 
 export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
@@ -66,7 +64,25 @@ export class MemoryBucketStore implements BucketStore {
   }
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const settle = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", settle);
+      if (signal?.aborted) reject(signal.reason);
+      else resolve();
+    };
+    const timer = setTimeout(settle, ms);
+    signal?.addEventListener("abort", settle);
+    if (signal?.aborted) settle();
+  });
+}
+
+export interface AcquireOptions {
+  cost?: number;
+  maxWaitMs?: number;
+  signal?: AbortSignal;
+}
 
 export class RateLimiter {
   readonly #store: BucketStore;
@@ -78,25 +94,58 @@ export class RateLimiter {
     this.#now = now;
   }
 
-  acquire(key: string, policy: BucketPolicy, cost = 1): Promise<void> {
+  async acquire(
+    key: string,
+    policy: BucketPolicy,
+    { cost = 1, maxWaitMs = Infinity, signal }: AcquireOptions = {},
+  ): Promise<boolean> {
+    const waitMs = await this.#inTurn(key, () => this.#reserve(key, policy, cost, maxWaitMs, signal));
+    if (waitMs === null) return false;
+    if (waitMs === 0) return true;
+    try {
+      await sleep(waitMs, signal);
+      return true;
+    } catch (cause) {
+      await this.#inTurn(key, () => this.#refund(key, policy, cost));
+      throw cause;
+    }
+  }
+
+  async #reserve(
+    key: string,
+    policy: BucketPolicy,
+    cost: number,
+    maxWaitMs: number,
+    signal: AbortSignal | undefined,
+  ): Promise<number | null> {
+    signal?.throwIfAborted();
+    const now = this.#now();
+    const stored = await this.#store.load(key);
+    const { state, waitMs } = reserve(stored ?? { tokens: policy.capacity, updatedAtMs: now }, policy, cost, now);
+    if (waitMs > maxWaitMs) return null;
+    await this.#store.save(key, state);
+    return waitMs;
+  }
+
+  async #refund(key: string, policy: BucketPolicy, cost: number): Promise<void> {
+    const now = this.#now();
+    const stored = await this.#store.load(key);
+    if (!stored) return;
+    const tokens = Math.min(policy.capacity, refill(stored, policy, now).tokens + cost);
+    await this.#store.save(key, { tokens, updatedAtMs: now });
+  }
+
+  #inTurn<T>(key: string, step: () => Promise<T>): Promise<T> {
     const previous = this.#queues.get(key) ?? Promise.resolve();
-    const turn = previous.then(() => this.#acquire(key, policy, cost));
-    const link = turn.catch(() => {});
+    const turn = previous.then(step);
+    const link = turn.then(
+      () => {},
+      () => {},
+    );
     this.#queues.set(key, link);
     void link.then(() => {
       if (this.#queues.get(key) === link) this.#queues.delete(key);
     });
     return turn;
-  }
-
-  async #acquire(key: string, policy: BucketPolicy, cost: number): Promise<void> {
-    for (;;) {
-      const stored = await this.#store.load(key);
-      const state = stored ?? { tokens: policy.capacity, updatedAtMs: this.#now() };
-      const result = tryConsume(state, policy, cost, this.#now());
-      await this.#store.save(key, result.state);
-      if (result.ok) return;
-      await sleep(result.waitMs);
-    }
   }
 }

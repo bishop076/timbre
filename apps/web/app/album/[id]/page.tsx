@@ -5,6 +5,9 @@ import { fetchAlbum } from "@/lib/discography";
 
 import { AlbumView } from "../album-view";
 
+export const revalidate = 3600;
+export const dynamic = "force-static";
+
 type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
