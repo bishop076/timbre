@@ -1,4 +1,4 @@
-import { DEFAULT_POLICIES, ProviderError, type ProviderErrorKind } from "@timbre/core";
+import { DEFAULT_POLICIES, ProviderError, type BucketPolicy, type ProviderErrorKind } from "@timbre/core";
 
 import type { SearchContext, SourceId } from "./types.ts";
 
@@ -19,6 +19,18 @@ export function deadlineSignal(caller: AbortSignal | undefined, ms: number = DEA
   return caller ? AbortSignal.any([caller, timeout]) : timeout;
 }
 
+export async function takeSlot(
+  ctx: SearchContext,
+  id: SourceId,
+  label: string,
+  { key = id, policy = DEFAULT_POLICIES[id], ms = DEADLINE_MS }: { key?: string; policy?: BucketPolicy; ms?: number } = {},
+): Promise<void> {
+  const admitted = await ctx.limiter.acquire(key, policy, { maxWaitMs: ms, signal: ctx.signal });
+  if (admitted === false) {
+    throw new ProviderError(id, "rate_limited", `${label} has no free request slot within ${ms / 1000}s.`);
+  }
+}
+
 export type Requester = <T>(ctx: SearchContext, target: string | URL, init?: RequestInit) => Promise<T>;
 export type SoftRequester = <T>(ctx: SearchContext, target: string | URL, init?: RequestInit) => Promise<T | null>;
 
@@ -36,10 +48,7 @@ export function createRequester({
   return async <T>(ctx: SearchContext, target: string | URL, extra?: RequestInit): Promise<T | null> => {
     ctx.signal?.throwIfAborted();
     const signal = deadlineSignal(ctx.signal, deadlineMs);
-    const admitted = await ctx.limiter.acquire(id, DEFAULT_POLICIES[id], { maxWaitMs: deadlineMs, signal: ctx.signal });
-    if (admitted === false) {
-      throw new ProviderError(id, "rate_limited", `${label} has no free request slot within ${deadlineMs / 1000}s.`);
-    }
+    await takeSlot(ctx, id, label, { ms: deadlineMs });
 
     let response: Response;
     try {

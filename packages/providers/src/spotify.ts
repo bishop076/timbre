@@ -1,7 +1,5 @@
-import { DEFAULT_POLICIES } from "@timbre/core";
-
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
-import { createRequester, deadlineSignal } from "./request.ts";
+import { createRequester, deadlineSignal, takeSlot } from "./request.ts";
 import { spotifyEmbedState, spotifySourceTrack } from "./spotify-web.ts";
 
 const TRACK_PATH = /^(?:\/intl-[a-z]{2,5})?(?:\/embed)?\/track\/([A-Za-z0-9]{22})\/?$/;
@@ -30,8 +28,10 @@ async function quietly<T>(
   const musicBrainz = url.startsWith("https://musicbrainz.org/");
   try {
     for (let attempt = 0; ; attempt++) {
-      if (musicBrainz) await ctx.limiter.acquire("musicbrainz", MUSICBRAINZ_POLICY);
-      await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+      if (musicBrainz) {
+        await takeSlot(ctx, "spotify", "MusicBrainz", { key: "musicbrainz", policy: MUSICBRAINZ_POLICY });
+      }
+      await takeSlot(ctx, "spotify", "Spotify");
       const response = await fetch(url, { signal: deadlineSignal(ctx.signal), cache: "no-store", headers });
       if (response.ok) return await read(response);
       if (!musicBrainz || attempt > 0 || response.status !== 503) return null;
