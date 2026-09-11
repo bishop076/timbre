@@ -263,6 +263,13 @@ function progressiveOf(song: Song): { source: ProgressiveSource; sourceId: strin
   return found && isProgressive(found.source) ? { source: found.source, sourceId: found.sourceId } : null;
 }
 
+/** Whether `load` will have to search before anything can play this song — no copy on it can
+ * be started as it stands. Chart entries from Deezer and Apple are exactly this, so a queue
+ * of them paid a search's round trip in silence at every handoff. */
+function resolvesBySearch(song: Song): boolean {
+  return !youtubeIdOf(song) && !progressiveOf(song) && !mixcloudKeyOf(song) && !soundcloudUrlOf(song);
+}
+
 /** Every source that can end up in the player, including the two that only ever supply a
  * preview clip. */
 type PlayingSource =
@@ -635,6 +642,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [findMatches],
   );
 
+  /** Searches started early for songs coming up, keyed by id — see the warm-up effect. */
+  const warmed = useRef(new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>());
+
+  /**
+   * `findMatches`, answered from a search the warm-up already made when there is one. The
+   * early promise does not know about this `signal`, so it is raced against it: a track change
+   * while it is still in flight has to reject exactly as a fresh fetch would, or `load` would
+   * go on to play a copy of the song it just left.
+   */
+  const matchesFor = useCallback(
+    (song: Song, signal: AbortSignal): Promise<Song[]> => {
+      const early = warmed.current.get(song.id);
+      if (!early) return findMatches(song, signal);
+      warmed.current.delete(song.id);
+
+      return new Promise<Song[]>((resolve, reject) => {
+        const abort = () => reject(new DOMException("Aborted", "AbortError"));
+        if (signal.aborted) return abort();
+        signal.addEventListener("abort", abort, { once: true });
+        // A warm-up that failed is not an answer: ask again, on this load's own signal.
+        early.matches
+          .catch(() => findMatches(song, signal))
+          .then(resolve, reject)
+          .finally(() => signal.removeEventListener("abort", abort));
+      });
+    },
+    [findMatches],
+  );
+
   /**
    * **The rung that lets the ladder leave the song's own sources.**
    *
@@ -862,7 +898,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setProblem(null);
 
       try {
-        const matches = await findMatches(song, aborter.signal);
+        const matches = await matchesFor(song, aborter.signal);
         candidates.current = matches.map(youtubeIdOf).filter((id): id is string => id !== null);
         const first = candidates.current[0];
         if (first) {
@@ -914,7 +950,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       attemptSpotify,
       attemptPreview,
       findCandidates,
-      findMatches,
+      matchesFor,
     ],
   );
 
@@ -1313,6 +1349,66 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // next" stayed empty. Reported exactly that way. `spotifyTrackId` had the same hole.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSource, videoId, streamUrl, soundcloudUrl, mixcloudKey, spotifyTrackId]);
+
+  /*
+   * **The handoff, shortened from this side.** Mounting the next song's player early is not
+   * available — exactly one player is ever mounted, and that is what keeps two from ever
+   * being audible — so the gap is attacked where it actually is:
+   *
+   * - A song with nothing playable on it searches before it can start, about two seconds of
+   *   silence. That search is made now, while this song plays, and `load` takes the answer
+   *   from `warmed` instead of asking again.
+   * - A song Timbre plays itself has to follow Audius's redirect to whichever content node
+   *   holds it and open a connection there. A detached element asking for metadata only does
+   *   that now, for a few kilobytes, so the real element starts on a warm connection.
+   *
+   * Only for the song that is certainly next. Under shuffle the next song is a draw nobody
+   * has made yet, and warming a guess would spend a metered search on a song that may not
+   * play at all.
+   */
+  useEffect(() => {
+    const upcoming = shuffle
+      ? undefined
+      : (queue[index + 1] ??
+        (index === queue.length - 1 && continueWithRadio && repeat !== "all" ? unqueued(radio)[0] : undefined));
+
+    // Drop warm-ups for songs that are no longer next — the queue was edited, or the radio
+    // was redrawn — so neither the requests nor their answers outlive their use.
+    for (const [id, early] of warmed.current) {
+      if (id === upcoming?.id) continue;
+      early.aborter.abort();
+      warmed.current.delete(id);
+    }
+    if (!upcoming) return;
+
+    if (resolvesBySearch(upcoming) && !warmed.current.has(upcoming.id)) {
+      const aborter = new AbortController();
+      const matches = findMatches(upcoming, aborter.signal);
+      // Handled where it is used; unhandled here it would be reported as a page error.
+      matches.catch(() => undefined);
+      warmed.current.set(upcoming.id, { matches, aborter });
+    }
+
+    const progressive = youtubeIdOf(upcoming) ? null : progressiveOf(upcoming);
+    if (!progressive) return;
+    const audio = new Audio();
+    audio.preload = "metadata";
+    audio.muted = true;
+    audio.src = streamUrlFor(progressive.source, progressive.sourceId);
+    return () => {
+      // Releases the connection and whatever was buffered, per the media spec's own recipe.
+      audio.removeAttribute("src");
+      audio.load();
+    };
+  }, [continueWithRadio, findMatches, index, queue, radio, repeat, shuffle, unqueued]);
+
+  useEffect(() => {
+    const pending = warmed.current;
+    return () => {
+      for (const early of pending.values()) early.aborter.abort();
+      pending.clear();
+    };
+  }, []);
 
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
