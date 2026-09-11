@@ -15,6 +15,7 @@ import {
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { ModeButton, repeatMode } from "../shell/player-bar";
 import { LyricsPanel } from "./lyrics-panel";
+import { getPlaybackPrefs } from "./playback-prefs";
 import { usePlayer } from "./player-context";
 import { Scrub } from "./wavy-progress";
 
@@ -41,7 +42,8 @@ export function MobileTransport() {
     toggleTheater,
   } = usePlayer();
 
-  const [showLyrics, setShowLyrics] = useState(false);
+  // Settings → General decides where this opens; after that the toggle is the reader's.
+  const [showLyrics, setShowLyrics] = useState(() => getPlaybackPrefs().lyricsByDefault);
 
   const playing = state === "playing";
   const busy = state === "loading" || state === "resolving";
