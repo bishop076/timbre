@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 
 _EMBED_RANK = {
     "MUSIC_VIDEO_TYPE_OMV": 0,
@@ -60,7 +60,7 @@ def search(request: SearchRequest) -> SearchResponse:
 
 def extract_video_id(raw: str) -> str | None:
     candidate = raw.strip()
-    if VIDEO_ID.match(candidate):
+    if VIDEO_ID.fullmatch(candidate):
         return candidate
 
     try:
@@ -71,15 +71,15 @@ def extract_video_id(raw: str) -> str | None:
     host = (parsed.hostname or "").removeprefix("www.")
     if host == "youtu.be":
         segment = parsed.path.lstrip("/").split("/")[0]
-        return segment if VIDEO_ID.match(segment) else None
+        return segment if VIDEO_ID.fullmatch(segment) else None
 
     if host in {"youtube.com", "music.youtube.com", "m.youtube.com"}:
         values = parse_qs(parsed.query).get("v")
-        if values and VIDEO_ID.match(values[0]):
+        if values and VIDEO_ID.fullmatch(values[0]):
             return values[0]
         segments = [segment for segment in parsed.path.split("/") if segment]
         if len(segments) >= 2 and segments[0] in {"embed", "shorts", "v"}:
-            return segments[1] if VIDEO_ID.match(segments[1]) else None
+            return segments[1] if VIDEO_ID.fullmatch(segments[1]) else None
 
     return None
 
@@ -100,17 +100,22 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
     details = song.get("videoDetails") if isinstance(song, dict) else None
     if not isinstance(details, dict):
         return ResolveResponse(track=None)
+    found_id = details.get("videoId", video_id)
+    if not isinstance(found_id, str) or not VIDEO_ID.fullmatch(found_id):
+        return ResolveResponse(track=None)
 
     length = details.get("lengthSeconds")
+    seconds = int(length) if isinstance(length, str) and length.isdecimal() else None
     author = details.get("author")
+    thumbnail = details.get("thumbnail")
     track = to_track(
         {
             "resultType": "song",
-            "videoId": details.get("videoId", video_id),
+            "videoId": found_id,
             "title": details.get("title"),
             "artists": [{"name": author}] if isinstance(author, str) else [],
-            "duration_seconds": int(length) if isinstance(length, str) and length.isdigit() else None,
-            "thumbnails": (details.get("thumbnail") or {}).get("thumbnails"),
+            "duration_seconds": seconds,
+            "thumbnails": thumbnail.get("thumbnails") if isinstance(thumbnail, dict) else None,
         }
     )
     return ResolveResponse(track=track)
