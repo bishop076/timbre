@@ -6,13 +6,14 @@ import { useState, type ReactNode } from "react";
 
 import { cover as coverSrc } from "./artwork-url";
 import { Collage } from "./collage";
-import { ExploreForYou } from "./explore-for-you";
+import { ExploreForYou, kindLabel } from "./explore-for-you";
 import { ShuffleIcon } from "./icons";
+import { SectionHeader } from "./page-chrome";
 import { Shelf } from "./shelf";
 import { useTaste } from "./taste-store";
 import type { Discover } from "@/lib/discover";
 import type { Radio } from "@/lib/radios";
-import { seededShuffle } from "@/lib/rotation";
+import { interleaveBy, seededShuffle } from "@/lib/rotation";
 
 export function DiscoverView({
   initial,
@@ -44,25 +45,19 @@ export function DiscoverView({
             (entry) => entry.id,
             yours,
           ).map((entry) => ({
-            key: String(entry.id),
             label: entry.name,
             href: `/collection/genre/${entry.id}`,
             yours: yours.includes(entry.id),
           }))}
-          initial={9}
-          shuffleable
         />
 
         <PillSection
           title="Stations"
           pills={interleave(radios, rotation, yours).map((radio) => ({
-            key: String(radio.id),
             label: radio.title,
             href: `/collection/radio/${radio.id}`,
             yours: yours.includes(radio.genreId),
           }))}
-          initial={9}
-          shuffleable
         />
       </div>
 
@@ -90,10 +85,7 @@ function Featured({ data }: { data: Discover }) {
       subtitle: `${data.tracks.length} songs · Deezer`,
       href: "/collection/genre/0",
       image: null,
-      covers: data.tracks
-        .map((track) => track.artworkUrl)
-        .filter((url): url is string => Boolean(url))
-        .slice(0, 5),
+      covers: data.tracks.flatMap((track) => track.artworkUrl || []).slice(0, 5),
     });
   }
 
@@ -112,7 +104,7 @@ function Featured({ data }: { data: Discover }) {
   }
 
   for (const album of data.albums.slice(0, 8)) {
-    const kind = album.kind === "single" ? "Single" : album.kind === "ep" ? "EP" : "Album";
+    const kind = kindLabel(album.kind);
     cards.push({
       key: `album-${album.id}`,
       eyebrow: album.fresh ? `New ${kind.toLowerCase()} · editors' pick` : kind,
@@ -198,61 +190,53 @@ function Featured({ data }: { data: Discover }) {
   );
 }
 
+const INITIAL_PILLS = 9;
+
 function PillSection({
   title,
   pills,
-  initial,
-  shuffleable = false,
 }: {
   title: string;
-  pills: { key: string; label: string; href: string; yours?: boolean }[];
-  initial: number;
-  shuffleable?: boolean;
+  pills: { label: string; href: string; yours: boolean }[];
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
 
   if (pills.length === 0) return null;
 
-  const visible = expanded ? pills : pills.slice(0, initial);
+  const visible = expanded ? pills : pills.slice(0, INITIAL_PILLS);
 
   return (
     <section className="mb-6 sm:mb-8">
-      <div className="mb-2.5 flex items-center justify-between gap-4 px-1 sm:mb-3.5">
-        <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{title}</h2>
+      <SectionHeader title={title}>
+        <button
+          type="button"
+          onClick={() => {
+            const pick = pills[Math.floor(Math.random() * pills.length)];
+            if (pick) router.push(pick.href);
+          }}
+          aria-label={`Open a random ${title.toLowerCase()} collection`}
+          title="Surprise me"
+          className="slab-sm press flex size-7 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg-dim)] transition hover:text-[var(--fg)]"
+        >
+          <ShuffleIcon className="size-4" />
+        </button>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {shuffleable && (
-            <button
-              type="button"
-              onClick={() => {
-                const pick = pills[Math.floor(Math.random() * pills.length)];
-                if (pick) router.push(pick.href);
-              }}
-              aria-label={`Open a random ${title.toLowerCase()} collection`}
-              title="Surprise me"
-              className="slab-sm press flex size-7 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg-dim)] transition hover:text-[var(--fg)]"
-            >
-              <ShuffleIcon className="size-4" />
-            </button>
-          )}
-
-          {pills.length > initial && (
-            <button
-              type="button"
-              onClick={() => setExpanded((open) => !open)}
-              className="press text-[12px] font-semibold text-[var(--fg-dim)] hover:text-[var(--fg)]"
-            >
-              {expanded ? "Show less" : "View all"}
-            </button>
-          )}
-        </div>
-      </div>
+        {pills.length > INITIAL_PILLS && (
+          <button
+            type="button"
+            onClick={() => setExpanded((open) => !open)}
+            className="press text-[12px] font-semibold text-[var(--fg-dim)] hover:text-[var(--fg)]"
+          >
+            {expanded ? "Show less" : "View all"}
+          </button>
+        )}
+      </SectionHeader>
 
       <div className="flex flex-wrap gap-1.5 px-1 sm:gap-2">
         {visible.map((pill) => (
           <Link
-            key={pill.key}
+            key={pill.href}
             href={pill.href}
             title={pill.yours ? "In a genre you play" : undefined}
             className={`slab-sm press flex items-center gap-1.5 rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[12px] font-semibold transition hover:text-[var(--fg)] sm:px-4 sm:py-2.5 sm:text-[13px] ${
@@ -281,32 +265,18 @@ function yoursFirst<T>(items: T[], genreOf: (item: T) => number, yours: number[]
 const LEAD_STATIONS = 3;
 
 function interleave(radios: Radio[], rotation: number, yours: number[]): Radio[] {
-  const byGenre = new Map<number, Radio[]>();
-  for (const radio of radios) {
-    const existing = byGenre.get(radio.genreId);
-    if (existing) existing.push(radio);
-    else byGenre.set(radio.genreId, [radio]);
-  }
-
-  const queues = new Map(
-    [...byGenre].map(([genre, list]) => [genre, seededShuffle(list, rotation * 13 + genre)]),
+  const genres = [...new Set(radios.map((radio) => radio.genreId))];
+  const queues = new Map<number, Radio[]>(
+    genres.map((genre) => [
+      genre,
+      seededShuffle(radios.filter((radio) => radio.genreId === genre), rotation * 13 + genre),
+    ]),
   );
 
-  const out: Radio[] = [];
-  for (const genre of yours.slice(0, 2)) {
-    out.push(...(queues.get(genre)?.splice(0, LEAD_STATIONS) ?? []));
-  }
-
-  const rotated = yoursFirst(seededShuffle([...queues.keys()], rotation), (genre) => genre, yours);
-  const rest = rotated.map((genre) => queues.get(genre)!);
-  for (let round = 0; out.length < 36; round += 1) {
-    const before = out.length;
-    for (const queue of rest) {
-      const radio = queue[round];
-      if (radio) out.push(radio);
-    }
-    if (out.length === before) break;
-  }
-
-  return out.slice(0, 36);
+  const lead = yours
+    .slice(0, 2)
+    .flatMap((genre) => queues.get(genre)?.splice(0, LEAD_STATIONS) ?? []);
+  const order = yoursFirst(seededShuffle(genres, rotation), (genre) => genre, yours);
+  const rest = order.map((genre) => queues.get(genre)!);
+  return [...lead, ...interleaveBy(rest, (radio) => String(radio.id), 36 - lead.length)];
 }

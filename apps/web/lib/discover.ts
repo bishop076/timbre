@@ -1,6 +1,6 @@
 import "server-only";
 
-import { deezer } from "./deezer";
+import { deezer, deezerList, type RawTrack } from "./deezer";
 import { seededShuffle } from "./rotation";
 
 export interface Genre {
@@ -22,7 +22,11 @@ export interface ChartTrack {
   popularity: number;
 }
 
-export interface ChartAlbum {
+export interface LinkedSong extends Omit<ChartTrack, "sources" | "position" | "popularity"> {
+  sources: { source: string; sourceId: string; url: string | null; playback: "link" }[];
+}
+
+interface ChartAlbum {
   id: number;
   title: string;
   artist: string;
@@ -31,37 +35,19 @@ export interface ChartAlbum {
   fresh: boolean;
 }
 
-export interface ChartArtist {
-  name: string;
-  imageUrl: string | null;
-}
-
-export interface ChartPlaylist {
-  id: number;
-  title: string;
-  by: string | null;
-  coverUrl: string | null;
-  trackCount: number | null;
-  covers: string[];
-}
-
 export interface Discover {
   genres: Genre[];
   tracks: ChartTrack[];
   albums: ChartAlbum[];
-  artists: ChartArtist[];
-  playlists: ChartPlaylist[];
-}
-
-export interface RawTrack {
-  id: number;
-  title: string;
-  duration?: number;
-  rank?: number;
-  position?: number;
-  link?: string;
-  artist?: { name?: string };
-  album?: { title?: string; cover_medium?: string; cover_big?: string };
+  artists: { name: string; imageUrl: string | null }[];
+  playlists: {
+    id: number;
+    title: string;
+    by: string | null;
+    coverUrl: string | null;
+    trackCount: number | null;
+    covers: string[];
+  }[];
 }
 
 interface RawAlbum {
@@ -72,33 +58,24 @@ interface RawAlbum {
   artist?: { name?: string };
 }
 
-interface RawArtist {
-  name: string;
-  picture_medium?: string;
-}
-
-interface RawPlaylist {
-  id: number;
-  title: string;
-  nb_tracks?: number;
-  picture_medium?: string;
-  picture_big?: string;
-  user?: { name?: string };
-  creator?: { name?: string };
-}
-
 interface RawChart {
   tracks?: { data?: RawTrack[] };
   albums?: { data?: RawAlbum[] };
-  artists?: { data?: RawArtist[] };
-  playlists?: { data?: RawPlaylist[] };
+  artists?: { data?: { name: string; picture_medium?: string }[] };
+  playlists?: {
+    data?: {
+      id: number;
+      title: string;
+      nb_tracks?: number;
+      picture_medium?: string;
+      picture_big?: string;
+      user?: { name?: string };
+      creator?: { name?: string };
+    }[];
+  };
 }
 
-function toGenre(raw: { id: number; name: string; picture_medium?: string }): Genre {
-  return { id: raw.id, name: raw.name, imageUrl: raw.picture_medium ?? null };
-}
-
-export function toTrack(raw: RawTrack, index: number): ChartTrack {
+function toTrack(raw: RawTrack, index: number): ChartTrack {
   return {
     id: `deezer:${raw.id}`,
     title: raw.title,
@@ -125,82 +102,71 @@ export function toTrackByOrder(raw: RawTrack, index: number): ChartTrack {
 }
 
 export function coversOf(covers: (string | null | undefined)[], max: number): string[] {
-  const seen = new Set<string>();
-  for (const cover of covers) {
-    if (cover) seen.add(cover);
-    if (seen.size === max) break;
-  }
-  return [...seen];
+  return [...new Set(covers.filter((cover): cover is string => Boolean(cover)))].slice(0, max);
 }
 
 export async function fetchGenres(): Promise<Genre[]> {
-  const data = await deezer<{ data?: { id: number; name: string; picture_medium?: string }[] }>(
+  const genres = await deezerList<{ id: number; name: string; picture_medium?: string }>(
     "/genre",
     604_800,
   );
-  return (data?.data ?? []).map(toGenre);
+  return genres.map(({ id, name, picture_medium }) => ({
+    id,
+    name,
+    imageUrl: picture_medium ?? null,
+  }));
 }
 
 export async function fetchDiscover(genre: number, rotation = 0): Promise<Discover> {
   const [genres, chart, picks] = await Promise.all([
     fetchGenres(),
     deezer<RawChart>(`/chart/${genre}?limit=25`, 3_600),
-    deezer<{ data?: RawAlbum[] }>(`/editorial/${genre}/selection`, 21_600),
+    deezerList<RawAlbum>(`/editorial/${genre}/selection`, 21_600),
   ]);
 
-  const seen = new Set<number>();
-  const albums: { raw: RawAlbum; fresh: boolean }[] = [];
+  const albums = new Map<number, ChartAlbum>();
   for (const [list, fresh] of [
-    [picks?.data ?? [], true],
+    [picks, true],
     [chart?.albums?.data ?? [], false],
   ] as const) {
     for (const raw of list) {
-      if (seen.has(raw.id)) continue;
-      seen.add(raw.id);
-      albums.push({ raw, fresh });
+      if (albums.has(raw.id)) continue;
+      albums.set(raw.id, {
+        id: raw.id,
+        title: raw.title,
+        artist: raw.artist?.name ?? "",
+        coverUrl: raw.cover_medium ?? null,
+        kind: raw.record_type ?? "album",
+        fresh,
+      });
     }
   }
+
+  const playlists = seededShuffle(chart?.playlists?.data ?? [], rotation * 7 + 3).slice(0, 6);
 
   return {
     genres,
     tracks: (chart?.tracks?.data ?? []).map(toTrack),
-    albums: seededShuffle(albums, rotation).map(({ raw, fresh }) => ({
-      id: raw.id,
-      title: raw.title,
-      artist: raw.artist?.name ?? "",
-      coverUrl: raw.cover_medium ?? null,
-      kind: raw.record_type ?? "album",
-      fresh,
-    })),
+    albums: seededShuffle([...albums.values()], rotation),
     artists: (chart?.artists?.data ?? []).map((raw) => ({
       name: raw.name,
       imageUrl: raw.picture_medium ?? null,
     })),
-    playlists: await withCovers(
-      seededShuffle(chart?.playlists?.data ?? [], rotation * 7 + 3).slice(0, 6),
+    playlists: await Promise.all(
+      playlists.map(async (playlist) => {
+        const tracks = await deezerList<RawTrack>(`/playlist/${playlist.id}/tracks?limit=8`);
+        return {
+          id: playlist.id,
+          title: playlist.title,
+          by: playlist.creator?.name ?? playlist.user?.name ?? null,
+          coverUrl: playlist.picture_big ?? playlist.picture_medium ?? null,
+          trackCount: playlist.nb_tracks ?? null,
+          covers: coversOf(
+            tracks.map((track) => track.album?.cover_medium ?? track.album?.cover_big),
+            5,
+          ),
+        };
+      }),
     ),
   };
-}
-
-async function withCovers(raw: RawPlaylist[]): Promise<ChartPlaylist[]> {
-  return Promise.all(
-    raw.map(async (playlist) => {
-      const tracks = await deezer<{ data?: RawTrack[] }>(
-        `/playlist/${playlist.id}/tracks?limit=8`,
-        86_400,
-      );
-
-      return {
-        id: playlist.id,
-        title: playlist.title,
-        by: playlist.creator?.name ?? playlist.user?.name ?? null,
-        coverUrl: playlist.picture_big ?? playlist.picture_medium ?? null,
-        trackCount: playlist.nb_tracks ?? null,
-        covers: coversOf(
-          (tracks?.data ?? []).map((track) => track.album?.cover_medium ?? track.album?.cover_big),
-          5,
-        ),
-      };
-    }),
-  );
 }

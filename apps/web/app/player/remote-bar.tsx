@@ -5,7 +5,7 @@ import { Artwork } from "../artwork";
 import { formatElapsed } from "../duration";
 import { NextIcon, PauseIcon, PlayHereIcon, PlayIcon, PrevIcon, SpinnerIcon } from "../icons";
 import { commandRemote, takeOverRemote, type RemotePlayer } from "./use-tab-sync";
-import { Scrub } from "./wavy-progress";
+import { ScrubBar } from "./wavy-progress";
 
 export function RemoteBar({ remote }: { remote: RemotePlayer }) {
   const { song, state, position, duration, hasNext, hasPrevious } = remote.report;
@@ -98,12 +98,12 @@ export function RemoteBar({ remote }: { remote: RemotePlayer }) {
           {playButton}
           {skipButton("next")}
         </div>
-        <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
+        <ScrubBar position={position} duration={duration} playing={playing} onSeek={seek} />
       </footer>
 
       <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:flex">
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
-          <Scrub position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
+          <ScrubBar position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
         </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-3">

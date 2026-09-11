@@ -9,31 +9,16 @@ export function useTransportKeys(): void {
   const { toggle, next, previous, setVolume, volume, current } = usePlayerControls();
 
   useEffect(() => {
+    const transport = { toggle, next, previous };
     const onKeyDown = (event: KeyboardEvent) => {
       const action = actionFor(event);
-      if (!action) return;
+      if (!action || !current) return;
 
-      if (!current) return;
-
-      switch (action) {
-        case "toggle":
-          event.preventDefault();
-          toggle();
-          break;
-        case "next":
-          event.preventDefault();
-          next();
-          break;
-        case "previous":
-          event.preventDefault();
-          previous();
-          break;
-        case "volume-up":
-          setVolume(Math.min(100, volume + VOLUME_STEP));
-          break;
-        case "volume-down":
-          setVolume(Math.max(0, volume - VOLUME_STEP));
-          break;
+      if (action === "volume-up") setVolume(volume + VOLUME_STEP);
+      else if (action === "volume-down") setVolume(volume - VOLUME_STEP);
+      else {
+        event.preventDefault();
+        transport[action]();
       }
     };
 

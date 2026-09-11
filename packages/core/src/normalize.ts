@@ -17,28 +17,19 @@ const TRAILING_NOISE = new RegExp(
 const VARIANT_PATTERNS: { pattern: RegExp; tag: string }[] = [
   { pattern: /\bremix\b/i, tag: "remix" },
   { pattern: /\blive\b(?!\s*(?:from\s+the\s+studio))/i, tag: "live" },
-  { pattern: /\bacoustic\b/i, tag: "acoustic" },
-  { pattern: /\bunplugged\b/i, tag: "acoustic" },
+  { pattern: /\bacoustic\b|\bunplugged\b/i, tag: "acoustic" },
   { pattern: /\bsession\b/i, tag: "session" },
   { pattern: /\binstrumental\b/i, tag: "instrumental" },
   { pattern: /\bkaraoke\b/i, tag: "karaoke" },
   { pattern: /\bdemo\b/i, tag: "demo" },
   { pattern: /\bcover\b/i, tag: "cover" },
   { pattern: /\bsped\s*up\b|\bslowed\b|\bnightcore\b/i, tag: "speed" },
-  { pattern: /\bedit\b/i, tag: "edit" },
+  { pattern: /\bedit\b|\bradio\s+version\b/i, tag: "edit" },
   { pattern: /\bextended\b/i, tag: "extended" },
-  { pattern: /\bradio\s+(?:edit|version)\b/i, tag: "edit" },
 ];
 
 const FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?)\s+(.+)$/i;
-
 const SEGMENT_FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?|with)\s+(.+)$/i;
-
-export interface ParsedTitle {
-  base: string;
-  variants: string[];
-  featured: string[];
-}
 
 export function normalizeLoose(input: string): string {
   return input
@@ -52,63 +43,45 @@ export function normalizeLoose(input: string): string {
     .replace(/\s+/g, " ");
 }
 
-export function parseTitle(raw: string): ParsedTitle {
+export function parseTitle(raw: string) {
   const variants = new Set<string>();
   const featured: string[] = [];
+  const stripFeature = (text: string, pattern: RegExp): string => {
+    const match = pattern.exec(text);
+    if (!match?.[1]) return text;
+    featured.push(...splitArtists(match[1]));
+    return text.slice(0, match.index);
+  };
 
   const segments: string[] = [];
-  let main = raw.replace(/[([{]([^)\]}]*)[)\]}]/g, (_match, inner: string) => {
+  const unbracketed = raw.replace(/[([{]([^)\]}]*)[)\]}]/g, (_match, inner: string) => {
     segments.push(inner);
     return " ";
   });
+  const [main = unbracketed, ...suffixes] = unbracketed.split(/\s+[-–—]\s+/);
+  segments.push(...suffixes);
 
-  const dashSplit = main.split(/\s+[-–—]\s+/);
-  if (dashSplit.length > 1) {
-    main = dashSplit[0] ?? main;
-    segments.push(...dashSplit.slice(1));
-  }
-
-  const classify = (text: string): void => {
-    const feature = SEGMENT_FEATURE_PATTERN.exec(text);
-    if (feature?.[1]) {
-      featured.push(...splitArtists(feature[1]));
-      text = text.slice(0, feature.index);
-      if (!text.trim()) return;
+  for (const segment of segments) {
+    const text = stripFeature(segment, SEGMENT_FEATURE_PATTERN);
+    const tagged = VARIANT_PATTERNS.filter(({ pattern }) => pattern.test(text));
+    if (tagged.length > 0) {
+      for (const { tag } of tagged) variants.add(tag);
+      continue;
     }
-
-    let recognized = false;
-    for (const { pattern, tag } of VARIANT_PATTERNS) {
-      if (pattern.test(text)) {
-        variants.add(tag);
-        recognized = true;
-      }
-    }
-    if (recognized) return;
-
-    let residue = text;
-    for (const pattern of NOISE_PATTERNS) residue = residue.replace(pattern, " ");
+    const residue = NOISE_PATTERNS.reduce((rest, pattern) => rest.replace(pattern, " "), text);
     const normalized = normalizeLoose(residue);
     if (normalized) variants.add(normalized);
-  };
-
-  for (const segment of segments) classify(segment);
-
-  const inlineFeature = FEATURE_PATTERN.exec(main);
-  if (inlineFeature?.[1]) {
-    featured.push(...splitArtists(inlineFeature[1]));
-    main = main.slice(0, inlineFeature.index);
   }
 
-  const base = main.replace(TRAILING_NOISE, "");
-
+  const base = stripFeature(main, FEATURE_PATTERN).replace(TRAILING_NOISE, "");
   return {
     base: normalizeLoose(base),
     variants: [...variants].sort(),
-    featured: dedupe(featured.map(normalizeLoose).filter(Boolean)),
+    featured: [...new Set(featured.map(normalizeLoose).filter(Boolean))],
   };
 }
 
-export function splitArtists(raw: string): string[] {
+function splitArtists(raw: string): string[] {
   return raw
     .split(/\s*(?:,|&|\+|\/|\bx\b|\bvs\.?\b|\band\b|\bwith\b)\s*/i)
     .map((part) => part.trim())
@@ -116,19 +89,12 @@ export function splitArtists(raw: string): string[] {
 }
 
 export function normalizeArtists(artists: string[]): string[] {
-  return dedupe(artists.flatMap(splitArtists).map(normalizeLoose).filter(Boolean)).sort();
+  return [...new Set(artists.flatMap(splitArtists).map(normalizeLoose).filter(Boolean))].sort();
 }
 
-export function dedupeParts(
-  title: string,
-  artists: string[],
-): { base: string; variants: string[]; artists: string[] } {
-  const parsed = parseTitle(title);
-  return {
-    base: parsed.base,
-    variants: parsed.variants,
-    artists: normalizeArtists([...artists, ...parsed.featured]),
-  };
+export function dedupeParts(title: string, artists: string[]) {
+  const { base, variants, featured } = parseTitle(title);
+  return { base, variants, artists: normalizeArtists([...artists, ...featured]) };
 }
 
 export function dedupeKey(title: string, artists: string[]): string {
@@ -136,15 +102,6 @@ export function dedupeKey(title: string, artists: string[]): string {
   return [parts.base, parts.variants.join("+"), parts.artists.join("+")].join("|");
 }
 
-export function durationsMatch(
-  a: number | null,
-  b: number | null,
-  toleranceMs = 3_000,
-): boolean {
-  if (a === null || b === null) return true;
-  return Math.abs(a - b) <= toleranceMs;
-}
-
-function dedupe(values: string[]): string[] {
-  return [...new Set(values)];
+export function durationsMatch(a: number | null, b: number | null, toleranceMs = 3_000): boolean {
+  return a === null || b === null || Math.abs(a - b) <= toleranceMs;
 }

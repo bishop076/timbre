@@ -4,8 +4,7 @@ import { ProfileView } from "./profile-view";
 
 export const metadata = { title: "Your profile — Timbre" };
 
-function readName(raw: string | undefined): string | null {
-  if (!raw) return null;
+function readName(raw = ""): string | null {
   try {
     return decodeURIComponent(raw).slice(0, 64) || null;
   } catch {

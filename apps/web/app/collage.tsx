@@ -3,8 +3,6 @@
 import { cover as coverSrc } from "./artwork-url";
 import { NoteIcon } from "./icons";
 
-const COVER = 30;
-
 const SCATTER = [
   { left: 5, top: 12, rotate: -8 },
   { left: 35, top: 6, rotate: 5 },
@@ -61,7 +59,7 @@ export function Collage({
             decoding="async"
             className="absolute aspect-square rounded-[5px] object-cover shadow-[0_4px_14px_rgba(0,0,0,0.45)]"
             style={{
-              width: `${COVER}%`,
+              width: "30%",
               left: `${spot.left}%`,
               top: `${spot.top}%`,
               transform: `rotate(${spot.rotate}deg)`,

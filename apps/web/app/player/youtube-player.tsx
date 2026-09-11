@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { log } from "../logs.ts";
+import { addScript, blockedTimer, findScript, loadOnce, useLatest, useTransport } from "./embed";
 import { publishYouTubeRates, speedToApply, useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
 import { stalledAt } from "./youtube-stall.ts";
@@ -11,7 +12,6 @@ interface YTPlayer {
   loadVideoById(id: string): void;
   unloadModule?(name: string): void;
   setOption?(name: string, option: string, value: unknown): void;
-  getOptions?(): string[];
   playVideo(): void;
   pauseVideo(): void;
   stopVideo(): void;
@@ -29,14 +29,7 @@ interface YTPlayer {
 
 interface YTNamespace {
   Player: new (element: HTMLElement, options: unknown) => YTPlayer;
-  PlayerState: {
-    UNSTARTED: number;
-    ENDED: number;
-    PLAYING: number;
-    PAUSED: number;
-    BUFFERING: number;
-    CUED: number;
-  };
+  PlayerState: Record<"UNSTARTED" | "ENDED" | "PLAYING" | "PAUSED" | "BUFFERING" | "CUED", number>;
 }
 
 declare global {
@@ -46,78 +39,49 @@ declare global {
   }
 }
 
-function unloadCaptions(player: YTPlayer | null): void {
-  if (!player) return;
-
-  let loaded: string[] = [];
+function quietly(action: () => void): void {
   try {
-    loaded = player.getOptions?.() ?? [];
-  } catch {
-  }
+    action();
+  } catch {}
+}
 
-  for (const name of new Set([...loaded, "captions", "cc"])) {
-    if (name !== "captions" && name !== "cc") continue;
-    try {
-      player.setOption?.(name, "track", {});
-    } catch {
-    }
-    try {
-      player.unloadModule?.(name);
-    } catch {
-    }
+function unloadCaptions(player: YTPlayer | null): void {
+  for (const name of ["captions", "cc"]) {
+    quietly(() => player?.setOption?.(name, "track", {}));
+    quietly(() => player?.unloadModule?.(name));
   }
 }
 
 const CAPTION_RETRIES = [0, 500, 1500];
-
 const STALL_MS = 10_000;
-
 const API_SRC = "https://www.youtube.com/iframe_api";
-
 const PLAYER_HOST = "https://www.youtube-nocookie.com";
 
-let apiPromise: Promise<YTNamespace> | null = null;
+const REFUSED = "YouTube wouldn't play this copy here.";
+const RETRYABLE_ERRORS: Record<number, string> = {
+  5: "The player couldn't load this track.",
+  100: "That upload has been removed.",
+  101: REFUSED,
+  150: REFUSED,
+  153: REFUSED,
+};
 
-function loadApi(): Promise<YTNamespace> {
-  if (apiPromise) return apiPromise;
-
-  apiPromise = new Promise<YTNamespace>((resolve) => {
-    if (window.YT?.Player) {
-      resolve(window.YT);
-      return;
-    }
-    const previous = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      previous?.();
-      resolve(window.YT!);
-    };
-
-    if (!document.querySelector(`script[src="${API_SRC}"]`)) {
-      const script = document.createElement("script");
-      script.src = API_SRC;
-      script.async = true;
-      document.head.append(script);
-    }
-  });
-
-  return apiPromise;
-}
+const loadApi = loadOnce<YTNamespace>((resolve) => {
+  if (window.YT?.Player) return resolve(window.YT);
+  const previous = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = () => {
+    previous?.();
+    resolve(window.YT!);
+  };
+  if (!findScript(API_SRC)) addScript(API_SRC);
+});
 
 export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string }) {
-  const {
-    videoId,
-    volume,
-    muted,
-    handleEnded,
-    handleStateChange,
-    handleProgress,
-    handleError,
-    registerToggle,
-    registerSeek,
-  } = usePlayerControls();
+  const controls = usePlayerControls();
+  const { videoId } = controls;
+  const level = controls.muted ? 0 : controls.volume;
 
   const [chromeShowing, setChromeShowing] = useState(true);
-
   const [coveredId, setCoveredId] = useState(videoId);
   if (coveredId !== videoId) {
     setCoveredId(videoId);
@@ -127,108 +91,77 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const readyRef = useRef(false);
-  const pendingId = useRef<string | null>(null);
-  const captionTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const stallTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stallTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
-  useEffect(() => {
-    handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
-  }, [handleEnded, handleStateChange, handleProgress, handleError]);
+  const speed = useSpeed();
+  const live = useLatest({ ...controls, level, speed });
 
-  const videoIdRef = useRef<string | null>(videoId);
-  useEffect(() => {
-    videoIdRef.current = videoId;
-  }, [videoId]);
+  const start = useCallback((id: string) => {
+    const player = playerRef.current;
+    if (!player) return;
+    player.loadVideoById(id);
+    unloadCaptions(player);
 
-  const clearStall = useCallback(() => {
-    if (stallTimer.current) clearTimeout(stallTimer.current);
-    stallTimer.current = null;
-  }, []);
-
-  const watchForStall = useCallback(
-    (id: string) => {
-      clearStall();
-      stallTimer.current = setTimeout(() => {
-        stallTimer.current = null;
-        const player = playerRef.current;
-        if (!player || !readyRef.current || videoIdRef.current !== id) return;
-
-        let state: number;
-        let loaded: number;
-        let position: number;
-        try {
-          state = player.getPlayerState();
-          loaded = player.getVideoLoadedFraction?.() ?? 0;
-          position = player.getCurrentTime();
-        } catch {
+    clearTimeout(stallTimer.current);
+    stallTimer.current = setTimeout(() => {
+      if (!readyRef.current || live.current.videoId !== id) return;
+      let state: number;
+      try {
+        state = player.getPlayerState();
+        if (!stalledAt(state, player.getVideoLoadedFraction?.() ?? 0, player.getCurrentTime())) {
           return;
         }
-        if (!stalledAt(state, loaded, position)) return;
+      } catch {
+        return;
+      }
+      const note = `YouTube stalled on video ${id}: player state ${state}, nothing buffered after ${STALL_MS / 1000}s`;
+      console.warn(`[timbre] ${note}`);
+      log("error", note);
+      live.current.handleError("YouTube accepted this copy but never delivered it.", true, {
+        stalled: true,
+      });
+    }, STALL_MS);
+  }, [live]);
 
-        const note = `YouTube stalled on video ${id}: player state ${state}, nothing buffered after ${STALL_MS / 1000}s`;
-        console.warn(`[timbre] ${note}`);
-        log("error", note);
-        handlers.current.handleError("YouTube accepted this copy but never delivered it.", true, {
-          stalled: true,
-        });
-      }, STALL_MS);
-    },
-    [clearStall],
-  );
-
-  const level = muted ? 0 : volume;
-  const levelRef = useRef(level);
   useEffect(() => {
-    levelRef.current = level;
     if (readyRef.current) playerRef.current?.setVolume(level);
   }, [level]);
 
-  const speed = useSpeed();
-  const speedRef = useRef(speed);
-
   const applySpeed = useCallback(() => {
     const player = playerRef.current;
-    const id = videoIdRef.current;
-    if (!player || !readyRef.current || !id) return;
-    try {
+    if (!player || !readyRef.current) return;
+    quietly(() => {
+      const { videoId: id, speed: preferred } = live.current;
+      if (!id) return;
       const available = player.getAvailablePlaybackRates?.() ?? [];
       publishYouTubeRates(id, available);
-      const rate = speedToApply(speedRef.current, available);
+      const rate = speedToApply(preferred, available);
       if (player.getPlaybackRate?.() !== rate) player.setPlaybackRate?.(rate);
-    } catch {
-    }
-  }, []);
+    });
+  }, [live]);
 
-  useEffect(() => {
-    speedRef.current = speed;
-    applySpeed();
-  }, [speed, applySpeed]);
+  useEffect(() => applySpeed(), [speed, applySpeed]);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || playerRef.current) return;
+    if (!container) return;
 
     const host = document.createElement("div");
-    host.style.width = "100%";
-    host.style.height = "100%";
+    Object.assign(host.style, { width: "100%", height: "100%" });
     container.append(host);
 
     let cancelled = false;
+    let captionTimers: ReturnType<typeof setTimeout>[] = [];
 
-    const blocked = setTimeout(() => {
-      if (!cancelled && !readyRef.current) {
-        handlers.current.handleError(
-          "Couldn't load YouTube's player. An ad blocker or network filter may be blocking it.",
-          false,
-        );
-      }
-    }, 8000);
+    const clearBlocked = blockedTimer("YouTube", (reason) =>
+      live.current.handleError(reason, false),
+    );
 
     void loadApi().then((YT) => {
       if (cancelled) return;
-      clearTimeout(blocked);
+      clearBlocked();
 
+      const { UNSTARTED, ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
       playerRef.current = new YT.Player(host, {
         width: "100%",
         height: "100%",
@@ -245,132 +178,90 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
         events: {
           onReady: () => {
             readyRef.current = true;
-            playerRef.current?.setVolume(levelRef.current);
+            playerRef.current?.setVolume(live.current.level);
             unloadCaptions(playerRef.current);
-            if (pendingId.current) {
-              playerRef.current?.loadVideoById(pendingId.current);
-              unloadCaptions(playerRef.current);
-              watchForStall(pendingId.current);
-              pendingId.current = null;
-            }
+            if (live.current.videoId) start(live.current.videoId);
           },
-          onApiChange: () => {
-            unloadCaptions(playerRef.current);
-          },
-          onStateChange: (event: { data: number }) => {
-            if (!videoIdRef.current) return;
+          onApiChange: () => unloadCaptions(playerRef.current),
+          onStateChange: ({ data }: { data: number }) => {
+            if (!live.current.videoId) return;
 
-            const { UNSTARTED, ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
-            if (event.data !== UNSTARTED && event.data !== BUFFERING) clearStall();
-            if (event.data === PLAYING) {
-              for (const timer of captionTimers.current) clearTimeout(timer);
-              captionTimers.current = CAPTION_RETRIES.map((delay) =>
+            if (data !== UNSTARTED && data !== BUFFERING) clearTimeout(stallTimer.current);
+            if (data === PLAYING) {
+              captionTimers.forEach(clearTimeout);
+              captionTimers = CAPTION_RETRIES.map((delay) =>
                 setTimeout(() => unloadCaptions(playerRef.current), delay),
               );
               applySpeed();
-            }
-            if (event.data === PLAYING) setChromeShowing(false);
-            else if (event.data !== BUFFERING) setChromeShowing(true);
+              setChromeShowing(false);
+            } else if (data !== BUFFERING) setChromeShowing(true);
 
-            if (event.data === ENDED) handlers.current.handleEnded();
-            else if (event.data === PLAYING) handlers.current.handleStateChange("playing");
-            else if (event.data === PAUSED) handlers.current.handleStateChange("paused");
-            else if (event.data === BUFFERING) handlers.current.handleStateChange("loading");
-            else if (event.data === CUED) handlers.current.handleStateChange("paused");
+            if (data === ENDED) live.current.handleEnded();
+            else if (data === PLAYING) live.current.handleStateChange("playing");
+            else if (data === BUFFERING) live.current.handleStateChange("loading");
+            else if (data === PAUSED || data === CUED) live.current.handleStateChange("paused");
           },
-          onError: (event: { data: number }) => {
-            if (!videoIdRef.current) return;
-            clearStall();
+          onError: ({ data }: { data: number }) => {
+            if (!live.current.videoId) return;
+            clearTimeout(stallTimer.current);
 
-            const note = `YouTube IFrame error ${event.data} on video ${videoIdRef.current ?? "(none)"}`;
+            const note = `YouTube IFrame error ${data} on video ${live.current.videoId}`;
             console.warn(`[timbre] ${note}`);
             log("error", note);
 
-            const refused = [101, 150, 153].includes(event.data);
-            const reason =
-              event.data === 100
-                ? "That upload has been removed."
-                : refused
-                  ? "YouTube wouldn't play this copy here."
-                  : event.data === 5
-                    ? "The player couldn't load this track."
-                    : "Playback was blocked.";
-            handlers.current.handleError(reason, refused || event.data === 100 || event.data === 5, {
-              refused,
+            const reason = RETRYABLE_ERRORS[data];
+            live.current.handleError(reason ?? "Playback was blocked.", Boolean(reason), {
+              refused: reason === REFUSED,
             });
           },
         },
       });
     });
 
+    const poll = setInterval(() => {
+      const player = playerRef.current;
+      if (!player || !readyRef.current) return;
+      quietly(() => {
+        const duration = player.getDuration();
+        if (duration > 0) live.current.handleProgress(player.getCurrentTime(), duration);
+      });
+    }, 500);
+
     return () => {
       cancelled = true;
-      clearTimeout(blocked);
-      try {
-        playerRef.current?.destroy();
-      } catch {
-      }
+      clearBlocked();
+      clearInterval(poll);
+      quietly(() => playerRef.current?.destroy());
       playerRef.current = null;
-      for (const timer of captionTimers.current) clearTimeout(timer);
-      captionTimers.current = [];
-      clearStall();
+      captionTimers.forEach(clearTimeout);
+      clearTimeout(stallTimer.current);
       readyRef.current = false;
       host.remove();
     };
-  }, [applySpeed, clearStall, watchForStall]);
+  }, [applySpeed, live, start]);
 
   useEffect(() => {
-    if (!videoId) {
-      pendingId.current = null;
-      clearStall();
-      if (readyRef.current) {
-        try {
-          playerRef.current?.stopVideo();
-        } catch {
-        }
-      }
-      return;
+    const player = playerRef.current;
+    if (!player || !readyRef.current) return;
+    if (videoId) {
+      start(videoId);
+    } else {
+      clearTimeout(stallTimer.current);
+      quietly(() => player.stopVideo());
     }
+  }, [videoId, start]);
 
-    if (readyRef.current && playerRef.current) {
-      playerRef.current.loadVideoById(videoId);
-      unloadCaptions(playerRef.current);
-      watchForStall(videoId);
-    }
-    else pendingId.current = videoId;
-  }, [videoId, clearStall, watchForStall]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const player = playerRef.current;
-      if (!player || !readyRef.current) return;
-      try {
-        const duration = player.getDuration();
-        if (duration > 0) handlers.current.handleProgress(player.getCurrentTime(), duration);
-      } catch {
-      }
-    }, 500);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    registerSeek((seconds) => {
-      const player = playerRef.current;
-      if (!player || !readyRef.current) return;
-      player.seekTo(seconds, true);
-    });
-    return () => registerSeek(null);
-  }, [registerSeek]);
-
-  useEffect(() => {
-    registerToggle(() => {
+  useTransport({
+    toggle: () => {
       const player = playerRef.current;
       if (!player || !readyRef.current) return;
       if (player.getPlayerState() === 1) player.pauseVideo();
       else player.playVideo();
-    });
-    return () => registerToggle(null);
-  }, [registerToggle]);
+    },
+    seek: (seconds) => {
+      if (readyRef.current) playerRef.current?.seekTo(seconds, true);
+    },
+  });
 
   return (
     <div

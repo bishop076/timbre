@@ -9,7 +9,7 @@ export interface TrackLike {
   isrc?: string | null;
 }
 
-export function titleWords(value: string): string[] {
+function titleWords(value: string): string[] {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")

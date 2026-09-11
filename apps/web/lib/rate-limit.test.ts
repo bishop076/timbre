@@ -11,9 +11,9 @@ function clock(start = 0) {
 test("requests inside the limit are allowed and count down", () => {
   const limiter = createRateLimiter({ limit: 3, windowMs: 1000, now: clock().now });
 
-  assert.deepEqual(limiter.check("a"), { ok: true, remaining: 2, retryAfterSeconds: 0 });
-  assert.deepEqual(limiter.check("a"), { ok: true, remaining: 1, retryAfterSeconds: 0 });
-  assert.deepEqual(limiter.check("a"), { ok: true, remaining: 0, retryAfterSeconds: 0 });
+  for (const remaining of [2, 1, 0]) {
+    assert.deepEqual(limiter.check("a"), { ok: true, remaining, retryAfterSeconds: 0 });
+  }
 });
 
 test("the request past the limit is refused with a retry hint", () => {
@@ -27,15 +27,9 @@ test("the request past the limit is refused with a retry hint", () => {
   const verdict = limiter.check("a");
   assert.equal(verdict.ok, false);
   assert.equal(verdict.retryAfterSeconds, 4, "what is left of the window, rounded up");
-});
 
-test("a refusal never reports zero seconds", () => {
-  const time = clock();
-  const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: time.now });
-
-  limiter.check("a");
-  time.advance(999);
-  assert.equal(limiter.check("a").retryAfterSeconds, 1);
+  time.advance(3999);
+  assert.equal(limiter.check("a").retryAfterSeconds, 1, "a refusal never reports zero seconds");
 });
 
 test("the allowance returns when the window lapses", () => {
@@ -91,17 +85,12 @@ test("the tracked-client count stays under the cap", () => {
   assert.ok(limiter.size <= 3, `expected at most 3 tracked clients, got ${limiter.size}`);
 });
 
-test("the client is the first x-forwarded-for entry, not the proxy", () => {
-  const request = new Request("https://timbre.example/api/search", {
-    headers: { "x-forwarded-for": "203.0.113.7, 70.41.3.18, 150.172.238.178" },
-  });
-  assert.equal(clientKey(request), "203.0.113.7");
-});
+test("the client is the first x-forwarded-for entry, then x-real-ip, then a constant", () => {
+  const key = (headers: Record<string, string>) =>
+    clientKey(new Request("https://timbre.example/api/search", { headers }));
 
-test("x-real-ip is the fallback, then a constant", () => {
-  const withReal = new Request("https://timbre.example/api/search", {
-    headers: { "x-real-ip": "203.0.113.9" },
-  });
-  assert.equal(clientKey(withReal), "203.0.113.9");
-  assert.equal(clientKey(new Request("https://timbre.example/api/search")), "unknown");
+  const forwarded = { "x-forwarded-for": "203.0.113.7, 70.41.3.18, 150.172.238.178" };
+  assert.equal(key(forwarded), "203.0.113.7");
+  assert.equal(key({ "x-real-ip": "203.0.113.9" }), "203.0.113.9");
+  assert.equal(key({}), "unknown");
 });

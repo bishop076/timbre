@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useLatest, useTransport } from "./embed";
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
 import { nextStreamHost } from "./stream-url";
@@ -20,17 +21,9 @@ export function ProgressiveAudioPlayer({
   title?: string;
   size?: string;
 }) {
-  const {
-    volume,
-    muted,
-    handleEnded,
-    handleStateChange,
-    handleProgress,
-    handleError,
-    registerToggle,
-    registerSeek,
-  } = usePlayerControls();
-
+  const controls = usePlayerControls();
+  const level = controls.muted ? 0 : controls.volume;
+  const live = useLatest(controls);
   const audioRef = useRef<HTMLAudioElement>(null);
   useMediaSession(audioRef);
 
@@ -44,16 +37,9 @@ export function ProgressiveAudioPlayer({
   const [retry, setRetry] = useState<{ key: string; url: string } | null>(null);
   const src = retry && retry.key === streamUrl ? retry.url : streamUrl;
 
-  const handlers = useRef({ handleEnded, handleStateChange, handleProgress, handleError });
   useEffect(() => {
-    handlers.current = { handleEnded, handleStateChange, handleProgress, handleError };
-  }, [handleEnded, handleStateChange, handleProgress, handleError]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = Math.min(1, Math.max(0, (muted ? 0 : volume) / 100));
-  }, [volume, muted]);
+    if (audioRef.current) audioRef.current.volume = Math.min(1, Math.max(0, level / 100));
+  }, [level]);
 
   const speed = useSpeed();
   useEffect(() => {
@@ -71,72 +57,50 @@ export function ProgressiveAudioPlayer({
     const fallback = src === streamUrl ? nextStreamHost(src) : null;
     let started = false;
 
+    const lifetime = new AbortController();
+    const on = (type: string, listener: () => void) =>
+      audio.addEventListener(type, listener, { signal: lifetime.signal });
     const onTime = () => {
-      if (Number.isFinite(audio.duration)) handlers.current.handleProgress(audio.currentTime, audio.duration);
+      if (Number.isFinite(audio.duration)) {
+        live.current.handleProgress(audio.currentTime, audio.duration);
+      }
     };
-    const onPlay = () => handlers.current.handleStateChange("playing");
-    const onPlaying = () => {
+    on("timeupdate", onTime);
+    on("durationchange", onTime);
+    on("play", () => live.current.handleStateChange("playing"));
+    on("playing", () => {
       started = true;
-    };
-    const onPause = () => handlers.current.handleStateChange("paused");
-    const onEnded = () => handlers.current.handleEnded();
-    const onError = () => {
-      if (fallback && !started) {
-        setRetry({ key: streamUrl, url: fallback });
-        return;
-      }
-      handlers.current.handleError("That track wouldn't play.", true);
-    };
-
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("durationchange", onTime);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("playing", onPlaying);
-    audio.addEventListener("pause", onPause);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("error", onError);
-
-    let cancelled = false;
-    audio.play().catch((cause: unknown) => {
-      if (cancelled || (cause instanceof DOMException && cause.name === "AbortError")) return;
-      if (cause instanceof DOMException && cause.name === "NotAllowedError") {
-        handlers.current.handleStateChange("paused");
-        return;
-      }
-      if (fallback && cause instanceof DOMException && cause.name === "NotSupportedError") return;
-      handlers.current.handleError("That track wouldn't start.", true);
+    });
+    on("pause", () => live.current.handleStateChange("paused"));
+    on("ended", () => live.current.handleEnded());
+    on("error", () => {
+      if (fallback && !started) setRetry({ key: streamUrl, url: fallback });
+      else live.current.handleError("That track wouldn't play.", true);
     });
 
-    return () => {
-      cancelled = true;
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("durationchange", onTime);
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("playing", onPlaying);
-      audio.removeEventListener("pause", onPause);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("error", onError);
-    };
-  }, [src, streamUrl]);
+    audio.play().catch((cause: unknown) => {
+      const name = cause instanceof DOMException ? cause.name : "";
+      if (lifetime.signal.aborted || name === "AbortError") return;
+      if (fallback && name === "NotSupportedError") return;
+      if (name === "NotAllowedError") live.current.handleStateChange("paused");
+      else live.current.handleError("That track wouldn't start.", true);
+    });
 
-  useEffect(() => {
-    registerSeek((seconds) => {
+    return () => lifetime.abort();
+  }, [live, src, streamUrl]);
+
+  useTransport({
+    toggle: () => {
+      const audio = audioRef.current;
+      if (audio?.paused) void audio.play().catch(() => undefined);
+      else audio?.pause();
+    },
+    seek: (seconds) => {
       const audio = audioRef.current;
       if (!audio || !Number.isFinite(audio.duration)) return;
       audio.currentTime = Math.min(Math.max(0, seconds), audio.duration);
-    });
-    return () => registerSeek(null);
-  }, [registerSeek]);
-
-  useEffect(() => {
-    registerToggle(() => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      if (audio.paused) void audio.play().catch(() => undefined);
-      else audio.pause();
-    });
-    return () => registerToggle(null);
-  }, [registerToggle]);
+    },
+  });
 
   return (
     <div

@@ -3,12 +3,8 @@ import { test } from "node:test";
 
 let instance = 0;
 
-interface Storage {
-  [key: string]: string;
-}
-
-async function fresh(seed?: Storage) {
-  const backing: Storage = { ...seed };
+async function fresh(seed?: Record<string, string>) {
+  const backing: Record<string, string> = { ...seed };
 
   (globalThis as unknown as { window: unknown }).window = {
     localStorage: {
@@ -20,8 +16,6 @@ async function fresh(seed?: Storage) {
         delete backing[key];
       },
     },
-    addEventListener() {},
-    removeEventListener() {},
   };
 
   instance += 1;
@@ -48,18 +42,22 @@ function exportFile(playlists: unknown[]) {
   return { format: "timbre.playlists", version: 1, exportedAt: "", playlists };
 }
 
-test("an imported song that is null is dropped rather than saved", async () => {
+test("an import keeps well-formed songs, drops hostile ones, and persists", async () => {
   const { store, backing } = await fresh();
+  const hostile = [null, undefined, { id: "x", title: "t", artists: "not an array", sources: [] }];
 
-  const added = store.importPlaylists(exportFile([{ name: "pwn", songs: [null] }]));
+  const added = store.importPlaylists(
+    exportFile([{ name: "mixed", songs: [...hostile, song("bbbbbbbbbbb")] }]),
+  );
 
   assert.equal(added, 1);
-  const parsed = JSON.parse(backing[KEY]!);
-  assert.equal(parsed[0].name, "pwn");
-  assert.deepEqual(parsed[0].songs, []);
+  const [stored] = JSON.parse(backing[KEY]!);
+  assert.equal(stored.name, "mixed");
+  assert.deepEqual(stored.songs, [song("bbbbbbbbbbb")]);
+  assert.deepEqual(store.exportPlaylists().playlists[0].songs, [song("bbbbbbbbbbb")]);
 });
 
-test("a browser already poisoned by that file heals on the next read", async () => {
+test("a browser already poisoned by a bad import heals on the next read", async () => {
   const poisoned = JSON.stringify([
     { id: "p1", name: "pwn", createdAt: "", updatedAt: "", songs: [null, song("aaaaaaaaaaa")] },
   ]);
@@ -67,28 +65,7 @@ test("a browser already poisoned by that file heals on the next read", async () 
   const { store } = await fresh({ [KEY]: poisoned });
 
   assert.doesNotThrow(() => store.loadPlaylists());
-});
-
-test("every shape that used to throw is refused", async () => {
-  const { store } = await fresh();
-
-  const hostile = [null, undefined, { id: "x", title: "t", artists: "not an array", sources: [] }];
-
-  store.importPlaylists(exportFile([{ name: "mixed", songs: [...hostile, song("bbbbbbbbbbb")] }]));
-
-  const [only] = store.exportPlaylists().playlists;
-  assert.equal(only!.songs.length, 1);
-  assert.equal(only!.songs[0]!.id, "bbbbbbbbbbb");
-});
-
-test("a well-formed export round-trips unchanged", async () => {
-  const { store } = await fresh();
-
-  store.importPlaylists(exportFile([{ name: "keeps", songs: [song("ccccccccccc")] }]));
-
-  const [only] = store.exportPlaylists().playlists;
-  assert.equal(only!.songs.length, 1);
-  assert.equal(only!.songs[0]!.title, "Track ccccccccccc");
+  assert.equal(store.exportPlaylists().playlists[0].songs.length, 1);
 });
 
 test("a non-string createdAt cannot reach the sort", async () => {
@@ -105,9 +82,10 @@ test("a non-string createdAt cannot reach the sort", async () => {
 test("a file that is not an export is refused by name", async () => {
   const { store } = await fresh();
 
-  assert.throws(() => store.importPlaylists({ format: "something.else" }), store.ImportError);
-  assert.throws(() => store.importPlaylists(null), store.ImportError);
-  assert.throws(() => store.importPlaylists(exportFile([])), store.ImportError);
+  const notAnExport = /isn't a Timbre playlist export/;
+  assert.throws(() => store.importPlaylists({ format: "something.else" }), notAnExport);
+  assert.throws(() => store.importPlaylists(null), notAnExport);
+  assert.throws(() => store.importPlaylists(exportFile([])), /no playlists in it/);
 });
 
 test("a rescued song gains the copies that played, beside the ones it had", async () => {

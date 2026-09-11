@@ -3,43 +3,23 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { PlayerProvider } from "./player/player-context";
-
 import { ServiceWorker } from "./service-worker";
 import { AppShell } from "./shell/app-shell";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const DESCRIPTION =
+  "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.";
+const SHARED = { title: "Timbre — all your music, one search", description: DESCRIPTION };
 
 export const metadata: Metadata = {
   title: "Timbre",
-  description:
-    "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
+  description: DESCRIPTION,
   applicationName: "Timbre",
-  openGraph: {
-    type: "website",
-    siteName: "Timbre",
-    title: "Timbre — all your music, one search",
-    description:
-      "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Timbre — all your music, one search",
-    description:
-      "Search YouTube Music, SoundCloud and more from one place. Every track plays from the service it belongs to.",
-  },
-  appleWebApp: {
-    capable: true,
-    title: "Timbre",
-    statusBarStyle: "black-translucent",
-  },
+  openGraph: { type: "website", siteName: "Timbre", ...SHARED },
+  twitter: { card: "summary_large_image", ...SHARED },
+  appleWebApp: { capable: true, title: "Timbre", statusBarStyle: "black-translucent" },
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ??
       (process.env.VERCEL_PROJECT_PRODUCTION_URL

@@ -4,35 +4,32 @@ import { Artwork } from "../artwork";
 
 export function PlaylistCover({
   covers,
-  className = "",
+  className,
   iconClassName = "size-8",
   eager,
 }: {
   covers: string[];
-  className?: string;
+  className: string;
   iconClassName?: string;
   eager?: boolean;
 }) {
-  const usable = covers.filter(Boolean);
-
-  if (usable.length === 0) {
-    return <Artwork src={null} className={className} iconClassName={iconClassName} eager={eager} />;
-  }
-
-  if (usable.length === 1) {
+  if (covers.length < 2) {
     return (
-      <Artwork src={usable[0]} className={className} iconClassName={iconClassName} eager={eager} />
+      <Artwork
+        src={covers[0] ?? null}
+        className={className}
+        iconClassName={iconClassName}
+        eager={eager}
+      />
     );
   }
 
-  const cells = Array.from({ length: 4 }, (_, index) => usable[index % usable.length]!);
-
   return (
     <span className={`grid grid-cols-2 grid-rows-2 overflow-hidden ${className}`}>
-      {cells.map((src, index) => (
+      {Array.from({ length: 4 }, (_, index) => (
         <Artwork
           key={index}
-          src={src}
+          src={covers[index % covers.length]}
           className="size-full"
           iconClassName="size-3"
           eager={eager}

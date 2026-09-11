@@ -1,13 +1,8 @@
 import type { PlayedSong } from "./player/history-store";
 import type { PlayContext } from "./types";
 
-export type RecentItem =
-  | { kind: "song"; entry: PlayedSong }
-  | {
-      kind: "artist";
-      artist: PlayContext;
-      entries: PlayedSong[];
-    };
+type RecentArtist = { kind: "artist"; artist: PlayContext; entries: PlayedSong[] };
+type RecentItem = { kind: "song"; entry: PlayedSong } | RecentArtist;
 
 function artistOf(entry: PlayedSong): PlayContext | null {
   const from = entry.from as Partial<PlayContext> | undefined;
@@ -21,25 +16,23 @@ function artistOf(entry: PlayedSong): PlayContext | null {
 
 export function recentItems(history: readonly PlayedSong[], limit: number): RecentItem[] {
   const items: RecentItem[] = [];
-  const artists = new Map<string, Extract<RecentItem, { kind: "artist" }>>();
+  const artists = new Map<string, RecentArtist>();
 
   for (const entry of history) {
     const artist = artistOf(entry);
-    if (artist) {
-      const key = artist.name.toLowerCase();
-      const existing = artists.get(key);
-      if (existing) {
-        existing.entries.push(entry);
-        continue;
-      }
-      if (items.length >= limit) continue;
-      const item = { kind: "artist" as const, artist, entries: [entry] };
-      artists.set(key, item);
-      items.push(item);
+    if (!artist) {
+      if (items.length < limit) items.push({ kind: "song", entry });
       continue;
     }
-
-    if (items.length < limit) items.push({ kind: "song", entry });
+    const key = artist.name.toLowerCase();
+    const gathered = artists.get(key);
+    if (gathered) {
+      gathered.entries.push(entry);
+    } else if (items.length < limit) {
+      const item: RecentArtist = { kind: "artist", artist, entries: [entry] };
+      artists.set(key, item);
+      items.push(item);
+    }
   }
 
   return items;

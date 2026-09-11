@@ -6,15 +6,9 @@ import { actionFor, isTypingTarget } from "./transport-keys.ts";
 function press(
   key: string,
   modifiers: Partial<Record<"ctrlKey" | "metaKey" | "altKey", boolean>> = {},
+  target: unknown = null,
 ) {
-  return actionFor({
-    key,
-    ctrlKey: false,
-    metaKey: false,
-    altKey: false,
-    target: null,
-    ...modifiers,
-  });
+  return actionFor({ key, ctrlKey: false, metaKey: false, altKey: false, target, ...modifiers });
 }
 
 function element(tagName: string, attributes: Record<string, string> = {}) {
@@ -25,19 +19,16 @@ function element(tagName: string, attributes: Record<string, string> = {}) {
   };
 }
 
-test("space toggles playback, under either key name", () => {
-  assert.equal(press(" "), "toggle");
-  assert.equal(press("Spacebar"), "toggle");
-});
-
-test("left and right skip tracks", () => {
-  assert.equal(press("ArrowRight"), "next");
-  assert.equal(press("ArrowLeft"), "previous");
-});
-
-test("up and down move the volume", () => {
-  assert.equal(press("ArrowUp"), "volume-up");
-  assert.equal(press("ArrowDown"), "volume-down");
+test("space and the arrows map to transport actions, under either space name", () => {
+  const expected = {
+    " ": "toggle",
+    Spacebar: "toggle",
+    ArrowRight: "next",
+    ArrowLeft: "previous",
+    ArrowUp: "volume-up",
+    ArrowDown: "volume-down",
+  };
+  for (const [key, action] of Object.entries(expected)) assert.equal(press(key), action, key);
 });
 
 test("keys Timbre does not claim are left alone", () => {
@@ -53,54 +44,21 @@ test("modified chords belong to the browser, not to Timbre", () => {
   assert.equal(press(" ", { ctrlKey: true }), null);
 });
 
-test("shift alone still triggers, since it forms no browser chord here", () => {
-  assert.equal(
-    actionFor({ key: " ", ctrlKey: false, metaKey: false, altKey: false, target: null }),
-    "toggle",
-  );
-});
-
-test("typing a space into a field must not pause the music", () => {
-  for (const tag of ["INPUT", "TEXTAREA", "SELECT", "input", "textarea"]) {
-    assert.equal(isTypingTarget(element(tag)), true, `${tag} is text entry`);
-  }
-  assert.equal(
-    actionFor({
-      key: " ",
-      ctrlKey: false,
-      metaKey: false,
-      altKey: false,
-      target: element("INPUT"),
-    }),
-    null,
-  );
-});
-
-test("space on a focused button activates it rather than the player", () => {
-  assert.equal(isTypingTarget(element("BUTTON")), true);
-  assert.equal(isTypingTarget(element("A")), true);
-});
-
-test("contenteditable counts as text entry", () => {
-  assert.equal(isTypingTarget(element("DIV", { contenteditable: "true" })), true);
-  assert.equal(isTypingTarget(element("DIV")), false);
-});
-
-test("elements standing in for controls via role are respected", () => {
-  assert.equal(isTypingTarget(element("DIV", { role: "button" })), true);
-  assert.equal(isTypingTarget(element("DIV", { role: "textbox" })), true);
-  assert.equal(isTypingTarget(element("SPAN", { role: "presentation" })), false);
+test("text entry, controls and anything with a control's role own their keys", () => {
+  const owners = [
+    ...["INPUT", "TEXTAREA", "SELECT", "input", "textarea", "BUTTON", "A"].map((tag) => element(tag)),
+    element("DIV", { contenteditable: "true" }),
+    element("DIV", { role: "button" }),
+    element("DIV", { role: "textbox" }),
+  ];
+  for (const owner of owners) assert.equal(isTypingTarget(owner), true, JSON.stringify(owner));
+  assert.equal(press(" ", {}, element("INPUT")), null, "typing a space must not pause the music");
 });
 
 test("arrows on a focused slider seek or set the volume, and must not also skip", () => {
   const slider = element("DIV", { role: "slider" });
-  assert.equal(isTypingTarget(slider), true);
   for (const key of ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown"]) {
-    assert.equal(
-      actionFor({ key, ctrlKey: false, metaKey: false, altKey: false, target: slider }),
-      null,
-      `${key} on a slider belongs to the slider`,
-    );
+    assert.equal(press(key, {}, slider), null, `${key} on a slider belongs to the slider`);
   }
 });
 
@@ -108,6 +66,7 @@ test("ordinary containers do not swallow the shortcut", () => {
   for (const tag of ["DIV", "SECTION", "MAIN", "LI", "BODY"]) {
     assert.equal(isTypingTarget(element(tag)), false, `${tag} should not block transport keys`);
   }
+  assert.equal(isTypingTarget(element("SPAN", { role: "presentation" })), false);
   assert.equal(isTypingTarget(null), false);
 });
 

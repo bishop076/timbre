@@ -2,7 +2,8 @@ import "server-only";
 
 import { normalizeLoose } from "@timbre/core";
 
-import { deezer } from "./deezer";
+import { deezer, deezerList, newestFirst, type RawTrack } from "./deezer";
+import type { LinkedSong } from "./discover";
 
 export interface Release {
   id: number;
@@ -18,18 +19,43 @@ export interface RelatedArtist {
   imageUrl: string | null;
 }
 
+export interface AlbumDetail extends Omit<Release, "trackCount"> {
+  artist: string;
+  trackCount: number;
+  songs: LinkedSong[];
+}
+
 interface DeezerAlbum {
   id: number;
   title: string;
+  genre_id?: number;
   record_type?: string;
   release_date?: string;
   cover_medium?: string;
   nb_tracks?: number;
 }
 
+interface DeezerAlbumDetail extends DeezerAlbum {
+  cover_big?: string;
+  artist?: { name?: string };
+  tracks?: { data?: RawTrack[] };
+}
+
+interface DeezerArtist {
+  name: string;
+  picture_medium?: string;
+  picture_xl?: string;
+  nb_fan?: number;
+  link?: string;
+}
+
 export function deezerIdFrom(url: string | null | undefined): string | null {
   const match = url ? /deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/.exec(url) : null;
   return match ? match[1]! : null;
+}
+
+export async function fetchArtistAlbums(id: string): Promise<DeezerAlbum[]> {
+  return (await deezerList<DeezerAlbum>(`/artist/${id}/albums?limit=100`)).toSorted(newestFirst);
 }
 
 export async function fetchDiscography(
@@ -39,83 +65,29 @@ export async function fetchDiscography(
   if (!id) return { releases: [], related: [] };
 
   const [albums, related] = await Promise.all([
-    deezer<{ data?: DeezerAlbum[] }>(`/artist/${id}/albums?limit=100`),
-    deezer<{ data?: { name: string; picture_medium?: string }[] }>(
-      `/artist/${id}/related?limit=12`,
-    ),
+    fetchArtistAlbums(id),
+    deezerList<{ name: string; picture_medium?: string }>(`/artist/${id}/related?limit=12`),
   ]);
 
   const seen = new Set<string>();
-  const releases = (albums?.data ?? [])
-    .slice()
-    .sort((a, b) => (b.release_date ?? "").localeCompare(a.release_date ?? ""))
-    .filter((album) => {
-      const key = album.title.trim().toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map(
-      (album): Release => ({
+  return {
+    releases: albums
+      .filter((album) => {
+        const key = album.title.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((album) => ({
         id: album.id,
         title: album.title,
         kind: album.record_type ?? "album",
-        year: album.release_date ? album.release_date.slice(0, 4) : null,
+        year: album.release_date?.slice(0, 4) || null,
         coverUrl: album.cover_medium ?? null,
         trackCount: album.nb_tracks ?? null,
-      }),
-    );
-
-  return {
-    releases,
-    related: (related?.data ?? []).map((item) => ({
-      name: item.name,
-      imageUrl: item.picture_medium ?? null,
-    })),
+      })),
+    related: related.map((item) => ({ name: item.name, imageUrl: item.picture_medium ?? null })),
   };
-}
-
-export interface AlbumSong {
-  id: string;
-  title: string;
-  artists: string[];
-  album: string | null;
-  durationMs: number | null;
-  isrc: string | null;
-  artworkUrl: string | null;
-  sources: { source: string; sourceId: string; url: string | null; playback: "link" }[];
-}
-
-export interface AlbumDetail {
-  id: number;
-  title: string;
-  artist: string;
-  kind: string;
-  year: string | null;
-  coverUrl: string | null;
-  trackCount: number;
-  songs: AlbumSong[];
-}
-
-interface DeezerTrack {
-  id: number;
-  title: string;
-  duration?: number;
-  isrc?: string;
-  artist?: { name?: string };
-  link?: string;
-}
-
-interface DeezerAlbumDetail {
-  id: number;
-  title: string;
-  release_date?: string;
-  cover_medium?: string;
-  cover_big?: string;
-  record_type?: string;
-  nb_tracks?: number;
-  artist?: { name?: string };
-  tracks?: { data?: DeezerTrack[] };
 }
 
 export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
@@ -124,21 +96,21 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
   const album = await deezer<DeezerAlbumDetail>(`/album/${id}`);
   if (!album) return null;
 
-  const artistName = album.artist?.name ?? "";
+  const artist = album.artist?.name ?? "";
   const tracks = album.tracks?.data ?? [];
 
   return {
     id: album.id,
     title: album.title,
-    artist: artistName,
+    artist,
     kind: album.record_type ?? "album",
-    year: album.release_date ? album.release_date.slice(0, 4) : null,
+    year: album.release_date?.slice(0, 4) || null,
     coverUrl: album.cover_big ?? album.cover_medium ?? null,
     trackCount: album.nb_tracks ?? tracks.length,
     songs: tracks.map((track) => ({
       id: track.isrc ?? `deezer:${track.id}`,
       title: track.title,
-      artists: [track.artist?.name || artistName].filter(Boolean),
+      artists: [track.artist?.name || artist].filter(Boolean),
       album: album.title,
       durationMs: track.duration ? track.duration * 1000 : null,
       isrc: track.isrc ?? null,
@@ -155,22 +127,6 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
   };
 }
 
-export interface ResolvedArtist {
-  name: string;
-  imageUrl: string | null;
-  followers: number | null;
-  source: "deezer";
-  url: string | null;
-}
-
-interface DeezerArtist {
-  name: string;
-  picture_medium?: string;
-  picture_xl?: string;
-  nb_fan?: number;
-  link?: string;
-}
-
 function nameScore(query: string, candidate: string): number {
   const a = normalizeLoose(query);
   const b = normalizeLoose(candidate);
@@ -178,49 +134,39 @@ function nameScore(query: string, candidate: string): number {
   if (a === b) return 1;
 
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
-  if (longer.includes(shorter)) {
-    return 0.6 + 0.35 * (shorter.length / longer.length);
-  }
+  if (longer.includes(shorter)) return 0.6 + 0.35 * (shorter.length / longer.length);
 
   const wordsA = new Set(a.split(" "));
   const wordsB = new Set(b.split(" "));
   const shared = [...wordsA].filter((word) => wordsB.has(word)).length;
-  if (shared === 0) return 0;
-  return 0.55 * (shared / new Set([...wordsA, ...wordsB]).size);
+  return shared === 0 ? 0 : 0.55 * (shared / new Set([...wordsA, ...wordsB]).size);
 }
 
-function reachScore(followers: number | undefined): number {
-  return Math.min(1, Math.log10(1 + (followers ?? 0)) / 7);
-}
-
-export async function findArtist(name: string): Promise<ResolvedArtist | null> {
+export async function findArtist(name: string) {
   const query = name.trim();
   if (!query) return null;
 
-  const found = await deezer<{ data?: DeezerArtist[] }>(
+  const results = await deezerList<DeezerArtist>(
     `/search/artist?q=${encodeURIComponent(query)}&limit=25`,
   );
-  const results = found?.data ?? [];
   if (results.length === 0) return null;
 
-  let best = results[0]!;
-  let bestScore = -1;
-
-  for (const candidate of results) {
-    const similarity = nameScore(query, candidate.name);
-    if (similarity === 0) continue;
-    const score = similarity * similarity * (0.6 + 0.4 * reachScore(candidate.nb_fan));
-    if (score > bestScore) {
-      bestScore = score;
-      best = candidate;
-    }
-  }
+  const { artist: best } = results.reduce(
+    (top, artist) => {
+      const similarity = nameScore(query, artist.name);
+      if (similarity === 0) return top;
+      const reach = Math.min(1, Math.log10(1 + (artist.nb_fan ?? 0)) / 7);
+      const score = similarity * similarity * (0.6 + 0.4 * reach);
+      return score > top.score ? { artist, score } : top;
+    },
+    { artist: results[0]!, score: -1 },
+  );
 
   return {
     name: best.name,
     imageUrl: best.picture_xl ?? best.picture_medium ?? null,
     followers: best.nb_fan ?? null,
-    source: "deezer",
+    source: "deezer" as const,
     url: best.link ?? null,
   };
 }

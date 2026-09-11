@@ -1,15 +1,11 @@
 import { ProviderError } from "@timbre/core";
 
-import type {
-  RankedList,
-  SearchContext,
-  SearchProvider,
-  SourceTrack,
-} from "./types.ts";
+import type { RankedList, SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
 import { createRequester } from "./request.ts";
 
-const API = "https://api.deezer.com";
+const SIMILAR_ARTISTS = 3;
+const TOP_PER_ARTIST = 5;
 
 interface DeezerTrack {
   id: number;
@@ -18,7 +14,6 @@ interface DeezerTrack {
   isrc?: string;
   link?: string;
   preview?: string;
-  explicit_lyrics?: boolean;
   artist?: { name?: string };
   album?: { title?: string; cover_medium?: string; cover_big?: string };
 }
@@ -27,9 +22,6 @@ interface DeezerArtist {
   id?: number;
   name: string;
 }
-
-const SIMILAR_ARTISTS = 3;
-const TOP_PER_ARTIST = 5;
 
 function toSourceTrack(raw: DeezerTrack): SourceTrack {
   return {
@@ -57,71 +49,51 @@ const request = createRequester({
   },
 });
 
-const get = <T>(ctx: SearchContext, path: string): Promise<T> => request<T>(ctx, `${API}${path}`);
+const get = async <T>(ctx: SearchContext, path: string): Promise<T[]> =>
+  (await request<{ data?: T[] }>(ctx, `https://api.deezer.com${path}`)).data ?? [];
+
+const getTracks = async (ctx: SearchContext, path: string): Promise<SourceTrack[]> =>
+  (await get<DeezerTrack>(ctx, path)).map(toSourceTrack);
 
 export function createDeezerProvider(): SearchProvider {
-  async function findArtist(ctx: SearchContext, name: string): Promise<DeezerArtist | null> {
-    const wanted = name.trim().toLowerCase();
-    if (!wanted) return null;
-
-    const data = await get<{ data?: DeezerArtist[] }>(
-      ctx,
-      `/search/artist?q=${encodeURIComponent(name)}&limit=5`,
-    );
-    return (data.data ?? []).find((entry) => entry.name?.toLowerCase() === wanted) ?? null;
-  }
-
   return {
     id: "deezer",
     playback: "link",
     searchable: true,
 
-    async search(ctx, query, limit) {
-      const data = await get<{ data?: DeezerTrack[] }>(
-        ctx,
-        `/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-      );
-      return (data.data ?? []).map(toSourceTrack);
+    search(ctx, query, limit) {
+      return getTracks(ctx, `/search?q=${encodeURIComponent(query)}&limit=${limit}`);
     },
 
-    async chart(ctx, limit) {
-      const data = await get<{ data?: DeezerTrack[] }>(ctx, `/chart/0/tracks?limit=${limit}`);
-      return (data.data ?? []).map(toSourceTrack);
+    chart(ctx, limit) {
+      return getTracks(ctx, `/chart/0/tracks?limit=${limit}`);
     },
 
-    async radio(ctx, seed, limit): Promise<RankedList[]> {
-      if (!seed.artist) return [];
+    async radio(ctx, seed, limit) {
+      const name = seed.artist ?? "";
+      const wanted = name.trim().toLowerCase();
+      if (!wanted) return [];
 
-      const match = await findArtist(ctx, seed.artist);
+      const found = await get<DeezerArtist>(ctx, `/search/artist?q=${encodeURIComponent(name)}&limit=5`);
+      const match = found.find((entry) => entry.name?.toLowerCase() === wanted);
       if (!match?.id) return [];
 
       const [top, similar] = await Promise.allSettled([
-        get<{ data?: DeezerTrack[] }>(ctx, `/artist/${match.id}/top?limit=${limit}`),
-        get<{ data?: DeezerArtist[] }>(ctx, `/artist/${match.id}/related?limit=${SIMILAR_ARTISTS}`),
+        getTracks(ctx, `/artist/${match.id}/top?limit=${limit}`),
+        get<DeezerArtist>(ctx, `/artist/${match.id}/related?limit=${SIMILAR_ARTISTS}`),
       ]);
 
       const lists: RankedList[] = [];
-
-      if (top.status === "fulfilled") {
-        lists.push({
-          list: "deezer:artist-top",
-          tracks: (top.value.data ?? []).map(toSourceTrack),
-        });
-      }
+      if (top.status === "fulfilled") lists.push({ list: "deezer:artist-top", tracks: top.value });
 
       if (similar.status === "fulfilled") {
-        const artists = (similar.value.data ?? []).filter((entry) => entry.id).slice(0, SIMILAR_ARTISTS);
+        const artists = similar.value.filter((entry) => entry.id).slice(0, SIMILAR_ARTISTS);
         const tops = await Promise.allSettled(
-          artists.map((entry) =>
-            get<{ data?: DeezerTrack[] }>(ctx, `/artist/${entry.id}/top?limit=${TOP_PER_ARTIST}`),
-          ),
+          artists.map((entry) => getTracks(ctx, `/artist/${entry.id}/top?limit=${TOP_PER_ARTIST}`)),
         );
-        const tracks = tops.flatMap((result) =>
-          result.status === "fulfilled" ? (result.value.data ?? []).map(toSourceTrack) : [],
-        );
+        const tracks = tops.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
         if (tracks.length > 0) lists.push({ list: "deezer:similar-artists", tracks });
       }
-
       return lists;
     },
   };

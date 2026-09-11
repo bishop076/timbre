@@ -4,18 +4,13 @@ import { useEffect, useState } from "react";
 
 import type { Song } from "../types";
 
-const EMBED = "https://open.spotify.com/embed";
-
 export function SpotifyPanel({ song }: { song: Song | null }) {
   const [found, setFound] = useState<{ key: string; trackId: string | null } | null>(null);
-
   const alreadySpotify = song?.sources.some((source) => source.source === "spotify") ?? false;
-
-  const key = song ? `${song.id}` : null;
+  const key = song?.id ?? null;
 
   useEffect(() => {
-    if (!song || !key || alreadySpotify) return;
-    if (!song.album && !song.isrc) return;
+    if (!song || !key || alreadySpotify || (!song.album && !song.isrc)) return;
 
     const aborter = new AbortController();
     const params = new URLSearchParams({ title: song.title });
@@ -26,8 +21,7 @@ export function SpotifyPanel({ song }: { song: Song | null }) {
     fetch(`/api/spotify?${params}`, { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<{ trackId: string | null }>) : null))
       .then((data) => setFound({ key, trackId: data?.trackId ?? null }))
-      .catch(() => {
-      });
+      .catch(() => {});
 
     return () => aborter.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -42,7 +36,7 @@ export function SpotifyPanel({ song }: { song: Song | null }) {
         Also on Spotify
       </h3>
       <iframe
-        src={`${EMBED}/track/${encodeURIComponent(trackId)}?theme=0`}
+        src={`https://open.spotify.com/embed/track/${encodeURIComponent(trackId)}?theme=0`}
         title="Spotify player"
         width="100%"
         height="152"

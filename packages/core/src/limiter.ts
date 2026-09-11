@@ -15,12 +15,8 @@ export type ConsumeResult =
   | { ok: false; state: BucketState; waitMs: number };
 
 export function refill(state: BucketState, policy: BucketPolicy, nowMs: number): BucketState {
-  const elapsedMs = Math.max(0, nowMs - state.updatedAtMs);
-  const gained = (elapsedMs / 1000) * policy.refillPerSecond;
-  return {
-    tokens: Math.min(policy.capacity, state.tokens + gained),
-    updatedAtMs: nowMs,
-  };
+  const gained = (Math.max(0, nowMs - state.updatedAtMs) / 1000) * policy.refillPerSecond;
+  return { tokens: Math.min(policy.capacity, state.tokens + gained), updatedAtMs: nowMs };
 }
 
 export function tryConsume(
@@ -34,18 +30,12 @@ export function tryConsume(
       `Request costs ${cost} but bucket capacity is ${policy.capacity}; it could never succeed.`,
     );
   }
-
   const filled = refill(state, policy, nowMs);
   if (filled.tokens >= cost) {
     return { ok: true, state: { tokens: filled.tokens - cost, updatedAtMs: nowMs } };
   }
-
-  const deficit = cost - filled.tokens;
-  return {
-    ok: false,
-    state: filled,
-    waitMs: Math.ceil((deficit / policy.refillPerSecond) * 1000),
-  };
+  const waitMs = Math.ceil(((cost - filled.tokens) / policy.refillPerSecond) * 1000);
+  return { ok: false, state: filled, waitMs };
 }
 
 export const DEFAULT_POLICIES: Record<ProviderId, BucketPolicy> = {
@@ -81,21 +71,17 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export class RateLimiter {
   readonly #store: BucketStore;
   readonly #now: () => number;
+  readonly #queues = new Map<string, Promise<void>>();
 
   constructor(store: BucketStore, now: () => number = Date.now) {
     this.#store = store;
     this.#now = now;
   }
 
-  readonly #queues = new Map<string, Promise<void>>();
-
   acquire(key: string, policy: BucketPolicy, cost = 1): Promise<void> {
     const previous = this.#queues.get(key) ?? Promise.resolve();
     const turn = previous.then(() => this.#acquire(key, policy, cost));
-    const link = turn.then(
-      () => undefined,
-      () => undefined,
-    );
+    const link = turn.catch(() => {});
     this.#queues.set(key, link);
     void link.then(() => {
       if (this.#queues.get(key) === link) this.#queues.delete(key);
@@ -108,15 +94,9 @@ export class RateLimiter {
       const stored = await this.#store.load(key);
       const state = stored ?? { tokens: policy.capacity, updatedAtMs: this.#now() };
       const result = tryConsume(state, policy, cost, this.#now());
-
-      if (result.ok) {
-        await this.#store.save(key, result.state);
-        return;
-      }
-
       await this.#store.save(key, result.state);
+      if (result.ok) return;
       await sleep(result.waitMs);
     }
   }
-
 }

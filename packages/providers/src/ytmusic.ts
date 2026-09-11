@@ -8,14 +8,7 @@ interface SidecarTrack {
   album: string | null;
   duration_seconds: number | null;
   thumbnail_url: string | null;
-  is_explicit: boolean;
-  result_type: string;
   video_type: string | null;
-}
-
-export interface YtMusicConfig {
-  baseUrl: string;
-  sharedSecret: string;
 }
 
 interface SidecarPlaylist {
@@ -66,27 +59,26 @@ function toSourceTrack(raw: SidecarTrack): SourceTrack {
   };
 }
 
-function sidecarOptions(config: YtMusicConfig, deadlineMs?: number): RequesterOptions {
+export interface YtMusicConfig {
+  baseUrl: string;
+  sharedSecret: string;
+}
+
+function sidecarOptions(config: YtMusicConfig): RequesterOptions {
   return {
     id: "ytmusic",
     label: "YouTube Music sidecar",
-    deadlineMs,
     init: () => ({
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-timbre-secret": config.sharedSecret,
-      },
+      headers: { "content-type": "application/json", "x-timbre-secret": config.sharedSecret },
       cache: "no-store",
     }),
     classify: (status) => (status === 502 ? "transient" : "unknown"),
   };
 }
 
-export type SidecarCall = <T>(ctx: SearchContext, path: string, body: unknown) => Promise<T>;
-
-export function createSidecarCall(config: YtMusicConfig, deadlineMs?: number): SidecarCall {
-  const request = createRequester(sidecarOptions(config, deadlineMs));
+export function createSidecarCall(config: YtMusicConfig, deadlineMs?: number) {
+  const request = createRequester({ ...sidecarOptions(config), deadlineMs });
   return <T>(ctx: SearchContext, path: string, body: unknown): Promise<T> =>
     request<T>(ctx, new URL(path, config.baseUrl), { body: JSON.stringify(body) });
 }
@@ -112,12 +104,10 @@ export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
 
     async radio(ctx, seed, limit) {
       if (!seed.sourceId) return [];
-
       const data = await call<{ radio: SidecarTrack[]; related: SidecarTrack[] }>(ctx, "/radio", {
         video_id: seed.sourceId,
         limit,
       });
-
       return [
         { list: "ytmusic:radio", tracks: data.radio.map(toSourceTrack) },
         { list: "ytmusic:related", tracks: data.related.map(toSourceTrack) },
@@ -126,12 +116,10 @@ export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
 
     async playlist(ctx, id, limit) {
       if (!isYtMusicPlaylistId(id)) return null;
-
       const data = await lookup<SidecarPlaylist>(ctx, new URL("/playlist", config.baseUrl), {
         body: JSON.stringify({ playlist_id: id, limit }),
       });
       if (!data) return null;
-
       return {
         id: data.id,
         title: data.title,

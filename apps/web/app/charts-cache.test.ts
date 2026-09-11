@@ -12,9 +12,6 @@ async function fresh(seed?: Record<string, string>) {
       setItem: (key: string, value: string) => {
         backing[key] = value;
       },
-      removeItem: (key: string) => {
-        delete backing[key];
-      },
     },
   };
 

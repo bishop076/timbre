@@ -13,7 +13,6 @@ import { useTransportKeys } from "../player/use-transport-keys";
 import { TopBar } from "../top-bar";
 import { PlayerBar } from "./player-bar";
 import { BottomNav, Sidebar } from "./sidebar";
-import { TabTitle } from "./tab-title";
 
 let movedOnce = false;
 
@@ -31,6 +30,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname, openedAt]);
 
   useArtworkAccent(current?.artworkUrl ?? mirrored?.report.song.artworkUrl);
+  useTransportKeys();
+  useSleepTimerDriver();
+
+  const title = current ? `Timbre · ${current.title}` : "Timbre";
+  useEffect(() => {
+    const apply = () => {
+      if (document.title !== title) document.title = title;
+    };
+    apply();
+    const observer = new MutationObserver(apply);
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, [title]);
 
   const panel = useRef<HTMLElement>(null);
   const [overflowing, setOverflowing] = useState(true);
@@ -40,19 +52,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!element) return;
 
     const measure = () => setOverflowing(element.scrollHeight > element.clientHeight + 1);
-
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-      for (const child of element.children) observer.observe(child);
-
+    for (const child of element.children) observer.observe(child);
     return () => observer.disconnect();
   }, [pathname]);
-
-  const washed = !pathname.startsWith("/profile");
-
-  useTransportKeys();
-  useSleepTimerDriver();
 
   return (
     <div
@@ -65,12 +70,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         } as React.CSSProperties
       }
     >
-      <TabTitle />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main
           ref={panel}
-          className={`${washed ? "ambient" : ""} ${overflowing ? "scroll-fade" : ""} scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
+          className={`${pathname.startsWith("/profile") ? "" : "ambient"} ${overflowing ? "scroll-fade" : ""} scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
             theater ? "hidden" : ""
           }`}
         >
@@ -84,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <NowPlayingPanel />
       </div>
       <div className={theater ? "hidden lg:contents" : "contents"}>
-        {current && <PlayerBar />}
+        <PlayerBar />
         {mirrored && <RemoteBar remote={mirrored} />}
         <BottomNav />
       </div>

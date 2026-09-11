@@ -14,9 +14,7 @@ RUN pip install --no-cache-dir --user uv \
  && rm requirements.txt
 COPY --chown=timbre:timbre app ./app
 
-ENV YTMUSIC_HOST=0.0.0.0
-
-ENV PORT=10000
+ENV YTMUSIC_HOST=0.0.0.0 PORT=10000
 EXPOSE 10000
 
 CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]

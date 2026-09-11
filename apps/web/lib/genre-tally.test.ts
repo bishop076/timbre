@@ -27,10 +27,7 @@ test("recent plays outweigh older ones", () => {
     [{ artist: "a" }, { artist: "b" }, { artist: "b" }],
     (artist) => genres[artist] ?? null,
   );
-  assert.deepEqual(
-    tally.map((genre) => genre.id),
-    [POP, ROCK],
-  );
+  assert.deepEqual(tally.map((genre) => genre.id), [POP, ROCK]);
 
   const older = tallyGenres(
     [{ artist: "a" }, ...Array(20).fill({ artist: "x" }), { artist: "b" }, { artist: "b" }],
@@ -43,10 +40,7 @@ test("plays of unknown artists, or with no artist, are skipped rather than guess
   const tally = tallyGenres([{ artist: undefined }, { artist: "unknown" }, { artist: "a" }], (artist) =>
     artist === "a" ? ROCK : null,
   );
-  assert.deepEqual(
-    tally.map((genre) => genre.id),
-    [ROCK],
-  );
+  assert.deepEqual(tally.map((genre) => genre.id), [ROCK]);
 });
 
 test("a genre names who put it there, each once, newest first and at most three", () => {

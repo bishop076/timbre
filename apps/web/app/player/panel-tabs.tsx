@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { getPlaybackPrefs } from "./playback-prefs";
 
@@ -14,7 +14,50 @@ const TABS = [
   { id: "related", label: "Related" },
 ] as const;
 
-type TabId = (typeof TABS)[number]["id"];
+async function readOk(response: Response) {
+  return response.ok ? response.json() : null;
+}
+
+export function useJson<T>(
+  url: string | null,
+  read: (response: Response) => Promise<T | null> = readOk,
+  retryIn?: (data: T) => number | null,
+): { data: T | null; loading: boolean } {
+  const [found, setFound] = useState<{ url: string; data: T | null; stale?: boolean } | null>(
+    null,
+  );
+  const cached = found?.url === url;
+  const fresh = cached && !found.stale;
+
+  useEffect(() => {
+    if (!url || fresh) return;
+
+    const aborter = new AbortController();
+    fetch(url, { signal: aborter.signal })
+      .then(read)
+      .then((data) => setFound({ url, data }))
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setFound({ url, data: null });
+      });
+
+    return () => aborter.abort();
+  }, [url, fresh, read]);
+
+  useEffect(() => {
+    if (!found?.data || found.stale) return;
+    const wait = retryIn?.(found.data);
+    if (!wait) return;
+
+    const timer = setTimeout(
+      () => setFound((was) => (was === found ? { ...found, stale: true } : was)),
+      wait,
+    );
+    return () => clearTimeout(timer);
+  }, [found, retryIn]);
+
+  return { data: cached ? found.data : null, loading: url !== null && !fresh };
+}
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
@@ -25,27 +68,23 @@ export function Empty({ children }: { children: ReactNode }) {
 }
 
 export function PanelTabs({ queue }: { queue: ReactNode }) {
-  const [active, setActive] = useState<TabId>(() =>
+  const [active, setActive] = useState<(typeof TABS)[number]["id"]>(() =>
     getPlaybackPrefs().lyricsByDefault ? "lyrics" : "queue",
   );
   const list = useRef<HTMLDivElement>(null);
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     const from = TABS.findIndex((tab) => tab.id === active);
-    const to =
-      event.key === "ArrowRight"
-        ? (from + 1) % TABS.length
-        : event.key === "ArrowLeft"
-          ? (from - 1 + TABS.length) % TABS.length
-          : event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? TABS.length - 1
-              : null;
+    const to = new Map([
+      ["ArrowRight", (from + 1) % TABS.length],
+      ["ArrowLeft", (from - 1 + TABS.length) % TABS.length],
+      ["Home", 0],
+      ["End", TABS.length - 1],
+    ]).get(event.key);
+    if (to === undefined) return;
 
-    if (to === null) return;
     event.preventDefault();
-    setActive(TABS[to]!.id);
+    setActive(TABS[to].id);
     list.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[to]?.focus();
   }
 

@@ -4,94 +4,62 @@ import { test } from "node:test";
 import { MemoryBucketStore, RateLimiter } from "@timbre/core";
 
 import { interleaveByPlayability, recommendFrom, registerProvider } from "./registry.ts";
-import type { Playback, SearchProvider, SourceId, SourceTrack } from "./types.ts";
+import type { Playback, SourceId } from "./types.ts";
 
-function source(id: SourceId, playback: Playback): SearchProvider {
+function answer(id: SourceId, playback: Playback, count: number) {
   return {
-    id,
-    playback,
-    searchable: true,
-    search: async () => [],
+    provider: { id, playback, searchable: true, search: async () => [] },
+    tracks: Array.from({ length: count }, (_, index) => ({
+      source: id,
+      sourceId: `${id}-${index + 1}`,
+      title: `${id} ${index + 1}`,
+      artists: [],
+      album: null,
+      durationMs: null,
+      isrc: null,
+      url: null,
+      artworkUrl: null,
+      playback: "queue" as const,
+    })),
   };
 }
 
-function tracks(id: SourceId, count: number): SourceTrack[] {
-  return Array.from({ length: count }, (_, index) => ({
-    source: id,
-    sourceId: `${id}-${index + 1}`,
-    title: `${id} ${index + 1}`,
-    artists: [],
-    album: null,
-    durationMs: null,
-    isrc: null,
-    url: null,
-    artworkUrl: null,
-    playback: "queue" as Playback,
-  }));
-}
-
-test("sources take turns rather than one owning the top of the list", () => {
-  const out = interleaveByPlayability([
-    { provider: source("ytmusic", "queue"), tracks: tracks("ytmusic", 3) },
-    { provider: source("audius", "queue"), tracks: tracks("audius", 3) },
-  ]);
-
-  assert.deepEqual(
-    out.map((track) => track.source),
-    ["ytmusic", "audius", "ytmusic", "audius", "ytmusic", "audius"],
-  );
-});
-
-test("a row you can play outranks one that can only link out", () => {
-  const out = interleaveByPlayability([
-    { provider: source("deezer", "link"), tracks: tracks("deezer", 2) },
-    { provider: source("ytmusic", "queue"), tracks: tracks("ytmusic", 2) },
-  ]);
-
-  assert.deepEqual(
-    out.map((track) => track.source),
-    ["ytmusic", "ytmusic", "deezer", "deezer"],
+const cases: [string, ReturnType<typeof answer>[], string[]][] = [
+  [
+    "sources take turns, each keeping its own relevance order",
+    [answer("ytmusic", "queue", 3), answer("audius", "queue", 3)],
+    ["ytmusic-1", "audius-1", "ytmusic-2", "audius-2", "ytmusic-3", "audius-3"],
+  ],
+  [
     "the whole playable tier comes first, whatever order the providers registered in",
-  );
-});
-
-test("each source keeps its own relevance order", () => {
-  const out = interleaveByPlayability([
-    { provider: source("ytmusic", "queue"), tracks: tracks("ytmusic", 3) },
-    { provider: source("audius", "queue"), tracks: tracks("audius", 3) },
-  ]);
-
-  assert.deepEqual(
-    out.filter((track) => track.source === "audius").map((track) => track.sourceId),
-    ["audius-1", "audius-2", "audius-3"],
-  );
-});
-
-test("a short list does not leave gaps in a longer one", () => {
-  const out = interleaveByPlayability([
-    { provider: source("ytmusic", "queue"), tracks: tracks("ytmusic", 3) },
-    { provider: source("audius", "queue"), tracks: tracks("audius", 1) },
-  ]);
-
-  assert.deepEqual(
-    out.map((track) => track.sourceId),
+    [answer("deezer", "link", 2), answer("ytmusic", "queue", 2)],
+    ["ytmusic-1", "ytmusic-2", "deezer-1", "deezer-2"],
+  ],
+  [
+    "a short list does not leave gaps in a longer one",
+    [answer("ytmusic", "queue", 3), answer("audius", "queue", 1)],
     ["ytmusic-1", "audius-1", "ytmusic-2", "ytmusic-3"],
-  );
-});
+  ],
+  [
+    "a source that answered with nothing contributes nothing",
+    [answer("ytmusic", "queue", 2), answer("audius", "queue", 0)],
+    ["ytmusic-1", "ytmusic-2"],
+  ],
+];
 
-test("a source that answered with nothing contributes nothing", () => {
-  const out = interleaveByPlayability([
-    { provider: source("ytmusic", "queue"), tracks: tracks("ytmusic", 2) },
-    { provider: source("audius", "queue"), tracks: [] },
-  ]);
-
-  assert.deepEqual(out.map((track) => track.sourceId), ["ytmusic-1", "ytmusic-2"]);
-});
+for (const [name, results, expected] of cases) {
+  test(name, () => {
+    assert.deepEqual(
+      interleaveByPlayability(results).map((track) => track.sourceId),
+      expected,
+    );
+  });
+}
 
 test("a radio source that fails is reported to the caller's hook, and an abort is not", async () => {
   const failure = new Error("Deezer returned 503.");
   registerProvider({
-    ...source("deezer", "link"),
+    ...answer("deezer", "link", 0).provider,
     radio: async () => {
       throw failure;
     },

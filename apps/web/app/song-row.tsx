@@ -2,13 +2,27 @@
 
 import type { ReactNode } from "react";
 
+import { ArtistLink } from "./artist-link";
 import { Artwork } from "./artwork";
 import { sized } from "./artwork-url";
+import { formatDuration } from "./duration";
 import { PlayIcon } from "./icons";
+import { AddToQueue } from "./player/add-to-queue";
+import { usePlayerControls } from "./player/player-context";
 import { useSongMenu } from "./player/song-menu";
+import { AddToPlaylist } from "./playlists/add-to-playlist";
 import type { Song } from "./types";
 
-export type SongRowSize = "sm" | "md" | "lg";
+const MEDIUM = {
+  row: "gap-3 sm:gap-4",
+  play: "gap-2.5 py-2 sm:gap-4 sm:py-3",
+  rank: "text-xs",
+  thumb: "size-10 sm:size-12",
+  note: "size-5",
+  icon: "size-4",
+  title: "text-[15px]",
+  subtitle: "text-sm",
+};
 
 const SCALE = {
   sm: {
@@ -21,27 +35,9 @@ const SCALE = {
     title: "text-[14px]",
     subtitle: "text-[12px]",
   },
-  md: {
-    row: "gap-3 sm:gap-4",
-    play: "gap-2.5 py-2 sm:gap-4 sm:py-3",
-    rank: "text-xs",
-    thumb: "size-10 sm:size-12",
-    note: "size-5",
-    icon: "size-4",
-    title: "text-[15px]",
-    subtitle: "text-sm",
-  },
-  lg: {
-    row: "gap-3 sm:gap-4",
-    play: "gap-3 py-3 sm:gap-4",
-    rank: "text-xs",
-    thumb: "size-14",
-    note: "size-5",
-    icon: "size-5",
-    title: "text-[15px]",
-    subtitle: "text-sm",
-  },
-} as const;
+  md: MEDIUM,
+  lg: { ...MEDIUM, play: "gap-3 py-3 sm:gap-4", thumb: "size-14", icon: "size-5" },
+};
 
 export function SongRow({
   song,
@@ -63,12 +59,11 @@ export function SongRow({
   rankPlays?: boolean;
   subtitle: ReactNode;
   trailing?: ReactNode;
-  size?: SongRowSize;
+  size?: keyof typeof SCALE;
   thumbnail?: boolean;
 }) {
   const scale = SCALE[size];
   const showing = isCurrent && isPlaying;
-
   const { onContextMenu, menu } = useSongMenu(song);
 
   const gutter =
@@ -131,5 +126,81 @@ export function SongRow({
       {trailing}
       {menu}
     </li>
+  );
+}
+
+export function RankedList<T extends Song & { position: number }>({
+  songs,
+  queue = songs,
+  extra,
+  addToQueue = false,
+}: {
+  songs: T[];
+  queue?: T[];
+  extra: (song: T, index: number) => ReactNode;
+  addToQueue?: boolean;
+}) {
+  const { play, current, state } = usePlayerControls();
+
+  return (
+    <ul className="divide-y divide-[var(--line)]">
+      {songs.map((song, index) => (
+        <SongRow
+          key={song.id}
+          song={song}
+          onPlay={() => play(song, queue)}
+          isCurrent={current?.id === song.id}
+          isPlaying={state === "playing"}
+          size="sm"
+          rank={song.position}
+          rankPlays
+          subtitle={<ArtistLink artists={song.artists} />}
+          trailing={
+            <>
+              {extra(song, index)}
+              <AddButtons song={song} queue={addToQueue} />
+            </>
+          }
+        />
+      ))}
+    </ul>
+  );
+}
+
+export function SongActions({
+  song,
+  queue = true,
+  durationClassName = "",
+}: {
+  song: Song;
+  queue?: boolean;
+  durationClassName?: string;
+}) {
+  return (
+    <>
+      <span
+        className={`hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block ${durationClassName}`}
+      >
+        {formatDuration(song.durationMs)}
+      </span>
+      <AddButtons song={song} queue={queue} />
+    </>
+  );
+}
+
+function AddButtons({ song, queue }: { song: Song; queue: boolean }) {
+  return (
+    <>
+      {queue && (
+        <AddToQueue
+          song={song}
+          className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+        />
+      )}
+      <AddToPlaylist
+        song={song}
+        className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+      />
+    </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckIcon } from "../icons";
+import { Caption } from "../page-chrome";
 import {
   setCustomHue,
   setCustomLight,
@@ -12,37 +13,40 @@ import {
 } from "./theme-store";
 
 const MODES: { id: ThemeMode; label: string; blurb: string }[] = [
-  {
-    id: "album",
-    label: "Dark",
-    blurb: "Coloured by whatever is playing.",
-  },
-  {
-    id: "pastel",
-    label: "Light",
-    blurb: "Soft, and still tinted by the cover.",
-  },
-  {
-    id: "custom",
-    label: "Monochrome",
-    blurb: "One colour you choose, that never changes.",
-  },
+  { id: "album", label: "Dark", blurb: "Coloured by whatever is playing." },
+  { id: "pastel", label: "Light", blurb: "Soft, and still tinted by the cover." },
+  { id: "custom", label: "Monochrome", blurb: "One colour you choose, that never changes." },
 ];
 
 const HUES = Array.from({ length: 12 }, (_, index) => index * 30);
+
+function preview(theme: ThemeState, mode: ThemeMode): [ground: string, accent: string] {
+  if (mode === "album") return ["hsl(258 12% 7%)", "hsl(258 75% 70%)"];
+  if (mode === "pastel") return ["hsl(280 30% 96%)", "hsl(300 52% 72%)"];
+  const { customHue: hue, customLight: light } = theme;
+  if (theme.customNeutral) {
+    return light ? ["hsl(0 0% 100%)", "hsl(0 0% 22%)"] : ["hsl(240 6% 8%)", "hsl(0 0% 88%)"];
+  }
+  return [light ? `hsl(${hue} 40% 90%)` : `hsl(${hue} 14% 8%)`, `hsl(${hue} 62% 62%)`];
+}
+
+function swatchClass(active: boolean): string {
+  return `press size-7 rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
+    active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
+  }`;
+}
 
 export function ThemePicker() {
   const theme = useTheme();
 
   return (
     <section>
-      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
-        Saved in this browser, like everything else here.
-      </p>
+      <Caption>Saved in this browser, like everything else here.</Caption>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:gap-2.5 @md:grid-cols-3">
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:gap-2.5">
         {MODES.map((mode) => {
           const active = theme.mode === mode.id;
+          const [ground, accent] = preview(theme, mode.id);
           return (
             <button
               key={mode.id}
@@ -65,17 +69,13 @@ export function ThemePicker() {
               <span
                 aria-hidden
                 className="slab-sm flex h-8 w-full items-end gap-1 overflow-hidden rounded-[var(--r-md)] p-1 sm:h-11 sm:p-1.5"
-                style={{ background: previewGround({ ...theme, mode: mode.id }) }}
+                style={{ background: ground }}
               >
                 {[0.55, 0.8, 1].map((scale) => (
                   <span
                     key={scale}
                     className="flex-1 rounded-[3px]"
-                    style={{
-                      height: `${scale * 100}%`,
-                      background: previewAccent({ ...theme, mode: mode.id }),
-                      opacity: scale,
-                    }}
+                    style={{ height: `${scale * 100}%`, background: accent, opacity: scale }}
                   />
                 ))}
               </span>
@@ -99,42 +99,32 @@ export function ThemePicker() {
             {[
               { light: true, label: "White", swatch: "#ffffff" },
               { light: false, label: "Dark", swatch: "#131318" },
-            ].map((option) => {
-              const active = theme.customNeutral && theme.customLight === option.light;
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  onClick={() => setNeutral(option.light)}
-                  aria-label={option.label}
-                  aria-pressed={active}
-                  title={option.label}
-                  className={`press size-7 rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
-                    active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
-                  }`}
-                  style={{ background: option.swatch }}
-                />
-              );
-            })}
+            ].map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => setNeutral(option.light)}
+                aria-label={option.label}
+                aria-pressed={theme.customNeutral && theme.customLight === option.light}
+                title={option.label}
+                className={swatchClass(theme.customNeutral && theme.customLight === option.light)}
+                style={{ background: option.swatch }}
+              />
+            ))}
 
             <span aria-hidden className="w-1.5" />
 
-            {HUES.map((hue) => {
-              const active = !theme.customNeutral && theme.customHue === hue;
-              return (
-                <button
-                  key={hue}
-                  type="button"
-                  onClick={() => setCustomHue(hue)}
-                  aria-label={`Hue ${hue} degrees`}
-                  aria-pressed={active}
-                  className={`press size-7 rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
-                    active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
-                  }`}
-                  style={{ background: `hsl(${hue} 62% ${theme.customLight ? 62 : 70}%)` }}
-                />
-              );
-            })}
+            {HUES.map((hue) => (
+              <button
+                key={hue}
+                type="button"
+                onClick={() => setCustomHue(hue)}
+                aria-label={`Hue ${hue} degrees`}
+                aria-pressed={!theme.customNeutral && theme.customHue === hue}
+                className={swatchClass(!theme.customNeutral && theme.customHue === hue)}
+                style={{ background: `hsl(${hue} 62% ${theme.customLight ? 62 : 70}%)` }}
+              />
+            ))}
           </div>
 
           <div className={`mt-4 items-center gap-2 ${theme.customNeutral ? "hidden" : "flex"}`}>
@@ -155,9 +145,7 @@ export function ThemePicker() {
                     ? "slab-sm text-[var(--accent-fg)]"
                     : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
                 }`}
-                style={
-                  theme.customLight === option.light ? { background: "var(--accent)" } : undefined
-                }
+                style={theme.customLight === option.light ? { background: "var(--accent)" } : undefined}
               >
                 {option.label}
               </button>
@@ -167,18 +155,4 @@ export function ThemePicker() {
       )}
     </section>
   );
-}
-
-function previewGround(theme: ThemeState): string {
-  if (theme.mode === "album") return "hsl(258 12% 7%)";
-  if (theme.mode === "pastel") return "hsl(280 30% 96%)";
-  if (theme.customNeutral) return theme.customLight ? "hsl(0 0% 100%)" : "hsl(240 6% 8%)";
-  return theme.customLight ? `hsl(${theme.customHue} 40% 90%)` : `hsl(${theme.customHue} 14% 8%)`;
-}
-
-function previewAccent(theme: ThemeState): string {
-  if (theme.mode === "album") return "hsl(258 75% 70%)";
-  if (theme.mode === "pastel") return "hsl(300 52% 72%)";
-  if (theme.customNeutral) return theme.customLight ? "hsl(0 0% 22%)" : "hsl(0 0% 88%)";
-  return `hsl(${theme.customHue} 62% 62%)`;
 }

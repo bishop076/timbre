@@ -137,7 +137,6 @@ test("the same recording under two ids is one queue entry", () => {
   const first = { ...song("Levitating", "Dua Lipa"), id: "levitating||dua lipa#ytmusic:aaa" };
   const second = { ...song("Levitating", "Dua Lipa"), id: "levitating||dua lipa#ytmusic:bbb" };
 
-  assert.equal(first.id === second.id, false, "the ids disagree — that is the whole problem");
   assert.equal(sameTrack(first, second), true);
 });
 

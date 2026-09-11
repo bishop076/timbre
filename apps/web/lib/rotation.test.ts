@@ -9,20 +9,20 @@ test("everyone inside one period shares a bucket, and the next period moves on",
   assert.equal(rotationBucket(11 * hour, hour), rotationBucket(10 * hour, hour) + 1);
 });
 
+const items = Array.from({ length: 25 }, (_, index) => index);
+
 test("a seeded shuffle deals the same hand for the same seed — server and browser agree", () => {
-  const items = Array.from({ length: 25 }, (_, index) => index);
   assert.deepEqual(seededShuffle(items, 42), seededShuffle(items, 42));
 });
 
 test("a seeded shuffle is a permutation and leaves its input alone", () => {
-  const items = Array.from({ length: 25 }, (_, index) => index);
+  const before = [...items];
   const shuffled = seededShuffle(items, 7);
-  assert.deepEqual([...shuffled].sort((a, b) => a - b), items);
-  assert.deepEqual(items, Array.from({ length: 25 }, (_, index) => index));
+  assert.deepEqual(items, before);
+  assert.deepEqual(shuffled.toSorted((a, b) => a - b), items);
 });
 
 test("consecutive seeds give different orders, which is the whole point of rotating", () => {
-  const items = Array.from({ length: 25 }, (_, index) => index);
   const orders = new Set(
     Array.from({ length: 10 }, (_, seed) => seededShuffle(items, seed).join(",")),
   );

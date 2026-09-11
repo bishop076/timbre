@@ -2,70 +2,64 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
-import { createNotifier } from "../local-store.ts";
+import { createNotifier, readItem, writeItem } from "../local-store.ts";
 
 export type ImageKind = "avatar" | "banner";
 
-export interface LocalImages {
+interface LocalImages {
   loaded: boolean;
   avatar: string | null;
   banner: string | null;
 }
 
-const DB_NAME = "timbre";
-const DB_VERSION = 1;
-
 const STORE = "images";
+const THUMB_KEY: Record<ImageKind, string> = {
+  avatar: "timbre:thumb-avatar",
+  banner: "timbre:thumb-banner",
+};
+const THUMB_SIZE: Record<ImageKind, number> = { avatar: 384, banner: 768 };
+const THUMB_VERSION = "2";
+const THUMB_VERSION_KEY = "timbre:thumb-version";
 
 const EMPTY: LocalImages = { loaded: false, avatar: null, banner: null };
 
 let snapshot: LocalImages = EMPTY;
 let loading: Promise<void> | null = null;
+let thumbed = false;
+let connection: Promise<IDBDatabase> | null = null;
 const { emit, subscribe } = createNotifier(onStorage);
 
-let connection: Promise<IDBDatabase> | null = null;
-
 function openDatabase(): Promise<IDBDatabase> {
-  if (connection) return connection;
-
-  connection = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+  connection ??= new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open("timbre", 1);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
     };
     request.onsuccess = () => {
-      const db = request.result;
-      db.onclose = () => {
+      request.result.onclose = () => {
         connection = null;
       };
-      resolve(db);
+      resolve(request.result);
     };
     request.onerror = () => reject(request.error);
   }).catch((cause: unknown) => {
     connection = null;
     throw cause;
   });
-
   return connection;
 }
 
-function run<T>(
-  mode: IDBTransactionMode,
-  work: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  return openDatabase().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const request = work(db.transaction(STORE, mode).objectStore(STORE));
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      }),
-  );
+async function run<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => IDBRequest<T>) {
+  const db = await openDatabase();
+  return new Promise<T>((resolve, reject) => {
+    const request = work(db.transaction(STORE, mode).objectStore(STORE));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
-function replaceUrl(previous: string | null, blob: Blob | null): string | null {
-  if (previous) URL.revokeObjectURL(previous);
+function objectUrl(blob: Blob | undefined): string | null {
   return blob ? URL.createObjectURL(blob) : null;
 }
 
@@ -75,8 +69,7 @@ async function decoded(url: string | null): Promise<void> {
     const image = new Image();
     image.src = url;
     await image.decode();
-  } catch {
-  }
+  } catch {}
 }
 
 function load(): Promise<void> {
@@ -90,22 +83,16 @@ function load(): Promise<void> {
         run<Blob | undefined>("readonly", (store) => store.get("banner")),
       ]);
 
-      const nextAvatar = avatar ? URL.createObjectURL(avatar) : null;
-      const nextBanner = banner ? URL.createObjectURL(banner) : null;
-      await Promise.all([decoded(nextAvatar), decoded(nextBanner)]);
+      const next = { loaded: true, avatar: objectUrl(avatar), banner: objectUrl(banner) };
+      await Promise.all([decoded(next.avatar), decoded(next.banner)]);
 
       if (snapshot.avatar) URL.revokeObjectURL(snapshot.avatar);
       if (snapshot.banner) URL.revokeObjectURL(snapshot.banner);
+      snapshot = next;
 
-      snapshot = { loaded: true, avatar: nextAvatar, banner: nextBanner };
-
-      const stale = !thumbsAreCurrent();
-      for (const [kind, blob] of [
-        ["avatar", avatar],
-        ["banner", banner],
-      ] as const) {
-        if (blob && (stale || !readThumb(kind))) void writeThumb(kind, blob);
-      }
+      const stale = readItem(THUMB_VERSION_KEY) !== THUMB_VERSION;
+      if (avatar && (stale || !readThumb("avatar"))) void writeThumb("avatar", avatar);
+      if (banner && (stale || !readThumb("banner"))) void writeThumb("banner", banner);
     } catch {
       snapshot = { ...snapshot, loaded: true };
     } finally {
@@ -127,34 +114,10 @@ function onStorage(event: StorageEvent): void {
   void (loading ? loading.then(reload) : reload());
 }
 
-const THUMB_KEY: Record<ImageKind, string> = {
-  avatar: "timbre:thumb-avatar",
-  banner: "timbre:thumb-banner",
-};
-
-const THUMB_SIZE: Record<ImageKind, number> = { avatar: 384, banner: 768 };
-
-const THUMB_VERSION = "2";
-const THUMB_VERSION_KEY = "timbre:thumb-version";
-
-function thumbsAreCurrent(): boolean {
-  try {
-    return window.localStorage.getItem(THUMB_VERSION_KEY) === THUMB_VERSION;
-  } catch {
-    return true;
-  }
-}
-
 function readThumb(kind: ImageKind): string | null {
-  try {
-    const raw = window.localStorage.getItem(THUMB_KEY[kind]);
-    return raw?.startsWith("data:image/") ? raw : null;
-  } catch {
-    return null;
-  }
+  const raw = readItem(THUMB_KEY[kind]);
+  return raw?.startsWith("data:image/") ? raw : null;
 }
-
-let thumbed = false;
 
 function getSnapshot(): LocalImages {
   if (!thumbed) {
@@ -166,12 +129,8 @@ function getSnapshot(): LocalImages {
   return snapshot;
 }
 
-function getServerSnapshot(): LocalImages {
-  return EMPTY;
-}
-
 export function useLocalImages(): LocalImages {
-  const current = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const current = useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
 
   useEffect(() => {
     void load();
@@ -193,48 +152,45 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
 
-    let encoded = canvas.toDataURL("image/webp", 0.7);
-    if (!encoded.startsWith("data:image/webp")) {
-      encoded = canvas.toDataURL("image/jpeg", 0.72);
-    }
+    const webp = canvas.toDataURL("image/webp", 0.7);
+    const encoded = webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/jpeg", 0.72);
 
     window.localStorage.setItem(THUMB_KEY[kind], encoded);
     window.localStorage.setItem(THUMB_VERSION_KEY, THUMB_VERSION);
     paintThumbVariables(kind);
-  } catch {
-  }
+  } catch {}
 }
 
 function dropThumb(kind: ImageKind): void {
-  try {
-    window.localStorage.removeItem(THUMB_KEY[kind]);
-  } catch {
-  }
+  writeItem(THUMB_KEY[kind], null);
   paintThumbVariables(kind);
 }
 
 function paintThumbVariables(kind: ImageKind): void {
-  const root = document.documentElement;
+  const { style } = document.documentElement;
   const thumb = readThumb(kind);
   const url = thumb ? `url(${JSON.stringify(thumb)})` : null;
-
   if (kind === "banner") {
-    if (url) root.style.setProperty("--banner-thumb", url);
-    else root.style.removeProperty("--banner-thumb");
-    return;
-  }
-
-  if (url) {
-    root.style.setProperty("--avatar-thumb", url);
-    root.style.setProperty("--avatar-letter", "0");
+    if (url) style.setProperty("--banner-thumb", url);
+    else style.removeProperty("--banner-thumb");
+  } else if (url) {
+    style.setProperty("--avatar-thumb", url);
+    style.setProperty("--avatar-letter", "0");
   } else {
-    root.style.removeProperty("--avatar-thumb");
-    root.style.removeProperty("--avatar-letter");
+    style.removeProperty("--avatar-thumb");
+    style.removeProperty("--avatar-letter");
   }
 }
 
+function publish(kind: ImageKind, blob?: Blob): void {
+  const previous = snapshot[kind];
+  if (previous) URL.revokeObjectURL(previous);
+  snapshot = { ...snapshot, loaded: true, [kind]: objectUrl(blob) };
+  emit();
+}
+
 export async function setLocalImage(kind: ImageKind, file: File): Promise<void> {
-  const { redraw, ImageTooLargeError } = await import("./image-resize");
+  const { redraw } = await import("./image-resize");
 
   const blob = await redraw(file, kind);
   await writeThumb(kind, blob);
@@ -243,20 +199,14 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
     await run("readwrite", (store) => store.put(blob, kind));
   } catch (cause) {
     dropThumb(kind);
-
-    throw new ImageTooLargeError(
+    throw new Error(
       cause instanceof DOMException && cause.name === "QuotaExceededError"
         ? "This browser is out of storage. Remove a picture or some playlists."
         : "Couldn't save that picture in this browser.",
     );
   }
 
-  snapshot = {
-    loaded: true,
-    avatar: kind === "avatar" ? replaceUrl(snapshot.avatar, blob) : snapshot.avatar,
-    banner: kind === "banner" ? replaceUrl(snapshot.banner, blob) : snapshot.banner,
-  };
-  emit();
+  publish(kind, blob);
 }
 
 export async function readLocalImage(kind: ImageKind): Promise<Blob | null> {
@@ -273,14 +223,6 @@ export function hasLocalImage(kind: ImageKind): boolean {
 
 export function clearLocalImage(kind: ImageKind): void {
   dropThumb(kind);
-
-  snapshot = {
-    loaded: true,
-    avatar: kind === "avatar" ? replaceUrl(snapshot.avatar, null) : snapshot.avatar,
-    banner: kind === "banner" ? replaceUrl(snapshot.banner, null) : snapshot.banner,
-  };
-  emit();
-
-  void run("readwrite", (store) => store.delete(kind)).catch(() => {
-  });
+  publish(kind);
+  void run("readwrite", (store) => store.delete(kind)).catch(() => {});
 }

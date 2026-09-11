@@ -11,7 +11,6 @@ interface ITunesTrack {
   artworkUrl100?: string;
   trackViewUrl?: string;
   previewUrl?: string;
-  trackExplicitness?: string;
 }
 
 interface RssEntry {
@@ -22,9 +21,8 @@ interface RssEntry {
   url?: string;
 }
 
-function upsizeArtwork(url: string | undefined, size = 400): string | null {
-  if (!url) return null;
-  return url.replace(/\/\d+x\d+bb\./, `/${size}x${size}bb.`);
+function upsizeArtwork(url: string | undefined): string | null {
+  return url ? url.replace(/\/\d+x\d+bb\./, "/400x400bb.") : null;
 }
 
 function fromSearch(raw: ITunesTrack): SourceTrack | null {
@@ -60,10 +58,6 @@ function fromRss(raw: RssEntry): SourceTrack | null {
   };
 }
 
-export interface AppleConfig {
-  country?: string;
-}
-
 const get = createRequester({
   id: "apple",
   label: "Apple Music",
@@ -71,24 +65,22 @@ const get = createRequester({
   classify: (status) => (status === 403 ? "rate_limited" : "transient"),
 });
 
-export function createAppleProvider(config: AppleConfig = {}): SearchProvider {
-  const country = config.country ?? "us";
-
+export function createAppleProvider(): SearchProvider {
   return {
     id: "apple",
     playback: "link",
     searchable: true,
 
     async search(ctx, query, limit) {
-      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&country=${country}&limit=${limit}`;
+      const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&country=us&limit=${limit}`;
       const data = await get<{ results?: ITunesTrack[] }>(ctx, url);
-      return (data.results ?? []).map(fromSearch).filter((track): track is SourceTrack => track !== null);
+      return (data.results ?? []).flatMap((raw) => fromSearch(raw) ?? []);
     },
 
     async chart(ctx, limit) {
-      const url = `https://rss.marketingtools.apple.com/api/v2/${country}/music/most-played/${limit}/songs.json`;
+      const url = `https://rss.marketingtools.apple.com/api/v2/us/music/most-played/${limit}/songs.json`;
       const data = await get<{ feed?: { results?: RssEntry[] } }>(ctx, url);
-      return (data.feed?.results ?? []).map(fromRss).filter((track): track is SourceTrack => track !== null);
+      return (data.feed?.results ?? []).flatMap((raw) => fromRss(raw) ?? []);
     },
   };
 }

@@ -6,7 +6,6 @@ import { authorizeUrl, challengeFor, createVerifier } from "./pkce.ts";
 test("the verifier is the length and alphabet RFC 7636 allows", () => {
   const verifier = createVerifier();
   assert.equal(verifier.length, 64);
-  assert.ok(verifier.length >= 43 && verifier.length <= 128, "RFC 7636 bounds");
   assert.match(verifier, /^[A-Za-z0-9\-._~]+$/, "unreserved characters only");
 });
 

@@ -1,3 +1,4 @@
+import { Caption, Notice } from "./page-chrome";
 import { StackedColumns } from "./stacked-columns";
 import { RANK_BANDS } from "@/lib/rank-bands";
 import type { GenreMix } from "@/lib/rankings";
@@ -5,14 +6,12 @@ import type { GenreMix } from "@/lib/rankings";
 export function GenreMixView({ mix }: { mix: GenreMix[] }) {
   if (mix.length === 0) {
     return (
-      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+      <Notice>
         No genre chart overlapped the ranking this week. Genre charts come from Deezer, and either
         it did not answer or none of its genre entries reached the fused top 100.
-      </p>
+      </Notice>
     );
   }
-
-  const top = mix.slice(0, 8);
 
   return (
     <>
@@ -21,7 +20,7 @@ export function GenreMixView({ mix }: { mix: GenreMix[] }) {
       </p>
 
       <StackedColumns
-        columns={top.map((entry) => ({
+        columns={mix.slice(0, 8).map((entry) => ({
           label: entry.genre,
           total: entry.total,
           values: entry.bands,
@@ -30,9 +29,9 @@ export function GenreMixView({ mix }: { mix: GenreMix[] }) {
         unit="song"
       />
 
-      <p className="mt-5 max-w-2xl text-xs leading-relaxed text-[var(--fg-faint)]">
+      <Caption className="mt-5 max-w-2xl">
         One week&rsquo;s standings, not a trend — no free source publishes chart history.
-      </p>
+      </Caption>
     </>
   );
 }

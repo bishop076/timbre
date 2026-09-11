@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo } from "react";
 
-import { artistKey, tallyGenres, type GenreWeight } from "@/lib/genre-tally";
+import { artistKey, tallyGenres } from "@/lib/genre-tally";
 import type { ArtistTaste, TasteRelease } from "@/lib/taste";
 
-import { createLocalStore, useLocalStore } from "./local-store.ts";
+import { createJsonStore, useLocalStore } from "./local-store.ts";
 import { useHistory } from "./player/history-store";
 
 interface Known {
@@ -16,27 +16,18 @@ interface Known {
 
 type Book = Record<string, Known>;
 
-const KEY = "timbre:taste";
-
-const STALE_MS = 7 * 24 * 60 * 60 * 1000;
-
+const DAY_MS = 24 * 60 * 60 * 1000;
+const STALE_MS = 7 * DAY_MS;
+const NEW_FOR_MS = 120 * DAY_MS;
 const RECENT = 30;
-
 const PER_VISIT = 6;
-
 const MAX_KNOWN = 300;
-
-const NEW_FOR_MS = 120 * 24 * 60 * 60 * 1000;
-
 const EMPTY: Book = {};
-
 const SEPARATOR = "\n";
 
-function isKnown(value: unknown): value is Known {
-  if (typeof value !== "object" || value === null) return false;
-  const entry = value as Partial<Known>;
+function isKnown(entry: Partial<Known> | null): entry is Known {
   return (
-    typeof entry.at === "number" &&
+    typeof entry?.at === "number" &&
     (entry.genreId === null || typeof entry.genreId === "number") &&
     Array.isArray(entry.releases) &&
     entry.releases.every(
@@ -53,26 +44,9 @@ function isKnown(value: unknown): value is Known {
   );
 }
 
-function read(): Book {
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return EMPTY;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return EMPTY;
-    const book: Book = {};
-    for (const [name, entry] of Object.entries(parsed)) if (isKnown(entry)) book[name] = entry;
-    return book;
-  } catch {
-    return EMPTY;
-  }
-}
-
-const store = createLocalStore<Book>({
-  read,
-  initial: EMPTY,
-  write: (next) => window.localStorage.setItem(KEY, JSON.stringify(next)),
-  keys: [KEY],
-});
+const store = createJsonStore("timbre:taste", EMPTY, (stored) =>
+  Object.fromEntries(Object.entries(stored as Book).filter(([, entry]) => isKnown(entry))),
+);
 
 const asking = new Set<string>();
 
@@ -112,30 +86,18 @@ async function learn(artists: string[], signal: AbortSignal): Promise<void> {
   }
 }
 
-export interface Taste {
-  listening: boolean;
-  genres: GenreWeight[];
-  genreOf: (artist: string) => number | null;
-  releases: TasteRelease[];
-  artists: Set<string>;
-}
-
-export function useTaste(): Taste {
+export function useTaste() {
   const history = useHistory();
   const book = useLocalStore(store);
 
   const wanted = useMemo(() => {
-    const seen = new Set<string>();
-    const names: string[] = [];
+    const byKey = new Map<string, string>();
     for (const entry of history.slice(0, RECENT)) {
-      const artist = entry.artists[0];
-      if (!artist) continue;
+      const artist = entry.artists[0] ?? "";
       const key = artistKey(artist);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      names.push(artist);
+      if (key && !byKey.has(key)) byKey.set(key, artist);
     }
-    return names;
+    return [...byKey.values()];
   }, [history]);
 
   const wantedKey = wanted.join(SEPARATOR);

@@ -14,26 +14,25 @@ import {
 
 const ALBUM = { id: "2noRn2Aes5aoNVsU6iWThc", title: "Discovery", minTracks: 10 };
 const PLAYLIST = { id: "37i9dQZF1DXcBWIGoYBM5M", minTracks: 20 };
-const QUERY = { text: "daft punk", minTracks: 5 };
+const EMBED_FIX = "See collectionFromEmbed in spotify-web.ts.";
 
-type Level = "ok" | "warn" | "fail";
-
-interface Result {
-  check: string;
-  level: Level;
+interface Outcome {
+  level: "ok" | "warn" | "fail";
   detail: string;
   fix?: string;
 }
 
 const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
-const results: Result[] = [];
+const results: (Outcome & { check: string })[] = [];
 
 const drill = process.argv.includes("--drill");
-if (drill) {
-  (SPOTIFY_OPERATIONS.search as { sha256: string }).sha256 = "0".repeat(64);
-}
+if (drill) (SPOTIFY_OPERATIONS.search as { sha256: string }).sha256 = "0".repeat(64);
 
-async function check(name: string, run: () => Promise<Omit<Result, "check">>): Promise<void> {
+const names = (keys: OperationKey[]) => keys.map((key) => SPOTIFY_OPERATIONS[key].name).join(", ");
+const table = (keys: OperationKey[], hashes: Partial<Record<OperationKey, string>>) =>
+  keys.map((key) => `  ${key}: "${hashes[key]}"`).join("\n");
+
+async function check(name: string, run: () => Promise<Outcome>): Promise<void> {
   const started = Date.now();
   try {
     const result = await run();
@@ -56,7 +55,7 @@ function flaw(track: SourceTrack): string | null {
   return null;
 }
 
-function judge(tracks: SourceTrack[], min: number, what: string): Omit<Result, "check"> {
+function judge(tracks: SourceTrack[], min: number, what: string): Outcome {
   if (tracks.length < min) {
     return {
       level: "fail",
@@ -76,7 +75,7 @@ function judge(tracks: SourceTrack[], min: number, what: string): Omit<Result, "
 }
 
 await check("Search (pathfinder searchDesktop)", async () =>
-  judge(await searchSpotifyWeb(ctx, QUERY.text, 10), QUERY.minTracks, "tracks"),
+  judge(await searchSpotifyWeb(ctx, "daft punk", 10), 5, "tracks"),
 );
 
 await check("Album (pathfinder getAlbum)", async () => {
@@ -92,25 +91,16 @@ await check("Playlist (pathfinder fetchPlaylist)", async () => {
   return judge(playlist.tracks, PLAYLIST.minTracks, `tracks in "${playlist.title}"`);
 });
 
-await check("Album fallback (embed page)", async () => {
-  const album = await fetchSpotifyCollectionFromEmbed(ctx, "album", ALBUM.id);
-  const count = album?.tracks.length ?? 0;
-  return count >= ALBUM.minTracks
-    ? { level: "ok", detail: `${count} tracks from the embed page` }
-    : {
-        level: "fail",
-        detail: `${count} tracks from the embed page`,
-        fix: "The embed page's __NEXT_DATA__ has changed shape. See collectionFromEmbed in spotify-web.ts.",
-      };
-});
-
-await check("Playlist fallback (embed page)", async () => {
-  const playlist = await fetchSpotifyCollectionFromEmbed(ctx, "playlist", PLAYLIST.id);
-  const count = playlist?.tracks.length ?? 0;
-  return count >= PLAYLIST.minTracks
-    ? { level: "ok", detail: `${count} tracks from the embed page` }
-    : { level: "fail", detail: `${count} tracks from the embed page`, fix: "See collectionFromEmbed in spotify-web.ts." };
-});
+for (const [label, kind, { id, minTracks }, fix] of [
+  ["Album", "album", ALBUM, `The embed page's __NEXT_DATA__ has changed shape. ${EMBED_FIX}`],
+  ["Playlist", "playlist", PLAYLIST, EMBED_FIX],
+] as const) {
+  await check(`${label} fallback (embed page)`, async () => {
+    const count = (await fetchSpotifyCollectionFromEmbed(ctx, kind, id))?.tracks.length ?? 0;
+    const detail = `${count} tracks from the embed page`;
+    return count >= minTracks ? { level: "ok", detail } : { level: "fail", detail, fix };
+  });
+}
 
 const healed = healedSpotifyHashes();
 const healedKeys = Object.keys(healed) as OperationKey[];
@@ -120,10 +110,8 @@ results.push(
     : {
         check: "Hash table",
         level: "fail",
-        detail: `Spotify retired ${healedKeys.map((key) => SPOTIFY_OPERATIONS[key].name).join(", ")}; self-repair covered it`,
-        fix: `Update SPOTIFY_OPERATIONS in packages/providers/src/spotify-web.ts:\n${healedKeys
-          .map((key) => `  ${key}: "${healed[key]}"`)
-          .join("\n")}`,
+        detail: `Spotify retired ${names(healedKeys)}; self-repair covered it`,
+        fix: `Update SPOTIFY_OPERATIONS in packages/providers/src/spotify-web.ts:\n${table(healedKeys, healed)}`,
       },
 );
 
@@ -139,30 +127,28 @@ await check("Self-repair sources", async () => {
   if (missing.length > 0) {
     return {
       level: "fail",
-      detail: `no source knows ${missing.map((key) => SPOTIFY_OPERATIONS[key].name).join(", ")}`,
+      detail: `no source knows ${names(missing)}`,
       fix: "Spotify's web-player bundle has changed layout. Check discoverHashesFrom and chunkUrl in spotify-web.ts.",
     };
   }
   if (upstreamOnly.length > 0) {
     return {
       level: "warn",
-      detail: `Spotify's bundle no longer yields ${upstreamOnly.map((key) => SPOTIFY_OPERATIONS[key].name).join(", ")}; SpotifyScraper's table still does`,
+      detail: `Spotify's bundle no longer yields ${names(upstreamOnly)}; SpotifyScraper's table still does`,
       fix: "The bundle layout moved. Check discoverHashesFrom and chunkUrl before the second source goes too.",
     };
   }
   if (newer.length > 0) {
     return {
       level: "warn",
-      detail: `Spotify's web player has moved on to newer hashes for ${newer.map((key) => SPOTIFY_OPERATIONS[key].name).join(", ")} — the shipped ones still work`,
-      fix: `Worth updating SPOTIFY_OPERATIONS before the old ones are retired:\n${newer
-        .map((key) => `  ${key}: "${hashes[key]}"`)
-        .join("\n")}`,
+      detail: `Spotify's web player has moved on to newer hashes for ${names(newer)} — the shipped ones still work`,
+      fix: `Worth updating SPOTIFY_OPERATIONS before the old ones are retired:\n${table(newer, hashes)}`,
     };
   }
   return { level: "ok", detail: "Spotify's bundle yields every hash, and they match the table" };
 });
 
-const ICON: Record<Level, string> = { ok: "✅", warn: "⚠️", fail: "❌" };
+const ICON = { ok: "✅", warn: "⚠️", fail: "❌" };
 const failed = results.filter((result) => result.level === "fail");
 const warned = results.filter((result) => result.level === "warn");
 
@@ -178,7 +164,10 @@ const lines = [
   ...results.map((result) => `| ${ICON[result.level]} | ${result.check} | ${result.detail.replace(/\|/g, "\\|")} |`),
 ];
 for (const result of [...failed, ...warned]) {
-  if (result.fix) lines.push("", `**${result.check}.** ${result.fix.includes("\n") ? "" : result.fix}`, ...(result.fix.includes("\n") ? ["```", result.fix, "```"] : []));
+  if (!result.fix) continue;
+  const block = result.fix.includes("\n");
+  lines.push("", `**${result.check}.** ${block ? "" : result.fix}`);
+  if (block) lines.push("```", result.fix, "```");
 }
 if (failed.some((result) => result.check !== "Hash table")) {
   lines.push(

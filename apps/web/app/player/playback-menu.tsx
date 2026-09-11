@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 
 import { formatElapsed } from "../duration";
@@ -41,11 +41,10 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
   const timer = useSleepTimer();
   const seconds = useSleepSecondsLeft();
 
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const at = useAnchoredMenu(open, root, menu, MENU_WIDTH, timer.kind);
+  const { open, setOpen, root, trigger, menu, placed, style } = useAnchoredMenu(
+    timer.kind,
+    MENU_WIDTH,
+  );
   const speedHeading = useId();
   const sleepHeading = useId();
 
@@ -72,37 +71,9 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
   const sleeping = timer.kind !== "off";
   const changed = speed !== NORMAL_SPEED;
 
-  const close = useCallback(() => {
-    setOpen(false);
-    trigger.current?.focus();
-  }, []);
-
   useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (root.current?.contains(target) || menu.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      close();
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, close]);
-
-  useEffect(() => {
-    if (!open || !at) return;
-    if (!menu.current?.contains(document.activeElement)) menu.current?.focus();
-  }, [open, at]);
+    if (placed && !menu.current?.contains(document.activeElement)) menu.current?.focus();
+  }, [placed, menu]);
 
   const sheet = variant === "sheet";
   const status = describeSleep(timer, seconds);
@@ -149,7 +120,7 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
             role="dialog"
             aria-label="Speed and sleep timer"
             tabIndex={-1}
-            style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
+            style={style}
             className="slab fixed z-[100] w-64 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)] outline-none"
           >
             <section aria-labelledby={speedHeading} className="p-3">

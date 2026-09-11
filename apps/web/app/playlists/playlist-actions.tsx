@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MoreIcon, PencilIcon, TrashIcon } from "../icons";
+import { EYEBROW } from "../page-chrome";
 import { deletePlaylist, renamePlaylist } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
@@ -19,56 +20,22 @@ export function PlaylistActions({
   className?: string;
 }) {
   const router = useRouter();
-  const root = useRef<HTMLDivElement>(null);
   const renameInput = useRef<HTMLInputElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-
-  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"menu" | "rename" | "confirm">("menu");
   const [draft, setDraft] = useState(name);
-
-  const at = useAnchoredMenu(open, root, menu, 240, mode);
-
-  const close = useCallback(() => {
-    setOpen(false);
-    trigger.current?.focus();
-  }, []);
+  const { open, setOpen, close, root, trigger, menu, style } = useAnchoredMenu(mode);
 
   function toggle() {
-    setOpen((was) => {
-      if (!was) {
-        setMode("menu");
-        setDraft(name);
-      }
-      return !was;
-    });
+    if (!open) {
+      setMode("menu");
+      setDraft(name);
+    }
+    setOpen(!open);
   }
 
   useEffect(() => {
     if (mode === "rename") renameInput.current?.select();
   }, [mode]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        close();
-      }
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, close]);
 
   function submitRename(event: React.FormEvent) {
     event.preventDefault();
@@ -100,7 +67,7 @@ export function PlaylistActions({
         <div
           ref={menu}
           role="menu"
-          style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
+          style={style}
           className="slab fixed z-50 w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
         >
           {mode === "menu" && (
@@ -128,9 +95,7 @@ export function PlaylistActions({
 
           {mode === "rename" && (
             <form onSubmit={submitRename} className="flex flex-col gap-2 p-2.5">
-              <label htmlFor={`rename-${id}`} className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-                Rename
-              </label>
+              <label htmlFor={`rename-${id}`} className={EYEBROW}>Rename</label>
               <input
                 id={`rename-${id}`}
                 ref={renameInput}
@@ -178,7 +143,7 @@ export function PlaylistActions({
                 </button>
                 <button
                   type="button"
-                  onClick={() => void confirmDelete()}
+                  onClick={confirmDelete}
                   className="slab-sm press rounded-[var(--r-sm)] bg-red-500/90 px-2.5 py-1.5 text-[12px] font-bold text-white disabled:opacity-40"
                 >
                   Delete

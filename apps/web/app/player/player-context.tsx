@@ -20,24 +20,13 @@ import { drawRadio } from "./draw-radio";
 import { getHistorySnapshot, recordPlay } from "./history-store";
 import { playedHandle } from "./played-handle";
 import { getPlaybackPrefs, usePlaybackPrefs } from "./playback-prefs";
-import {
-  insertAfter,
-  moveWithin,
-  removeAt as removeFromQueue,
-  type QueueEdit,
-} from "./queue-ops";
+import { insertAfter, moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
 import { takeTrackEndStop } from "./sleep-timer.ts";
 import { plausiblySameSong, sameTrack } from "./song-match";
 import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import { useTabSync } from "./use-tab-sync";
-import {
-  getVolumeServerSnapshot,
-  getVolumeSnapshot,
-  subscribeVolume,
-  writeMuteToggle,
-  writeVolume,
-} from "./volume-store";
+import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
 import { turnedAway, type YouTubeFailures } from "./youtube-refusal";
 
 const RADIO_POOL = 50;
@@ -45,75 +34,18 @@ const RADIO_PICKS = 25;
 
 export type PlayState = "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
 
-function settled(state: PlayState): boolean {
-  return state === "playing" || state === "paused";
-}
-
 export type RepeatMode = "off" | "all" | "one";
 
-interface PlayerState {
-  queue: Song[];
-  index: number;
-  current: Song | null;
-  videoId: string | null;
-  soundcloudUrl: string | null;
-  streamUrl: string | null;
-  spotifyTrackId: string | null;
-  subscriptionTrack: { source: "apple" | "deezer"; id: string } | null;
-  mixcloudKey: string | null;
-  activeSource: PlayingSource | null;
-  playingPreview: boolean;
-  youtubeTurnedAway: boolean;
-  panelOpen: boolean;
-  theater: boolean;
-  state: PlayState;
-  problem: string | null;
-  volume: number;
-  muted: boolean;
-  radio: Song[];
-  shuffle: boolean;
-  repeat: RepeatMode;
-  hasNext: boolean;
-}
+type ChosenSource =
+  | { kind: "ytmusic" | "mixcloud" | "spotify"; id: string }
+  | { kind: "soundcloud"; url: string }
+  | { kind: "progressive"; source: ProgressiveSource; sourceId: string }
+  | { kind: "subscription"; source: "apple" | "deezer"; id: string }
+  | { kind: "preview"; source: string; url: string };
 
-interface PlayerProgress {
-  position: number;
-  duration: number;
-}
+type PlayerControls = ReturnType<typeof usePlayerValue>;
 
-interface PlayerActions {
-  play: (song: Song, rest?: Song[], prefer?: string) => void;
-  enqueue: (songs: Song[]) => void;
-  playNext: (songs: Song[]) => void;
-  removeAt: (position: number) => void;
-  move: (from: number, to: number) => void;
-  clearQueue: () => void;
-  toggle: () => void;
-  next: () => void;
-  previous: () => void;
-  handleEnded: () => void;
-  handleStateChange: (state: PlayState) => void;
-  handleProgress: (position: number, duration: number) => void;
-  handleError: (
-    reason: string,
-    worthRetrying: boolean,
-    options?: { stalled?: boolean; refused?: boolean },
-  ) => void;
-  seek: (seconds: number) => void;
-  setVolume: (level: number) => void;
-  toggleMute: () => void;
-  togglePanel: () => void;
-  toggleTheater: () => void;
-  exitTheater: () => void;
-  toggleShuffle: () => void;
-  cycleRepeat: () => void;
-  registerToggle: (fn: (() => void) | null) => void;
-  registerSeek: (fn: ((seconds: number) => void) | null) => void;
-}
-
-type PlayerControls = PlayerState & PlayerActions;
-
-const ZERO_PROGRESS: PlayerProgress = { position: 0, duration: 0 };
+const ZERO_PROGRESS = { position: 0, duration: 0 };
 const ticks = createNotifier();
 let progressSnapshot = ZERO_PROGRESS;
 
@@ -131,22 +63,44 @@ export function usePlayerControls(): PlayerControls {
   return context;
 }
 
-export function usePlayerProgress(): PlayerProgress {
+export function usePlayerProgress() {
   return useSyncExternalStore(ticks.subscribe, () => progressSnapshot, () => ZERO_PROGRESS);
 }
 
-export function usePlayer(): PlayerControls & PlayerProgress {
+export function usePlayer() {
   const controls = usePlayerControls();
   const progress = usePlayerProgress();
   return useMemo(() => ({ ...controls, ...progress }), [controls, progress]);
+}
+
+function settled(state: PlayState): boolean {
+  return state === "playing" || state === "paused";
+}
+
+function isAbort(cause: unknown): boolean {
+  return cause instanceof DOMException && cause.name === "AbortError";
+}
+
+function renew(ref: { current: AbortController | null }): AbortController {
+  ref.current?.abort();
+  ref.current = new AbortController();
+  return ref.current;
 }
 
 function youtubeIdOf(song: Song): string | null {
   return song.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null;
 }
 
-function soundcloudUrlOf(song: Song): string | null {
-  return song.sources.find((source) => source.source === "soundcloud")?.url ?? null;
+function youtubeIds(songs: Song[]): string[] {
+  return songs.map(youtubeIdOf).filter((id): id is string => id !== null);
+}
+
+async function findMatches(song: Song, signal: AbortSignal): Promise<Song[]> {
+  const query = [song.title, song.artists[0]].filter(Boolean).join(" ");
+  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
+  if (!response.ok) throw new Error("search failed");
+  const data = (await response.json()) as SongsResponse;
+  return data.songs.filter((found) => plausiblySameSong(song, found));
 }
 
 function giveUpReason(youtubeCopies: number, triedProgressive: boolean, turnedAway = false): string {
@@ -163,71 +117,54 @@ function giveUpReason(youtubeCopies: number, triedProgressive: boolean, turnedAw
   return "No source here could play this one.";
 }
 
-function mixcloudKeyOf(song: Song): string | null {
-  return song.sources.find((source) => source.source === "mixcloud")?.sourceId ?? null;
-}
-
-function spotifyIdOf(song: Song): string | null {
-  return song.sources.find((source) => source.source === "spotify")?.sourceId ?? null;
-}
-
-function progressiveOf(song: Song): { source: ProgressiveSource; sourceId: string } | null {
+function progressiveOf(song: Song) {
   const found = song.sources.find((source) => isProgressive(source.source));
-  return found && isProgressive(found.source) ? { source: found.source, sourceId: found.sourceId } : null;
+  return found && isProgressive(found.source)
+    ? { kind: "progressive" as const, source: found.source, sourceId: found.sourceId }
+    : null;
 }
 
-function resolvesBySearch(song: Song): boolean {
-  return !youtubeIdOf(song) && !progressiveOf(song) && !mixcloudKeyOf(song) && !soundcloudUrlOf(song);
-}
-
-type PlayingSource =
-  | "ytmusic"
-  | "soundcloud"
-  | "spotify"
-  | "mixcloud"
-  | "deezer"
-  | "apple"
-  | ProgressiveSource;
-
-function previewOf(song: Song): { source: PlayingSource; url: string } | null {
+function previewOf(song: Song) {
   const found = song.sources.find((source) => Boolean(source.previewUrl));
-  return found?.previewUrl ? { source: found.source as PlayingSource, url: found.previewUrl } : null;
+  return found?.previewUrl
+    ? { kind: "preview" as const, source: found.source, url: found.previewUrl }
+    : null;
 }
-
-type ChosenSource =
-  | { kind: "youtube"; id: string }
-  | { kind: "progressive"; source: ProgressiveSource; sourceId: string }
-  | { kind: "mixcloud"; key: string }
-  | { kind: "soundcloud"; url: string }
-  | { kind: "spotify"; id: string }
-  | { kind: "subscription"; source: "apple" | "deezer"; id: string }
-  | { kind: "preview"; source: PlayingSource; url: string };
 
 function chosenSource(song: Song, source: string): ChosenSource | null {
   const track = song.sources.find((entry) => entry.source === source);
   if (!track) return null;
 
-  if (source === "ytmusic") return track.sourceId ? { kind: "youtube", id: track.sourceId } : null;
+  const id = track.sourceId;
   if (source === "soundcloud") return track.url ? { kind: "soundcloud", url: track.url } : null;
-  if (source === "mixcloud") return track.sourceId ? { kind: "mixcloud", key: track.sourceId } : null;
-  if (source === "spotify") return track.sourceId ? { kind: "spotify", id: track.sourceId } : null;
-  if (isProgressive(source)) {
-    return track.sourceId ? { kind: "progressive", source, sourceId: track.sourceId } : null;
+  if (source === "ytmusic" || source === "mixcloud" || source === "spotify") {
+    return id ? { kind: source, id } : null;
   }
+  if (isProgressive(source)) return id ? { kind: "progressive", source, sourceId: id } : null;
+  if ((source === "apple" || source === "deezer") && id) return { kind: "subscription", source, id };
+  return track.previewUrl ? { kind: "preview", source, url: track.previewUrl } : null;
+}
 
-  if (source === "apple" || source === "deezer") {
-    if (track.sourceId) return { kind: "subscription", source, id: track.sourceId };
-  }
-
-  return track.previewUrl ? { kind: "preview", source: source as PlayingSource, url: track.previewUrl } : null;
+function ownSource(song: Song): ChosenSource | null {
+  return progressiveOf(song) ?? chosenSource(song, "mixcloud") ?? chosenSource(song, "soundcloud");
 }
 
 export function playbackFrom(song: Song, source: string): "queue" | "manual" | "preview" | null {
-  const chosen = chosenSource(song, source);
-  if (!chosen) return null;
-  if (chosen.kind === "spotify" || chosen.kind === "subscription") return "manual";
-  if (chosen.kind === "preview") return "preview";
-  return "queue";
+  const kind = chosenSource(song, source)?.kind;
+  if (!kind) return null;
+  if (kind === "spotify" || kind === "subscription") return "manual";
+  return kind === "preview" ? "preview" : "queue";
+}
+
+function spentKey(chosen: ChosenSource): string {
+  return chosen.kind === "spotify" ? `spotify:${chosen.id}` : chosen.kind;
+}
+
+function problemFor(chosen: ChosenSource): string | null {
+  if (chosen.kind === "preview") return "Only a 30-second preview — nothing can play this one in full.";
+  if (chosen.kind !== "subscription") return null;
+  const name = chosen.source === "apple" ? "Apple Music" : "Deezer";
+  return `${name} plays this one — press it to start. Signed-in subscribers get the whole song.`;
 }
 
 interface PlayModes {
@@ -241,16 +178,12 @@ const DEFAULT_MODES: PlayModes = { shuffle: false, repeat: "off" };
 
 function readModes(): PlayModes {
   try {
-    const raw = window.localStorage.getItem(MODES_KEY);
-    if (!raw) return DEFAULT_MODES;
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(MODES_KEY) ?? "null");
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_MODES;
-
-    const value = parsed as Partial<PlayModes>;
+    const { shuffle, repeat } = parsed as Partial<PlayModes>;
     return {
-      shuffle: value.shuffle === true,
-      repeat:
-        value.repeat === "all" || value.repeat === "one" ? value.repeat : DEFAULT_MODES.repeat,
+      shuffle: shuffle === true,
+      repeat: repeat === "all" || repeat === "one" ? repeat : "off",
     };
   } catch {
     return DEFAULT_MODES;
@@ -263,214 +196,119 @@ const modeStore = createLocalStore<PlayModes>({
   write: (next) => window.localStorage.setItem(MODES_KEY, JSON.stringify(next)),
 });
 
+function cycleRepeat(): void {
+  const modes = modeStore.getSnapshot();
+  const repeat = modes.repeat === "off" ? "all" : modes.repeat === "all" ? "one" : "off";
+  modeStore.save({ ...modes, repeat });
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
+  const value = usePlayerValue();
+  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+}
+
+function usePlayerValue() {
   const [queue, setQueue] = useState<Song[]>([]);
-  const queueRef = useRef<Song[]>([]);
   const [index, setIndex] = useState(0);
-  const [videoId, setVideoId] = useState<string | null>(null);
-  const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [spotifyTrackId, setSpotifyTrackId] = useState<string | null>(null);
-  const [subscriptionTrack, setSubscriptionTrack] = useState<{ source: "apple" | "deezer"; id: string } | null>(null);
-  const [mixcloudKey, setMixcloudKey] = useState<string | null>(null);
-  const [activeSource, setActiveSource] = useState<PlayingSource | null>(null);
-  const [playingPreview, setPlayingPreview] = useState(false);
+  const [playing, setPlaying] = useState<ChosenSource | null>(null);
   const [youtubeTurnedAway, setYoutubeTurnedAway] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
-  const stateRef = useRef<PlayState>("idle");
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
   const [problem, setProblem] = useState<string | null>(null);
   const [radio, setRadio] = useState<Song[]>([]);
   const { shuffle, repeat } = useLocalStore(modeStore);
   const { continueWithRadio } = usePlaybackPrefs();
-  const shuffled = useRef<Set<string>>(new Set());
-  const { volume, muted } = useSyncExternalStore(
-    subscribeVolume,
-    getVolumeSnapshot,
-    getVolumeServerSnapshot,
-  );
+  const { volume, muted } = useVolume();
 
+  const queueRef = useRef<Song[]>([]);
+  const stateRef = useRef<PlayState>("idle");
+  const indexRef = useRef(index);
+  useEffect(() => {
+    stateRef.current = state;
+    indexRef.current = index;
+  }, [state, index]);
+
+  const shuffled = useRef<Set<string>>(new Set());
   const toggleRef = useRef<(() => void) | null>(null);
   const seekRef = useRef<((seconds: number) => void) | null>(null);
   const resolving = useRef<AbortController | null>(null);
-
+  const radioRequest = useRef<AbortController | null>(null);
+  const seededFor = useRef<string | null>(null);
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
+  const spent = useRef<Set<string>>(new Set());
   const youtubeFailures = useRef<YouTubeFailures>({ stalled: false, refusals: 0 });
   const rescued = useRef<Set<string>>(new Set());
-  const seededFor = useRef<string | null>(null);
-  const radioRequest = useRef<AbortController | null>(null);
-
-  useEffect(() => () => {
-    radioRequest.current?.abort();
-    seededFor.current = null;
-  }, []);
-
-  const progressiveTried = useRef(false);
-  const previewTried = useRef(false);
-  const soundcloudTried = useRef(false);
-  const activeSourceRefSpotify = useRef<string | null>(null);
   const recorded = useRef<string | null>(null);
   const steered = useRef<string | null>(null);
+  const warmed = useRef(new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>());
 
-  const writeQueue = useCallback((next: Song[] | ((current: Song[]) => Song[])) => {
+  const current = queue[index] ?? null;
+  const activeSource = playing && ("source" in playing ? playing.source : playing.kind);
+  const videoId = playing?.kind === "ytmusic" ? playing.id : null;
+  const soundcloudUrl = playing?.kind === "soundcloud" ? playing.url : null;
+  const mixcloudKey = playing?.kind === "mixcloud" ? playing.id : null;
+  const spotifyTrackId = playing?.kind === "spotify" ? playing.id : null;
+  const subscriptionTrack = playing?.kind === "subscription" ? playing : null;
+  const playingPreview = playing?.kind === "preview";
+  const streamUrl =
+    playing?.kind === "progressive"
+      ? streamUrlFor(playing.source, playing.sourceId)
+      : playing?.kind === "preview"
+        ? playing.url
+        : null;
+
+  const writeQueue = useCallback((next: Song[] | ((queued: Song[]) => Song[])) => {
     const value = typeof next === "function" ? next(queueRef.current) : next;
     queueRef.current = value;
     setQueue(value);
   }, []);
 
-  const current = queue[index] ?? null;
-
-  const attempt = useCallback((id: string) => {
-    attempted.current.add(id);
-    setSoundcloudUrl(null);
-    setStreamUrl(null);
-    setSpotifyTrackId(null);
-    setSubscriptionTrack(null);
-    setMixcloudKey(null);
-    setPlayingPreview(false);
-    setActiveSource("ytmusic");
-    setVideoId(id);
-    setProblem(null);
-    setState("loading");
+  const dropRadio = useCallback(() => {
+    radioRequest.current?.abort();
+    seededFor.current = null;
   }, []);
 
-  const attemptSoundCloud = useCallback((url: string) => {
-    soundcloudTried.current = true;
-    setVideoId(null);
-    setStreamUrl(null);
-    setSpotifyTrackId(null);
-    setSubscriptionTrack(null);
-    setMixcloudKey(null);
-    setPlayingPreview(false);
-    setActiveSource("soundcloud");
-    setSoundcloudUrl(url);
-    setProblem(null);
-    setState("loading");
+  useEffect(() => dropRadio, [dropRadio]);
+
+  const start = useCallback((chosen: ChosenSource) => {
+    if (chosen.kind === "ytmusic") attempted.current.add(chosen.id);
+    else spent.current.add(spentKey(chosen));
+    setPlaying(chosen);
+    setProblem(problemFor(chosen));
+    setState(chosen.kind === "subscription" ? "paused" : "loading");
   }, []);
 
-  const attemptMixcloud = useCallback((key: string) => {
-    setVideoId(null);
-    setSoundcloudUrl(null);
-    setStreamUrl(null);
-    setSpotifyTrackId(null);
-    setSubscriptionTrack(null);
-    setPlayingPreview(false);
-    setActiveSource("mixcloud");
-    setMixcloudKey(key);
-    setProblem(null);
-    setState("loading");
+  const matchesFor = useCallback((song: Song, signal: AbortSignal): Promise<Song[]> => {
+    const early = warmed.current.get(song.id);
+    if (!early) return findMatches(song, signal);
+    warmed.current.delete(song.id);
+
+    return new Promise<Song[]>((resolve, reject) => {
+      const abort = () => reject(new DOMException("Aborted", "AbortError"));
+      if (signal.aborted) return abort();
+      signal.addEventListener("abort", abort, { once: true });
+      early.matches
+        .catch(() => findMatches(song, signal))
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener("abort", abort));
+    });
   }, []);
-
-  const attemptSpotify = useCallback((trackId: string) => {
-    setVideoId(null);
-    setSoundcloudUrl(null);
-    setStreamUrl(null);
-    setMixcloudKey(null);
-    setSubscriptionTrack(null);
-    setPlayingPreview(false);
-    setActiveSource("spotify");
-    setSpotifyTrackId(trackId);
-    activeSourceRefSpotify.current = trackId;
-    setProblem(null);
-    setState("loading");
-  }, []);
-
-  const attemptSubscription = useCallback((source: "apple" | "deezer", id: string) => {
-    setVideoId(null);
-    setSoundcloudUrl(null);
-    setStreamUrl(null);
-    setMixcloudKey(null);
-    setSpotifyTrackId(null);
-    setPlayingPreview(false);
-    setActiveSource(source);
-    setSubscriptionTrack({ source, id });
-    setProblem(
-      source === "apple"
-        ? "Apple Music plays this one — press it to start. Signed-in subscribers get the whole song."
-        : "Deezer plays this one — press it to start. Signed-in subscribers get the whole song.",
-    );
-    setState("paused");
-  }, []);
-
-  const attemptPreview = useCallback((source: PlayingSource, url: string) => {
-    setVideoId(null);
-    setSoundcloudUrl(null);
-    setSpotifyTrackId(null);
-    setSubscriptionTrack(null);
-    setMixcloudKey(null);
-    setActiveSource(source);
-    setStreamUrl(url);
-    setPlayingPreview(true);
-    previewTried.current = true;
-    setProblem("Only a 30-second preview — nothing can play this one in full.");
-    setState("loading");
-  }, []);
-
-  const attemptProgressive = useCallback((source: ProgressiveSource, sourceId: string) => {
-    setVideoId(null);
-    setSoundcloudUrl(null);
-    setSpotifyTrackId(null);
-    setSubscriptionTrack(null);
-    setMixcloudKey(null);
-    setPlayingPreview(false);
-    setActiveSource(source);
-    setStreamUrl(streamUrlFor(source, sourceId));
-    progressiveTried.current = true;
-    setProblem(null);
-    setState("loading");
-  }, []);
-
-  const findMatches = useCallback(async (song: Song, signal: AbortSignal) => {
-    const query = [song.title, song.artists[0]].filter(Boolean).join(" ");
-    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
-    if (!response.ok) throw new Error("search failed");
-    const data = (await response.json()) as SongsResponse;
-    return data.songs.filter((found) => plausiblySameSong(song, found));
-  }, []);
-
-  const findCandidates = useCallback(
-    async (song: Song, signal: AbortSignal) =>
-      (await findMatches(song, signal)).map(youtubeIdOf).filter((id): id is string => id !== null),
-    [findMatches],
-  );
-
-  const warmed = useRef(new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>());
-
-  const matchesFor = useCallback(
-    (song: Song, signal: AbortSignal): Promise<Song[]> => {
-      const early = warmed.current.get(song.id);
-      if (!early) return findMatches(song, signal);
-      warmed.current.delete(song.id);
-
-      return new Promise<Song[]>((resolve, reject) => {
-        const abort = () => reject(new DOMException("Aborted", "AbortError"));
-        if (signal.aborted) return abort();
-        signal.addEventListener("abort", abort, { once: true });
-        early.matches
-          .catch(() => findMatches(song, signal))
-          .then(resolve, reject)
-          .finally(() => signal.removeEventListener("abort", abort));
-      });
-    },
-    [findMatches],
-  );
 
   const adoptElsewhere = useCallback(
     (song: Song, matches: Song[], { mixcloud }: { mixcloud: boolean }): boolean => {
       if (rescued.current.has(song.id)) return false;
 
-      const keyOf = (match: Song) => (mixcloud ? mixcloudKeyOf(match) : null);
-      const elsewhere = matches.find(
-        (match) =>
-          progressiveOf(match) ?? keyOf(match) ?? soundcloudUrlOf(match) ?? spotifyIdOf(match),
-      );
-      if (!elsewhere) return false;
+      const playable = (match: Song) =>
+        progressiveOf(match) ??
+        (mixcloud ? chosenSource(match, "mixcloud") : null) ??
+        chosenSource(match, "soundcloud") ??
+        chosenSource(match, "spotify");
+      const elsewhere = matches.find(playable);
+      const chosen = elsewhere && playable(elsewhere);
+      if (!elsewhere || !chosen) return false;
 
       rescued.current.add(song.id);
       const repaired: Song = {
@@ -479,179 +317,84 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         durationMs: song.durationMs ?? elsewhere.durationMs,
       };
       songRef.current = repaired;
-      writeQueue((current) => current.map((entry) => (entry.id === song.id ? repaired : entry)));
+      writeQueue((queued) => queued.map((entry) => (entry.id === song.id ? repaired : entry)));
       const repairedLists = addSourcesToSong(song.id, elsewhere.sources);
       if (repairedLists > 0) {
-        log("info", `“${song.title}” now carries a working copy in ${repairedLists} saved playlist${repairedLists === 1 ? "" : "s"}`);
+        log(
+          "info",
+          `“${song.title}” now carries a working copy in ${repairedLists} saved playlist${repairedLists === 1 ? "" : "s"}`,
+        );
       }
-
-      const progressive = progressiveOf(repaired);
-      if (progressive) {
-        attemptProgressive(progressive.source, progressive.sourceId);
-        return true;
-      }
-      const key = keyOf(repaired);
-      if (key) {
-        attemptMixcloud(key);
-        return true;
-      }
-      const soundcloud = soundcloudUrlOf(repaired);
-      if (soundcloud) {
-        attemptSoundCloud(soundcloud);
-        return true;
-      }
-      const spotify = spotifyIdOf(repaired);
-      if (spotify) {
-        attemptSpotify(spotify);
-        return true;
-      }
-      return false;
+      start(chosen);
+      return true;
     },
-    [attemptMixcloud, attemptProgressive, attemptSoundCloud, attemptSpotify, writeQueue],
+    [start, writeQueue],
   );
 
   const load = useCallback(
     async (song: Song, prefer?: string) => {
-      resolving.current?.abort();
-      const aborter = new AbortController();
-      resolving.current = aborter;
-
-      if (songRef.current?.id !== song.id) {
-        radioRequest.current?.abort();
-        seededFor.current = null;
-      }
+      const { signal } = renew(resolving);
+      if (songRef.current?.id !== song.id) dropRadio();
       songRef.current = song;
       candidates.current = [];
       attempted.current = new Set();
+      spent.current = new Set();
       youtubeFailures.current = { stalled: false, refusals: 0 };
-      setYoutubeTurnedAway(false);
-      progressiveTried.current = false;
-      previewTried.current = false;
-      soundcloudTried.current = false;
-      setPlayingPreview(false);
-      activeSourceRefSpotify.current = null;
       recorded.current = null;
       steered.current = null;
+      setYoutubeTurnedAway(false);
+      setPlaying(null);
       writeProgress(0, song.durationMs ? song.durationMs / 1000 : 0);
-      setActiveSource(null);
-      setVideoId(null);
-      setSoundcloudUrl(null);
-      setStreamUrl(null);
-      setSpotifyTrackId(null);
-      setSubscriptionTrack(null);
-      setMixcloudKey(null);
 
       prefer ??= rememberedSource(song);
-      if (prefer && prefer !== "ytmusic") {
-        const chosen = chosenSource(song, prefer);
-        if (chosen) {
-          steered.current = prefer;
-          switch (chosen.kind) {
-            case "progressive":
-              attemptProgressive(chosen.source, chosen.sourceId);
-              return;
-            case "mixcloud":
-              attemptMixcloud(chosen.key);
-              return;
-            case "soundcloud":
-              attemptSoundCloud(chosen.url);
-              return;
-            case "spotify":
-              attemptSpotify(chosen.id);
-              return;
-            case "subscription":
-              attemptSubscription(chosen.source, chosen.id);
-              return;
-            case "preview":
-              attemptPreview(chosen.source, chosen.url);
-              return;
-            case "youtube":
-              break;
-          }
-        }
+      const named = prefer && prefer !== "ytmusic" ? chosenSource(song, prefer) : null;
+      if (prefer && named) {
+        steered.current = prefer;
+        return start(named);
       }
 
       const direct = youtubeIdOf(song);
       if (direct) {
-        attempt(direct);
-
-        void findCandidates(song, aborter.signal)
+        start({ kind: "ytmusic", id: direct });
+        void findMatches(song, signal)
           .then((found) => {
-            if (songRef.current === song) candidates.current = found;
+            if (songRef.current === song) candidates.current = youtubeIds(found);
           })
-          .catch(() => {
-          });
+          .catch(() => {});
         return;
       }
 
-      const progressive = progressiveOf(song);
-      if (progressive) {
-        attemptProgressive(progressive.source, progressive.sourceId);
-        return;
-      }
+      const own = ownSource(song);
+      if (own) return start(own);
 
-      const mixcloud = mixcloudKeyOf(song);
-      if (mixcloud) {
-        attemptMixcloud(mixcloud);
-        return;
-      }
-
-      const soundcloud = soundcloudUrlOf(song);
-      if (soundcloud) {
-        attemptSoundCloud(soundcloud);
-        return;
-      }
-
-      const spotify = spotifyIdOf(song);
-
+      const spotify = chosenSource(song, "spotify");
       setState("resolving");
       setProblem(null);
 
       try {
-        const matches = await matchesFor(song, aborter.signal);
-        candidates.current = matches.map(youtubeIdOf).filter((id): id is string => id !== null);
+        const matches = await matchesFor(song, signal);
+        candidates.current = youtubeIds(matches);
         const first = candidates.current[0];
-        if (first) {
-          attempt(first);
-          return;
-        }
-
+        if (first) return start({ kind: "ytmusic", id: first });
         if (adoptElsewhere(song, matches, { mixcloud: true })) return;
-
         if (spotify) {
           log("warn", `“${song.title}” fell back to Spotify's embed — nothing else could play it`);
-          attemptSpotify(spotify);
-          return;
+          return start(spotify);
         }
-
         const preview = previewOf(song);
-        if (preview) {
-          attemptPreview(preview.source, preview.url);
-          return;
-        }
+        if (preview) return start(preview);
 
-        setVideoId(null);
+        setPlaying(null);
         setState("unplayable");
         setProblem("No copy of this song exists on YouTube Music.");
       } catch (cause) {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setVideoId(null);
+        if (isAbort(cause)) return;
+        setPlaying(null);
         setState("unplayable");
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [
-      adoptElsewhere,
-      attempt,
-      attemptMixcloud,
-      attemptProgressive,
-      attemptSoundCloud,
-      attemptSubscription,
-      attemptSpotify,
-      attemptPreview,
-      findCandidates,
-      matchesFor,
-    ],
+    [adoptElsewhere, dropRadio, matchesFor, start],
   );
 
   const restart = useCallback((ended: boolean) => {
@@ -660,40 +403,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (ended || stateRef.current !== "playing") toggleRef.current?.();
   }, []);
 
+  const openSong = useCallback(
+    (song: Song, prefer?: string) => {
+      if (!prefer && song.id === songRef.current?.id && settled(stateRef.current)) restart(false);
+      else void load(song, prefer);
+    },
+    [load, restart],
+  );
+
   const play = useCallback(
     (song: Song, rest: Song[] = [], prefer?: string) => {
       if (prefer) pickSource(song, prefer, playbackFrom(song, prefer));
-      const others = rest.filter((candidate) => candidate.id !== song.id);
-      const loaded = songRef.current;
-
-      if (prefer && rest.length === 0 && loaded?.id === song.id) {
-        void load(song, prefer);
-        return;
+      const switchingSource = prefer && rest.length === 0 && songRef.current?.id === song.id;
+      if (!switchingSource) {
+        writeQueue([song, ...rest.filter((candidate) => candidate.id !== song.id)]);
+        setIndex(0);
       }
-
-      writeQueue([song, ...others]);
-      setIndex(0);
-      if (!prefer && loaded?.id === song.id && settled(stateRef.current)) {
-        restart(false);
-        return;
-      }
-      void load(song, prefer);
+      openSong(song, prefer);
     },
-    [load, restart, writeQueue],
+    [openSong, writeQueue],
   );
 
   const goTo = useCallback(
-    (nextIndex: number) => {
-      const target = queueRef.current[nextIndex];
+    (position: number) => {
+      const target = queueRef.current[position];
       if (!target) return;
-      setIndex(nextIndex);
-      if (target.id === songRef.current?.id && settled(stateRef.current)) {
-        restart(false);
-        return;
-      }
-      void load(target);
+      setIndex(position);
+      openSong(target);
     },
-    [load, restart],
+    [openSong],
   );
 
   const unqueued = useCallback(
@@ -704,27 +442,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const unplayed = useCallback(
     () =>
-      queue
-        .map((song, position) => ({ song, position }))
-        .filter(({ song, position }) => position !== index && !shuffled.current.has(song.id)),
+      queue.flatMap((song, position) =>
+        position === index || shuffled.current.has(song.id) ? [] : [position],
+      ),
     [queue, index],
   );
 
   const nextIndex = useCallback((): number | null => {
     if (queue.length === 0) return null;
-
     if (shuffle) {
       const pool = unplayed();
-      if (pool.length > 0) {
-        return pool[Math.floor(Math.random() * pool.length)]!.position;
-      }
-      if (repeat === "all") {
-        shuffled.current = new Set();
-        return queue.length > 1 ? (index + 1) % queue.length : index;
-      }
-      return null;
+      if (pool.length > 0) return pool[Math.floor(Math.random() * pool.length)];
+      if (repeat !== "all") return null;
+      shuffled.current = new Set();
+      return queue.length > 1 ? (index + 1) % queue.length : index;
     }
-
     if (index + 1 < queue.length) return index + 1;
     return repeat === "all" ? 0 : null;
   }, [queue, index, shuffle, repeat, unplayed]);
@@ -739,8 +471,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const advance = useCallback(
     (fromEnd: boolean) => {
-      const playing = queue[index];
-      if (playing) shuffled.current.add(playing.id);
+      if (current) shuffled.current.add(current.id);
 
       const target = nextIndex();
       if (target !== null) {
@@ -754,17 +485,32 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (fromEnd) setState("idle");
         return;
       }
-
-      writeQueue((current) => [...current, ...fresh]);
+      writeQueue((queued) => [...queued, ...fresh]);
       setRadio([]);
       goTo(queue.length);
     },
-    [continueWithRadio, goTo, index, nextIndex, queue, radio, restart, unqueued, writeQueue],
+    [
+      continueWithRadio,
+      current,
+      goTo,
+      index,
+      nextIndex,
+      queue,
+      radio,
+      restart,
+      unqueued,
+      writeQueue,
+    ],
   );
 
   const next = useCallback(() => advance(false), [advance]);
-
   const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
+
+  const handleEnded = useCallback(() => {
+    if (takeTrackEndStop()) setState("paused");
+    else if (repeat === "one") restart(true);
+    else advance(true);
+  }, [advance, repeat, restart]);
 
   const toggleShuffle = useCallback(() => {
     const modes = modeStore.getSnapshot();
@@ -772,37 +518,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     modeStore.save({ ...modes, shuffle: !modes.shuffle });
   }, []);
 
-  const cycleRepeat = useCallback(() => {
-    const modes = modeStore.getSnapshot();
-    const mode: RepeatMode =
-      modes.repeat === "off" ? "all" : modes.repeat === "all" ? "one" : "off";
-    modeStore.save({ ...modes, repeat: mode });
-  }, []);
-
   const stop = useCallback(() => {
     resolving.current?.abort();
-    radioRequest.current?.abort();
-    seededFor.current = null;
+    dropRadio();
     songRef.current = null;
-    setVideoId(null);
-    setSoundcloudUrl(null);
-    setStreamUrl(null);
-    setSpotifyTrackId(null);
-    setSubscriptionTrack(null);
-    setMixcloudKey(null);
-    setPlayingPreview(false);
-    setActiveSource(null);
+    setPlaying(null);
     setState("idle");
     setProblem(null);
     writeProgress(0, 0);
-  }, []);
+  }, [dropRadio]);
 
   const notQueued = useCallback((additions: Song[]) => {
     const fresh: Song[] = [];
     for (const song of additions) {
-      if (queueRef.current.some((queued) => sameTrack(queued, song))) continue;
-      if (fresh.some((added) => sameTrack(added, song))) continue;
-      fresh.push(song);
+      if (![...queueRef.current, ...fresh].some((other) => sameTrack(other, song))) fresh.push(song);
     }
     return fresh;
   }, []);
@@ -811,15 +540,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (songs: Song[]) => {
       const fresh = notQueued(songs);
       if (fresh.length === 0) return;
-
-      if (queueRef.current.length === 0) {
-        writeQueue(fresh);
-        setIndex(0);
-        void load(fresh[0]!);
-        return;
-      }
-
-      writeQueue((current) => [...current, ...fresh]);
+      if (queueRef.current.length > 0) return writeQueue((queued) => [...queued, ...fresh]);
+      writeQueue(fresh);
+      setIndex(0);
+      void load(fresh[0]);
     },
     [load, notQueued, writeQueue],
   );
@@ -829,7 +553,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!edit) return;
       writeQueue(edit.queue);
       setIndex(edit.index);
-      if (edit.stopped) stop();
+      if (edit.queue.length === 0) stop();
       else if (edit.play) void load(edit.play);
     },
     [load, stop, writeQueue],
@@ -838,8 +562,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const removeAt = useCallback(
     (position: number) => {
       const song = queue[position];
-      if (!song) return;
-      shuffled.current.delete(song.id);
+      if (song) shuffled.current.delete(song.id);
       applyEdit(removeFromQueue(queue, index, position));
     },
     [applyEdit, index, queue],
@@ -852,72 +575,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const playNext = useCallback(
     (songs: Song[]) => {
-      const existing = songs.length === 1 ? songs[0]! : null;
-      const at = existing
-        ? queue.findIndex((queued) => sameTrack(queued, existing))
-        : -1;
-
-      if (at !== -1) {
-        if (at === index || at === index + 1) return;
+      const at = songs.length === 1 ? queue.findIndex((queued) => sameTrack(queued, songs[0])) : -1;
+      if (at === -1) applyEdit(insertAfter(queueRef.current, index, notQueued(songs)));
+      else if (at !== index && at !== index + 1) {
         applyEdit(moveWithin(queue, index, at, at < index ? index : index + 1));
-        return;
       }
-
-      applyEdit(insertAfter(queueRef.current, index, notQueued(songs)));
     },
     [applyEdit, index, notQueued, queue],
   );
 
   const clearQueue = useCallback(() => {
-    writeQueue((current) => current.slice(0, index + 1));
+    writeQueue((queued) => queued.slice(0, index + 1));
   }, [index, writeQueue]);
-
-  const indexRef = useRef(index);
-
-  useEffect(() => {
-    indexRef.current = index;
-  }, [index]);
 
   useEffect(() => {
     const song = queue[index];
-    if (!song || !activeSource) return;
-    if (seededFor.current === song.id) return;
+    if (!song || !activeSource || seededFor.current === song.id) return;
     seededFor.current = song.id;
 
-    const seed = activeSource === "ytmusic" ? videoId : null;
-
     const params = new URLSearchParams({ title: song.title, limit: String(RADIO_POOL) });
-    if (seed) params.set("id", seed);
-    const artist = song.artists[0];
-    if (artist) params.set("artist", artist);
+    if (videoId) params.set("id", videoId);
+    if (song.artists[0]) params.set("artist", song.artists[0]);
 
-    const aborter = new AbortController();
-    radioRequest.current?.abort();
-    radioRequest.current = aborter;
+    const aborter = renew(radioRequest);
     fetch(`/api/radio?${params}`, { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
       .then((data) => {
         if (aborter.signal.aborted || songRef.current?.id !== song.id) return;
-        const songs = data?.songs ?? [];
-
         const queued = queueRef.current;
-
-        const drawn = drawRadio(songs, {
+        const drawn = drawRadio(data?.songs ?? [], {
           count: RADIO_PICKS,
           exclude: queued,
           avoid: getHistorySnapshot(),
         });
-
-        if (indexRef.current < queued.length - 1 || !getPlaybackPrefs().continueWithRadio) {
-          setRadio(drawn);
-          return;
-        }
-
-        setRadio([]);
-        if (drawn.length > 0) writeQueue((current) => [...current, ...drawn]);
+        const parked =
+          indexRef.current < queued.length - 1 || !getPlaybackPrefs().continueWithRadio;
+        setRadio(parked ? drawn : []);
+        if (!parked && drawn.length > 0) writeQueue((current) => [...current, ...drawn]);
       })
-      .catch(() => {
-      });
+      .catch(() => {});
 
     return () => {
       if (songRef.current?.id !== song.id) aborter.abort();
@@ -926,26 +622,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [activeSource, videoId, streamUrl, soundcloudUrl, mixcloudKey, spotifyTrackId]);
 
   useEffect(() => {
+    const last = index === queue.length - 1;
     const upcoming = shuffle
       ? undefined
       : (queue[index + 1] ??
-        (index === queue.length - 1 && continueWithRadio && repeat !== "all" ? unqueued(radio)[0] : undefined));
+        (last && continueWithRadio && repeat !== "all" ? unqueued(radio)[0] : undefined));
 
     for (const [id, early] of warmed.current) {
       if (id === upcoming?.id) continue;
       early.aborter.abort();
       warmed.current.delete(id);
     }
-    if (!upcoming) return;
+    if (!upcoming || youtubeIdOf(upcoming)) return;
 
-    if (resolvesBySearch(upcoming) && !warmed.current.has(upcoming.id)) {
+    if (!ownSource(upcoming) && !warmed.current.has(upcoming.id)) {
       const aborter = new AbortController();
       const matches = findMatches(upcoming, aborter.signal);
       matches.catch(() => undefined);
       warmed.current.set(upcoming.id, { matches, aborter });
     }
 
-    const progressive = youtubeIdOf(upcoming) ? null : progressiveOf(upcoming);
+    const progressive = progressiveOf(upcoming);
     if (!progressive) return;
     const audio = new Audio();
     audio.preload = "metadata";
@@ -955,7 +652,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeAttribute("src");
       audio.load();
     };
-  }, [continueWithRadio, findMatches, index, queue, radio, repeat, shuffle, unqueued]);
+  }, [continueWithRadio, index, queue, radio, repeat, shuffle, unqueued]);
 
   useEffect(() => {
     const pending = warmed.current;
@@ -968,8 +665,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback(() => toggleRef.current?.(), []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
 
-  const setVolume = useCallback((level: number) => writeVolume(level), []);
-  const toggleMute = useCallback(() => writeMuteToggle(), []);
   const togglePanel = useCallback(() => {
     setPanelOpen((open) => {
       if (open) setTheater(false);
@@ -988,27 +683,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const handleStateChange = useCallback(
     (next: PlayState) => {
       setState(next);
-      if (next !== "playing") return;
+      if (next !== "playing" || !current || recorded.current === current.id) return;
+      recorded.current = current.id;
 
-      const song = queue[index];
-      if (!song || recorded.current === song.id) return;
-      recorded.current = song.id;
-
-      const handle = playedHandle(song, activeSource, videoId);
-
-      recordPlay({
-        id: song.id,
-        title: song.title,
-        artists: song.artists,
-        artworkUrl: song.artworkUrl,
-        videoId,
-        source: handle?.source,
-        sourceId: handle?.sourceId,
-        url: handle?.url ?? null,
-        from: song.from,
-      });
+      const { id, title, artists, artworkUrl, from } = current;
+      const handle = playedHandle(current, activeSource, videoId);
+      recordPlay({ id, title, artists, artworkUrl, from, videoId, url: null, ...handle });
     },
-    [queue, index, videoId, activeSource],
+    [current, videoId, activeSource],
   );
 
   const handleError = useCallback(
@@ -1033,8 +715,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setYoutubeTurnedAway(true);
       }
 
-      const onYouTube = song?.sources.some((source) => source.source === "ytmusic") ?? false;
-
       if (!worthRetrying || !song) {
         log("error", `Gave up on ${song ? `“${song.title}”` : "playback"}: ${reason}`);
         setState("unplayable");
@@ -1042,113 +722,74 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const warn = (message: string) => log("warn", `“${song.title}” ${message}`);
       setState("resolving");
-      try {
-        const searchForCopies = onYouTube && !leftYouTube;
-        const tryAnotherCopy = searchForCopies || (!leftYouTube && candidates.current.length > 0);
-        if (searchForCopies && candidates.current.length === 0) {
-          resolving.current?.abort();
-          const aborter = new AbortController();
-          resolving.current = aborter;
-          candidates.current = await findCandidates(song, aborter.signal);
+      if (!leftYouTube) {
+        try {
+          const onYouTube = song.sources.some((source) => source.source === "ytmusic");
+          if (onYouTube && candidates.current.length === 0) {
+            candidates.current = youtubeIds(await findMatches(song, renew(resolving).signal));
+          }
+          const alternative = candidates.current.find((id) => !attempted.current.has(id));
+          if (alternative) {
+            warn(
+              `fell back to another copy (${alternative}) after ${attempted.current.size}: ${reason}`,
+            );
+            return start({ kind: "ytmusic", id: alternative });
+          }
+        } catch (cause) {
+          if (isAbort(cause)) return;
         }
-        const alternative = tryAnotherCopy
-          ? candidates.current.find((id) => !attempted.current.has(id))
-          : undefined;
-        if (alternative) {
-          log(
-            "warn",
-            `“${song.title}” fell back to another copy (${alternative}) after ${attempted.current.size}: ${reason}`,
-          );
-          attempt(alternative);
-          return;
-        }
-      } catch (cause) {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
       }
 
       const progressive = progressiveOf(song);
-      if (progressive && !progressiveTried.current) {
-        log(
-          "warn",
-          `“${song.title}” fell back to ${progressive.source} after ${attempted.current.size} YouTube copies refused`,
+      if (progressive && !spent.current.has("progressive")) {
+        warn(
+          `fell back to ${progressive.source} after ${attempted.current.size} YouTube copies refused`,
         );
-        attemptProgressive(progressive.source, progressive.sourceId);
-        return;
+        return start(progressive);
       }
 
-      const soundcloud = soundcloudUrlOf(song);
-      if (soundcloud && !soundcloudTried.current) {
-        log(
-          "warn",
-          `“${song.title}” fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`,
-        );
-        attemptSoundCloud(soundcloud);
-        return;
+      const soundcloud = chosenSource(song, "soundcloud");
+      if (soundcloud && !spent.current.has("soundcloud")) {
+        warn(`fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`);
+        return start(soundcloud);
       }
 
       if (!rescued.current.has(song.id)) {
         try {
-          resolving.current?.abort();
-          const rescuing = new AbortController();
-          resolving.current = rescuing;
-          const matches = await findMatches(song, rescuing.signal);
+          const matches = await findMatches(song, renew(resolving).signal);
           if (adoptElsewhere(song, matches, { mixcloud: false })) {
-            log(
-              "warn",
-              `“${song.title}” was rescued onto another source — nothing it shipped with would play`,
-            );
+            warn("was rescued onto another source — nothing it shipped with would play");
             return;
           }
         } catch (cause) {
-          if (cause instanceof DOMException && cause.name === "AbortError") return;
+          if (isAbort(cause)) return;
         }
       }
 
-      const spotifyLast = spotifyIdOf(song);
-      if (spotifyLast && activeSourceRefSpotify.current !== spotifyLast) {
-        log("warn", `“${song.title}” fell back to Spotify's embed — nothing else would play it`);
-        attemptSpotify(spotifyLast);
-        return;
+      const spotify = chosenSource(song, "spotify");
+      if (spotify && !spent.current.has(spentKey(spotify))) {
+        warn("fell back to Spotify's embed — nothing else would play it");
+        return start(spotify);
       }
 
       const preview = previewOf(song);
-      if (preview && !previewTried.current) {
-        log("warn", `“${song.title}” fell back to a ${preview.source} preview — nothing plays it in full`);
-        attemptPreview(preview.source, preview.url);
-        return;
+      if (preview && !spent.current.has("preview")) {
+        warn(`fell back to a ${preview.source} preview — nothing plays it in full`);
+        return start(preview);
       }
 
+      const triedProgressive = spent.current.has("progressive");
       log(
         "error",
-        `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${progressiveTried.current ? "tried" : "absent"}`,
+        `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${triedProgressive ? "tried" : "absent"}`,
       );
       setState("unplayable");
-      setProblem(giveUpReason(attempted.current.size, progressiveTried.current, leftYouTube));
+      setProblem(giveUpReason(attempted.current.size, triedProgressive, leftYouTube));
     },
-    [
-      adoptElsewhere,
-      attempt,
-      attemptPreview,
-      attemptProgressive,
-      attemptSoundCloud,
-      attemptSpotify,
-      findCandidates,
-      findMatches,
-    ],
+    [adoptElsewhere, start],
   );
-
-  const handleEnded = useCallback(() => {
-    if (takeTrackEndStop()) {
-      setState("paused");
-      return;
-    }
-    if (repeat === "one") {
-      restart(true);
-      return;
-    }
-    advance(true);
-  }, [advance, repeat, restart]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
@@ -1174,7 +815,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     seek,
   });
 
-  const value: PlayerControls = {
+  return {
     queue,
     index,
     current,
@@ -1211,8 +852,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     handleProgress: writeProgress,
     handleError,
     seek,
-    setVolume,
-    toggleMute,
+    setVolume: writeVolume,
+    toggleMute: writeMuteToggle,
     togglePanel,
     toggleTheater,
     exitTheater,
@@ -1221,6 +862,4 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     registerToggle,
     registerSeek,
   };
-
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

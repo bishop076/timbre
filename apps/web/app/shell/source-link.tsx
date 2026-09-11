@@ -2,59 +2,50 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { Song } from "../types";
-import { sourceStyle } from "../sources";
 import { SOURCE_TAG, SOURCE_TAG_ACTIVE, sourceTone } from "../source-tag";
-
-const COPIED_MS = 1600;
+import { sourceStyle } from "../sources";
+import type { Song } from "../types";
 
 export function SourceLink({
   song,
   activeSource,
   label,
-  className = "",
+  className,
 }: {
-  song: Song | null;
+  song: Song;
   activeSource: string | null;
   label: string;
-  className?: string;
+  className: string;
 }) {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
 
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-
-  const style = sourceStyle(activeSource ?? "ytmusic");
-  const url = song?.sources.find((entry) => entry.source === activeSource)?.url ?? null;
-  const copied = url !== null && copiedUrl === url;
-
+  const source = activeSource ?? "ytmusic";
+  const url = song.sources.find((entry) => entry.source === activeSource)?.url ?? null;
   const badge = `${SOURCE_TAG} shrink-0 ${className}`;
-  const paint = sourceTone(activeSource ?? "ytmusic");
 
   if (!url) return <span className={badge}>{label}</span>;
 
-  async function copy() {
+  const copy = async () => {
     try {
-      await navigator.clipboard.writeText(url!);
+      await navigator.clipboard.writeText(url);
       setCopiedUrl(url);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setCopiedUrl(null), COPIED_MS);
-    } catch {
-    }
-  }
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopiedUrl(null), 1600);
+    } catch {}
+  };
 
   return (
     <button
       type="button"
       onClick={copy}
-      aria-label={`Copy the ${style.label} link for ${song?.title ?? "this song"}`}
-      title={`Copy the ${style.label} link`}
+      aria-label={`Copy the ${sourceStyle(source).label} link for ${song.title}`}
+      title={`Copy the ${sourceStyle(source).label} link`}
       className={`${badge} ${SOURCE_TAG_ACTIVE} cursor-pointer`}
-      style={paint}
+      style={sourceTone(source)}
     >
-      <span aria-live="polite">{copied ? "Copied" : label}</span>
+      <span aria-live="polite">{copiedUrl === url ? "Copied" : label}</span>
     </button>
   );
 }

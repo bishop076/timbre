@@ -7,13 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from ..client import get_client
 from ..errors import upstream_error
-from ..models import (
-    ResolveRequest,
-    ResolveResponse,
-    SearchRequest,
-    SearchResponse,
-    Track,
-)
+from ..models import ResolveRequest, ResolveResponse, SearchRequest, SearchResponse, Track
 from ..normalize import to_track, to_tracks
 
 logger = logging.getLogger(__name__)
@@ -30,11 +24,10 @@ _EMBED_RANK = {
     "MUSIC_VIDEO_TYPE_PODCAST_EPISODE": 4,
     "MUSIC_VIDEO_TYPE_SHOULDER": 4,
 }
-_EMBED_RANK_UNKNOWN = 2
 
 
 def _embed_rank(track: Track) -> int:
-    return _EMBED_RANK.get(track.video_type or "", _EMBED_RANK_UNKNOWN)
+    return _EMBED_RANK.get(track.video_type or "", 2)
 
 
 def _search_videos(query: str, limit: int) -> list | None:
@@ -49,28 +42,19 @@ def _search_videos(query: str, limit: int) -> list | None:
 def search(request: SearchRequest) -> SearchResponse:
     with ThreadPoolExecutor(max_workers=1) as pool:
         pending_videos = pool.submit(_search_videos, request.query, request.limit)
-
         try:
-            results = get_client().search(
-                request.query,
-                filter="songs",
-                limit=request.limit,
-            )
+            results = get_client().search(request.query, filter="songs", limit=request.limit)
         except Exception as error:
             raise upstream_error("search", error) from error
-
         tracks = to_tracks(results)
-        videos = pending_videos.result()
+        videos = to_tracks(pending_videos.result())
 
-    if videos is not None:
-        seen = {track.video_id for track in tracks}
-        for track in to_tracks(videos):
-            if track.video_id not in seen:
-                seen.add(track.video_id)
-                tracks.append(track)
-
+    seen = {track.video_id for track in tracks}
+    for track in videos:
+        if track.video_id not in seen:
+            seen.add(track.video_id)
+            tracks.append(track)
     tracks.sort(key=_embed_rank)
-
     return SearchResponse(items=tracks[: request.limit])
 
 
@@ -85,7 +69,6 @@ def extract_video_id(raw: str) -> str | None:
         return None
 
     host = (parsed.hostname or "").removeprefix("www.")
-
     if host == "youtu.be":
         segment = parsed.path.lstrip("/").split("/")[0]
         return segment if VIDEO_ID.match(segment) else None
@@ -106,8 +89,7 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
     video_id = extract_video_id(request.url)
     if video_id is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Not a recognisable YouTube or YouTube Music URL.",
+            status.HTTP_400_BAD_REQUEST, "Not a recognisable YouTube or YouTube Music URL."
         )
 
     try:
@@ -121,7 +103,6 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
 
     length = details.get("lengthSeconds")
     author = details.get("author")
-
     track = to_track(
         {
             "resultType": "song",

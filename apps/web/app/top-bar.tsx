@@ -46,8 +46,7 @@ export function TopBar() {
     if (value.trim() && pathname !== "/search") router.push("/search");
   }
 
-  const searchable = SEARCHABLE.has(pathname);
-  if (!searchable) return null;
+  if (!SEARCHABLE.has(pathname)) return null;
 
   return (
     <div className="sticky top-0 z-30 px-4 pb-2.5 pt-3 sm:px-7 sm:pb-3 sm:pt-4">
@@ -59,13 +58,10 @@ export function TopBar() {
       <div
         className="mx-auto w-full max-w-6xl"
         onFocus={(event) => {
-          if (chrome.current?.contains(event.target as Node)) return;
-          setFocused(true);
+          if (!chrome.current?.contains(event.target as Node)) setFocused(true);
         }}
         onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            setFocused(false);
-          }
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
         }}
       >
         <div className="flex items-center gap-2.5">

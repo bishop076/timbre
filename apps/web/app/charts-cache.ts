@@ -1,46 +1,27 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-
+import { createLocalStore, readJson, useLocalStore, writeJson } from "./local-store.ts";
 import { usableSongs } from "./song-shape.ts";
 import type { SongsResponse } from "./types";
 
 const KEY = "timbre:charts";
 
-let snapshot: SongsResponse | null = null;
-let read = false;
+const store = createLocalStore<SongsResponse | null>({
+  initial: null,
+  read: () => {
+    const songs = (readJson(KEY) as SongsResponse | null)?.songs;
+    return Array.isArray(songs) ? { songs: usableSongs(songs), failures: [] } : null;
+  },
+});
 
-function subscribe(): () => void {
-  return () => {};
-}
-
-export function readCachedCharts(): SongsResponse | null {
-  if (!read) {
-    read = true;
-    try {
-      const raw = window.localStorage.getItem(KEY);
-      const parsed: unknown = raw ? JSON.parse(raw) : null;
-      const songs = (parsed as SongsResponse | null)?.songs;
-      if (Array.isArray(songs)) snapshot = { songs: usableSongs(songs), failures: [] };
-    } catch {
-    }
-  }
-  return snapshot;
-}
-
-function getServerSnapshot(): SongsResponse | null {
-  return null;
-}
+export const readCachedCharts = store.getSnapshot;
 
 export function useCachedCharts(): SongsResponse | null {
-  return useSyncExternalStore(subscribe, readCachedCharts, getServerSnapshot);
+  return useLocalStore(store);
 }
 
 export function rememberCharts(response: SongsResponse): void {
   const songs = usableSongs(response.songs);
-  snapshot = { ...response, songs };
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify({ songs }));
-  } catch {
-  }
+  writeJson(KEY, { songs });
+  store.publish({ ...response, songs });
 }

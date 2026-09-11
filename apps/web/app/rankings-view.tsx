@@ -2,28 +2,29 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
-import { ArtistLink } from "./artist-link";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { toArtistSlug } from "./artist-slug";
 import { Movement } from "./movement";
+import { Caption, Notice, SectionTitle } from "./page-chrome";
 import { usePlayerControls } from "./player/player-context";
-import { AddToPlaylist } from "./playlists/add-to-playlist";
-import { SongRow } from "./song-row";
+import { RankedList } from "./song-row";
 import { ROW_BADGES, SourceBadges } from "./source-badges";
 import { sourceStyle } from "./sources";
 import { SOURCE_TAG } from "./source-tag";
 import { useTaste } from "./taste-store";
 import { artistKey, listNames } from "@/lib/genre-tally";
+import type { ChartTrack } from "@/lib/discover";
+import type { agreement, Rankings, shareByArtist } from "@/lib/rankings";
 
 const BarChart = dynamic(() => import("./bar-chart").then((m) => m.BarChart));
 const ChartGraph = dynamic(() => import("./chart-graph").then((m) => m.ChartGraph));
-import type { ChartTrack } from "@/lib/discover";
-import type { Rankings } from "@/lib/rankings";
 
 const FUSED_RANKING = -1;
 
+type Share = ReturnType<typeof shareByArtist>;
+type Agreement = ReturnType<typeof agreement>;
 type ViewId = "yours" | "mix" | "spread" | "songs" | "artists" | "agreement";
 
 const VIEWS: { id: ViewId; label: string; blurb: string }[] = [
@@ -43,109 +44,86 @@ export function RankingsView({
   agree,
   genreMix,
   chart,
-  embedded = false,
 }: {
   rankings: Rankings;
   songGenres: Record<string, number[]>;
   genreNames: Record<number, string>;
-  share: { artist: string; entries: number; best: number }[];
-  agree: { shared: number; only: { chart: string; count: number }[]; total: number };
-  genreMix: React.ReactNode;
+  share: Share;
+  agree: Agreement;
+  genreMix: ReactNode;
   chart: ChartTrack[];
-  embedded?: boolean;
 }) {
   const taste = useTaste();
   const [picked, setPicked] = useState<ViewId | null>(null);
-  const view: ViewId = picked ?? (taste.genres.length > 0 ? "yours" : genreMix ? "mix" : "songs");
+  const view: ViewId = picked ?? (taste.genres.length > 0 ? "yours" : "mix");
   const current = VIEWS.find((entry) => entry.id === view)!;
 
-  if (rankings.songs.length === 0) {
-    return (
-      <div className={embedded ? "" : "mx-auto w-full max-w-6xl px-4 py-16 sm:px-7"}>
-        {embedded ? (
-          <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">Rankings</h2>
-        ) : (
-          <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Rankings</h1>
-        )}
-        <p className="mt-3 text-sm leading-relaxed text-[var(--fg-dim)]">
+  return (
+    <div>
+      <SectionTitle>Rankings</SectionTitle>
+      {rankings.songs.length === 0 ? (
+        <Notice className="mt-3">
           No chart answered just now. This is built entirely from other services&rsquo; published
           charts, so when none of them reply there is nothing honest to show.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={
-        embedded
-          ? ""
-          : "@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4"
-      }
-    >
-      {embedded ? (
-        <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">Rankings</h2>
+        </Notice>
       ) : (
-        <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Rankings</h1>
-      )}
-      <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-[var(--fg-faint)]">
-        Built from{" "}
-        {rankings.charts.length === 1
-          ? "one published chart"
-          : `${rankings.charts.length} published charts`}
-        {rankings.charts.length > 0 && (
-          <> — {rankings.charts.map((chart) => sourceStyle(chart).label).join(" and ")}</>
-        )}
-        . Charting on more than one outranks charting higher on one.
-      </p>
+        <>
+          <Caption className="mt-1.5 max-w-2xl">
+            Built from{" "}
+            {rankings.charts.length === 1
+              ? "one published chart"
+              : `${rankings.charts.length} published charts`}{" "}
+            — {rankings.charts.map((chart) => sourceStyle(chart).label).join(" and ")}. Charting on
+            more than one outranks charting higher on one.
+          </Caption>
 
-      <div className="mt-5 flex flex-col gap-5 @3xl:flex-row @3xl:gap-7">
-        <nav
-          aria-label="Ranking views"
-          className="-mx-1 flex shrink-0 flex-wrap gap-1.5 px-1 @3xl:mx-0 @3xl:w-52 @3xl:flex-col @3xl:flex-nowrap"
-        >
-          {VIEWS.map((entry) => {
-            const active = entry.id === view;
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => setPicked(entry.id)}
-                aria-current={active ? "true" : undefined}
-                className={`press shrink-0 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition @3xl:w-full ${
-                  active
-                    ? "slab-sm text-[var(--accent-fg)]"
-                    : "bg-[var(--surface-2)] text-[var(--fg-dim)] hover:text-[var(--fg)] @3xl:bg-transparent"
-                }`}
-                style={active ? { background: "var(--accent)" } : undefined}
-              >
-                {entry.label}
-              </button>
-            );
-          })}
-        </nav>
+          <div className="mt-5 flex flex-col gap-5 @3xl:flex-row @3xl:gap-7">
+            <nav
+              aria-label="Ranking views"
+              className="-mx-1 flex shrink-0 flex-wrap gap-1.5 px-1 @3xl:mx-0 @3xl:w-52 @3xl:flex-col @3xl:flex-nowrap"
+            >
+              {VIEWS.map((entry) => {
+                const active = entry.id === view;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => setPicked(entry.id)}
+                    aria-current={active ? "true" : undefined}
+                    className={`press shrink-0 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition @3xl:w-full ${
+                      active
+                        ? "slab-sm text-[var(--accent-fg)]"
+                        : "bg-[var(--surface-2)] text-[var(--fg-dim)] hover:text-[var(--fg)] @3xl:bg-transparent"
+                    }`}
+                    style={active ? { background: "var(--accent)" } : undefined}
+                  >
+                    {entry.label}
+                  </button>
+                );
+              })}
+            </nav>
 
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{current.label}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--fg-faint)]">{current.blurb}</p>
+            <div className="min-w-0 flex-1">
+              <SectionTitle>{current.label}</SectionTitle>
+              <Caption className="mt-1">{current.blurb}</Caption>
 
-          <div className="mt-4">
-            {view === "yours" && (
-              <YoursView rankings={rankings} songGenres={songGenres} genreNames={genreNames} />
-            )}
-            {view === "mix" && genreMix}
-            {view === "spread" && <SpreadView chart={chart} />}
-            {view === "songs" && <SongsView rankings={rankings} />}
-            {view === "artists" && <ArtistsView share={share} total={rankings.songs.length} />}
-            {view === "agreement" && <AgreementView agree={agree} rankings={rankings} />}
+              <div className="mt-4">
+                {view === "yours" && (
+                  <YoursView rankings={rankings} songGenres={songGenres} genreNames={genreNames} />
+                )}
+                {view === "mix" && genreMix}
+                {view === "spread" && <SpreadView chart={chart} />}
+                {view === "songs" && <SongsView rankings={rankings} />}
+                {view === "artists" && <ArtistsView share={share} total={rankings.songs.length} />}
+                {view === "agreement" && <AgreementView agree={agree} rankings={rankings} />}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
-
-const YOUR_GENRES = 3;
 
 function YoursView({
   rankings,
@@ -156,9 +134,8 @@ function YoursView({
   songGenres: Record<string, number[]>;
   genreNames: Record<number, string>;
 }) {
-  const { play, current, state } = usePlayerControls();
   const taste = useTaste();
-  const top = taste.genres.slice(0, YOUR_GENRES).map((genre) => genre.id);
+  const top = taste.genres.slice(0, 3).map((genre) => genre.id);
   const topNames = listNames(
     top.map((id) => genreNames[id]).filter((name): name is string => Boolean(name)),
   );
@@ -170,148 +147,105 @@ function YoursView({
     const genre = (songGenres[song.id] ?? []).find((id) => top.includes(id));
     return genre === undefined ? [] : [{ song, why: genreNames[genre] ?? "Your genre" }];
   });
-  const songs = picks.map((pick) => pick.song);
 
   if (!taste.listening) {
     return (
-      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+      <Notice>
         Play a few songs and this narrows the ranking to the genres and artists you listen to.
         It is worked out in your browser, from the history it keeps.
-      </p>
+      </Notice>
     );
   }
 
   if (picks.length === 0) {
     return (
-      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+      <Notice>
         {taste.genres.length === 0
           ? "Still working out the genres you play — this fills in as it does."
           : `Nothing in this week's top ${rankings.songs.length} is in ${
               topNames || "your genres"
             }, or by anyone you have played.`}
-      </p>
+      </Notice>
     );
   }
 
   return (
     <>
-      <p className="mb-3 text-xs leading-relaxed text-[var(--fg-faint)]">
+      <Caption className="mb-3">
         {picks.length} of the top {rankings.songs.length}, numbered by their place overall.
         {topNames && ` Your genres, by what you played lately: ${topNames}.`}
-      </p>
+      </Caption>
 
-      <ul className="divide-y divide-[var(--line)]">
-        {picks.map(({ song, why }) => (
-          <SongRow
-            key={song.id}
-            song={song}
-            onPlay={() => play(song, songs)}
-            isCurrent={current?.id === song.id}
-            isPlaying={state === "playing"}
-            size="sm"
-            rank={song.position}
-            rankPlays
-            subtitle={<ArtistLink artists={song.artists} />}
-            trailing={
-              <>
-                <span className={`${SOURCE_TAG} hidden shrink-0 @lg:inline`}>{why}</span>
-                <SourceBadges song={song} className={ROW_BADGES} />
-                <AddToPlaylist
-                  song={song}
-                  className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                />
-              </>
-            }
-          />
-        ))}
-      </ul>
+      <RankedList
+        songs={picks.map((pick) => pick.song)}
+        extra={(song, index) => (
+          <>
+            <span className={`${SOURCE_TAG} hidden shrink-0 @lg:inline`}>{picks[index]!.why}</span>
+            <SourceBadges song={song} className={ROW_BADGES} />
+          </>
+        )}
+      />
     </>
   );
 }
 
 function SongsView({ rankings }: { rankings: Rankings }) {
-  const { play, current, state } = usePlayerControls();
-  const songs = rankings.songs;
-
+  const { songs } = rankings;
   const snapshot = useChartSnapshot(FUSED_RANKING, songs);
 
   return (
     <>
       {snapshot && (
-        <p className="mb-3 text-xs leading-relaxed text-[var(--fg-faint)]">
+        <Caption className="mb-3">
           Movement {describeAge(snapshot.at)}, on this device only.
-        </p>
+        </Caption>
       )}
 
-      <ul className="divide-y divide-[var(--line)]">
-        {songs.slice(0, 50).map((song) => (
-          <SongRow
-            key={song.id}
-            song={song}
-            onPlay={() => play(song, songs)}
-            isCurrent={current?.id === song.id}
-            isPlaying={state === "playing"}
-            size="sm"
-            rank={song.position}
-            rankPlays
-            subtitle={<ArtistLink artists={song.artists} />}
-            trailing={
-              <>
-                <Movement delta={movementOf(snapshot, song.id, song.position)} />
+      <RankedList
+        songs={songs.slice(0, 50)}
+        queue={songs}
+        extra={(song) => (
+          <>
+            <Movement delta={movementOf(snapshot, song.id, song.position)} />
 
-                <div className="hidden shrink-0 items-center gap-1 @lg:flex">
-                  {song.charts.map((chart) => {
-                    const style = sourceStyle(chart);
-                    return (
-                      <span
-                        key={chart}
-                        title={`#${song.positions[chart]} on ${style.label}`}
-                        className={`${SOURCE_TAG} shrink-0 tabular-nums`}
-                      >
-                        {style.short} #{song.positions[chart]}
-                      </span>
-                    );
-                  })}
-                </div>
+            <div className="hidden shrink-0 items-center gap-1 @lg:flex">
+              {song.charts.map((chart) => {
+                const style = sourceStyle(chart);
+                return (
+                  <span
+                    key={chart}
+                    title={`#${song.positions[chart]} on ${style.label}`}
+                    className={`${SOURCE_TAG} shrink-0 tabular-nums`}
+                  >
+                    {style.short} #{song.positions[chart]}
+                  </span>
+                );
+              })}
+            </div>
 
-                <SourceBadges song={song} className={ROW_BADGES} />
-
-                <AddToPlaylist
-                  song={song}
-                  className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-                />
-              </>
-            }
-          />
-        ))}
-      </ul>
+            <SourceBadges song={song} className={ROW_BADGES} />
+          </>
+        )}
+      />
     </>
   );
 }
 
-function ArtistsView({
-  share,
-  total,
-}: {
-  share: { artist: string; entries: number; best: number }[];
-  total: number;
-}) {
+function ArtistsView({ share, total }: { share: Share; total: number }) {
   const router = useRouter();
   const rows = share.filter((row) => row.entries > 1).slice(0, 15);
 
   if (rows.length === 0) {
     return (
-      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+      <Notice>
         No artist holds more than one place this week — {total} songs, {total} different names.
-      </p>
+      </Notice>
     );
   }
 
   return (
     <>
-      <p className="mb-4 text-xs leading-relaxed text-[var(--fg-faint)]">
-        Out of {total} songs, counted by lead artist only.
-      </p>
+      <Caption className="mb-4">Out of {total} songs, counted by lead artist only.</Caption>
 
       <BarChart
         rows={rows.map((row) => ({
@@ -327,13 +261,7 @@ function ArtistsView({
   );
 }
 
-function AgreementView({
-  agree,
-  rankings,
-}: {
-  agree: { shared: number; only: { chart: string; count: number }[]; total: number };
-  rankings: Rankings;
-}) {
+function AgreementView({ agree, rankings }: { agree: Agreement; rankings: Rankings }) {
   const percent = agree.total > 0 ? Math.round((agree.shared / agree.total) * 100) : 0;
 
   return (
@@ -358,14 +286,14 @@ function AgreementView({
       </div>
 
       {rankings.failed.length > 0 && (
-        <p className="mt-5 text-xs leading-relaxed text-[var(--fg-faint)]">
+        <Caption className="mt-5">
           {rankings.failed.map((chart) => sourceStyle(chart).label).join(", ")} did not answer.
-        </p>
+        </Caption>
       )}
 
-      <p className="mt-5 max-w-xl text-xs leading-relaxed text-[var(--fg-faint)]">
+      <Caption className="mt-5 max-w-xl">
         Two agreeing charts beat one asserting — still only two Western services.
-      </p>
+      </Caption>
     </>
   );
 }
@@ -375,18 +303,18 @@ function SpreadView({ chart }: { chart: ChartTrack[] }) {
 
   if (chart.length < 2) {
     return (
-      <p className="text-sm leading-relaxed text-[var(--fg-dim)]">
+      <Notice>
         Deezer&rsquo;s chart did not answer, and the popularity score is its measure — there is
         nothing to plot without it.
-      </p>
+      </Notice>
     );
   }
 
   return (
     <>
-      <p className="mb-4 max-w-2xl text-xs leading-relaxed text-[var(--fg-faint)]">
+      <Caption className="mb-4 max-w-2xl">
         Each dot is a song in chart order; height is its catalogue popularity.
-      </p>
+      </Caption>
 
       <div className="slab rounded-[var(--r-lg)] bg-[var(--surface-1)] p-3 sm:p-4">
         <ChartGraph tracks={chart} onPick={(track) => play(track, chart)} height={220} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatClock } from "../duration";
 import { ChevronIcon, CheckIcon } from "../icons";
@@ -25,7 +25,7 @@ import {
   type LyricsAnswer,
   type LyricsProvider,
 } from "./lyrics-source";
-import { Empty } from "./panel-tabs";
+import { Empty, useJson } from "./panel-tabs";
 import { usePlayer } from "./player-context";
 
 interface Alternative {
@@ -37,21 +37,27 @@ interface Alternative {
   synced: boolean;
 }
 
+interface Alternatives {
+  alternatives: Alternative[];
+  busyFor?: number;
+}
+
+const NUDGES = [
+  { step: -0.5, text: "−0.5s", label: "Lyrics are early — delay them" },
+  { step: 0.5, text: "+0.5s", label: "Lyrics are late — bring them forward" },
+];
+
 function lyricsUrl(
   song: Song | null,
   provider: LyricsProvider,
-  artTracks: readonly string[],
+  playing: string | null,
   chosenId: number | undefined,
 ): string | null {
   if (!song) return null;
-
-  const params = new URLSearchParams({
-    title: song.title,
-    artist: song.artists[0] ?? "",
-  });
+  const params = new URLSearchParams({ title: song.title, artist: song.artists[0] ?? "" });
 
   if (provider === "ytmusic") {
-    for (const id of artTracks) params.append("id", id);
+    for (const id of artTrackIds(song.sources, playing)) params.append("id", id);
     return `/api/lyrics/ytmusic?${params}`;
   }
 
@@ -61,43 +67,23 @@ function lyricsUrl(
   return `/api/lyrics?${params}`;
 }
 
-function useLyrics(url: string | null): { answer: LyricsAnswer | null; loading: boolean } {
-  const [state, setState] = useState<{ url: string; answer: LyricsAnswer } | null>(null);
-  const [attempt, setAttempt] = useState(0);
+async function readLyrics(response: Response): Promise<LyricsAnswer> {
+  const body: unknown = await response.json().catch(() => null);
+  return readAnswer(response.status, response.headers.get("retry-after"), body);
+}
 
-  useEffect(() => {
-    if (!url) return;
+function lyricsRetry(answer: LyricsAnswer): number | null {
+  return answer.kind === "busy" ? retryDelayMs(answer.retryAfterSeconds) : null;
+}
 
-    const aborter = new AbortController();
+async function readAlternatives(response: Response): Promise<Alternatives | null> {
+  const busyFor = busySeconds(response.status, response.headers.get("retry-after"));
+  if (busyFor !== null) return { alternatives: [], busyFor };
+  return response.ok ? response.json() : null;
+}
 
-    fetch(url, { signal: aborter.signal })
-      .then(async (response) =>
-        readAnswer(
-          response.status,
-          response.headers.get("retry-after"),
-          await response.json().catch(() => null),
-        ),
-      )
-      .then((answer) => setState({ url, answer }))
-      .catch((cause: unknown) => {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setState({ url, answer: { kind: "failed" } });
-      });
-
-    return () => aborter.abort();
-  }, [url, attempt]);
-
-  useEffect(() => {
-    if (!state || state.url !== url || state.answer.kind !== "busy") return;
-    const timer = setTimeout(
-      () => setAttempt((count) => count + 1),
-      retryDelayMs(state.answer.retryAfterSeconds),
-    );
-    return () => clearTimeout(timer);
-  }, [state, url]);
-
-  const settled = state !== null && state.url === url;
-  return { answer: settled ? state.answer : null, loading: Boolean(url) && !settled };
+function alternativesRetry(found: Alternatives): number | null {
+  return found.busyFor ? retryDelayMs(found.busyFor) : null;
 }
 
 export function LyricsPanel() {
@@ -109,39 +95,22 @@ export function LyricsPanel() {
   const playing = activeSource === "ytmusic" ? videoId : null;
   const youtube = current ? hasYouTube(current.sources, playing) : false;
   const provider = activeProvider(pref.provider, youtube);
-  const other: LyricsProvider | null = youtube ? (provider === "ytmusic" ? "lrclib" : "ytmusic") : null;
+  const other = youtube ? (provider === "ytmusic" ? "lrclib" : "ytmusic") : null;
 
-  const artTracks = current ? artTrackIds(current.sources, playing) : [];
-  const { answer, loading } = useLyrics(lyricsUrl(current, provider, artTracks, pref.id));
+  const url = lyricsUrl(current, provider, playing, pref.id);
+  const { data, loading } = useJson(url, readLyrics, lyricsRetry);
+  const answer: LyricsAnswer | null = data ?? (loading || !url ? null : { kind: "failed" });
   const lyrics = answer?.kind === "found" ? answer.lyrics : null;
   const [fixing, setFixing] = useState(false);
+  const [following, setFollowing] = useState(true);
 
   const container = useRef<HTMLDivElement>(null);
   const activeLine = useRef<HTMLButtonElement>(null);
-
-  const [following, setFollowing] = useState(true);
-  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const lines = lyrics?.synced ?? null;
-
-  const at = position + (pref.offset ?? 0);
-
-  const activeIndex = useMemo(() => {
-    if (!lines || lines.length === 0) return -1;
-    let low = 0;
-    let high = lines.length - 1;
-    let found = -1;
-    while (low <= high) {
-      const mid = (low + high) >> 1;
-      if (lines[mid]!.at <= at) {
-        found = mid;
-        low = mid + 1;
-      } else {
-        high = mid - 1;
-      }
-    }
-    return found;
-  }, [lines, at]);
+  const offset = pref.offset ?? 0;
+  const activeIndex = lines?.findLastIndex((line) => line.at <= position + offset) ?? -1;
 
   useEffect(() => {
     if (!following || activeIndex < 0) return;
@@ -158,34 +127,15 @@ export function LyricsPanel() {
 
   function onUserScroll() {
     setFollowing(false);
-    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    clearTimeout(resumeTimer.current);
     resumeTimer.current = setTimeout(() => setFollowing(true), 6_000);
   }
 
-  useEffect(() => {
-    return () => {
-      if (resumeTimer.current) clearTimeout(resumeTimer.current);
-    };
-  }, []);
+  useEffect(() => () => clearTimeout(resumeTimer.current), []);
 
-  if (loading && !answer) {
-    return <Empty>Looking for lyrics…</Empty>;
-  }
+  if (loading && !answer) return <Empty>Looking for lyrics…</Empty>;
 
   if (!lyrics || (lyrics.instrumental && !lyrics.plain && !lines)) {
-    const switchTo = other && (
-      <>
-        <br />
-        <button
-          type="button"
-          onClick={() => setLyricsProvider(prefKey, other)}
-          className="slab-sm press mt-3 inline-block rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold text-[var(--fg)]"
-        >
-          Try {PROVIDER_NAMES[other]}
-        </button>
-      </>
-    );
-
     return (
       <Empty>
         {answer?.kind === "busy"
@@ -197,83 +147,83 @@ export function LyricsPanel() {
               : provider === "ytmusic"
                 ? "YouTube Music has no lyrics for this track."
                 : "No lyrics found for this track."}
-        {switchTo}
+        {other && (
+          <>
+            <br />
+            <button
+              type="button"
+              onClick={() => setLyricsProvider(prefKey, other)}
+              className="slab-sm press mt-3 inline-block rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold text-[var(--fg)]"
+            >
+              Try {PROVIDER_NAMES[other]}
+            </button>
+          </>
+        )}
       </Empty>
     );
   }
 
-  const toolbar = (synced: boolean) => (
-    <LyricsToolbar
-      song={current}
-      prefKey={prefKey}
-      lyrics={lyrics}
-      provider={provider}
-      youtubeAvailable={youtube}
-      chosenId={pref.id}
-      offset={synced ? (pref.offset ?? 0) : 0}
-      open={fixing}
-      onToggle={() => setFixing((was) => !was)}
-      synced={synced}
-    />
-  );
+  const synced = lines !== null && lines.length > 0;
 
-  if (lines && lines.length > 0) {
-    return (
-      <>
-      {toolbar(true)}
-      <div
-        ref={container}
-        onWheel={onUserScroll}
-        onTouchMove={onUserScroll}
-        className="scroller-quiet relative min-h-0 flex-1 overflow-y-auto px-4 py-[38vh] sm:px-5"
-      >
-        {lines.map((line, index) => {
-          const isActive = index === activeIndex;
-          const isPast = index < activeIndex;
-          return (
+  return (
+    <>
+      <LyricsToolbar
+        song={current}
+        prefKey={prefKey}
+        lyrics={lyrics}
+        provider={provider}
+        youtubeAvailable={youtube}
+        chosenId={pref.id}
+        offset={synced ? offset : 0}
+        open={fixing}
+        onToggle={() => setFixing((was) => !was)}
+        synced={synced}
+      />
+      {synced ? (
+        <div
+          ref={container}
+          onWheel={onUserScroll}
+          onTouchMove={onUserScroll}
+          className="scroller-quiet relative min-h-0 flex-1 overflow-y-auto px-4 py-[38vh] sm:px-5"
+        >
+          {lines.map((line, index) => (
             <button
               key={`${line.at}-${index}`}
-              ref={isActive ? activeLine : undefined}
+              ref={index === activeIndex ? activeLine : undefined}
               type="button"
               onClick={() => seek(line.at)}
               className={`block w-full origin-left py-2 text-left text-lg font-extrabold leading-tight sm:py-2.5 sm:text-xl transition-all duration-500 ease-[var(--ease)] @lg:text-[1.6rem] ${
-                isActive
+                index === activeIndex
                   ? "scale-100 text-[var(--fg)] opacity-100"
-                  : isPast
+                  : index < activeIndex
                     ? "scale-[0.97] text-[var(--fg-dim)] opacity-35 hover:opacity-60"
                     : "scale-[0.97] text-[var(--fg-dim)] opacity-55 hover:opacity-85"
               }`}
             >
               {line.text || <span className="opacity-40">♪</span>}
             </button>
-          );
-        })}
+          ))}
 
-        {!following && (
-          <button
-            type="button"
-            onClick={() => setFollowing(true)}
-            className="slab-sm press sticky bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold"
-          >
-            Follow the song
-          </button>
-        )}
-      </div>
-      </>
-    );
-  }
-
-  return (
-    <>
-    {toolbar(false)}
-    <div className="scroller-quiet min-h-0 flex-1 overflow-y-auto px-5 py-6">
-      <p className="whitespace-pre-wrap text-base font-semibold leading-relaxed text-[var(--fg-dim)]">
-        {lyrics.plain}
-      </p>
-      <p className="mt-6 border-t-[length:var(--edge)] border-[var(--ink)] pt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
-        No timings for this one, so it can&rsquo;t follow along.
-      </p>
-    </div>
+          {!following && (
+            <button
+              type="button"
+              onClick={() => setFollowing(true)}
+              className="slab-sm press sticky bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold"
+            >
+              Follow the song
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="scroller-quiet min-h-0 flex-1 overflow-y-auto px-5 py-6">
+          <p className="whitespace-pre-wrap text-base font-semibold leading-relaxed text-[var(--fg-dim)]">
+            {lyrics.plain}
+          </p>
+          <p className="mt-6 border-t-[length:var(--edge)] border-[var(--ink)] pt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
+            No timings for this one, so it can&rsquo;t follow along.
+          </p>
+        </div>
+      )}
     </>
   );
 }
@@ -292,7 +242,7 @@ function LyricsToolbar({
 }: {
   song: Song | null;
   prefKey: string;
-  lyrics: Lyrics | null;
+  lyrics: Lyrics;
   provider: LyricsProvider;
   youtubeAvailable: boolean;
   chosenId: number | undefined;
@@ -301,53 +251,22 @@ function LyricsToolbar({
   onToggle: () => void;
   synced: boolean;
 }) {
-  const [found, setFound] = useState<{
-    key: string;
-    list: Alternative[];
-    busyFor?: number;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!open || !song || found?.key === prefKey) return;
-
-    const aborter = new AbortController();
-
-    const params = new URLSearchParams({
-      title: song.title,
-      artist: song.artists[0] ?? "",
-      alternatives: "1",
-    });
-
-    fetch(`/api/lyrics?${params}`, { signal: aborter.signal })
-      .then(async (response) => {
-        const busyFor = busySeconds(response.status, response.headers.get("retry-after"));
-        if (busyFor !== null) return { key: prefKey, list: [], busyFor };
-        const data = response.ok ? ((await response.json()) as { alternatives: Alternative[] }) : null;
-        return { key: prefKey, list: data?.alternatives ?? [] };
-      })
-      .then(setFound)
-      .catch((cause: unknown) => {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setFound({ key: prefKey, list: [] });
-      });
-
-    return () => aborter.abort();
-  }, [open, song, prefKey, found]);
-
-  useEffect(() => {
-    if (!found?.busyFor) return;
-    const timer = setTimeout(() => setFound(null), retryDelayMs(found.busyFor));
-    return () => clearTimeout(timer);
-  }, [found]);
-
-  const alternatives = found?.key === prefKey ? found.list : null;
-  const busy = found?.key === prefKey && Boolean(found.busyFor);
-  const loading = open && alternatives === null;
+  const params =
+    open && song
+      ? new URLSearchParams({ title: song.title, artist: song.artists[0] ?? "", alternatives: "1" })
+      : null;
+  const { data, loading } = useJson(
+    params && `/api/lyrics?${params}`,
+    readAlternatives,
+    alternativesRetry,
+  );
+  const alternatives = data?.alternatives ?? [];
+  const busy = !loading && Boolean(data?.busyFor);
 
   const label =
     provider === "ytmusic"
-      ? [PROVIDER_NAMES.ytmusic, lyrics?.attribution].filter(Boolean).join(" · ")
-      : lyrics?.matchedArtist
+      ? [PROVIDER_NAMES.ytmusic, lyrics.attribution].filter(Boolean).join(" · ")
+      : lyrics.matchedArtist
         ? `${lyrics.matchedArtist} — ${lyrics.matchedTitle ?? ""}`
         : PROVIDER_NAMES.lrclib;
 
@@ -383,22 +302,17 @@ function LyricsToolbar({
               <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
                 Timing
               </span>
-              <button
-                type="button"
-                onClick={() => setLyricsOffset(prefKey, offset - 0.5)}
-                aria-label="Lyrics are early — delay them"
-                className="slab-sm press rounded-[var(--r-sm)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-bold"
-              >
-                −0.5s
-              </button>
-              <button
-                type="button"
-                onClick={() => setLyricsOffset(prefKey, offset + 0.5)}
-                aria-label="Lyrics are late — bring them forward"
-                className="slab-sm press rounded-[var(--r-sm)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-bold"
-              >
-                +0.5s
-              </button>
+              {NUDGES.map(({ step, text, label }) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={() => setLyricsOffset(prefKey, offset + step)}
+                  aria-label={label}
+                  className="slab-sm press rounded-[var(--r-sm)] bg-[var(--surface-2)] px-2 py-1 text-[11px] font-bold"
+                >
+                  {text}
+                </button>
+              ))}
               {offset !== 0 && (
                 <button
                   type="button"
@@ -443,7 +357,7 @@ function LyricsToolbar({
             </p>
           )}
 
-          {alternatives?.length === 0 && !loading && !busy && (
+          {!loading && !busy && alternatives.length === 0 && (
             <p className="px-1 py-2 text-[11px] leading-relaxed text-[var(--fg-faint)]">
               {provider === "ytmusic"
                 ? "LRCLIB has nothing for this one."
@@ -454,8 +368,8 @@ function LyricsToolbar({
           )}
 
           <div className="scroller-quiet max-h-48 overflow-y-auto">
-            {alternatives?.map((option) => {
-              const chosen = provider === "lrclib" && lyrics?.id === option.id;
+            {alternatives.map((option) => {
+              const chosen = provider === "lrclib" && lyrics.id === option.id;
               return (
                 <button
                   key={option.id}
@@ -464,9 +378,7 @@ function LyricsToolbar({
                   className="flex w-full items-start gap-2 rounded-[var(--r-sm)] px-2 py-1.5 text-left hover:bg-[var(--surface-2)]"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-semibold">
-                      {option.trackName}
-                    </span>
+                    <span className="block truncate text-[12px] font-semibold">{option.trackName}</span>
                     <span className="block truncate text-[10px] text-[var(--fg-dim)]">
                       {[
                         youtubeAvailable ? PROVIDER_NAMES.lrclib : null,

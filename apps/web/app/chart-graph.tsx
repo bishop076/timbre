@@ -5,8 +5,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChartTrack } from "@/lib/discover";
 
 const PAD = { left: 42, right: 14, top: 14, bottom: 20 };
-
 const TIP_MAX_W = 240;
+const AXIS_TEXT = "fill-[var(--fg-faint)] text-[10px] tabular-nums";
 
 const useMeasure = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -22,7 +22,6 @@ function scale(values: number[]): { min: number; max: number; ticks: number[] } 
   const rough = Math.max((high - low) / 3, 1);
   const magnitude = 10 ** Math.floor(Math.log10(rough));
   const step = [1, 2, 5, 10].map((n) => n * magnitude).find((n) => n >= rough) ?? magnitude * 10;
-
   const min = Math.floor(low / step) * step;
   const max = Math.ceil(high / step) * step;
 
@@ -47,33 +46,27 @@ export function ChartGraph({
   useMeasure(() => {
     const element = box.current;
     if (!element) return;
-
     setWidth(element.clientWidth);
-
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(entry?.contentRect.width ?? 0);
-    });
+    const observer = new ResizeObserver(([entry]) => setWidth(entry?.contentRect.width ?? 0));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
 
   const points = tracks.filter((track) => track.popularity > 0);
-
   if (points.length < 2) return <div ref={box} />;
 
   const { min, max, ticks } = scale(points.map((track) => track.popularity));
   const plotWidth = Math.max(0, width - PAD.left - PAD.right);
   const plotHeight = height - PAD.top - PAD.bottom;
+  const gap = plotWidth / (points.length - 1);
+  const radius = gap < 14 ? 3.5 : 4.5;
 
-  const x = (index: number) =>
-    PAD.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
+  const x = (index: number) => PAD.left + index * gap;
   const y = (value: number) =>
     PAD.top + plotHeight - ((value - min) / (max - min || 1)) * plotHeight;
 
-  const gap = plotWidth / Math.max(1, points.length - 1);
-  const radius = gap < 14 ? 3.5 : 4.5;
-
-  const active = hover !== null ? points[hover] : null;
+  const active = hover === null ? null : points[hover];
+  const activeY = active ? y(active.popularity) : 0;
 
   return (
     <div ref={box} className="relative w-full" style={{ height }}>
@@ -109,7 +102,7 @@ export function ChartGraph({
                 y={y(tick)}
                 textAnchor="end"
                 dominantBaseline="middle"
-                className="fill-[var(--fg-faint)] text-[10px] tabular-nums"
+                className={AXIS_TEXT}
               >
                 {formatScore(tick)}
               </text>
@@ -127,37 +120,24 @@ export function ChartGraph({
             />
           )}
 
-          {points.map((track, index) => {
-            const focused = hover === index;
-            return (
-              <circle
-                key={track.id}
-                cx={x(index)}
-                cy={y(track.popularity)}
-                r={focused ? radius + 1.5 : radius}
-                fill="var(--accent)"
-                stroke="var(--surface-1)"
-                strokeWidth={2}
-                onClick={() => onPick?.(track)}
-                className={onPick ? "cursor-pointer" : undefined}
-              />
-            );
-          })}
+          {points.map((point, index) => (
+            <circle
+              key={point.id}
+              cx={x(index)}
+              cy={y(point.popularity)}
+              r={hover === index ? radius + 1.5 : radius}
+              fill="var(--accent)"
+              stroke="var(--surface-1)"
+              strokeWidth={2}
+              onClick={() => onPick?.(point)}
+              className={onPick ? "cursor-pointer" : undefined}
+            />
+          ))}
 
-          <text
-            x={PAD.left}
-            y={height - 5}
-            textAnchor="start"
-            className="fill-[var(--fg-faint)] text-[10px] tabular-nums"
-          >
+          <text x={PAD.left} y={height - 5} textAnchor="start" className={AXIS_TEXT}>
             #1
           </text>
-          <text
-            x={width - PAD.right}
-            y={height - 5}
-            textAnchor="end"
-            className="fill-[var(--fg-faint)] text-[10px] tabular-nums"
-          >
+          <text x={width - PAD.right} y={height - 5} textAnchor="end" className={AXIS_TEXT}>
             #{points.length}
           </text>
         </svg>
@@ -169,9 +149,9 @@ export function ChartGraph({
           style={{
             maxWidth: Math.min(TIP_MAX_W, width),
             left: Math.min(Math.max(x(hover ?? 0) - 80, 0), Math.max(0, width - TIP_MAX_W)),
-            ...(y(active.popularity) > PAD.top + plotHeight / 2
-              ? { bottom: height - y(active.popularity) + 14 }
-              : { top: y(active.popularity) + 14 }),
+            ...(activeY > PAD.top + plotHeight / 2
+              ? { bottom: height - activeY + 14 }
+              : { top: activeY + 14 }),
           }}
         >
           <p className="truncate text-[12px] font-semibold">{active.title}</p>

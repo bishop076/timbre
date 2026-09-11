@@ -2,14 +2,23 @@
 
 import { ArtistLink } from "./artist-link";
 import { Artwork } from "./artwork";
-import { CheckIcon, PlayIcon, PlusIcon } from "./icons";
+import { CheckIcon, PlusIcon } from "./icons";
 import { usePlayerControls } from "./player/player-context";
 import { useSongMenu } from "./player/song-menu";
 import { sameTrack } from "./player/song-match";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
+import { PlayGlyph } from "./tile-cards";
 import type { Song } from "./types";
 
 export const TILE = "w-[8rem] shrink-0 snap-start sm:w-[11.5rem]";
+
+export function SongTiles({ songs, queue = songs }: { songs: Song[]; queue?: Song[] }) {
+  return songs.map((song) => (
+    <div key={song.id} className={TILE}>
+      <SongCard song={song} queue={queue} />
+    </div>
+  ));
+}
 
 export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
   const { play, enqueue, current, state, queue: playerQueue } = usePlayerControls();
@@ -51,15 +60,7 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
             }`}
             style={{ background: "var(--accent)" }}
           >
-            {isPlaying ? (
-              <span className="eq flex h-3.5 items-end gap-[3px]">
-                <span />
-                <span />
-                <span />
-              </span>
-            ) : (
-              <PlayIcon className="size-[18px] translate-x-px" />
-            )}
+            <PlayGlyph playing={isPlaying} />
           </span>
 
           <button

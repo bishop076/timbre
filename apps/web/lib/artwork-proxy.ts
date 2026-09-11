@@ -22,7 +22,7 @@ export const ALLOWED_HOSTS = new Set([
 
 export const MAX_BYTES = 8 * 1024 * 1024;
 
-export const MAX_HOPS = 3;
+const MAX_HOPS = 3;
 
 export function allowed(url: URL): boolean {
   return url.protocol === "https:" && ALLOWED_HOSTS.has(url.hostname);
@@ -39,29 +39,20 @@ export function capped(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         seen += chunk.byteLength;
-        if (seen > limit) {
-          controller.error(new Error("Artwork exceeded the size limit."));
-          return;
-        }
-        controller.enqueue(chunk);
+        if (seen > limit) controller.error(new Error("Artwork exceeded the size limit."));
+        else controller.enqueue(chunk);
       },
     }),
   );
 }
 
-export interface FetchOptions {
-  signal?: AbortSignal;
-  isAllowed?: (url: URL) => boolean;
-  maxHops?: number;
-}
-
 export async function fetchAllowed(
   target: URL,
-  { signal, isAllowed = allowed, maxHops = MAX_HOPS }: FetchOptions = {},
+  { signal, isAllowed = allowed }: { signal?: AbortSignal; isAllowed?: (url: URL) => boolean } = {},
 ): Promise<Response | null> {
   let current = target;
 
-  for (let hop = 0; hop <= maxHops; hop += 1) {
+  for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
     const response = await fetch(current, {
       headers: { accept: "image/*" },
       signal,
@@ -74,16 +65,8 @@ export async function fetchAllowed(
     }
 
     const location = response.headers.get("location");
-    if (!location) return null;
-
-    let next: URL;
-    try {
-      next = new URL(location, current);
-    } catch {
-      return null;
-    }
-
-    if (!isAllowed(next)) return null;
+    const next = location ? URL.parse(location, current) : null;
+    if (!next || !isAllowed(next)) return null;
     current = next;
   }
 

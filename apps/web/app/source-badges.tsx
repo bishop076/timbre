@@ -24,7 +24,6 @@ export function SourceBadges({ song, className = "" }: { song: Song; className?:
       {song.sources.map((source) => {
         const style = sourceStyle(source.source);
         const kind = playbackFrom(song, source.source);
-        const open = source.url ?? undefined;
 
         return (
           <span key={source.source} className="inline-flex items-center gap-1">
@@ -50,9 +49,9 @@ export function SourceBadges({ song, className = "" }: { song: Song; className?:
               <span className={SOURCE_TAG}>{style.short}</span>
             )}
 
-            {open && (
+            {source.url && (
               <a
-                href={open}
+                href={source.url}
                 target="_blank"
                 rel="noreferrer noopener"
                 title={`Open on ${style.label}`}

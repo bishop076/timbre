@@ -1,46 +1,49 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildPalette, lightnessOf, type Swatch } from "./palette.ts";
+import { buildPalette, type Palette, type Swatch } from "./palette.ts";
 import type { ThemeState } from "./theme-store.ts";
 
 const ALBUM: ThemeState = { mode: "album", customHue: 258, customLight: false, customNeutral: false };
-const PASTEL: ThemeState = { mode: "pastel", customHue: 258, customLight: false, customNeutral: false };
-const CUSTOM_DARK: ThemeState = { mode: "custom", customHue: 12, customLight: false, customNeutral: false };
-const CUSTOM_LIGHT: ThemeState = { mode: "custom", customHue: 12, customLight: true, customNeutral: false };
+const PASTEL: ThemeState = { ...ALBUM, mode: "pastel" };
+const CUSTOM_DARK: ThemeState = { ...ALBUM, mode: "custom", customHue: 12 };
+const CUSTOM_LIGHT: ThemeState = { ...CUSTOM_DARK, customLight: true };
+const NEUTRAL_DARK: ThemeState = { ...ALBUM, mode: "custom", customHue: 200, customNeutral: true };
+const NEUTRAL_LIGHT: ThemeState = { ...NEUTRAL_DARK, customLight: true };
+const ALL = [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT, NEUTRAL_DARK, NEUTRAL_LIGHT];
 
 const COVER: Swatch = { hue: 190, sat: 0.55 };
+const VIVID: Swatch = { hue: 300, sat: 0.7 };
 
-function hues(palette: Record<string, string>): number[] {
-  return Object.values(palette)
-    .map((value) => /hsl\(\s*([\d.]+)/.exec(value)?.[1])
-    .filter((hue): hue is string => hue !== undefined)
-    .map(Number);
+function hues(palette: Palette): number[] {
+  return Object.values(palette).flatMap((value) => {
+    const hue = /hsl\(\s*([\d.]+)/.exec(value)?.[1];
+    return hue === undefined ? [] : [Number(hue)];
+  });
 }
 
-function light(palette: Record<string, string>, token: string): number {
-  const value = lightnessOf(palette[token]!);
-  assert.notEqual(value, null, `${token} should be an hsl() colour`);
-  return value!;
+function channel(palette: Palette, token: string, index: 1 | 2): number {
+  const match = /hsl\(\s*[\d.]+\s+([\d.]+)%\s+([\d.]+)%/.exec(palette[token]);
+  assert.ok(match, `${token} should be an hsl() colour`);
+  return Number(match[index]);
 }
 
-function sat(palette: Record<string, string>, token: string): number {
-  return Number(/hsl\(\s*[\d.]+\s+([\d.]+)%/.exec(palette[token]!)?.[1] ?? "0");
-}
+const sat = (palette: Palette, token: string) => channel(palette, token, 1);
+const light = (palette: Palette, token: string) => channel(palette, token, 2);
+const gap = (palette: Palette, a: string, b: string) => Math.abs(light(palette, a) - light(palette, b));
 
 test("album takes its hue from the cover", () => {
-  const palette = buildPalette(COVER, ALBUM);
-  const coloured = hues(palette).filter((hue) => hue !== 0);
+  const coloured = hues(buildPalette(COVER, ALBUM)).filter((hue) => hue !== 0);
   assert.deepEqual(new Set(coloured), new Set([190]), "the whole ramp is one hue");
 });
 
-test("custom ignores the cover entirely — that is the point of it", () => {
-  const withCover = buildPalette(COVER, CUSTOM_DARK);
-  const withNothing = buildPalette(null, CUSTOM_DARK);
-
-  assert.deepEqual(withCover, withNothing, "artwork must not move a fixed theme");
-  assert.ok(hues(withCover).includes(12), "and it uses the hue the reader chose");
-  assert.ok(!hues(withCover).includes(190));
+test("custom and neutral ignore the cover entirely", () => {
+  for (const theme of [CUSTOM_DARK, NEUTRAL_DARK]) {
+    assert.deepEqual(buildPalette({ hue: 12, sat: 0.9 }, theme), buildPalette(null, theme));
+    assert.deepEqual(buildPalette(COVER, theme), buildPalette(null, theme));
+  }
+  assert.ok(hues(buildPalette(COVER, CUSTOM_DARK)).includes(12), "custom uses the chosen hue");
+  assert.ok(!hues(buildPalette(COVER, CUSTOM_DARK)).includes(190));
 });
 
 test("a missing swatch still yields a usable palette", () => {
@@ -52,29 +55,27 @@ test("a missing swatch still yields a usable palette", () => {
 });
 
 test("dark grounds are dark and light grounds are light", () => {
-  assert.ok(light(buildPalette(COVER, ALBUM), "--bg") < 25, "album is a dark ground");
-  assert.ok(light(buildPalette(COVER, CUSTOM_DARK), "--bg") < 25);
-  assert.ok(light(buildPalette(COVER, PASTEL), "--bg") > 85, "pastel is a light ground");
-  assert.ok(light(buildPalette(COVER, CUSTOM_LIGHT), "--bg") > 80);
-});
-
-test("text separates from the surface it sits on, in every mode", () => {
-  for (const theme of [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT]) {
-    const palette = buildPalette(COVER, theme);
-    const surface = light(palette, "--surface-1");
-    const gap = Math.abs(light(palette, "--fg") - surface);
-    assert.ok(gap > 40, `${theme.mode}: --fg is only ${gap.toFixed(0)}% from --surface-1`);
-
-    const dimGap = Math.abs(light(palette, "--fg-dim") - surface);
-    assert.ok(dimGap > 20, `${theme.mode}: --fg-dim is only ${dimGap.toFixed(0)}% from --surface-1`);
+  const cases: [ThemeState, number, number][] = [
+    [ALBUM, 0, 25],
+    [CUSTOM_DARK, 0, 25],
+    [NEUTRAL_DARK, 0, 15],
+    [PASTEL, 85, 100],
+    [CUSTOM_LIGHT, 80, 100],
+    [NEUTRAL_LIGHT, 85, 100],
+  ];
+  for (const [theme, low, high] of cases) {
+    const bg = light(buildPalette(COVER, theme), "--bg");
+    assert.ok(bg > low && bg < high, `${theme.mode}: --bg at ${bg}% is outside ${low}–${high}%`);
   }
+  assert.ok(light(buildPalette(VIVID, ALBUM), "--bg") <= 10, "the album ground is genuinely dark");
 });
 
-test("accent text separates from the accent behind it", () => {
-  for (const theme of [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT]) {
+test("text and accent text separate from what they sit on, in every mode", () => {
+  for (const theme of ALL) {
     const palette = buildPalette(COVER, theme);
-    const gap = Math.abs(light(palette, "--accent-fg") - light(palette, "--accent"));
-    assert.ok(gap > 35, `${theme.mode}: accent-fg is only ${gap.toFixed(0)}% from accent`);
+    assert.ok(gap(palette, "--fg", "--surface-1") > 40, `${theme.mode}: --fg too close to surface`);
+    assert.ok(gap(palette, "--fg-dim", "--surface-1") > 20, `${theme.mode}: --fg-dim too close`);
+    assert.ok(gap(palette, "--accent-fg", "--accent") > 35, `${theme.mode}: accent-fg too close`);
   }
 });
 
@@ -90,110 +91,54 @@ test("surfaces step in a consistent direction", () => {
 });
 
 test("pastel is gentler than the album ramp at the same hue", () => {
-  const saturation = (value: string) => Number(/hsl\(\s*[\d.]+\s+([\d.]+)%/.exec(value)?.[1] ?? "0");
-  const pastelBg = saturation(buildPalette(COVER, PASTEL)["--bg"]!);
-  const albumBg = saturation(buildPalette(COVER, ALBUM)["--bg"]!);
-
+  const pastelBg = sat(buildPalette(COVER, PASTEL), "--bg");
+  const albumBg = sat(buildPalette(COVER, ALBUM), "--bg");
   assert.ok(pastelBg < albumBg, `pastel bg saturation ${pastelBg}% should be under ${albumBg}%`);
 });
 
-test("light grounds keep an edge, but a soft one", () => {
+test("light grounds keep a soft edge and a short, translucent shadow", () => {
   for (const theme of [PASTEL, CUSTOM_LIGHT]) {
     const palette = buildPalette(COVER, theme);
     const ink = light(palette, "--ink");
-    const surface = light(palette, "--surface-1");
-
     assert.ok(ink > 30, `${theme.mode}: --ink at ${ink}% is the dark ramp's harsh edge`);
-    assert.ok(surface - ink > 25, `${theme.mode}: --ink at ${ink}% would vanish into the plane`);
-  }
-});
+    assert.ok(light(palette, "--surface-1") - ink > 25, `${theme.mode}: --ink would vanish`);
 
-test("light grounds cast a short, translucent shadow", () => {
-  for (const theme of [PASTEL, CUSTOM_LIGHT]) {
-    const palette = buildPalette(COVER, theme);
-    const drop = palette["--drop"]!;
-
+    const drop = palette["--drop"];
     assert.match(drop, /\/\s*0?\.\d+\s*\)/, `${theme.mode}: --drop needs an alpha, got ${drop}`);
-
-    const offset = Number(/^(\d+)px/.exec(drop)?.[1]);
-    assert.ok(offset <= 1, `${theme.mode}: --drop travels ${offset}px, which reads as an outline`);
-
-    const alpha = Number(/\/\s*(0?\.\d+)\s*\)/.exec(drop)?.[1]);
-    assert.ok(alpha <= 0.2, `${theme.mode}: --drop at ${alpha} opacity is still heavy`);
+    assert.ok(Number(/^(\d+)px/.exec(drop)?.[1]) <= 1, `${theme.mode}: --drop reads as an outline`);
+    assert.ok(Number(/\/\s*(0?\.\d+)\s*\)/.exec(drop)?.[1]) <= 0.2, `${theme.mode}: --drop is heavy`);
   }
 });
 
-test("the dark ground keeps its longer, solid throw", () => {
-  const drop = buildPalette(COVER, ALBUM)["--drop"]!;
-  assert.ok(Number(/^(\d+)px/.exec(drop)?.[1]) >= 3, `dark --drop should keep its depth: ${drop}`);
-});
-
-test("the dark ground keeps its hard edge", () => {
+test("the dark ground keeps its hard edge and longer, solid throw", () => {
   const palette = buildPalette(COVER, ALBUM);
+  assert.ok(Number(/^(\d+)px/.exec(palette["--drop"])?.[1]) >= 3, "dark --drop keeps its depth");
   assert.ok(light(palette, "--ink") < 10, "dark ink stays near-black");
   assert.ok(light(palette, "--ink") < light(palette, "--surface-1"));
 });
 
 test("an extreme swatch is pulled back into a usable range", () => {
-  const neon = buildPalette({ hue: 300, sat: 1 }, ALBUM);
-  const washed = buildPalette({ hue: 300, sat: 0 }, ALBUM);
-
-  assert.ok(sat(neon, "--bg") <= 30, "clamped down from full saturation");
-  assert.ok(sat(washed, "--bg") > 5, "and still carries some hue rather than going grey");
+  assert.ok(sat(buildPalette({ hue: 300, sat: 1 }, ALBUM), "--bg") <= 30, "clamped down");
+  assert.ok(sat(buildPalette({ hue: 300, sat: 0 }, ALBUM), "--bg") > 5, "and still not grey");
 });
 
 test("surfaces carry far less hue than the accent", () => {
-  const palette = buildPalette({ hue: 300, sat: 0.7 }, ALBUM);
-
-  assert.ok(
-    sat(palette, "--bg") < sat(palette, "--accent") / 2,
-    `--bg at ${sat(palette, "--bg")}% should be well under the accent's ${sat(palette, "--accent")}%`,
-  );
+  const palette = buildPalette(VIVID, ALBUM);
+  assert.ok(sat(palette, "--bg") < sat(palette, "--accent") / 2, "--bg is well under the accent");
   assert.ok(sat(palette, "--fg") < 12, "labels are near-neutral, not tinted");
 });
 
-test("the album ground is genuinely dark", () => {
-  const palette = buildPalette({ hue: 300, sat: 0.7 }, ALBUM);
-  assert.ok(light(palette, "--bg") <= 10, `--bg at ${light(palette, "--bg")}% is not dark enough`);
-});
-
 test("neutral has no colour, on either ground", () => {
-  for (const isLight of [true, false]) {
-    const palette = buildPalette(COVER, {
-      mode: "custom",
-      customHue: 200,
-      customLight: isLight,
-      customNeutral: true,
-    });
-
+  for (const theme of [NEUTRAL_DARK, NEUTRAL_LIGHT]) {
+    const palette = buildPalette(COVER, theme);
     for (const token of ["--bg", "--surface-1", "--fg", "--accent"]) {
-      assert.ok(
-        sat(palette, token) <= 5,
-        `${token} at ${sat(palette, token)}% is not neutral on a ${isLight ? "light" : "dark"} ground`,
-      );
+      assert.ok(sat(palette, token) <= 5, `${token} at ${sat(palette, token)}% is not neutral`);
     }
   }
 });
 
-test("neutral still reads as white or as dark", () => {
-  const base = { mode: "custom" as const, customHue: 200, customNeutral: true };
-  const white = buildPalette(COVER, { ...base, customLight: true });
-  const dark = buildPalette(COVER, { ...base, customLight: false });
-
-  assert.ok(light(white, "--bg") > 85, "white is white");
-  assert.ok(light(dark, "--bg") < 15, "dark is dark");
-  assert.ok(Math.abs(light(white, "--fg") - light(white, "--surface-1")) > 40);
-  assert.ok(Math.abs(light(dark, "--fg") - light(dark, "--surface-1")) > 40);
-});
-
-test("a neutral choice ignores the artwork completely", () => {
-  const neutral = { mode: "custom" as const, customHue: 200, customLight: false, customNeutral: true };
-  assert.deepEqual(buildPalette({ hue: 12, sat: 0.9 }, neutral), buildPalette(null, neutral));
-});
-
 test("custom hue wraps rather than producing an invalid colour", () => {
-  const palette = buildPalette(null, { mode: "custom", customHue: 359, customLight: false, customNeutral: false });
-  for (const hue of hues(palette)) {
+  for (const hue of hues(buildPalette(null, { ...CUSTOM_DARK, customHue: 359 }))) {
     assert.ok(hue >= 0 && hue < 360, `hue ${hue} is out of range`);
   }
 });

@@ -1,6 +1,5 @@
-import { PROVIDER_IDS, type CanonicalTrack, type ProviderId, type RateLimiter } from "@timbre/core";
+import type { CanonicalTrack, ProviderId, RateLimiter } from "@timbre/core";
 
-export const SOURCE_IDS = PROVIDER_IDS;
 export type SourceId = ProviderId;
 
 export type Playback = "queue" | "manual" | "link";
@@ -16,13 +15,8 @@ export interface SourceTrack extends CanonicalTrack {
   previewUrl?: string | null;
 }
 
-export interface Song {
+export interface Song extends CanonicalTrack {
   id: string;
-  title: string;
-  artists: string[];
-  album: string | null;
-  durationMs: number | null;
-  isrc: string | null;
   artworkUrl: string | null;
   artworkFallbacks?: string[];
   sources: SourceTrack[];
@@ -50,22 +44,10 @@ export interface SearchProvider {
   readonly id: SourceId;
   readonly playback: Playback;
   readonly searchable: boolean;
-
   search(ctx: SearchContext, query: string, limit: number): Promise<SourceTrack[]>;
-
   resolve?(ctx: SearchContext, url: string): Promise<SourceTrack | null>;
-
   chart?(ctx: SearchContext, limit: number): Promise<SourceTrack[]>;
-
   radio?(ctx: SearchContext, seed: RadioSeed, limit: number): Promise<RankedList[]>;
 }
 
-export const PLAYBACK_RANK: Record<Playback, number> = {
-  queue: 0,
-  manual: 1,
-  link: 2,
-};
-
-export function byPlayability(a: SourceTrack, b: SourceTrack): number {
-  return PLAYBACK_RANK[a.playback] - PLAYBACK_RANK[b.playback];
-}
+export const PLAYBACK_RANK: Record<Playback, number> = { queue: 0, manual: 1, link: 2 };

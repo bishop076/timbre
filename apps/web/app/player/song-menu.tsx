@@ -26,15 +26,9 @@ export function useSongMenu(song: Song): {
   const onContextMenu = useCallback((event: React.MouseEvent) => {
     if (event.shiftKey) return;
     event.preventDefault();
-
-    const useless = event.clientX <= 0 && event.clientY <= 0;
-    if (useless) {
-      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-      setAt({ x: rect.left + 16, y: rect.bottom });
-      return;
-    }
-
-    setAt({ x: event.clientX, y: event.clientY });
+    if (event.clientX > 0 || event.clientY > 0) return setAt({ x: event.clientX, y: event.clientY });
+    const rect = event.currentTarget.getBoundingClientRect();
+    setAt({ x: rect.left + 16, y: rect.bottom });
   }, []);
 
   return {
@@ -54,7 +48,6 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
 
   useLayoutEffect(() => {
     const height = menu.current?.offsetHeight ?? 0;
-
     const left = Math.min(at.x, window.innerWidth - MENU_WIDTH - MARGIN);
     const wantTop = at.y + height + MARGIN <= window.innerHeight ? at.y : at.y - height;
     const maxTop = Math.max(MARGIN, window.innerHeight - height - MARGIN);
@@ -76,26 +69,43 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
       onClose();
     };
 
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", onClose, true);
-    window.addEventListener("resize", onClose);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", onClose, true);
-      window.removeEventListener("resize", onClose);
-    };
+    const listeners = new AbortController();
+    const { signal } = listeners;
+    window.addEventListener("pointerdown", onPointerDown, { signal });
+    window.addEventListener("keydown", onKeyDown, { signal });
+    window.addEventListener("scroll", onClose, { capture: true, signal });
+    window.addEventListener("resize", onClose, { signal });
+    return () => listeners.abort();
   }, [onClose]);
 
   useEffect(() => {
     if (placed) menu.current?.focus();
   }, [placed]);
 
-  const run = (action: () => void) => {
-    action();
-    onClose();
-  };
+  const items = [
+    { label: "Play now", icon: <PlayIcon className="size-4" />, action: () => play(song) },
+    {
+      label: "Play next",
+      icon: <NextIcon className="size-4" />,
+      action: () => playNext([song]),
+      hint: playing ? "Playing" : undefined,
+    },
+    {
+      label: "Add to queue",
+      icon: queued ? <CheckIcon className="size-4" /> : <QueueAddIcon className="size-4" />,
+      action: () => enqueue([song]),
+      hint: queued ? "Queued" : undefined,
+    },
+    {
+      label: liked ? "Unlike" : "Like",
+      icon: liked ? (
+        <HeartFilledIcon className="size-4 text-[var(--accent)]" />
+      ) : (
+        <HeartIcon className="size-4" />
+      ),
+      action: () => (liked ? unlikeSong(song) : likeSong(song)),
+    },
+  ];
 
   return createPortal(
     <div
@@ -110,69 +120,24 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
       }
       className="slab fixed z-[100] w-52 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] p-1.5 shadow-[var(--drop-lg)] outline-none"
     >
-      <Item icon={<PlayIcon className="size-4" />} onClick={() => run(() => play(song))}>
-        Play now
-      </Item>
-
-      <Item
-        icon={<NextIcon className="size-4" />}
-        onClick={() => run(() => playNext([song]))}
-        disabled={playing}
-        hint={playing ? "Playing" : undefined}
-      >
-        Play next
-      </Item>
-
-      <Item
-        icon={queued ? <CheckIcon className="size-4" /> : <QueueAddIcon className="size-4" />}
-        onClick={() => run(() => enqueue([song]))}
-        disabled={queued}
-        hint={queued ? "Queued" : undefined}
-      >
-        Add to queue
-      </Item>
-
-      <Item
-        icon={
-          liked ? (
-            <HeartFilledIcon className="size-4 text-[var(--accent)]" />
-          ) : (
-            <HeartIcon className="size-4" />
-          )
-        }
-        onClick={() => run(() => (liked ? unlikeSong(song) : likeSong(song)))}
-      >
-        {liked ? "Unlike" : "Like"}
-      </Item>
+      {items.map(({ label, icon, action, hint }) => (
+        <button
+          key={label}
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            action();
+            onClose();
+          }}
+          disabled={hint !== undefined}
+          className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)] disabled:cursor-default disabled:text-[var(--fg-dim)] disabled:hover:bg-transparent"
+        >
+          <span className="shrink-0 text-[var(--fg-dim)]">{icon}</span>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {hint && <span className="shrink-0 text-[11px] text-[var(--fg-faint)]">{hint}</span>}
+        </button>
+      ))}
     </div>,
     document.body,
-  );
-}
-
-function Item({
-  icon,
-  onClick,
-  disabled,
-  hint,
-  children,
-}: {
-  icon: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      onClick={onClick}
-      disabled={disabled}
-      className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)] disabled:cursor-default disabled:text-[var(--fg-dim)] disabled:hover:bg-transparent"
-    >
-      <span className="shrink-0 text-[var(--fg-dim)]">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {hint && <span className="shrink-0 text-[11px] text-[var(--fg-faint)]">{hint}</span>}
-    </button>
   );
 }

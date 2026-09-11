@@ -15,6 +15,7 @@ import {
   TrashIcon,
 } from "../icons";
 import { clearLogs, useLogs, type LogLevel } from "../logs.ts";
+import { Caption } from "../page-chrome";
 import { setPlaybackPref, usePlaybackPrefs } from "../player/playback-prefs";
 import { SpotifyConnect } from "../spotify/connect-panel";
 
@@ -22,12 +23,9 @@ const ThemePicker = dynamic(() => import("../theme/theme-picker").then((m) => m.
 
 const REPO = "https://github.com/bishop076/timbre";
 
-const VERSION = [
-  `v${process.env.NEXT_PUBLIC_TIMBRE_VERSION ?? "0.0.0"}`,
-  process.env.NEXT_PUBLIC_TIMBRE_COMMIT ? `(${process.env.NEXT_PUBLIC_TIMBRE_COMMIT})` : "",
-]
-  .filter(Boolean)
-  .join(" ");
+const COMMIT = process.env.NEXT_PUBLIC_TIMBRE_COMMIT;
+const VERSION =
+  `v${process.env.NEXT_PUBLIC_TIMBRE_VERSION ?? "0.0.0"}` + (COMMIT ? ` (${COMMIT})` : "");
 
 const SECTIONS = [
   {
@@ -36,39 +34,12 @@ const SECTIONS = [
     Icon: SettingsIcon,
     render: () => <General />,
   },
-  {
-    id: "sources",
-    label: "Sources",
-    Icon: NoteIcon,
-    render: () => <SpotifyConnect />,
-  },
-  {
-    id: "shortcuts",
-    label: "Shortcuts",
-    Icon: KeyboardIcon,
-    render: () => <Shortcuts />,
-  },
-  {
-    id: "appearance",
-    label: "Themes",
-    Icon: PaletteIcon,
-    render: () => <ThemePicker />,
-  },
-  {
-    id: "logs",
-    label: "Logs",
-    Icon: LogsIcon,
-    render: () => <Logs />,
-  },
-  {
-    id: "whats-new",
-    label: "What’s New",
-    Icon: SparkleIcon,
-    render: () => <WhatsNew />,
-  },
-] as const;
-
-type SectionId = (typeof SECTIONS)[number]["id"];
+  { id: "sources", label: "Sources", Icon: NoteIcon, render: () => <SpotifyConnect /> },
+  { id: "shortcuts", label: "Shortcuts", Icon: KeyboardIcon, render: () => <Shortcuts /> },
+  { id: "appearance", label: "Themes", Icon: PaletteIcon, render: () => <ThemePicker /> },
+  { id: "logs", label: "Logs", Icon: LogsIcon, render: () => <Logs /> },
+  { id: "whats-new", label: "What’s New", Icon: SparkleIcon, render: () => <WhatsNew /> },
+];
 
 const SHORTCUTS: { keys: string[]; action: string; note?: string }[] = [
   { keys: ["Space"], action: "Play or pause", note: "Once something is loaded" },
@@ -83,10 +54,10 @@ const SHORTCUTS: { keys: string[]; action: string; note?: string }[] = [
 function Shortcuts() {
   return (
     <>
-      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
+      <Caption>
         Ignored while you are typing, and whenever a modifier is held — so these
         never take a key another application wanted.
-      </p>
+      </Caption>
 
       <ul className="mt-4 divide-y divide-[var(--line)]">
         {SHORTCUTS.map((shortcut) => (
@@ -118,21 +89,17 @@ const LEVEL_TONE: Record<LogLevel, string> = {
   error: "text-red-400",
 };
 
-function stamp(at: number): string {
-  return new Date(at).toLocaleTimeString(undefined, { hour12: false });
-}
-
 function Logs() {
   const entries = useLogs();
 
   return (
     <>
       <div className="flex items-start justify-between gap-4">
-        <p className="max-w-prose text-xs leading-relaxed text-[var(--fg-faint)]">
+        <Caption className="max-w-prose">
           Which sources answered, which refused, and why a track fell back to another
           copy of itself. This tab only — none of it is written anywhere, and closing
           the tab loses it.
-        </p>
+        </Caption>
         <button
           type="button"
           onClick={clearLogs}
@@ -145,12 +112,9 @@ function Logs() {
       </div>
 
       {entries.length === 0 ? (
-        <div className="mt-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5">
-          <p className="text-[13px] font-bold">Nothing has happened yet</p>
-          <p className="mt-1.5 max-w-prose text-xs leading-relaxed text-[var(--fg-dim)]">
-            Search for something, or play a track, and what each source said turns up here.
-          </p>
-        </div>
+        <Notice title="Nothing has happened yet" className="mt-4">
+          Search for something, or play a track, and what each source said turns up here.
+        </Notice>
       ) : (
         <ul
           aria-label="Log entries, newest first"
@@ -162,7 +126,7 @@ function Logs() {
                 dateTime={new Date(entry.at).toISOString()}
                 className="shrink-0 tabular-nums text-[var(--fg-faint)]"
               >
-                {stamp(entry.at)}
+                {new Date(entry.at).toLocaleTimeString(undefined, { hour12: false })}
               </time>
               <span className={`w-9 shrink-0 font-bold ${LEVEL_TONE[entry.level]}`}>
                 {entry.level}
@@ -178,7 +142,7 @@ function Logs() {
   );
 }
 
-const RELEASES: { title: string; when?: string; changes: string[] }[] = [
+const RELEASES: { title: string; when: string; changes: string[] }[] = [
   {
     title: "0.1.0",
     when: "17 August 2026",
@@ -236,7 +200,7 @@ const RELEASES: { title: string; when?: string; changes: string[] }[] = [
 function WhatsNew() {
   return (
     <>
-      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
+      <Caption>
         Shipped with the build it describes — this is {VERSION}. The full list is in{" "}
         <a
           href={`${REPO}/blob/main/CHANGELOG.md`}
@@ -247,7 +211,7 @@ function WhatsNew() {
           CHANGELOG.md
         </a>
         .
-      </p>
+      </Caption>
 
       <div className="mt-4 divide-y divide-[var(--line)]">
         {RELEASES.map((release) => (
@@ -262,11 +226,9 @@ function WhatsNew() {
                   Installed
                 </span>
               )}
-              {release.when && (
-                <span className="ml-auto shrink-0 text-[11px] text-[var(--fg-faint)]">
-                  {release.when}
-                </span>
-              )}
+              <span className="ml-auto shrink-0 text-[11px] text-[var(--fg-faint)]">
+                {release.when}
+              </span>
             </div>
 
             <ul className="mt-2 max-w-prose space-y-1.5 text-xs leading-relaxed text-[var(--fg-dim)]">
@@ -291,9 +253,7 @@ function General() {
 
   return (
     <>
-      <p className="text-xs leading-relaxed text-[var(--fg-faint)]">
-        Saved in this browser, like everything else here.
-      </p>
+      <Caption>Saved in this browser, like everything else here.</Caption>
 
       <div className="mt-4 divide-y divide-[var(--line)]">
         <Choice
@@ -335,7 +295,11 @@ function Choice({
   options: { value: boolean; label: string }[];
 }) {
   return (
-    <div role="group" aria-label={label} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 first:pt-0">
+    <div
+      role="group"
+      aria-label={label}
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5 first:pt-0"
+    >
       <div className="min-w-0 flex-1 basis-56">
         <p className="text-[13px] font-bold">{label}</p>
         <p className="mt-0.5 text-xs leading-relaxed text-[var(--fg-dim)]">{detail}</p>
@@ -363,13 +327,28 @@ function Choice({
   );
 }
 
+function Notice({
+  title,
+  className = "",
+  children,
+}: {
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`${className} rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-5`.trim()}>
+      <p className="text-[13px] font-bold">{title}</p>
+      <p className="mt-1.5 max-w-prose text-xs leading-relaxed text-[var(--fg-dim)]">{children}</p>
+    </div>
+  );
+}
+
 export function SettingsPanel() {
   const [open, setOpen] = useState(false);
-  const [section, setSection] = useState<SectionId>(SECTIONS[0].id);
+  const [active, setActive] = useState(SECTIONS[0]);
   const dialog = useRef<HTMLDialogElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-
-  const active = SECTIONS.find((entry) => entry.id === section) ?? SECTIONS[0];
 
   useEffect(() => {
     const el = dialog.current;
@@ -420,12 +399,12 @@ export function SettingsPanel() {
               className="shelf flex shrink-0 gap-1 overflow-x-auto bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-visible sm:p-3"
             >
               {SECTIONS.map((entry) => {
-                const selected = entry.id === active.id;
+                const selected = entry === active;
                 return (
                   <button
                     key={entry.id}
                     type="button"
-                    onClick={() => setSection(entry.id)}
+                    onClick={() => setActive(entry)}
                     aria-current={selected ? "true" : undefined}
                     className={`press flex shrink-0 items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition sm:w-full ${
                       selected

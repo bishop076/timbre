@@ -4,7 +4,6 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const MANIFESTS = ["package.json", "apps/web/package.json"];
-const CHANGELOG = "CHANGELOG.md";
 
 export interface Commit {
   type: string;
@@ -26,7 +25,7 @@ const SILENT = ["docs", "chore", "refactor", "test", "ci", "build", "style", "re
 const git = (...args: string[]): string =>
   execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
 
-export function lastTag(): string | null {
+function lastTag(): string | null {
   try {
     return git("describe", "--tags", "--abbrev=0", "--match", "v*") || null;
   } catch {
@@ -49,25 +48,18 @@ export function bumpFor(commits: readonly (Commit | null)[], currentVersion: str
     (c): c is Commit => c !== null && (RELEASING[c.type] !== undefined || c.breaking),
   );
   if (releasing.length === 0) return null;
-
-  const preMajor = currentVersion.startsWith("0.");
-  if (releasing.some((c) => c.breaking)) return preMajor ? "minor" : "major";
-  if (releasing.some((c) => c.type === "feat")) return "minor";
-  return "patch";
+  if (releasing.some((c) => c.breaking)) {
+    return currentVersion.startsWith("0.") ? "minor" : "major";
+  }
+  return releasing.some((c) => c.type === "feat") ? "minor" : "patch";
 }
 
 export function nextVersion(current: string, bump: Bump): string {
   const parts = current.split(".").map(Number);
-  const [major, minor, patch] = parts;
-  if (
-    parts.length !== 3 ||
-    major === undefined ||
-    minor === undefined ||
-    patch === undefined ||
-    parts.some((n) => !Number.isInteger(n))
-  ) {
+  if (parts.length !== 3 || !parts.every(Number.isInteger)) {
     throw new Error(`not a semver version: ${current}`);
   }
+  const [major, minor, patch] = parts as [number, number, number];
   if (bump === "major") return `${major + 1}.0.0`;
   if (bump === "minor") return `${major}.${minor + 1}.0`;
   return `${major}.${minor}.${patch + 1}`;
@@ -95,22 +87,15 @@ export function notesFor(
 ): string {
   const parsed = commits.filter((c): c is Commit => c !== null);
   const lines = [`## ${version} — ${humanDate(now)}`, ""];
-  const entry = (commit: Commit) =>
-    `- ${commit.scope ? `**${commit.scope}** — ` : ""}${commit.description}`;
+  const section = (heading: string, group: Commit[]) => {
+    if (group.length === 0) return;
+    const entries = group.map((c) => `- ${c.scope ? `**${c.scope}** — ` : ""}${c.description}`);
+    lines.push(`### ${heading}`, "", ...entries, "");
+  };
 
-  const breaking = parsed.filter((c) => c.breaking);
-  if (breaking.length > 0) {
-    lines.push("### Breaking", "");
-    for (const commit of breaking) lines.push(entry(commit));
-    lines.push("");
-  }
-
+  section("Breaking", parsed.filter((c) => c.breaking));
   for (const [type, heading] of Object.entries(RELEASING)) {
-    const group = parsed.filter((c) => c.type === type && !c.breaking);
-    if (group.length === 0) continue;
-    lines.push(`### ${heading}`, "");
-    for (const commit of group) lines.push(entry(commit));
-    lines.push("");
+    section(heading, parsed.filter((c) => c.type === type && !c.breaking));
   }
 
   const quiet = parsed.filter((c) => SILENT.includes(c.type) && !c.breaking).length;
@@ -125,31 +110,26 @@ export function notesFor(
 }
 
 export function prependToChangelog(existing: string, section: string): string {
-  const firstRelease = existing.indexOf("\n## ");
-  if (firstRelease === -1) return `${existing.trimEnd()}\n\n${section}`;
-  const head = existing.slice(0, firstRelease + 1);
-  const tail = existing.slice(firstRelease + 1);
-  return `${head}${section}\n${tail}`;
+  const firstRelease = existing.indexOf("\n## ") + 1;
+  if (firstRelease === 0) return `${existing.trimEnd()}\n\n${section}`;
+  return `${existing.slice(0, firstRelease)}${section}\n${existing.slice(firstRelease)}`;
+}
+
+function output(text: string): void {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, text);
 }
 
 function main(): void {
-  const dryRun = process.argv.includes("--dry-run");
   const tag = lastTag();
-  const range = tag ? `${tag}..HEAD` : "HEAD";
-
-  const raw = git("log", range, "--no-merges", "--format=%B%x00");
-  const messages = raw
+  const messages = git("log", tag ? `${tag}..HEAD` : "HEAD", "--no-merges", "--format=%B%x00")
     .split("\0")
     .map((m) => m.trim())
     .filter(Boolean);
   const commits = messages.map(parseCommit);
 
-  const manifestPath = path.join(ROOT, MANIFESTS[0] ?? "package.json");
-  const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const current =
-    typeof manifest === "object" && manifest !== null && "version" in manifest
-      ? manifest.version
-      : undefined;
+  const manifestPath = path.join(ROOT, "package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: unknown } | null;
+  const current = manifest?.version;
   if (typeof current !== "string") {
     throw new Error(`no "version" string in ${manifestPath}`);
   }
@@ -161,20 +141,17 @@ function main(): void {
 
   if (!bump) {
     console.log("decision       nothing to release (no feat, fix or perf since the last tag)");
-    if (process.env.GITHUB_OUTPUT) {
-      appendFileSync(process.env.GITHUB_OUTPUT, "released=false\n");
-    }
+    output("released=false\n");
     return;
   }
 
   const version = nextVersion(current, bump);
-  const now = process.env.RELEASE_DATE || new Date();
-  const section = notesFor(commits, version, now);
+  const section = notesFor(commits, version, process.env.RELEASE_DATE || new Date());
 
   console.log(`decision       ${bump} -> ${version}`);
   console.log(`\n${section}`);
 
-  if (dryRun) {
+  if (process.argv.includes("--dry-run")) {
     console.log("(dry run: nothing written)");
     return;
   }
@@ -187,15 +164,9 @@ function main(): void {
     writeFileSync(file, updated);
   }
 
-  const changelog = path.join(ROOT, CHANGELOG);
+  const changelog = path.join(ROOT, "CHANGELOG.md");
   writeFileSync(changelog, prependToChangelog(readFileSync(changelog, "utf8"), section));
-
-  if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(
-      process.env.GITHUB_OUTPUT,
-      `released=true\nversion=${version}\ntag=v${version}\n`,
-    );
-  }
+  output(`released=true\nversion=${version}\ntag=v${version}\n`);
   writeFileSync(path.join(ROOT, "RELEASE_NOTES.md"), section);
 }
 

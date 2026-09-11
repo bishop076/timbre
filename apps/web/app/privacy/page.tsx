@@ -5,6 +5,13 @@ export const metadata = {
   description: "What Timbre stores about you, which is nothing, and what the services it embeds can see.",
 };
 
+const LINK = "font-semibold text-[var(--fg)] underline underline-offset-2";
+
+const POLICIES = [
+  ["https://policies.google.com/privacy", "Google / YouTube privacy policy"],
+  ["https://soundcloud.com/pages/privacy", "SoundCloud privacy policy"],
+];
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-9">
@@ -49,7 +56,7 @@ export default function PrivacyPage() {
             Clearing your browser data deletes all of it permanently, and it does not
             follow you to another device.{" "}
             <strong className="font-semibold text-[var(--fg)]">Export</strong> in{" "}
-            <Link href="/library" className="font-semibold text-[var(--fg)] underline underline-offset-2">
+            <Link href="/library" className={LINK}>
               your library
             </Link>{" "}
             keeps a copy of your playlists — but only those. Your history, profile name and
@@ -88,26 +95,13 @@ export default function PrivacyPage() {
           artwork, which is loaded from the service that published it.
         </p>
         <ul className="ml-4 list-disc space-y-1.5 marker:text-[var(--fg-faint)]">
-          <li>
-            <a
-              href="https://policies.google.com/privacy"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="font-semibold text-[var(--fg)] underline underline-offset-2"
-            >
-              Google / YouTube privacy policy
-            </a>
-          </li>
-          <li>
-            <a
-              href="https://soundcloud.com/pages/privacy"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="font-semibold text-[var(--fg)] underline underline-offset-2"
-            >
-              SoundCloud privacy policy
-            </a>
-          </li>
+          {POLICIES.map(([href, label]) => (
+            <li key={href}>
+              <a href={href} target="_blank" rel="noreferrer noopener" className={LINK}>
+                {label}
+              </a>
+            </li>
+          ))}
         </ul>
       </Section>
 
