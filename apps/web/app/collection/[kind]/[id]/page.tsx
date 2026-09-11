@@ -17,6 +17,7 @@ const KINDS = new Set<CollectionKind>([
 ]);
 
 export const revalidate = 900;
+export const dynamic = "force-static";
 
 const loadCollection = cache(async (kind: string, id: string) =>
   KINDS.has(kind as CollectionKind) ? fetchCollection(kind as CollectionKind, id) : null,

@@ -35,11 +35,15 @@ export function createRequester({
 }: RequesterOptions): SoftRequester {
   return async <T>(ctx: SearchContext, target: string | URL, extra?: RequestInit): Promise<T | null> => {
     ctx.signal?.throwIfAborted();
-    await ctx.limiter.acquire(id, DEFAULT_POLICIES[id]);
+    const signal = deadlineSignal(ctx.signal, deadlineMs);
+    const admitted = await ctx.limiter.acquire(id, DEFAULT_POLICIES[id], { maxWaitMs: deadlineMs, signal: ctx.signal });
+    if (admitted === false) {
+      throw new ProviderError(id, "rate_limited", `${label} has no free request slot within ${deadlineMs / 1000}s.`);
+    }
 
     let response: Response;
     try {
-      response = await fetch(target, { signal: deadlineSignal(ctx.signal, deadlineMs), ...init(ctx), ...extra });
+      response = await fetch(target, { signal, ...init(ctx), ...extra });
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
       const timedOut = cause instanceof DOMException && cause.name === "TimeoutError";

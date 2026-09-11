@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isArtwork, usableSongs } from "./song-shape.ts";
+import { usableArtwork, usableSongs } from "./song-shape.ts";
 
 const GOOD = {
   id: "yt:abc",
@@ -76,17 +76,30 @@ test("a preview from anywhere but a catalogue is not kept", () => {
   assert.equal(song?.sources[0]?.previewUrl, undefined);
 });
 
-test("covers must come from a host the proxy serves, or an Audius content node", () => {
-  assert.equal(isArtwork("https://i.ytimg.com/vi/a/hq.jpg"), true);
-  assert.equal(isArtwork("https://cdn-images.dzcdn.net/images/cover/h/500x500-000000-80-0-0.jpg"), true);
+test("covers must come from a host the proxy serves, or are fetched from Audius itself", () => {
+  assert.equal(usableArtwork("https://i.ytimg.com/vi/a/hq.jpg"), "https://i.ytimg.com/vi/a/hq.jpg");
+  const deezer = "https://cdn-images.dzcdn.net/images/cover/h/500x500-000000-80-0-0.jpg";
+  assert.equal(usableArtwork(deezer), deezer);
   assert.equal(
-    isArtwork("https://audius-content-10.figment.io/content/01JVSGMQ32Z7MX262JJZVAK0NZ/480x480.jpg"),
-    true,
+    usableArtwork("https://audius-content-10.figment.io/content/01JVSGMQ32Z7MX262JJZVAK0NZ/480x480.jpg"),
+    "https://api.audius.co/content/01JVSGMQ32Z7MX262JJZVAK0NZ/480x480.jpg",
   );
-  assert.equal(isArtwork("https://attacker.example/beacon.png"), false);
-  assert.equal(isArtwork("http://i.ytimg.com/vi/a/hq.jpg"), false);
-  assert.equal(isArtwork("data:image/png;base64,AAAA"), false);
-  assert.equal(isArtwork(null), false);
+  assert.equal(usableArtwork("https://attacker.example/beacon.png"), null);
+  assert.equal(usableArtwork("http://i.ytimg.com/vi/a/hq.jpg"), null);
+  assert.equal(usableArtwork("data:image/png;base64,AAAA"), null);
+  assert.equal(usableArtwork(null), null);
+});
+
+test("an Audius-shaped cover on any other host never reaches that host", () => {
+  const [song] = usableSongs([
+    {
+      ...GOOD,
+      artworkUrl: "https://attacker.example/content/x1/480x480.jpg",
+      artworkFallbacks: ["https://attacker.example/content/x1/480x480.jpg", "https://tracker.example/content/x1/480x480.jpg"],
+    },
+  ]);
+  assert.equal(song?.artworkUrl, "https://api.audius.co/content/x1/480x480.jpg");
+  assert.equal(song?.artworkFallbacks, undefined);
 });
 
 test("the play context survives only in its one valid shape", () => {
