@@ -10,6 +10,21 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.13.1 — 11 September 2026
+
+### Fixed
+
+- **web** — let the Deezer and Apple Music players frame
+- **security** — bound the limiter wait, cache and meter the heavy pages, and route Audius covers through Audius
+- **ui** — hide failed covers, keep early typing, and give phones the full player for streams
+- **sidecar** — check the secret before reading a body, and harden input parsing
+- **security** — accept SoundCloud and Spotify links only over http(s)
+- **providers** — skip SoundCloud clips flagged per transcoding, and retry MusicBrainz once
+- **security** — keep Spotify credentials out of backups and caches, and pin link and bundle origins
+- **player** — retry a blocked player script with a fresh tag
+
+4 further changes under the hood — refactoring, docs and tests.
+
 ## 0.13.0 — 11 September 2026
 
 ### Added
