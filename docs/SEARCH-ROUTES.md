@@ -235,12 +235,29 @@ loads it. The design and the operation hashes are ported from
 canary is the early warning for this surface; `wolfXspotify-API` and its original,
 `Casper-Tech-ke/sportify-api`, do the same job through the TOTP route with obfuscated source.
 
-**What it costs.** It is Spotify's private surface and it will break: the hashes rotate
-(`PersistedQueryNotFound` is reported by name rather than read as "no results"), and every
-search leaves by the deployment's one address. So the account route (R3) stays as the
+**What it costs.** It is Spotify's private surface and it will break: the hashes rotate, and
+every search leaves by the deployment's one address. So the account route (R3) stays as the
 fallback, and the results stay in their own section with `manual` playback, exactly as a
 connected account's did. Implementation: `packages/providers/src/spotify-web.ts`,
 `/api/spotify/search`, and pasted album and playlist links opening as collections.
+
+**How it keeps working.** Measured 2026-09-11, Spotify keeps a retired hash answering for a
+while after the web player moves on — the shipped table's first hashes were already a version
+behind and still worked — so there is warning before there is breakage, and three layers use it:
+
+1. **Self-repair.** A `PersistedQueryNotFound` makes the server read the current hash out of
+   Spotify's own web-player bundle — `getAlbum` and `fetchPlaylist` from the main script,
+   `searchDesktop` from its `xpui-routes-search` chunk, found through the webpack loader's name
+   map in two fetches rather than 150 — with SpotifyScraper's table as the second source, and
+   retry. Verified live by blanking both shipped hashes: search and the album still answered.
+2. **Fallback.** Albums and playlists fall back to their embed page's own track list, which
+   needs no token and no hash, when pathfinder throws for any reason.
+3. **A daily canary.** `.github/workflows/spotify-canary.yml` runs `scripts/spotify-canary.mts`
+   against the live service: each path with its rescue switched off, the fallbacks directly,
+   and the self-repair's sources, so a broken safety net is found before it is needed. A
+   failure opens (or comments on) one `spotify-breakage` issue naming the fix — usually a hash
+   to paste — and the next passing run closes it. `pnpm spotify:canary -- --drill` blanks the
+   search hash on purpose to show the alarm working.
 
 ## Part 4 — What to do
 
