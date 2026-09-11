@@ -8,6 +8,7 @@ import { Movement } from "./movement";
 import { AddToQueue } from "./player/add-to-queue";
 import { usePlayerControls } from "./player/player-context";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
+import { SaveAsPlaylist } from "./playlists/save-as-playlist";
 import { SongRow } from "./song-row";
 import { ROW_BADGES, SourceBadges } from "./source-badges";
 import { songFromHistory } from "./home-shelves";
@@ -86,6 +87,9 @@ export function CollectionView({ collection }: { collection: Collection }) {
               <ShuffleIcon className="size-4" />
               Shuffle
             </button>
+            {/* Keyed to the page: moving between collections re-renders this same tree, and a
+                "Saved" carried over from the last one would refuse to save this one. */}
+            <SaveAsPlaylist key={`${collection.kind}:${collection.id}`} name={collection.title} songs={tracks} />
           </div>
 
           {/* Said once here, not on every row. */}
