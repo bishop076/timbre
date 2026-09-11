@@ -77,6 +77,8 @@ function joined(...parts: (string | null)[]): string {
 }
 
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
+  if (!/^\d+$/.test(id)) return null;
+
   const raw = await deezer<{
     title: string;
     nb_tracks?: number;

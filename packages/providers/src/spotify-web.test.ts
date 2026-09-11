@@ -231,6 +231,23 @@ for (const [name, sources, upstream] of repairCases) {
   );
 }
 
+test("a bundle from anywhere but Spotify's CDN is not read, and the second source is a pinned commit", () =>
+  withRoutes(
+    [
+      token(),
+      RETIRED,
+      ["open.spotify.com/search", html(`<script src="https://evil.example/cdn/web-player.2c51c6eb.js"></script>`)],
+      ["SpotifyScraper", html(PYTHON)],
+      FOUND,
+    ],
+    async (calls) => {
+      assert.equal((await searchSpotifyWeb(ctx, "x")).length, 1);
+      assert.equal(calls.some((call) => call.url.includes("evil.example")), false);
+      const table = calls.find((call) => call.url.includes("SpotifyScraper"))?.url;
+      assert.match(table ?? "", /\/SpotifyScraper\/[0-9a-f]{40}\//);
+    },
+  ));
+
 test("album tracks borrow the album's title and sleeve, which they do not carry themselves", () => {
   const album = albumFromResponse(ALBUM_ID, {
     albumUnion: {
