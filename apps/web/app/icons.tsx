@@ -316,3 +316,16 @@ export function GithubIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+const HEART =
+  "M12 20s-7-4.35-9-9.1C1.7 7.6 3.7 4.5 7 4.5c2.1 0 3.8 1.2 5 3 1.2-1.8 2.9-3 5-3 3.3 0 5.3 3.1 4 6.4-2 4.75-9 9.1-9 9.1z";
+
+export function HeartIcon({ className }: IconProps) {
+  return <svg {...stroked} className={className}><path d={HEART} /></svg>;
+}
+
+/** Stroked as well as filled, not `filled`: without the stroke the solid heart is a pixel
+ * smaller on every side, so liking a song would visibly shrink the button. */
+export function HeartFilledIcon({ className }: IconProps) {
+  return <svg {...stroked} fill="currentColor" className={className}><path d={HEART} /></svg>;
+}
