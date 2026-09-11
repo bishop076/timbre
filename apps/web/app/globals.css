@@ -147,21 +147,20 @@
   transform: translate(1px, 1px);
   box-shadow: 0 0 0 var(--ink);
 }
+/* Same slab as every other panel and button on a dark ground: the ink edge and hard drop
+   stay, and the fill steps up one surface so the card lifts off the content panel. */
 :root[data-theme="dark"] .tile-card {
-  border-width: 1px;
-  border-color: color-mix(in srgb, var(--fg) 9%, transparent);
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  box-shadow: none;
+  background: var(--surface-2);
 }
 :root[data-theme="dark"] .tile-card:hover {
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  background: var(--surface-3);
+}
+:root[data-theme="dark"] .tile-card:active {
+  transform: translate(2px, 2px);
 }
 
 .tile-cover {
   border: var(--edge) solid var(--ink);
-}
-:root[data-theme="dark"] .tile-cover {
-  border: 0;
 }
 
 .press {
