@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { usePlayerControls } from "./player-context";
+import { useMediaSession } from "./use-media-session";
 
 // The player Timbre owns. YouTube and SoundCloud hand back an iframe and an API to poke at
 // it; Audius and the Internet Archive hand back audio, so this is an ordinary `<audio>`
@@ -57,6 +58,8 @@ export function ProgressiveAudioPlayer({
   } = usePlayerControls();
 
   const audioRef = useRef<HTMLAudioElement>(null);
+  // The lock screen and media keys — only this player can have them; see the hook.
+  useMediaSession(audioRef);
 
   // Audius artwork lives on whichever content node holds the track, and those go down
   // independently — one measured `200`, another `503`, another `502` for the *same* image.
