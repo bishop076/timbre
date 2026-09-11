@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
+import { hideWhenBroken } from "./artwork";
 import { cover as coverSrc } from "./artwork-url";
 import { Collage } from "./collage";
 import { ExploreForYou, kindLabel } from "./explore-for-you";
@@ -31,7 +32,7 @@ export function DiscoverView({
 
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4">
-      <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Explore</h1>
+      <h1 className="mb-4 px-1 text-xl font-extrabold tracking-tight sm:mb-6 sm:text-2xl">Explore</h1>
 
       <div className="min-h-[calc(100dvh-9rem)]">
         <ExploreForYou genres={initial.genres} />
@@ -147,6 +148,7 @@ function Featured({ data }: { data: Discover }) {
                     aria-hidden
                     loading="lazy"
                     decoding="async"
+                    {...hideWhenBroken}
                     className="absolute inset-0 size-full scale-[2] object-cover opacity-70 blur-3xl saturate-150"
                   />
                   <div
@@ -163,6 +165,7 @@ function Featured({ data }: { data: Discover }) {
                   alt=""
                   loading="lazy"
                   decoding="async"
+                  {...hideWhenBroken}
                   className="absolute left-1/2 top-1/2 aspect-square h-[76%] -translate-x-1/2 -translate-y-1/2 rounded-[4px] object-cover shadow-[0_8px_28px_rgba(0,0,0,0.5)]"
                 />
               ) : (

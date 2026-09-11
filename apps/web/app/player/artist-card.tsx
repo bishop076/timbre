@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { toArtistSlug } from "../artist-slug";
+import { hideWhenBroken } from "../artwork";
 import { cover as coverSrc } from "../artwork-url";
 import { ChevronIcon } from "../icons";
 import { useJson } from "./panel-tabs";
@@ -27,7 +28,12 @@ export function ArtistCard({ name }: { name: string | null }) {
       <div className="relative h-28">
         {artist.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={coverSrc(artist.imageUrl, 320) ?? undefined} alt="" className="size-full object-cover" />
+          <img
+            src={coverSrc(artist.imageUrl, 320) ?? undefined}
+            alt=""
+            {...hideWhenBroken}
+            className="size-full object-cover"
+          />
         ) : (
           <div className="size-full bg-[var(--surface-3)]" />
         )}

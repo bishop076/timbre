@@ -16,15 +16,12 @@ export function TopBar() {
   const pathname = usePathname();
   const input = useRef<HTMLInputElement>(null);
   const chrome = useRef<HTMLDivElement>(null);
-  const [narrow, setNarrow] = useState(false);
   const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 640px)");
-    const update = () => setNarrow(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    const early = input.current?.value;
+    if (early && !query) change(early);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -66,20 +63,26 @@ export function TopBar() {
       >
         <div className="flex items-center gap-2.5">
           <div className="relative min-w-0 flex-1">
-            <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
+            <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
             <input
               ref={input}
               type="search"
               value={query}
               onChange={(event) => change(event.target.value)}
-              placeholder={
-                narrow
-                  ? "Songs, artists, or a link…"
-                  : "Search for a song, artist or mix — or paste a link…"
-              }
+              placeholder=" "
               aria-label="Search for a song"
-              className="slab slab-soft w-full rounded-[var(--r-lg)] bg-[color-mix(in_oklab,var(--surface-1)_78%,transparent)] py-2.5 pl-11 pr-12 text-[13px] font-medium outline-none backdrop-blur-md transition-colors placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)] focus:shadow-[var(--drop-lg)] sm:text-[15px]"
+              className="peer slab slab-soft w-full rounded-[var(--r-lg)] bg-[color-mix(in_oklab,var(--surface-1)_78%,transparent)] py-2.5 pl-11 pr-12 text-[13px] font-medium outline-none backdrop-blur-md transition-colors focus:bg-[var(--surface-1)] focus:shadow-[var(--drop-lg)] sm:text-[15px]"
             />
+
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 left-11 right-12 hidden items-center text-[13px] text-[var(--fg-faint)] peer-placeholder-shown:flex sm:text-[15px]"
+            >
+              <span className="truncate sm:hidden">Songs, artists, or a link…</span>
+              <span className="hidden truncate sm:inline">
+                Search for a song, artist or mix — or paste a link…
+              </span>
+            </span>
 
             {query ? (
               <button

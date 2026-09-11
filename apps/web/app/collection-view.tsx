@@ -1,6 +1,7 @@
 "use client";
 
-import { cover as coverSrc } from "./artwork-url";
+import { Artwork } from "./artwork";
+import { sized } from "./artwork-url";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { Collage } from "./collage";
 import { PlayIcon, ShuffleIcon } from "./icons";
@@ -45,11 +46,11 @@ export function CollectionView({ collection }: { collection: Collection }) {
       <PageHeader
         art={
           collection.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={coverSrc(collection.coverUrl, 400) ?? undefined}
-              alt=""
-              className="slab size-28 shrink-0 rounded-[var(--r-lg)] object-cover sm:size-44"
+            <Artwork
+              src={sized(collection.coverUrl, 400)}
+              eager
+              iconClassName="size-7"
+              className="slab size-28 shrink-0 rounded-[var(--r-lg)] sm:size-44"
             />
           ) : (
             <Collage covers={collection.covers} className="slab size-28 shrink-0 sm:size-44" />

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
+import { hideWhenBroken } from "../artwork";
 import { openSpotifyWindow, rememberSpotifyPreviewsOnly } from "../spotify/preview-mode.ts";
 import { useSpotifyTokens } from "../spotify/token-store.ts";
 import { addScript, blockedReason, findScript, loadOnce, useLatest, useTransport } from "./embed";
@@ -169,6 +170,7 @@ export function SpotifyPlayer({
             src={controls.current.artworkUrl}
             alt=""
             aria-hidden
+            {...hideWhenBroken}
             className="max-h-full max-w-[260px] rounded-[var(--r-md)] object-contain"
           />
         )}

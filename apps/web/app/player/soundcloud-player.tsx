@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 
+import { hideWhenBroken } from "../artwork";
 import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
 
@@ -190,6 +191,7 @@ export function SoundCloudPlayer({
             src={artworkUrl}
             alt=""
             aria-hidden
+            {...hideWhenBroken}
             className="max-h-full max-w-full rounded-[var(--r-md)] object-contain"
           />
         </div>

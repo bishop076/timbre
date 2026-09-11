@@ -1,9 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type SyntheticEvent } from "react";
 
 import { proxied } from "./artwork-url";
 import { NoteIcon } from "./icons";
+
+export function failedAlready(img: HTMLImageElement): boolean {
+  return img.complete && img.naturalWidth === 0 && img.currentSrc !== "";
+}
+
+export const hideWhenBroken = {
+  onError: (event: SyntheticEvent<HTMLImageElement>) => {
+    event.currentTarget.style.visibility = "hidden";
+  },
+  onLoad: (event: SyntheticEvent<HTMLImageElement>) => {
+    event.currentTarget.style.visibility = "";
+  },
+  ref: (img: HTMLImageElement | null) => {
+    if (img && failedAlready(img)) img.style.visibility = "hidden";
+  },
+};
 
 function plainThumbnail(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -38,6 +54,9 @@ export function Artwork({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={attempted}
+          ref={(img) => {
+            if (img && failedAlready(img)) setFailedSrc(chosen ?? null);
+          }}
           src={attempted ?? undefined}
           alt=""
           loading={eager ? "eager" : "lazy"}
