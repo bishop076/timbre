@@ -4,11 +4,6 @@ import { CACHE_CONTROL_DAY, guard } from "@/lib/api";
 import { queryFlag, queryText } from "@/lib/query-text";
 import { fetchDiscography, findArtist } from "@/lib/discography";
 
-/*
- * Who an artist is, and what they have released. No artist profile can be embedded, so the
- * discography is assembled from Deezer, which publishes releases by kind keyless. `?full=1`
- * asks for it — the now-playing card runs on every track change, so the default is one lookup.
- */
 export const revalidate = 86_400;
 
 const querySchema = z.object({
@@ -32,8 +27,6 @@ export async function GET(request: Request) {
 
   const artist = await findArtist(parsed.data.name);
 
-  // Not found is a normal answer: plenty of uploads name someone no catalogue
-  // carries, and the panel just omits the card.
   if (!artist) return Response.json({ artist: null }, { status: 200 });
 
   const headers = { "cache-control": CACHE_CONTROL_DAY };

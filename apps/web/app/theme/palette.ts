@@ -1,12 +1,5 @@
 import { isLightTheme, type ThemeState } from "./theme-store.ts";
 
-// The whole interface, as one tonal ramp on a single hue — a "grey" here is that hue at
-// very low saturation. The hue comes from the cover in `album` and `pastel`, from the
-// reader in `custom`, and from nowhere in neutral. Pure and separate from the effect that
-// applies it, because a ramp putting a label at the surface's own lightness is invisible,
-// and a test catches that where staring at a running app does not.
-
-/** A colour read from artwork. Hue in degrees, saturation 0–1. */
 export interface Swatch {
   hue: number;
   sat: number;
@@ -14,18 +7,12 @@ export interface Swatch {
 
 export type Palette = Record<string, string>;
 
-/** Fallback hues for "nothing playing", per ground. */
 const FALLBACK_HUE = { dark: 258, light: 262 };
 
-/** Fixed, since custom mode's point is that nothing moves; mid-range so red is calm. */
 const CUSTOM_SAT = 0.62;
 
-/** Not quite zero: at 4% the hue reads as warmth rather than as colour. */
 const NEUTRAL_SAT = 0.04;
 
-// How much of the hue reaches the *surfaces*, as a fraction of the accent's. At the
-// original ~0.85 a saturated cover turned every plane and label that colour, leaving the
-// artwork competing with its own background.
 const SURFACE_TINT = 0.34;
 
 function hsl(hue: number, sat: number, light: number): string {
@@ -55,14 +42,9 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
 
   const tone = (l: number, s = sat) => hsl(hue, s, l);
 
-  // Floored so a washed-out cover still yields a usable accent. Neutral bypasses it: a
-  // floor cannot tell colourless-on-purpose from a failure to find a colour, and would
-  // reinstate the tint the reader just asked to remove.
   const accentSat = (low: number, high: number) => (neutral ? sat : clamp(sat, low, high));
 
   if (theme.mode === "pastel") {
-    // Saturation is pulled right down: a pale surface shows hue far more readily,
-    // and the album ramp's saturation on a 96%-light ground is neon, not gentle.
     return {
       "--bg": tone(0.96, sat * 0.3),
       "--surface-1": tone(0.99, sat * 0.18),
@@ -83,12 +65,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
   }
 
   if (light) {
-    // A soft tinted grey, not the dark ramp's near-black: the same values that read
-    // as depth over a dark ground read as a heavy outline over a pale one.
     const ink = tone(0.44, sat * 0.26);
-    // Halved travel: a 3px offset is a *distance* the eye reads as a second edge on a pale
-    // ground however light it is. Dark keeps the longer throw, where the offset is all
-    // that separates two nearly-black planes.
     const shade = (offset: string) =>
       `${offset} hsl(${Math.round(hue)} ${Math.round(sat * 26)}% 44% / 0.16)`;
 
@@ -101,10 +78,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
       "--fg-dim": tone(0.4, sat * 0.3),
       "--fg-faint": tone(0.56, sat * 0.28),
       "--ink": ink,
-      // Lighter than borders: one shared value made every rule as heavy as the outline.
       "--line": tone(0.84, sat * 0.3),
-      // A colourless accent earns contrast from lightness alone, so neutral goes near-black
-      // rather than the mid grey a coloured accent can afford.
       "--accent": tone(neutral ? 0.24 : 0.56, accentSat(0.6, 0.85)),
       "--accent-fg": tone(0.98, sat * 0.2),
       "--accent-wash": `hsl(${Math.round(hue)} ${Math.round(sat * 100)}% 62% / 0.14)`,
@@ -114,7 +88,6 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
     };
   }
 
-  // Dark — `album`, and `custom` on a dark ground.
   const surfaceSat = sat * SURFACE_TINT;
   const shadow = "hsl(0 0% 0% / 0.85)";
   return {
@@ -122,16 +95,13 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
     "--surface-1": tone(0.11, surfaceSat),
     "--surface-2": tone(0.16, surfaceSat * 0.95),
     "--surface-3": tone(0.22, surfaceSat * 0.9),
-    // Near-neutral: tinted text on a tinted plane reads as a colour cast, not a theme.
     "--fg": tone(0.95, sat * 0.14),
     "--fg-dim": tone(0.73, sat * 0.12),
     "--fg-faint": tone(0.55, sat * 0.12),
-    // On a dark ground the hard edge must be *lighter* than the plane it outlines.
     "--ink": tone(0.03, surfaceSat),
     "--line": tone(0.26, surfaceSat),
     "--accent": tone(0.7, accentSat(0.6, 0.9)),
     "--accent-fg": tone(0.08, sat * 0.5),
-    // Halved: at 0.2 this glow was a second full-strength wash of the same hue.
     "--accent-wash": `hsl(${Math.round(hue)} ${Math.round(sat * 100)}% 55% / 0.1)`,
     "--drop": `3px 3px 0 ${shadow}`,
     "--drop-sm": `2px 2px 0 ${shadow}`,
@@ -139,7 +109,6 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
   };
 }
 
-/** Parses the lightness percentage back out of an `hsl(...)` string. */
 export function lightnessOf(color: string): number | null {
   const match = /hsl\(\s*[\d.]+\s+[\d.]+%\s+([\d.]+)%/.exec(color);
   return match ? Number(match[1]) : null;

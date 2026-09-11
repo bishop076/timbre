@@ -1,10 +1,3 @@
-/**
- * The strongest colour in one image — the profile header's wash and the player's whole-app
- * palette both ask this question. Averaging the pixels returns mud, because opposing hues
- * cancel, so pixels are bucketed by hue, scored on saturation and distance from both
- * lightness extremes, and the winning region of the wheel decides.
- */
-
 export interface Hsl {
   h: number;
   s: number;
@@ -29,11 +22,8 @@ function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   return [h, s, l];
 }
 
-// Fine enough to separate teal from green, coarse enough that noise cannot split a hue.
 const BUCKETS = 24;
 
-// Neighbours counted with the winner: a hue straddling a boundary must not lose to a
-// lesser one mid-bucket — red lives at both ends, so it splits across buckets 23 and 0.
 const WINDOW = 1;
 
 function dominantHue(data: Uint8ClampedArray): Hsl | null {
@@ -48,7 +38,6 @@ function dominantHue(data: Uint8ClampedArray): Hsl | null {
 
     const [h, s, l] = rgbToHsl(data[i]!, data[i + 1]!, data[i + 2]!);
 
-    // Near-black, near-white and near-grey carry no hue and must not win by count.
     if (s < 0.18 || l < 0.12 || l > 0.92) continue;
 
     const score = s * s * (1 - Math.abs(l - 0.5) * 1.4);
@@ -77,8 +66,6 @@ function dominantHue(data: Uint8ClampedArray): Hsl | null {
   }
   if (best < 0 || bestWeight === 0) return null;
 
-  // The peak bucket plus any neighbour carrying a real share of it — averaging the whole
-  // window dragged distinct hues toward the middle of a 45° span and came out muddy.
   const peak = weight[best]!;
   let sin = 0;
   let cos = 0;
@@ -95,8 +82,6 @@ function dominantHue(data: Uint8ClampedArray): Hsl | null {
     total += weight[bucket]!;
   }
 
-  // The circular mean: red sits at both 0.98 and 0.02, and averaging those as plain
-  // numbers gives 0.5 — cyan, the exact opposite. Unit vectors have no seam.
   const angle = Math.atan2(sin / total, cos / total);
 
   return {
@@ -106,7 +91,6 @@ function dominantHue(data: Uint8ClampedArray): Hsl | null {
   };
 }
 
-// 48px is plenty: a dominant colour survives heavy downscaling.
 const SIZE = 48;
 
 function readPixels(image: HTMLImageElement): Hsl | null {
@@ -119,25 +103,13 @@ function readPixels(image: HTMLImageElement): Hsl | null {
     context.drawImage(image, 0, 0, SIZE, SIZE);
     return dominantHue(context.getImageData(0, 0, SIZE, SIZE).data);
   } catch {
-    // A tainted canvas makes `getImageData` throw: failure is silent and total, and the
-    // caller's fallback colour is the right answer.
     return null;
   }
 }
 
-/**
- * Loads `src` and reports its dominant colour, or null for an image that has none —
- * greyscale, unreadable, or pixels this document may not read back. Returns a cancel: a
- * decode still in flight must not land its colour after the caller has moved on.
- *
- * Point it at a local `blob:`/`data:` URL or Timbre's own `/api/art` proxy. A cross-origin
- * CDN taints the canvas and every answer becomes null.
- */
 export function sampleHue(src: string, report: (color: Hsl | null) => void): () => void {
   let cancelled = false;
   const image = new Image();
-  // Only for a real network source: a `blob:` URL is already this document's own, and
-  // asking for CORS on one only adds a way to fail invisibly.
   if (/^https?:/.test(src)) image.crossOrigin = "anonymous";
 
   image.onload = () => {

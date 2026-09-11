@@ -1,9 +1,3 @@
-/**
- * What Explore looks like before Deezer has answered. `fetchDiscover` has an unavoidable
- * waterfall — the featured playlists' sleeves need ids the chart response carries — and all
- * 1.2s of it used to happen before any HTML existed, so the navigation did nothing and then
- * the whole page appeared with `.page-in` having nothing to soften.
- */
 export default function ExploreLoading() {
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-3 sm:px-7 sm:pb-20">
@@ -12,7 +6,6 @@ export default function ExploreLoading() {
           <div
             key={pill}
             className="h-8 shrink-0 animate-pulse rounded-[var(--r-full)] bg-[var(--surface-2)]"
-            // Uneven widths — identical rectangles read as a grid, not as words.
             style={{ width: `${[72, 58, 84, 64, 92, 56, 78][pill]}px` }}
           />
         ))}

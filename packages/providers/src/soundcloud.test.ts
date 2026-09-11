@@ -7,7 +7,6 @@ import { createSoundCloudProvider } from "./soundcloud.ts";
 
 const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
 
-/** api-v2's shape, trimmed to the fields the mapper reads. */
 function collection(...tracks: Record<string, unknown>[]) {
   return { collection: tracks };
 }
@@ -26,9 +25,6 @@ function stubFetch(body: unknown) {
 }
 
 test("a rights-gated SNIP is dropped rather than listed as the song", async () => {
-  // `duration: 30000` beside `full_duration: 233744` — every field says "Shape of You" and
-  // the stream stops after thirty seconds. Listing it adds a second, shorter row for a song
-  // already present, and this provider's `playback` promises the whole thing.
   const stub = stubFetch(
     collection(
       { id: 1, title: "Shape of You", duration: 30_000, full_duration: 233_744, policy: "SNIP" },
@@ -48,7 +44,6 @@ test("a rights-gated SNIP is dropped rather than listed as the song", async () =
 });
 
 test("a track with no policy at all is kept", async () => {
-  // Not every response carries the field, and absence is not a refusal.
   const stub = stubFetch(collection({ id: 3, title: "Untitled Demo", duration: 91_000 }));
   try {
     const provider = createSoundCloudProvider({ apiBase: "https://example.test/_/api/v2" });
@@ -74,8 +69,6 @@ test("the direct path asks api-v2 itself, with the resolved client_id", async ()
 });
 
 test("an unresolved client_id abstains instead of waiting", async () => {
-  // The resolver answers on a deadline; a miss means it is still fetching, and this search
-  // does without SoundCloud rather than making everyone wait five seconds for it.
   const stub = stubFetch(collection({ id: 5, title: "Never fetched" }));
   try {
     const provider = createSoundCloudProvider({ clientId: async () => null });

@@ -7,7 +7,6 @@ import { findSpotifyTrackId } from "./spotify.ts";
 
 const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
 
-/** Serves canned JSON per URL substring, and records what was asked for. */
 function stubFetch(routes: { match: string; body: unknown }[]) {
   const calls: string[] = [];
   const original = globalThis.fetch;
@@ -31,8 +30,6 @@ const relation = (id: string) => ({
 });
 
 test("the id rides along with the ISRC lookup, costing no second request", async () => {
-  // `inc=url-rels` is the whole point: MusicBrainz records where a recording streams, and
-  // asking costs nothing beyond the lookup already being made for the MBID.
   const stub = stubFetch([{ match: "/isrc/", body: relation("2olIQt0rL0hOHau1SJ4xf2") }]);
   try {
     const found = await findSpotifyTrackId(ctx, { title: "Get Lucky", isrc: "USQX91300108" });
@@ -45,8 +42,6 @@ test("the id rides along with the ISRC lookup, costing no second request", async
 });
 
 test("the dataset is still asked when nobody has linked the recording", async () => {
-  // The two are complementary rather than ranked — the relation exists when an editor added
-  // it, the dataset when MetaBrainz's mapping found it — so a miss on one tries the other.
   const stub = stubFetch([
     { match: "/isrc/", body: { recordings: [{ id: "mbid-2", relations: [] }] } },
     { match: "spotify-id-from-mbid", body: [{ spotify_track_ids: ["FROM_DATASET_000000000"] }] },
@@ -70,7 +65,6 @@ test("an ISRC MusicBrainz does not carry resolves to nothing, not to a guess", a
 });
 
 test("with neither an album nor an ISRC there is nothing to ask", async () => {
-  // Both routes need one or the other, and the endpoint would only say so after a round trip.
   const stub = stubFetch([]);
   try {
     assert.equal(await findSpotifyTrackId(ctx, { title: "Just a title" }), null);

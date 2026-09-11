@@ -26,14 +26,10 @@ test("keeps variant markers so a live cut never matches the studio take", () => 
   assert.deepEqual(live.variants, ["live"]);
   assert.deepEqual(remix.variants, ["remix"]);
 
-  // The whole point: these must not collapse together.
   assert.notEqual(dedupeKey("Redbone", ["Childish Gambino"]), dedupeKey("Redbone (Live)", ["Childish Gambino"]));
 });
 
 test("keeps unrecognized bracketed text as a distinguishing variant", () => {
-  // Regression: "(Unplugged)" was silently discarded, making an unplugged
-  // recording identical to the studio one. The variant list can never be
-  // complete, so anything unrecognized must distinguish rather than vanish.
   const studio = parseTitle("Wonderwall");
   const unplugged = parseTitle("Wonderwall (Unplugged)");
   const mystery = parseTitle("Wonderwall (Glastonbury 1995)");
@@ -51,7 +47,6 @@ test("keeps unrecognized bracketed text as a distinguishing variant", () => {
 });
 
 test("still ignores pure noise inside brackets", () => {
-  // The new rule must not defeat noise stripping: these reduce to nothing.
   for (const title of [
     "Wonderwall (Remastered 2011)",
     "Wonderwall (Official Video)",
@@ -91,9 +86,6 @@ test("duration tolerance absorbs provider disagreement but not real differences"
 });
 
 test("a bare 'with' mid-title is part of the title, not a guest credit", () => {
-  // Regression: `with` was read as a feature marker anywhere, so an ordinary preposition
-  // truncated the title and invented a credit out of the words after it. The base is what
-  // the lyrics route asks LRCLIB for and what a merge is keyed on, so both were wrong.
   for (const [title, base] of [
     ["Stay With Me", "stay with me"],
     ["Dancing With Myself", "dancing with myself"],
@@ -109,13 +101,10 @@ test("a bracketed 'with' is still the guest credit it plainly is", () => {
   const parsed = parseTitle("Save Your Tears (with Ariana Grande)");
   assert.equal(parsed.base, "save your tears");
   assert.deepEqual(parsed.featured, ["ariana grande"]);
-  // And the trailing-dash form Spotify uses for the same thing.
   assert.deepEqual(parseTitle("Save Your Tears - with Ariana Grande").featured, ["ariana grande"]);
 });
 
 test("two songs sharing a prefix stay apart once 'with' stops truncating them", () => {
-  // "Stay" and "Stay With Me" both reduced to base "stay", and containment made the
-  // credits agree, so one three-minute pair could merge into a single row.
   assert.notEqual(dedupeKey("Stay", ["Sam Smith"]), dedupeKey("Stay With Me", ["Sam Smith"]));
 });
 
@@ -160,7 +149,6 @@ test("a title that is itself a noise word is a title, not decoration", () => {
   assert.equal(parseTitle("Special").base, "special");
   assert.equal(parseTitle("Stereo Hearts").base, "stereo hearts");
   assert.notEqual(dedupeKey("Clean", ["Taylor Swift"]), dedupeKey("Special", ["Taylor Swift"]));
-  // Decoration at the end of an unbracketed title still goes.
   assert.equal(parseTitle("Bohemian Rhapsody Official Video").base, "bohemian rhapsody");
   assert.equal(parseTitle("Bohemian Rhapsody HD").base, "bohemian rhapsody");
 });

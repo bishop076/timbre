@@ -11,8 +11,6 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    // Workspace packages under packages/ import with explicit .ts extensions so
-    // that `node --test` can run them directly via Node's native type stripping.
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
@@ -33,7 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  // `sw/` is the service worker: it needs lib.webworker, which cannot be loaded
-  // alongside lib.dom, so it has its own tsconfig and `pnpm typecheck` runs both.
   "exclude": ["node_modules", "sw"]
 }

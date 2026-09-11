@@ -10,11 +10,6 @@ import {
   prependToChangelog,
 } from "./release.mts";
 
-/*
- * The version number is chosen by a machine and pushed to a tag nobody reviews, so
- * the arithmetic gets tests. Everything here is pure — no git, no filesystem.
- */
-
 const at = new Date("2026-08-18T09:00:00Z");
 const parse = (...messages: string[]) => messages.map(parseCommit);
 
@@ -34,7 +29,6 @@ test("a conventional subject parses into its parts", () => {
 });
 
 test("anything that is not a conventional commit is ignored, not guessed at", () => {
-  // A merge, or a message written by hand, must neither bump nor appear in the notes.
   assert.equal(parseCommit("Merge branch 'main'"), null);
   assert.equal(parseCommit("wip"), null);
   assert.equal(parseCommit(""), null);
@@ -51,7 +45,6 @@ test("both breaking-change markers are recognised", () => {
 });
 
 test("silent types alone do not cut a release", () => {
-  // The whole point: a docs-only or refactor-only push must not mint a version.
   const quiet = parse("docs: fix a typo", "refactor(core): tidy", "test: add a case", "ci: cache");
   assert.equal(bumpFor(quiet, "0.1.0"), null);
 });
@@ -63,14 +56,11 @@ test("feat is a minor, fix and perf are patches", () => {
 });
 
 test("below 1.0.0 a breaking change is a minor, not a major", () => {
-  // 0.x is where the shape is still moving; promoting every break to 1.0.0 would
-  // claim stability the project has not reached.
   assert.equal(bumpFor(parse("feat!: reshape the queue"), "0.1.0"), "minor");
   assert.equal(bumpFor(parse("feat!: reshape the queue"), "1.4.0"), "major");
 });
 
 test("a breaking change in an otherwise silent type still releases", () => {
-  // refactor does not release on its own, but a refactor that breaks something does.
   const commits = parse("refactor: move it\n\nBREAKING CHANGE: import path changed");
   assert.equal(bumpFor(commits, "1.0.0"), "major");
   assert.equal(bumpFor(commits, "0.3.0"), "minor");
@@ -123,12 +113,6 @@ test("a breaking entry leads, and is not also listed under its own type", () => 
 });
 
 test("a release can never have an empty body", () => {
-  /*
-   * bumpFor releases on a breaking change of ANY type, including the silent ones. A
-   * refactor!: alone used to produce notes with no section to hold it — the
-   * quiet-work line excludes breaking commits — so the Release body was a bare
-   * heading. Whatever releases must appear.
-   */
   const NEWLINE = String.fromCharCode(10);
   for (const message of [
     ["refactor: move it", "", "BREAKING CHANGE: the export moved"].join(NEWLINE),
@@ -141,7 +125,6 @@ test("a release can never have an empty body", () => {
     const bump = bumpFor(commits, "0.1.0");
     assert.ok(bump, `${subject} should release`);
 
-    // Everything below the version heading.
     const body = notesFor(commits, nextVersion("0.1.0", bump), at)
       .split(NEWLINE)
       .slice(1)
@@ -152,16 +135,8 @@ test("a release can never have an empty body", () => {
 });
 
 test("the date comes from the author's offset, not the runner's zone", () => {
-  /*
-   * The bug this replaces: a commit made at 00:44 +0700 was formatted through a Date
-   * on a UTC runner and dated the previous day. It shipped once — 0.1.1 is stamped
-   * 17 August for work done on the 18th — and this project's history is mostly
-   * late-night, so it would have been wrong more often than right.
-   */
   assert.equal(humanDate("2026-08-18T00:44:00+07:00"), "18 August 2026");
   assert.equal(humanDate("2026-08-01T23:59:00+07:00"), "1 August 2026");
-  // The same instant expressed in UTC is a different calendar day, and that is the
-  // point: whichever offset the author committed under is the one that counts.
   assert.equal(humanDate("2026-08-17T17:44:00Z"), "17 August 2026");
   assert.equal(humanDate("2026-12-31T23:00:00-05:00"), "31 December 2026");
 });

@@ -5,8 +5,6 @@ import { useRef, useState } from "react";
 import { CameraIcon, SpinnerIcon, TrashIcon } from "../icons";
 import { clearLocalImage, setLocalImage, type ImageKind } from "./local-images";
 
-/** Choose or remove a local picture, as an overlay on the avatar's circle or a button in the
- * banner's corner. Nothing uploads, and the label says so. */
 export function ImagePicker({
   kind,
   hasImage,
@@ -30,7 +28,6 @@ export function ImagePicker({
       setError(cause instanceof Error ? cause.message : "Couldn't use that picture.");
     } finally {
       setBusy(false);
-      // Or choosing the same file twice fires no change event.
       if (input.current) input.current.value = "";
     }
   }
@@ -47,12 +44,6 @@ export function ImagePicker({
       <input
         ref={input}
         type="file"
-        /*
-          GIF on the avatar, stills on the banner — see `ACCEPTED` in
-          `image-resize.ts`. A hint, never the check: `accept` only filters the
-          picker's default view, and "all files" is one dropdown away. The refusal
-          that matters is in `redraw`.
-        */
         accept={
           kind === "avatar"
             ? "image/png,image/jpeg,image/webp,image/gif"
@@ -65,7 +56,6 @@ export function ImagePicker({
       />
 
       {variant === "overlay" ? (
-        // A button may not contain another, and the overlay needs two.
         <div className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-full bg-black/55 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
           <button
             type="button"
@@ -96,8 +86,6 @@ export function ImagePicker({
         </div>
       ) : (
         <div className="flex items-center gap-1.5">
-          {/* A circle, not a labelled pill — the word made this the widest object in a
-              cluster of three. The label survives in `aria-label` and `title`. */}
           <button
             type="button"
             onClick={() => input.current?.click()}
@@ -127,11 +115,6 @@ export function ImagePicker({
         </div>
       )}
 
-      {/*
-        Anchored to whichever side the control sits on: `left-0` under the avatar in
-        mid-header, right-anchored for the banner's corner button, where the same rule
-        ran a 224px-wide box off the edge of the page.
-      */}
       {error && (
         <p
           role="alert"

@@ -15,14 +15,10 @@ function song(id: string, artists: unknown = ["Someone"]): PlayedSong {
   };
 }
 
-/** Local time, so the weekday and day-span assertions hold in any time zone. */
 function at(day: number, hour = 12): number {
-  // 2026-09-07 is a Monday.
   return new Date(2026, 8, 7 + day, hour).getTime();
 }
 
-/** Plays given in the order they happened, appended the same way, so the log reads newest
- * first as it does in use. */
 function logOf(...plays: [PlayedSong, number][]): PlayLog {
   return plays.reduce((log, [played, when]) => appendPlay(log, played, when), EMPTY_LOG);
 }
@@ -116,7 +112,6 @@ test("dates cover the dated plays only, in calendar days", () => {
   assert.equal(stats.first, at(0, 1));
   assert.equal(stats.last, at(6, 23));
   assert.equal(stats.days, 7);
-  // Monday and Sunday.
   assert.deepEqual(stats.weekdays, [1, 0, 0, 0, 0, 0, 1]);
 });
 

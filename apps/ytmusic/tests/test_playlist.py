@@ -1,15 +1,3 @@
-"""The playlist route, against a stubbed ytmusicapi.
-
-No network. The fixtures are trimmed from real `get_playlist` responses (ytmusicapi
-1.12.2, 2026-09-11): a community playlist, which carries its own artwork and author, and
-an album's `OLAK5uy_` list, which is parsed by another path and carries neither.
-
-The error cases matter as much as the happy one. A playlist YouTube will not show comes
-back as a `KeyError` out of ytmusicapi's parser, and so does a parser that YouTube has
-broken — one of those is the reader's link and the other is not, and the page says
-different things for a 404 and a 502.
-"""
-
 import importlib
 import sys
 
@@ -56,7 +44,6 @@ COMMUNITY = {
     "tracks": [ITEM, {**ITEM, "videoId": "bbbbbbbbbbb", "title": "second"}],
 }
 
-# The audio-playlist path: no thumbnails, no author, no year.
 ALBUM = {
     "owned": False,
     "privacy": "PUBLIC",
@@ -68,7 +55,6 @@ ALBUM = {
     "tracks": [{**ITEM, "title": "One More Time", "album": {"name": "Discovery", "id": "MPREb_7"}}],
 }
 
-# What ytmusicapi raises for a playlist YouTube answers with an empty browse page.
 MISSING = KeyError(
     "Unable to find 'contents' using path ['contents', 'twoColumnBrowseResultsRenderer', "
     "'tabs', 0, 'tabRenderer', 'content', 'sectionListRenderer', 'contents', 0] on "
@@ -76,7 +62,6 @@ MISSING = KeyError(
     "'microformat': {}}, exception: 'contents'"
 )
 
-# What it raises when YouTube has moved something *inside* a page that does exist.
 REARRANGED = KeyError(
     "Unable to find 'musicPlaylistShelfRenderer' using path ['contents', 0, "
     "'musicPlaylistShelfRenderer'] on {'itemSectionRenderer': {}}, exception: "
@@ -152,7 +137,6 @@ def test_asks_upstream_for_the_id_and_limit_given(stub) -> None:
 
 
 def test_truncates_to_the_limit(stub) -> None:
-    """ytmusicapi's continuations overshoot: `limit` is when it stops asking, not a cap."""
     stub({**COMMUNITY, "tracks": [{**ITEM, "videoId": f"{index:011d}"} for index in range(5)]})
     assert len(route.playlist(request(limit=3)).tracks) == 3
 
@@ -224,8 +208,6 @@ def test_refuses_anything_that_is_not_a_playlist_id(playlist_id: str) -> None:
 
 
 def test_the_route_is_behind_the_shared_secret(monkeypatch, stub) -> None:
-    """Every router must carry the dependency — see `main.py`. Built fresh against a known
-    secret, as `test_security.py` does, so the environment is left as it was found."""
     secret = "5e1f" * 16
     for name in ("app.main", "app.security", "app.config"):
         monkeypatch.delitem(sys.modules, name, raising=False)

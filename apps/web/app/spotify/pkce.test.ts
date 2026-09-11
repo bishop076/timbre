@@ -11,14 +11,11 @@ test("the verifier is the length and alphabet RFC 7636 allows", () => {
 });
 
 test("two verifiers are never the same", () => {
-  // The whole security property: someone holding the intercepted code cannot spend it
-  // without the verifier, which exists only in the tab that started the flow.
   const seen = new Set(Array.from({ length: 32 }, () => createVerifier()));
   assert.equal(seen.size, 32);
 });
 
 test("the challenge is the unpadded base64url SHA-256 of the verifier", async () => {
-  // The known-answer vector from RFC 7636 appendix B.
   const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
   assert.equal(await challengeFor(verifier), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
 });
@@ -44,12 +41,6 @@ test("the authorize URL asks for S256 and carries the state back", () => {
   assert.equal(url.searchParams.get("code_challenge"), "CHALLENGE");
   assert.equal(url.searchParams.get("state"), "STATE");
   assert.equal(url.searchParams.get("client_id"), "abc123");
-  // **Exactly the scopes playback needs, and nothing beyond them.** Search needs none of
-  // these and this asserted `null` while search was the only use; the Web Playback SDK
-  // refuses to construct without `streaming`, and cannot be told what to play without
-  // `user-modify-playback-state`. Pinned as an explicit list rather than "is not empty" so
-  // that widening it later is a deliberate edit to this line — a scope nobody uses is a
-  // permission the reader granted for nothing, and that is the thing worth guarding.
   assert.deepEqual((url.searchParams.get("scope") ?? "").split(" ").sort(), [
     "streaming",
     "user-modify-playback-state",
