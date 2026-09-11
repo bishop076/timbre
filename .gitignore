@@ -13,6 +13,14 @@ build/
 .env
 .env.*
 !.env.example
+.env~
+*.bak
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+secrets.json
+.npmrc
 
 __pycache__/
 *.py[cod]
