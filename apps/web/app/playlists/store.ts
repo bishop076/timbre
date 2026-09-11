@@ -225,6 +225,45 @@ export function moveSong(id: string, from: number, to: number): void {
   persist();
 }
 
+/**
+ * Adds the copies a rescue found to every saved entry of that song, returning how many
+ * playlists changed.
+ *
+ * The player already repairs its *queue* when nothing a song carries will play — it
+ * searches for the same recording elsewhere and adopts that (`adoptElsewhere`). A saved
+ * list kept the dead entry, so the same song needed rescuing on every play, and the day the
+ * search stopped finding it the list simply had a song that could not be played.
+ *
+ * **Added beside the originals, never swapped for them.** A rescue is also what happens
+ * when YouTube turns *this connection* away — a VPN, not a dead link — and replacing the
+ * sources would strip YouTube from a list for good because of one bad afternoon. Carrying
+ * both costs nothing: the ladder still tries the original first, and falls to the rescued
+ * copy without a search.
+ *
+ * Not a user edit, so `updatedAt` stays put — a repair must not reorder the library.
+ */
+export function addSourcesToSong(songId: string, found: Song["sources"]): number {
+  store.load();
+  let changed = 0;
+
+  for (const playlist of all) {
+    let touched = false;
+    playlist.songs = playlist.songs.map((song) => {
+      if (song.id !== songId) return song;
+      const fresh = found.filter(
+        (copy) => !song.sources.some((own) => own.source === copy.source && own.sourceId === copy.sourceId),
+      );
+      if (fresh.length === 0) return song;
+      touched = true;
+      return { ...song, sources: [...song.sources, ...fresh] };
+    });
+    if (touched) changed += 1;
+  }
+
+  if (changed > 0) persist();
+  return changed;
+}
+
 // Moving between devices
 
 /** Everything, as a file — the only way to move a library to another machine or survive
