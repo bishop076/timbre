@@ -14,6 +14,7 @@ import {
 
 import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
 import { log } from "../logs.ts";
+import { addSourcesToSong } from "../playlists/store";
 import type { Song, SongsResponse } from "../types";
 import { drawRadio } from "./draw-radio";
 import { getHistorySnapshot, recordPlay } from "./history-store";
@@ -687,6 +688,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // and the tile would need rescuing again next time.
       songRef.current = repaired;
       writeQueue((current) => current.map((entry) => (entry.id === song.id ? repaired : entry)));
+      // And every saved playlist holding it, so the list stops needing this search — the
+      // copies are added beside the originals there, never swapped in; see the store.
+      const repairedLists = addSourcesToSong(song.id, elsewhere.sources);
+      if (repairedLists > 0) {
+        log("info", `“${song.title}” now carries a working copy in ${repairedLists} saved playlist${repairedLists === 1 ? "" : "s"}`);
+      }
 
       const progressive = progressiveOf(repaired);
       if (progressive) {
