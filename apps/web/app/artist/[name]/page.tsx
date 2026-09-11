@@ -1,20 +1,23 @@
 import { mergeTracks, searchAll } from "@timbre/providers";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
 import { fromArtistSlug, titleCase } from "@/app/artist-slug";
 
 import { creditNames } from "../credits";
 import { getProviderRuntime } from "@/lib/providers";
-import { fetchDiscography, findArtist } from "@/lib/discography";
+import { deezerIdFrom, fetchDiscography, findArtist } from "@/lib/discography";
 
+import { ArtistAbout } from "../artist-about";
 import { ArtistView } from "../artist-view";
 
 /**
- * An artist page assembled from two keyless answers: Deezer knows who they are, the search
- * merger knows which recordings can be played. Keyed by name, not a source's artist id,
- * which would bind the route to whichever service supplied it — at the cost of precision on
- * artists who share a name. No biography: no keyless source publishes one.
+ * An artist page assembled from keyless answers: Deezer knows who they are, the search
+ * merger knows which recordings can be played, and Wikipedia — reached through Wikidata or
+ * MusicBrainz — says who they are in prose. Keyed by name, not a source's artist id, which
+ * would bind the route to whichever service supplied it — at the cost of precision on
+ * artists who share a name.
  */
 
 export const revalidate = 3600;
@@ -71,6 +74,20 @@ export default async function ArtistPage({ params }: { params: Promise<{ name: s
       filtered={theirs.length > 0}
       releases={releases}
       related={related}
+      /* Streamed rather than awaited, and handed in rendered because `ArtistView` is a client
+       * component — the pattern `explore/page.tsx` uses. Only with a Deezer profile: the
+       * biography is found from it, and a name alone picks namesakes. */
+      about={
+        artist ? (
+          <Suspense fallback={null}>
+            <ArtistAbout
+              name={artist.name}
+              deezerId={deezerIdFrom(artist.url)}
+              releaseTitles={releases.map((release) => release.title)}
+            />
+          </Suspense>
+        ) : null
+      }
     />
   );
 }
