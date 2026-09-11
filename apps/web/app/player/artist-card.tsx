@@ -16,8 +16,10 @@ interface ArtistInfo {
   url: string | null;
 }
 
-/** A picture, a name and a follower count — no biography, since no keyless source
- * publishes one. Renders nothing when there is nothing to say. */
+/** A picture, a name and a follower count. The biography stays on the artist page this links
+ * to: finding the right Wikipedia article takes up to five requests, two of them paced to
+ * MusicBrainz's one a second, which is too much to spend on every track change. Renders
+ * nothing when there is nothing to say. */
 export function ArtistCard({ name }: { name: string | null }) {
   // Stored with the name it was fetched for and matched at render. Clearing it in an
   // effect on track change would flash the previous artist under the new track.
