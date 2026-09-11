@@ -162,3 +162,17 @@ test("a backup carries liked songs, and a file holding only those still imports"
   assert.equal(store.importPlaylists({ ...exportFile([]), liked: [song("l")] }), 0);
   assert.throws(() => store.importPlaylists({ ...exportFile([]), liked: [] }), /no playlists/);
 });
+
+// Every write stores the whole list back, so one made before anything had read storage used
+// to replace the library with itself alone.
+test("a write before any read keeps the playlists already saved", async () => {
+  const saved = { id: "p1", name: "Kept", createdAt: "2026-01-01", updatedAt: "2026-01-01", songs: [song("a")] };
+  const { store, backing } = await fresh({ [KEY]: JSON.stringify([saved]) });
+
+  const created = store.createPlaylist("New");
+  store.addSongsToPlaylist(created.id, [song("b"), song("c")]);
+
+  const lists = JSON.parse(backing[KEY]!);
+  assert.deepEqual(lists.map((list: { name: string }) => list.name).sort(), ["Kept", "New"]);
+  assert.equal(lists.find((list: { name: string }) => list.name === "New").songs.length, 2);
+});

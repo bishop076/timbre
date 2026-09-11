@@ -153,6 +153,17 @@ export function usePlaylist(id: string): LocalPlaylist | null {
   return all.find((playlist) => playlist.id === id) ?? null;
 }
 
+/**
+ * Every write starts here. `all` is filled lazily, on the first read, and each write stores
+ * it back whole — so a write before anything had read would replace the whole library with
+ * the one change. The sidebar happens to read on every page today; losing someone's playlists
+ * must not hinge on the sidebar.
+ */
+function held(): LocalPlaylist[] {
+  store.load();
+  return all;
+}
+
 function touch(playlist: LocalPlaylist): void {
   playlist.updatedAt = new Date().toISOString();
 }
@@ -167,13 +178,13 @@ export function createPlaylist(name: string): PlaylistSummary {
     songs: [],
   };
 
-  all = [playlist, ...all];
+  all = [playlist, ...held()];
   persist();
   return summarise(playlist);
 }
 
 export function renamePlaylist(id: string, name: string): void {
-  const playlist = all.find((item) => item.id === id);
+  const playlist = held().find((item) => item.id === id);
   if (!playlist) return;
   playlist.name = name.trim();
   touch(playlist);
@@ -181,7 +192,7 @@ export function renamePlaylist(id: string, name: string): void {
 }
 
 export function deletePlaylist(id: string): void {
-  all = all.filter((playlist) => playlist.id !== id);
+  all = held().filter((playlist) => playlist.id !== id);
   persist();
 }
 
@@ -193,16 +204,22 @@ export function deletePlaylist(id: string): void {
  * played it, folding the playlist into the artist's tile in "Recently played".
  */
 export function addSongToPlaylist(id: string, song: Song): void {
-  const playlist = all.find((item) => item.id === id);
-  if (!playlist) return;
-  playlist.songs = [...playlist.songs, { ...song, from: undefined }];
+  addSongsToPlaylist(id, [song]);
+}
+
+/** Appends several songs in order with **one** write. Each write stores the whole library,
+ * so adding a hundred one at a time wrote it a hundred times — 1.9s against a large library. */
+export function addSongsToPlaylist(id: string, songs: readonly Song[]): void {
+  const playlist = held().find((item) => item.id === id);
+  if (!playlist || songs.length === 0) return;
+  playlist.songs = [...playlist.songs, ...songs.map((song) => ({ ...song, from: undefined }))];
   touch(playlist);
   persist();
 }
 
 /** Removes by position, not by song, so a repeat removes the one clicked. */
 export function removeSongAt(id: string, position: number): void {
-  const playlist = all.find((item) => item.id === id);
+  const playlist = held().find((item) => item.id === id);
   if (!playlist || position < 0 || position >= playlist.songs.length) return;
   playlist.songs = playlist.songs.filter((_, index) => index !== position);
   touch(playlist);
@@ -211,7 +228,7 @@ export function removeSongAt(id: string, position: number): void {
 
 /** Moves one entry, closing the gap behind it. */
 export function moveSong(id: string, from: number, to: number): void {
-  const playlist = all.find((item) => item.id === id);
+  const playlist = held().find((item) => item.id === id);
   if (!playlist) return;
 
   const last = playlist.songs.length - 1;
@@ -243,10 +260,9 @@ export function moveSong(id: string, from: number, to: number): void {
  * Not a user edit, so `updatedAt` stays put — a repair must not reorder the library.
  */
 export function addSourcesToSong(songId: string, found: Song["sources"]): number {
-  store.load();
   let changed = 0;
 
-  for (const playlist of all) {
+  for (const playlist of held()) {
     let touched = false;
     playlist.songs = playlist.songs.map((song) => {
       if (song.id !== songId) return song;
@@ -339,7 +355,7 @@ export function importPlaylists(data: unknown): number {
       // The file came from outside Timbre and is the least trustworthy input the app has.
       songs: usableSongs(playlist.songs),
     })),
-    ...all,
+    ...held(),
   ];
   persist();
 
