@@ -33,6 +33,7 @@ import {
   writeMuteToggle,
   writeVolume,
 } from "./volume-store";
+import { turnedAway, type YouTubeFailures } from "./youtube-refusal";
 
 /** How many candidates the radio asks for, and how many of them a draw plays.
  *
@@ -81,6 +82,9 @@ interface PlayerState {
   activeSource: PlayingSource | null;
   /** The current audio is a catalogue's thirty-second clip, not the song. */
   playingPreview: boolean;
+  /** YouTube refused the connection on this song, not one upload — see `youtube-refusal.ts`.
+   * Said beside the fallback, because a preview with no reason reads as Timbre broken. */
+  youtubeTurnedAway: boolean;
   /** Whether the now-playing panel is shown. Hiding only clips the player: the IFrame API stops playback below 200×200 (BUGS.md B-1). */
   panelOpen: boolean;
   /** Whether the panel fills the content area. Same element either way — re-parenting the iframe would reload it and kill playback. */
@@ -127,8 +131,14 @@ interface PlayerActions {
   handleProgress: (position: number, duration: number) => void;
   /** Reports a playback failure. `worthRetrying` means the fault is this upload's, so another copy stands a chance. */
   /** `stalled` marks a YouTube copy that loaded and never delivered media — a refusal of
-   * the address, not the upload — so the ladder leaves YouTube instead of walking its copies. */
-  handleError: (reason: string, worthRetrying: boolean, options?: { stalled?: boolean }) => void;
+   * the address, not the upload — so the ladder leaves YouTube instead of walking its copies.
+   * `refused` marks a coded refusal (101/150/153), which is the upload's once and the
+   * address's twice; see `youtube-refusal.ts`. */
+  handleError: (
+    reason: string,
+    worthRetrying: boolean,
+    options?: { stalled?: boolean; refused?: boolean },
+  ) => void;
   seek: (seconds: number) => void;
   setVolume: (level: number) => void;
   toggleMute: () => void;
@@ -215,7 +225,11 @@ function soundcloudUrlOf(song: Song): string | null {
  * other source *has* a copy: `adoptElsewhere` may have been spent on this song already, or
  * its search may have failed outright, and neither is a search that came back empty.
  */
-function giveUpReason(youtubeCopies: number, triedProgressive: boolean): string {
+function giveUpReason(youtubeCopies: number, triedProgressive: boolean, turnedAway = false): string {
+  // The one case that does name a cause, because it is the one where the evidence is the
+  // pattern rather than a code: different uploads refused alike, or media refused outright,
+  // answers the connection. Hedged all the same — a VPN is the usual reason, not the only one.
+  if (turnedAway) return "YouTube refused this connection (a VPN, maybe), and nothing else could play it.";
   if (youtubeCopies > 0 && triedProgressive) {
     return `Nothing here would play — ${youtubeCopies} YouTube ${youtubeCopies === 1 ? "copy" : "copies"} refused, and the other sources failed too.`;
   }
@@ -390,6 +404,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // seconds came from, and claiming another source played it would be a lie.
   const [activeSource, setActiveSource] = useState<PlayingSource | null>(null);
   const [playingPreview, setPlayingPreview] = useState(false);
+  const [youtubeTurnedAway, setYoutubeTurnedAway] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -419,6 +434,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const songRef = useRef<Song | null>(null);
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
+  /** How YouTube has failed on this song so far — the evidence for leaving it. Per song, so
+   * a connection that recovers is tried again on the next track. */
+  const youtubeFailures = useRef<YouTubeFailures>({ stalled: false, refusals: 0 });
   /** Songs already re-searched across every source, so a rescue that finds nothing playable
    * cannot bounce back into `load` forever. Keyed by the original id, which a rescue keeps. */
   const rescued = useRef<Set<string>>(new Set());
@@ -704,6 +722,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       songRef.current = song;
       candidates.current = [];
       attempted.current = new Set();
+      youtubeFailures.current = { stalled: false, refusals: 0 };
+      setYoutubeTurnedAway(false);
       progressiveTried.current = false;
       previewTried.current = false;
       soundcloudTried.current = false;
@@ -1332,8 +1352,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   );
 
   const handleError = useCallback(
-    async (reason: string, worthRetrying: boolean, options: { stalled?: boolean } = {}) => {
+    async (
+      reason: string,
+      worthRetrying: boolean,
+      options: { stalled?: boolean; refused?: boolean } = {},
+    ) => {
       const song = songRef.current;
+      const failures = youtubeFailures.current;
+      const alreadyLeft = turnedAway(failures);
+      if (options.stalled) failures.stalled = true;
+      if (options.refused) failures.refusals += 1;
+      // Read once: every YouTube rung below asks the same question of the same evidence.
+      const leftYouTube = turnedAway(failures);
+      // Once per song: a later rung failing — the preview, say — reaches here again.
+      if (leftYouTube && !alreadyLeft) {
+        log(
+          "warn",
+          `YouTube turned away the connection on “${song?.title ?? "playback"}” (${failures.stalled ? "stalled" : `${failures.refusals} uploads refused`}) — leaving YouTube`,
+        );
+        setYoutubeTurnedAway(true);
+      }
 
       // **Falling through means trying another copy of this song, not another song.**
       // `findCandidates` searches YouTube Music by title and artist, which is a *fall-through*
@@ -1364,14 +1402,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // there answers the address, not the video — measured 2026-08-30, two songs, both
         // stalled identically (B-18). Walking five candidates at `STALL_MS` each would be
         // fifty seconds of spinner before the ladder reached a source that could play. A
-        // coded error still walks them, because 100/101/150 genuinely are per-upload.
-        const searchForCopies = onYouTube && !options.stalled;
+        // coded error still walks them, because 100/101/150 *can* be per-upload — but only
+        // until a second upload refuses as well, which is the address again: measured
+        // 2026-09-10, every video 150 from one VPN exit, over YouTube's bot wall (B-33).
+        const searchForCopies = onYouTube && !leftYouTube;
         // Copies `load` already found for a song that is not on YouTube Music itself — a
         // history row with nothing playable, repaired by search — are walked too. They passed
         // `plausiblySameSong` to get onto the list, and skipping them meant one barred upload
         // sent the ladder straight past two that would have played. The *search* stays
         // gated on `onYouTube`; only the list already in hand is not.
-        const tryAnotherCopy = searchForCopies || (!options.stalled && candidates.current.length > 0);
+        const tryAnotherCopy = searchForCopies || (!leftYouTube && candidates.current.length > 0);
         if (searchForCopies && candidates.current.length === 0) {
           // Cancel the previous, or a fall-through mid-`load` leaves it running and its
           // response overwrites `candidates` for a song no longer playing.
@@ -1493,7 +1533,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${progressiveTried.current ? "tried" : "absent"}`,
       );
       setState("unplayable");
-      setProblem(giveUpReason(attempted.current.size, progressiveTried.current));
+      setProblem(giveUpReason(attempted.current.size, progressiveTried.current, leftYouTube));
     },
     // No `attemptMixcloud`: Mixcloud is never a *fall-through* target, only a deliberate
     // pick. Its hits are hour-long mixes that merely share a name with the song — falling
@@ -1543,6 +1583,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     mixcloudKey,
     activeSource,
     playingPreview,
+    youtubeTurnedAway,
     panelOpen,
     theater,
     state,
