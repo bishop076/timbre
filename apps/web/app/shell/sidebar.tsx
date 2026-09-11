@@ -15,7 +15,6 @@ import { Avatar } from "../profile/avatar";
 import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { TimbreMark } from "./brand";
-import { SiteLinks } from "./site-links";
 
 const NAV = [
   { label: "Home", icon: HomeIcon, href: "/" },
@@ -188,7 +187,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      <SiteLinks className="px-2 pt-0.5" />
     </aside>
   );
 }
