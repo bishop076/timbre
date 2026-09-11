@@ -10,7 +10,6 @@ import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { applyProfile, hasLocalProfile } from "../profile/profile-backup";
 import { readProfileExport, type ProfileExport } from "../profile/profile-file";
-import { SiteLinks } from "../shell/site-links";
 import { ExportMenu } from "./export-menu";
 import { importLikedSongs } from "./likes-store";
 import { LikedTile } from "./liked-tile";
@@ -205,7 +204,6 @@ export function LibraryView() {
         </PlaylistGrid>
       )}
 
-      <SiteLinks className="mt-auto justify-center pt-16 lg:hidden" />
     </div>
   );
 }

@@ -1,11 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import {
+  ChevronIcon,
   CloseIcon,
   GithubIcon,
+  InfoIcon,
   KeyboardIcon,
   LogsIcon,
   NoteIcon,
@@ -39,7 +42,43 @@ const SECTIONS = [
   { id: "appearance", label: "Themes", Icon: PaletteIcon, render: () => <ThemePicker /> },
   { id: "logs", label: "Logs", Icon: LogsIcon, render: () => <Logs /> },
   { id: "whats-new", label: "What’s New", Icon: SparkleIcon, render: () => <WhatsNew /> },
+  { id: "about", label: "About", Icon: InfoIcon, render: () => <About /> },
 ];
+
+const PAGES = [
+  {
+    href: "/about",
+    label: "About Timbre",
+    detail: "What it does, who actually serves the music, and what to do when something won't play.",
+  },
+  {
+    href: "/privacy",
+    label: "Privacy",
+    detail: "What Timbre stores about you, which is nothing, and what the services it embeds can see.",
+  },
+];
+
+function About() {
+  return (
+    <div className="divide-y divide-[var(--line)]">
+      {PAGES.map((page) => (
+        <Link
+          key={page.href}
+          href={page.href}
+          className="group flex items-center gap-4 py-3.5 first:pt-0"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold transition group-hover:text-[var(--accent)]">
+              {page.label}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-[var(--fg-dim)]">{page.detail}</p>
+          </div>
+          <ChevronIcon className="size-4 shrink-0 -rotate-90 text-[var(--fg-faint)] transition group-hover:text-[var(--fg)]" />
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 const SHORTCUTS: { keys: string[]; action: string; note?: string }[] = [
   { keys: ["Space"], action: "Play or pause", note: "Once something is loaded" },
