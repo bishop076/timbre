@@ -242,7 +242,7 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
 
     window.localStorage.setItem(THUMB_KEY[kind], encoded);
     window.localStorage.setItem(THUMB_VERSION_KEY, THUMB_VERSION);
-    if (kind === "avatar") paintAvatarVariables();
+    paintThumbVariables(kind);
   } catch {
     // Quota, an unsupported encoder, or an undecodable blob.
   }
@@ -255,18 +255,27 @@ function dropThumb(kind: ImageKind): void {
   } catch {
     // Storage unavailable; there was nothing to leave behind either.
   }
-  if (kind === "avatar") paintAvatarVariables();
+  paintThumbVariables(kind);
 }
 
-// Keeps `<html>`'s avatar variables in step with the thumbnail. The boot script sets them
-// once and nothing else did, so a removed picture left a stale `url(…)` of a deleted
+// Keeps `<html>`'s first-paint variables in step with the thumbnails. The boot script sets
+// them once and nothing else did, so a removed picture left a stale `url(…)` of a deleted
 // photograph on the document.
-function paintAvatarVariables(): void {
+function paintThumbVariables(kind: ImageKind): void {
   const root = document.documentElement;
-  const thumb = readThumb("avatar");
+  const thumb = readThumb(kind);
+  // Quoted exactly as the boot script in `layout.tsx` quotes it, so the two cannot disagree
+  // about a value — `JSON.stringify` is a valid CSS string token whatever the value holds.
+  const url = thumb ? `url(${JSON.stringify(thumb)})` : null;
 
-  if (thumb) {
-    root.style.setProperty("--avatar-thumb", `url("${thumb}")`);
+  if (kind === "banner") {
+    if (url) root.style.setProperty("--banner-thumb", url);
+    else root.style.removeProperty("--banner-thumb");
+    return;
+  }
+
+  if (url) {
+    root.style.setProperty("--avatar-thumb", url);
     root.style.setProperty("--avatar-letter", "0");
   } else {
     root.style.removeProperty("--avatar-thumb");
