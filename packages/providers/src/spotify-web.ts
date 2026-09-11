@@ -1,6 +1,6 @@
-import { DEFAULT_POLICIES, ProviderError } from "@timbre/core";
+import { ProviderError } from "@timbre/core";
 
-import { deadlineSignal } from "./request.ts";
+import { deadlineSignal, takeSlot } from "./request.ts";
 import type { SearchContext, SourceTrack } from "./types.ts";
 
 const BOOTSTRAP = "https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC";
@@ -33,7 +33,7 @@ async function get(
   headers: HeadersInit = PAGE_HEADERS,
   ms?: number,
 ): Promise<Response> {
-  await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+  await takeSlot(ctx, "spotify", "Spotify");
   return fetch(url, { signal: deadlineSignal(caller, ms), cache: "no-store", headers });
 }
 
@@ -127,7 +127,7 @@ async function pathfinder<T>(
   for (;;) {
     ctx.signal?.throwIfAborted();
     const token = await anonymousToken(ctx, refreshed);
-    await ctx.limiter.acquire("spotify", DEFAULT_POLICIES.spotify);
+    await takeSlot(ctx, "spotify", "Spotify");
     const response = await fetch(pathfinderUrl(operation, variables), {
       signal: deadlineSignal(ctx.signal),
       cache: "no-store",
