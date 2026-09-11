@@ -10,7 +10,7 @@ import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { PlayGlyph } from "./tile-cards";
 import type { Song } from "./types";
 
-export const TILE = "w-[8rem] shrink-0 snap-start sm:w-[11.5rem]";
+export const TILE = "w-[7rem] shrink-0 snap-start sm:w-[10.5rem]";
 
 export function SongTiles({ songs, queue = songs }: { songs: Song[]; queue?: Song[] }) {
   return songs.map((song) => (
@@ -28,13 +28,13 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
   const { onContextMenu, menu } = useSongMenu(song);
 
   return (
-    <div onContextMenu={onContextMenu} className="tile-card group relative w-full p-2 text-left sm:p-3">
+    <div onContextMenu={onContextMenu} className="group relative w-full text-left">
       <div className="relative">
         <div className="absolute right-2 top-2 z-30 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
           <AddToPlaylist song={song} />
         </div>
 
-        <div className="tile-cover relative aspect-square overflow-hidden rounded-[var(--r-sm)] bg-[var(--surface-2)]">
+        <div className="slab press relative aspect-square overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-2)]">
           <Artwork
             src={song.artworkUrl}
             className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"

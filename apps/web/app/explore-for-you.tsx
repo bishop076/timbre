@@ -96,7 +96,7 @@ function GenreShelf({ pick }: { pick: Pick }) {
           <SongTiles songs={songs} />
           <Link
             href={`/collection/genre/${pick.id}`}
-            className={`${TILE} tile-card flex items-center justify-center px-3 text-center text-[13px] font-bold text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+            className={`${TILE} slab press flex aspect-square self-start items-center justify-center rounded-[var(--r-lg)] bg-[var(--surface-2)] px-3 text-center text-[13px] font-bold text-[var(--fg-dim)] hover:text-[var(--fg)]`}
           >
             All of {pick.name} →
           </Link>
