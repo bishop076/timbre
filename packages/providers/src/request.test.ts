@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { DEFAULT_POLICIES, MemoryBucketStore, ProviderError, RateLimiter } from "@timbre/core";
 
-import { createRequester, deadlineSignal, type RequesterOptions } from "./request.ts";
+import { createRequester, deadlineSignal, takeSlot, type RequesterOptions } from "./request.ts";
 import type { SearchContext } from "./types.ts";
 
 const CHART = "https://api.deezer.com/chart";
@@ -158,6 +158,16 @@ test("every request carries a deadline, and the caller's own abort still reaches
     },
   ));
 
+test("a slot taken outside a requester is refused as rate_limited, not waited for", async () => {
+  const limiter = { acquire: async () => false } as unknown as RateLimiter;
+  await assert.rejects(takeSlot({ limiter }, "spotify", "MusicBrainz", { key: "musicbrainz" }), (error: unknown) => {
+    assert.ok(error instanceof ProviderError);
+    assert.equal(error.kind, "rate_limited");
+    assert.equal(error.message, "MusicBrainz has no free request slot within 6s.");
+    return true;
+  });
+});
+
 test("the deadline fires on its own, as a TimeoutError", async () => {
   const signal = deadlineSignal(undefined, 20);
   await sleep(60);
@@ -192,7 +202,7 @@ test("a source whose next slot is past its deadline is refused at once as rate-l
   withFetch(
     async () => json({}),
     async (calls) => {
-      const limiter = new RateLimiter(new MemoryBucketStore());
+      const limiter = new RateLimiter(new MemoryBucketStore(), () => 0);
       await drained(limiter);
       await assert.rejects(requester({ deadlineMs: 20 })({ limiter }, CHART), {
         kind: "rate_limited",
@@ -219,7 +229,7 @@ test("a caller that aborts while waiting for a slot leaves at once, without a re
   withFetch(
     async () => json({}),
     async (calls) => {
-      const limiter = new RateLimiter(new MemoryBucketStore());
+      const limiter = new RateLimiter(new MemoryBucketStore(), () => 0);
       await drained(limiter);
       const controller = new AbortController();
       const waiting = requester()({ limiter, signal: controller.signal }, CHART);
