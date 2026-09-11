@@ -762,3 +762,28 @@ The controller now lives in a ref. Loading a different song, `stop` and unmount 
 and the response checks both its signal and the song it was fetched for before touching the
 queue. A same-song fall-through still keeps the request alive, which is what B-21 was for.
 Found by the integration review on `codex/claude-review`, 2026-09-05.
+
+---
+
+## B-33 · YouTube's bot wall arrived as error 150, and the ladder walked every copy `FIXED`
+
+**Severity:** high from an affected network — every YouTube and YT Music track fell through, slowly and without a reason
+
+B-19 made the embed host the fix for one network; this is the next network, where no host helps.
+
+| | |
+|---|---|
+| **Symptom** | From a VPN exit, every YouTube track spun through several copies and landed on a 30-second preview with no word why. The log blamed each upload's owner: *"The owner disabled playback on other sites."* |
+| **Cause** | The address, not the uploads. Measured 2026-09-10 from a Datacamp exit in Kuala Lumpur, under the hosted origin: every video's player response was `LOGIN_REQUIRED: "Sign in to confirm that you're not a bot"`, on `youtube-nocookie.com` and `www.youtube.com` alike, YouTube's own API sample `M7lc1UVf-VE` included — and the anonymous first-party watch page got the same wall with 403s on the media. The embed reports all of it as `150`, which the ladder read as per-upload and walked. The Singapore exit B-19 was measured from played the same probe five days earlier. |
+| **Fix** | `youtube-refusal.ts`: one coded refusal (101/150/153) may still be the upload's, two different uploads of one song refused in a row is the connection, and the ladder then leaves YouTube as it already did for a stall. The three codes share one sentence that names no cause. When YouTube turned the connection away, the player bar says so beside the preview badge, and the give-up message says so instead of counting copies. |
+
+**What this does not fix.** Nothing on this side makes a refused address play: YouTube judges
+the viewer's IP, and datacenter VPN exits pass or fail by server. The remedies are the
+reader's — another exit, or YouTube routed outside the VPN. The trade taken here is that a
+song whose first two uploads are genuinely owner-barred no longer reaches a third that
+would have played; the rescue across sources is still underneath it.
+
+**How to see it.** A `127.0.0.1` origin gets `150` on both hosts regardless, so local
+development shows nothing. Read `playabilityStatus` from the `youtubei/v1/player` response
+under the hosted origin, as B-19 did, and compare the first-party watch page from the same
+exit before touching the player.

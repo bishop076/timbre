@@ -402,20 +402,24 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             // the code depends on the embedding context, so it can never be used to *detect*
             // a territorial block. That is why it is only added to the retry set and nothing
             // reads it as a cause. See docs/RESEARCH-VPN-FALLTHROUGH.md.
-            const blockedUpload = [100, 101, 150, 153].includes(event.data);
+            //
+            // **150 does not reliably mean the owner either.** Measured 2026-09-10 from a VPN
+            // exit: every video answered 150, YouTube's own API sample included, over a player
+            // response of `LOGIN_REQUIRED` — YouTube's bot wall for the address. So the three
+            // share one sentence that names no cause, and travel as `refused`, which lets the
+            // ladder leave YouTube once a second upload says the same (B-33).
+            const refused = [101, 150, 153].includes(event.data);
             const reason =
               event.data === 100
                 ? "That upload has been removed."
-                // Not folded in with 101/150: those two *are* the owner's setting, and 153
-                // measurably is not — it arrived on a video the owner had left embeddable.
-                : event.data === 153
+                : refused
                   ? "YouTube wouldn't play this copy here."
-                  : blockedUpload
-                    ? "The owner disabled playback on other sites."
-                    : event.data === 5
-                      ? "The player couldn't load this track."
-                      : "Playback was blocked.";
-            handlers.current.handleError(reason, blockedUpload || event.data === 5);
+                  : event.data === 5
+                    ? "The player couldn't load this track."
+                    : "Playback was blocked.";
+            handlers.current.handleError(reason, refused || event.data === 100 || event.data === 5, {
+              refused,
+            });
           },
         },
       });

@@ -94,6 +94,7 @@ export function PlayerBar() {
     state,
     problem,
     playingPreview,
+    youtubeTurnedAway,
     activeSource,
     subscriptionTrack,
     streamUrl,
@@ -217,6 +218,15 @@ export function PlayerBar() {
                 thing has refused. */}
             {playingPreview && state !== "unplayable" && (
               <span className="shrink-0 text-amber-500">30-second preview</span>
+            )}
+            {/* Why the song is not on YouTube, when the reason is YouTube refusing the
+                connection rather than the song: without it a preview or a Spotify embed reads
+                as Timbre broken, and the fix — another VPN server, or none — is the reader's
+                to make. Truncates before the badges do. The give-up message says it itself. */}
+            {youtubeTurnedAway && state !== "unplayable" && (
+              <span className="min-w-0 truncate text-amber-500" title="YouTube refused this connection">
+                · YouTube refused this connection
+              </span>
             )}
           </p>
         </>
