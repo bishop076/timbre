@@ -18,7 +18,7 @@ Design rules the routes keep to:
 from fastapi import Depends, FastAPI
 
 from .config import PORT
-from .routes import radio, search
+from .routes import playlist, radio, search
 from .security import require_shared_secret
 
 app = FastAPI(
@@ -51,6 +51,11 @@ app.include_router(
 # the kind of thing nothing else would catch.
 app.include_router(
     radio.router,
+    dependencies=[Depends(require_shared_secret)],
+)
+
+app.include_router(
+    playlist.router,
     dependencies=[Depends(require_shared_secret)],
 )
 
