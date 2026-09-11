@@ -17,8 +17,8 @@ export function ReleaseCard({
   subtitle: string;
 }) {
   return (
-    <Link href={href} className="tile-card group block w-full p-2 sm:p-3">
-      <div className="tile-cover overflow-hidden rounded-[var(--r-sm)]">
+    <Link href={href} className="group block w-full">
+      <div className="slab press overflow-hidden rounded-[var(--r-lg)]">
         <Artwork
           src={coverUrl}
           className="aspect-square w-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
@@ -47,10 +47,10 @@ export function ArtistCard({
   playing?: boolean;
 }) {
   return (
-    <div className="tile-card group relative w-full p-2 sm:p-3">
+    <div className="group relative w-full">
       <div className="relative">
         <Link href={href} className="block focus:outline-none" aria-label={name}>
-          <div className="tile-cover aspect-square overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
+          <div className="slab press aspect-square overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
             <Artwork
               src={imageUrl}
               className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
