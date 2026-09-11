@@ -14,7 +14,9 @@
     "_comment_typecheck": "scripts/ is not a workspace, so -r would miss it; tsc -p scripts checks the release and hook scripts that Node otherwise runs unchecked.",
     "typecheck": "pnpm -r typecheck && tsc -p scripts",
     "_comment_test": "The scripts tests are not in a workspace, so -r would miss them — and scripts/release.mts is what chooses version numbers unattended.",
-    "test": "pnpm -r test && node --test \"scripts/*.test.mts\""
+    "test": "pnpm -r test && node --test \"scripts/*.test.mts\"",
+    "_comment_spotify_canary": "Checks the no-account Spotify search, albums, playlists and self-repair against the live service. Run daily by .github/workflows/spotify-canary.yml; --drill proves the alarm on a day nothing is broken.",
+    "spotify:canary": "node scripts/spotify-canary.mts"
   },
   "_comment_engines": "22.18 rather than 22: scripts/ is TypeScript that Node runs directly, and that is the first 22.x where type stripping is on without a flag.",
   "engines": {
