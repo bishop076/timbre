@@ -213,7 +213,18 @@ export function PlayerBar() {
         <div className="mb-2 flex items-center gap-2">
           {artwork}
           {meta}
-          {panelButton}
+          {streamUrl ? (
+            <button
+              type="button"
+              onClick={toggleTheater}
+              aria-label="Open player"
+              className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg)]"
+            >
+              <ExpandIcon className="size-[18px]" />
+            </button>
+          ) : (
+            panelButton
+          )}
           <PlayButton variant="bar" />
         </div>
         <Scrub />

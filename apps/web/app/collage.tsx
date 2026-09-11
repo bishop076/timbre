@@ -1,6 +1,9 @@
 "use client";
 
-import { cover as coverSrc } from "./artwork-url";
+import { useState } from "react";
+
+import { Artwork, failedAlready } from "./artwork";
+import { cover as coverSrc, sized } from "./artwork-url";
 import { NoteIcon } from "./icons";
 
 const SCATTER = [
@@ -20,7 +23,11 @@ export function Collage({
   className?: string;
   rounded?: string;
 }) {
-  const usable = covers.filter(Boolean).slice(0, SCATTER.length);
+  const [dead, setDead] = useState<ReadonlySet<string>>(() => new Set());
+  const markDead = (cover: string) =>
+    setDead((known) => (known.has(cover) ? known : new Set(known).add(cover)));
+
+  const usable = covers.filter((cover) => cover && !dead.has(cover)).slice(0, SCATTER.length);
 
   if (usable.length === 0) {
     return (
@@ -34,13 +41,10 @@ export function Collage({
 
   if (usable.length < 3) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={coverSrc(usable[0], 600) ?? undefined}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        className={`object-cover ${rounded} ${className}`}
+      <Artwork
+        src={sized(usable[0], 600)}
+        iconClassName="size-7"
+        className={`${rounded} ${className}`}
       />
     );
   }
@@ -53,6 +57,10 @@ export function Collage({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             key={`${cover}-${index}`}
+            ref={(img) => {
+              if (img && failedAlready(img)) markDead(cover);
+            }}
+            onError={() => markDead(cover)}
             src={coverSrc(cover, 200) ?? undefined}
             alt=""
             loading="lazy"
