@@ -262,7 +262,8 @@ about **1,300 requests exhaust the 10 GB of origin transfer**. At a realistic
 rendering, and a 429 there means a broken image on a legitimate page. That is a
 real concern, and it does not justify *nothing*.
 
-**Fixed in `1e2e536`.** `guardArtwork()` — 300/min/client, on its own budget rather
+**Fixed in `1e2e536`.** `guard(request, "artwork")` in `lib/api.ts` (landed as
+`guardArtwork()`) — 300/min/client, on its own budget rather
 than sharing the API's, because a page renders ~30 covers and a 429 on an `<img>`
 is a broken picture rather than a retry.
 
@@ -319,10 +320,10 @@ the right call. Rate-limit it well above a monitor's interval rather than
 closing it.
 
 **Fixed 2026-08-21, exactly as that says.** The route stays open and now goes
-through `guardHealth` — 30/minute/client, a probe every two seconds, far above any
+through `guard(request, "health")` (landed as `guardHealth`) — 30/minute/client, a probe every two seconds, far above any
 monitor's interval and far below a loop.
 
-Its **own** budget rather than `guard`'s, for the reason artwork has one: a
+Its **own** budget rather than the API routes', for the reason artwork has one: a
 monitor and a reader routinely share an address behind NAT, and a probe refused
 because somebody searched a lot reads as an outage — which is the one thing a
 liveness endpoint must never invent.
