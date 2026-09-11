@@ -2,60 +2,35 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-const PREFIX = "timbre:chart:";
+import { readJson, writeJson } from "./local-store.ts";
 
 const MIN_AGE_MS = 12 * 60 * 60 * 1000;
 
-export interface ChartSnapshot {
+interface ChartSnapshot {
   at: number;
   positions: Record<string, number>;
 }
 
-function keyFor(genre: number): string {
-  return `${PREFIX}${genre}`;
-}
+type Placed = { id: string; position: number };
 
-export function readSnapshot(genre: number): ChartSnapshot | null {
-  try {
-    const raw = window.localStorage.getItem(keyFor(genre));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as Partial<ChartSnapshot>;
-    if (typeof parsed?.at !== "number" || typeof parsed.positions !== "object") return null;
-    return { at: parsed.at, positions: parsed.positions ?? {} };
-  } catch {
-    return null;
-  }
-}
-
-export function rememberChart(
-  genre: number,
-  tracks: { id: string; position: number }[],
-): ChartSnapshot | null {
-  const previous = readSnapshot(genre);
+function rememberChart(genre: number, tracks: Placed[]): ChartSnapshot | null {
+  const key = `timbre:chart:${genre}`;
+  const stored = readJson(key) as Partial<ChartSnapshot> | null;
+  const previous =
+    typeof stored?.at === "number" && typeof stored.positions === "object"
+      ? { at: stored.at, positions: stored.positions ?? {} }
+      : null;
   const now = Date.now();
-
   if (previous && now - previous.at < MIN_AGE_MS) return previous;
 
-  const positions: Record<string, number> = {};
-  for (const track of tracks) positions[track.id] = track.position;
-
-  try {
-    window.localStorage.setItem(keyFor(genre), JSON.stringify({ at: now, positions }));
-  } catch {
-  }
-
+  const positions = Object.fromEntries(tracks.map((track) => [track.id, track.position]));
+  writeJson(key, { at: now, positions });
   return previous;
 }
 
 const snapshots = new Map<number, ChartSnapshot | null>();
 
-const EMPTY: { id: string; position: number }[] = [];
-
-export function useChartSnapshot(
-  genre: number | null,
-  tracks: { id: string; position: number }[] = EMPTY,
-): ChartSnapshot | null {
+export function useChartSnapshot(genre: number | null, tracks: Placed[]): ChartSnapshot | null {
   const subscribe = useCallback(
     (onChange: () => void) => {
       if (genre !== null && !snapshots.has(genre) && tracks.length > 0) {

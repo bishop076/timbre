@@ -9,14 +9,11 @@ export function BarChart({
   unit: string;
   onPick?: (key: string) => void;
 }) {
-  if (rows.length === 0) return null;
-
   const max = Math.max(...rows.map((row) => row.value), 1);
 
   return (
     <ul className="flex flex-col gap-[2px]">
       {rows.map((row) => {
-        const share = (row.value / max) * 100;
         const body = (
           <>
             <span className="w-24 shrink-0 truncate text-[12px] font-medium @sm:w-36 @2xl:w-48 @2xl:text-[13px]">
@@ -26,7 +23,7 @@ export function BarChart({
             <span className="relative h-4 min-w-0 flex-1 overflow-hidden rounded-[3px] bg-[var(--surface-2)]">
               <span
                 className="absolute inset-y-0 left-0 rounded-r-[4px] bg-[var(--accent)]"
-                style={{ width: `${share}%` }}
+                style={{ width: `${(row.value / max) * 100}%` }}
               />
             </span>
 

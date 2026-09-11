@@ -1,38 +1,22 @@
 "use client";
 
-import { toArtistSlug } from "../artist-slug";
-import { useEffect, useState } from "react";
-
 import Link from "next/link";
 
-import { ChevronIcon } from "../icons";
+import { toArtistSlug } from "../artist-slug";
 import { cover as coverSrc } from "../artwork-url";
+import { ChevronIcon } from "../icons";
+import { useJson } from "./panel-tabs";
 
 interface ArtistInfo {
   name: string;
   imageUrl: string | null;
   followers: number | null;
-  source: string;
-  url: string | null;
 }
 
 export function ArtistCard({ name }: { name: string | null }) {
-  const [loaded, setLoaded] = useState<{ name: string; info: ArtistInfo | null } | null>(null);
-
-  useEffect(() => {
-    if (!name) return;
-
-    const aborter = new AbortController();
-    fetch(`/api/artist?name=${encodeURIComponent(name)}`, { signal: aborter.signal })
-      .then((response) => (response.ok ? (response.json() as Promise<{ artist: ArtistInfo | null }>) : null))
-      .then((data) => setLoaded({ name, info: data?.artist ?? null }))
-      .catch(() => {
-      });
-
-    return () => aborter.abort();
-  }, [name]);
-
-  const artist = loaded && loaded.name === name ? loaded.info : null;
+  const artist = useJson<{ artist: ArtistInfo | null }>(
+    name ? `/api/artist?name=${encodeURIComponent(name)}` : null,
+  ).data?.artist;
   if (!artist) return null;
 
   return (

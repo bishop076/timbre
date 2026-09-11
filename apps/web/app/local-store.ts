@@ -1,5 +1,37 @@
 import { useSyncExternalStore } from "react";
 
+type Area = "localStorage" | "sessionStorage";
+
+export function readItem(key: string, area: Area = "localStorage"): string | null {
+  try {
+    return window[area].getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeItem(key: string, value: string | null, area: Area = "localStorage"): boolean {
+  try {
+    if (value === null) window[area].removeItem(key);
+    else window[area].setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readJson(key: string): unknown {
+  try {
+    return JSON.parse(readItem(key) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+export function writeJson(key: string, value: unknown): boolean {
+  return writeItem(key, value === null ? null : JSON.stringify(value));
+}
+
 export function createNotifier(onStorage?: (event: StorageEvent) => void) {
   const listeners = new Set<() => void>();
 
@@ -12,38 +44,25 @@ export function createNotifier(onStorage?: (event: StorageEvent) => void) {
       if (onStorage) window.addEventListener("storage", onStorage);
       return () => {
         listeners.delete(listener);
-        if (onStorage && listeners.size === 0) {
-          window.removeEventListener("storage", onStorage);
-        }
+        if (onStorage && listeners.size === 0) window.removeEventListener("storage", onStorage);
       };
     },
   };
 }
 
-export interface LocalStoreOptions<T> {
-  read: () => T;
-  initial: T;
-  write?: (value: T) => void;
-  keys?: readonly string[];
-  onFirstRead?: (value: T) => void;
-}
-
-export interface LocalStore<T> {
-  subscribe: (listener: () => void) => () => void;
-  getSnapshot: () => T;
-  getServerSnapshot: () => T;
-  publish: (value: T) => void;
-  save: (value: T) => void;
-  load: () => void;
-}
-
 export function createLocalStore<T>({
-  read,
   initial,
+  read = () => initial,
   write,
   keys,
   onFirstRead,
-}: LocalStoreOptions<T>): LocalStore<T> {
+}: {
+  initial: T;
+  read?: () => T;
+  write?: (value: T) => void;
+  keys?: readonly string[];
+  onFirstRead?: (value: T) => void;
+}) {
   let snapshot = initial;
   let loaded = false;
   const notifier = createNotifier(keys ? onStorage : undefined);
@@ -62,7 +81,7 @@ export function createLocalStore<T>({
   return {
     subscribe: notifier.subscribe,
 
-    getSnapshot() {
+    getSnapshot(): T {
       if (!loaded) {
         loaded = true;
         snapshot = read();
@@ -75,21 +94,36 @@ export function createLocalStore<T>({
 
     publish,
 
-    save(value) {
+    save(value: T): void {
       try {
         write?.(value);
-      } catch {
-      }
+      } catch {}
       publish(value);
     },
 
-    load() {
-      if (loaded) return;
-      publish(read());
+    load(): void {
+      if (!loaded) publish(read());
     },
   };
 }
 
-export function useLocalStore<T>(store: LocalStore<T>): T {
+export function createJsonStore<T>(
+  key: string,
+  initial: T,
+  parse: (stored: unknown) => T,
+  { crossTab = true } = {},
+) {
+  return createLocalStore<T>({
+    initial,
+    read: () => {
+      const stored = readJson(key);
+      return stored === null ? initial : parse(stored);
+    },
+    write: (value) => writeJson(key, value),
+    keys: crossTab ? [key] : undefined,
+  });
+}
+
+export function useLocalStore<T>(store: ReturnType<typeof createLocalStore<T>>): T {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
 }

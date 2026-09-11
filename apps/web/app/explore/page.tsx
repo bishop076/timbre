@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 
 import { fetchDiscover, type ChartTrack } from "@/lib/discover";
-import { GenreMixView } from "../genre-mix-view";
 import { fetchRadios } from "@/lib/radios";
 import { currentRotation } from "@/lib/rotation";
 import {
@@ -14,10 +13,10 @@ import {
 } from "@/lib/rankings";
 
 import { DiscoverView } from "../discover-view";
+import { GenreMixView } from "../genre-mix-view";
 import { RankingsView } from "../rankings-view";
 
 export const metadata = { title: "Explore — Timbre" };
-
 export const revalidate = 3600;
 
 export default async function ExplorePage() {
@@ -51,7 +50,6 @@ async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
       agree={agreement(rankings)}
       genreMix={<GenreMixView mix={mixGenres(genreCharts, rankings.songs)} />}
       chart={chart}
-      embedded
     />
   );
 }

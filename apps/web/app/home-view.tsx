@@ -6,7 +6,7 @@ import { rememberCharts, useCachedCharts } from "./charts-cache";
 import { MixHero } from "./mix-hero";
 import { useHistory } from "./player/history-store";
 import { HomeShelves, songFromHistory } from "./home-shelves";
-import type { Song, SongsResponse } from "./types";
+import type { SongsResponse } from "./types";
 
 export function HomeView() {
   const cached = useCachedCharts();
@@ -20,10 +20,7 @@ export function HomeView() {
     fetch("/api/charts", { signal: aborter.signal })
       .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
       .then((data) => {
-        if (!data) {
-          setFailed(true);
-          return;
-        }
+        if (!data) return setFailed(true);
         setFetched(data);
         rememberCharts(data);
       })
@@ -35,13 +32,12 @@ export function HomeView() {
 
   const personal = history.length >= 3;
 
-  const mix: Song[] = personal
-    ? history.slice(0, 20).map(songFromHistory)
-    : (charts?.songs ?? []);
-
   return (
     <>
-      <MixHero songs={mix} personal={personal} />
+      <MixHero
+        songs={personal ? history.slice(0, 20).map(songFromHistory) : (charts?.songs ?? [])}
+        personal={personal}
+      />
       <HomeShelves charts={charts} failed={failed && charts === null} />
     </>
   );

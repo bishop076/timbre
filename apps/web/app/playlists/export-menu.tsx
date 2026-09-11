@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { exportProfile } from "../profile/profile-backup";
 import { playlistsToCsv } from "./csv";
@@ -23,36 +23,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean; hasProfile: boolean }) {
   const hasLikes = useLikes().songs.length > 0;
-  const root = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const at = useAnchoredMenu(open, root, menu, 256);
-
-  const close = useCallback(() => {
-    setOpen(false);
-    trigger.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        close();
-      }
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, close]);
+  const { open, setOpen, close, root, trigger, menu, style } = useAnchoredMenu(undefined, 256);
 
   async function backup(withProfile: boolean) {
     setBusy(true);
@@ -99,7 +71,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
           ref={menu}
           role="menu"
           aria-label="Export"
-          style={at ? { left: at.left, top: at.top } : { left: 0, top: 0, visibility: "hidden" }}
+          style={style}
           className="slab fixed z-50 w-64 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] p-1.5 shadow-[var(--drop-lg)]"
         >
           <button type="button" role="menuitem" disabled={busy} onClick={() => void backup(true)} className={item}>

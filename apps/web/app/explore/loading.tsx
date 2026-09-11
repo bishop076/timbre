@@ -2,11 +2,11 @@ export default function ExploreLoading() {
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-3 sm:px-7 sm:pb-20">
       <div className="shelf flex gap-2 overflow-x-hidden">
-        {[0, 1, 2, 3, 4, 5, 6].map((pill) => (
+        {[72, 58, 84, 64, 92, 56, 78].map((width) => (
           <div
-            key={pill}
+            key={width}
             className="h-8 shrink-0 animate-pulse rounded-[var(--r-full)] bg-[var(--surface-2)]"
-            style={{ width: `${[72, 58, 84, 64, 92, 56, 78][pill]}px` }}
+            style={{ width }}
           />
         ))}
       </div>

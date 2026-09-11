@@ -3,54 +3,47 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { sampleHue, type Hsl } from "../hue";
 import { useHydrated } from "../hydrated";
 import { CheckIcon, PencilIcon } from "../icons";
-import { PlaylistCover } from "../playlists/playlist-cover";
+import { EmptyNotice } from "../page-chrome";
+import { PLAYLIST_GRID, PlaylistGrid } from "../playlists/library-view";
 import { loadPlaylists, usePlaylists } from "../playlists/store";
-import { SettingsPanel } from "./settings-panel";
 import { isLightTheme, useTheme } from "../theme/theme-store";
 import { Avatar, AVATAR_TONE, avatarHue } from "./avatar";
 import { ImagePicker } from "./image-picker";
-import { useDominantColor } from "./dominant-color";
 import { useLocalImages } from "./local-images";
 import { setDisplayName, useLocalProfile } from "./local-profile";
+import { SettingsPanel } from "./settings-panel";
 
-const WASH_KEY = "timbre:profile-wash";
-
-function recordWash(value: { dark: string; light: string } | null): void {
+function remember(key: string, value: object | null): void {
   try {
-    if (value) window.localStorage.setItem(WASH_KEY, JSON.stringify(value));
-    else window.localStorage.removeItem(WASH_KEY);
-  } catch {
-  }
+    if (value) window.localStorage.setItem(key, JSON.stringify(value));
+    else window.localStorage.removeItem(key);
+  } catch {}
 }
 
-const COUNTS_KEY = "timbre:profile-counts";
-
-interface Counts {
-  playlists: string;
-  playlistsLabel: string;
-  songs: string;
-  songsLabel: string;
+function plural(value: number, label: string): string {
+  return `${label}${value === 1 ? "" : "s"}`;
 }
 
-function recordCounts(counts: Counts): void {
-  try {
-    window.localStorage.setItem(COUNTS_KEY, JSON.stringify(counts));
-  } catch {
-  }
+function useDominantColor(src: string | null) {
+  const [found, setFound] = useState<{ src: string; color: Hsl | null } | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    return sampleHue(src, (color) => setFound({ src, color }));
+  }, [src]);
+
+  if (!src) return { color: null, settled: true };
+  return { color: found?.color ?? null, settled: found?.src === src };
 }
 
-const BANNER_SCRIM = [
-  `linear-gradient(to top, var(--surface-1) 0%, transparent var(--banner-fade, 45%))`,
-  `linear-gradient(to top, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0.1) 100%)`,
-].join(", ");
+const BANNER_SCRIM =
+  "linear-gradient(to top, var(--surface-1) 0%, transparent var(--banner-fade, 45%)), " +
+  "linear-gradient(to top, rgb(0 0 0 / 0.45) 0%, rgb(0 0 0 / 0.1) 100%)";
 
-export function ProfileView({
-  serverName = null,
-}: {
-  serverName?: string | null;
-}) {
+export function ProfileView({ serverName }: { serverName: string | null }) {
   const profile = useLocalProfile();
   const local = useLocalImages();
   const { playlists, settled } = usePlaylists();
@@ -63,16 +56,14 @@ export function ProfileView({
     loadPlaylists();
   }, []);
 
-  const displayName = hydrated
-    ? profile.name?.trim() || "Profile"
-    : serverName?.trim() || "Profile";
+  const displayName = (hydrated ? profile.name : serverName)?.trim() || "Profile";
 
   const playlistCount = playlists?.length ?? 0;
   const songCount = (playlists ?? []).reduce((total, list) => total + list.trackCount, 0);
 
   useEffect(() => {
     if (!settled) return;
-    recordCounts({
+    remember("timbre:profile-counts", {
       playlists: playlistCount.toLocaleString(),
       playlistsLabel: plural(playlistCount, "playlist"),
       songs: songCount.toLocaleString(),
@@ -98,10 +89,11 @@ export function ProfileView({
 
   useEffect(() => {
     if (!ready) return;
-    recordWash(local.banner ? null : { dark: washDark, light: washLight });
+    remember("timbre:profile-wash", local.banner ? null : { dark: washDark, light: washLight });
   }, [ready, local.banner, washDark, washLight]);
 
   const onDark = Boolean(local.banner) || !light;
+  const strong = onDark ? "text-white" : "text-[var(--fg)]";
 
   function save(event: React.FormEvent) {
     event.preventDefault();
@@ -122,11 +114,7 @@ export function ProfileView({
         {local.banner ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={local.banner}
-              alt=""
-              className="absolute inset-0 -z-10 size-full object-cover"
-            />
+            <img src={local.banner} alt="" className="absolute inset-0 -z-10 size-full object-cover" />
             <div aria-hidden className="absolute inset-0 -z-10" style={{ background: BANNER_SCRIM }} />
           </>
         ) : !hydrated ? (
@@ -161,14 +149,6 @@ export function ProfileView({
             </div>
 
             <div className="min-w-0 flex-1 @lg:pb-2">
-              {!editing && (
-                <p
-                  className={`mb-1.5 text-[11px] font-bold uppercase tracking-wider ${onDark ? "text-white/80" : "text-[var(--fg-dim)]"}`}
-                >
-                  Profile
-                </p>
-              )}
-
               {editing ? (
                 <form onSubmit={save} className="flex max-w-sm flex-col gap-2">
                   <h1 className="sr-only">{displayName}</h1>
@@ -203,68 +183,74 @@ export function ProfileView({
                   </div>
                 </form>
               ) : (
-                <div className="flex items-center gap-3">
-                  <h1
-                    className={`min-w-0 break-words font-extrabold leading-[1.05] tracking-tight ${onDark ? "text-white" : "text-[var(--fg)]"} ${
-                      displayName.length > 22
-                        ? "text-2xl sm:text-3xl @lg:text-4xl"
-                        : displayName.length > 12
-                          ? "text-3xl sm:text-4xl @lg:text-6xl"
-                          : "text-4xl sm:text-5xl @lg:text-7xl"
-                    }`}
+                <>
+                  <p
+                    className={`mb-1.5 text-[11px] font-bold uppercase tracking-wider ${onDark ? "text-white/80" : "text-[var(--fg-dim)]"}`}
                   >
-                    {displayName}
-                  </h1>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDraft(profile.name ?? "");
-                      setEditing(true);
-                    }}
-                    aria-label="Edit display name"
-                    className={`press flex size-9 shrink-0 items-center justify-center rounded-[var(--r-full)] ${onDark ? "text-white/60 hover:bg-white/10 hover:text-white" : "text-[var(--fg-faint)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"}`}
-                  >
-                    <PencilIcon className="size-4" />
-                  </button>
-                </div>
-              )}
+                    Profile
+                  </p>
 
-              {!editing && (
-                <div
-                  className={`mt-3.5 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1.5 text-sm ${onDark ? "text-white/75" : "text-[var(--fg-dim)]"}`}
-                >
-                  <span>
-                    <Replay
-                      slot="count-playlists"
-                      value={settled ? playlistCount.toLocaleString() : null}
-                      className={`font-bold tabular-nums ${onDark ? "text-white" : "text-[var(--fg)]"}`}
-                    />{" "}
-                    <Replay
-                      slot="label-playlists"
-                      value={settled ? plural(playlistCount, "playlist") : null}
-                    />
-                  </span>
-                  <Replay
-                    slot="count-dot"
-                    value={settled ? "·" : null}
-                    className={onDark ? "text-white/40" : "text-[var(--fg-faint)]"}
-                    decorative
-                  />
-                  <span>
-                    <Replay
-                      slot="count-songs"
-                      value={settled ? songCount.toLocaleString() : null}
-                      className={`font-bold tabular-nums ${onDark ? "text-white" : "text-[var(--fg)]"}`}
-                    />{" "}
-                    <Replay slot="label-songs" value={settled ? plural(songCount, "song") : null} />
-                  </span>
-                  <Link
-                    href="/stats"
-                    className={`press ml-1 rounded-[var(--r-full)] px-2.5 py-0.5 text-[12px] font-semibold ${onDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-[var(--surface-2)] text-[var(--fg)] hover:bg-[var(--surface-3)]"}`}
+                  <div className="flex items-center gap-3">
+                    <h1
+                      className={`min-w-0 break-words font-extrabold leading-[1.05] tracking-tight ${strong} ${
+                        displayName.length > 22
+                          ? "text-2xl sm:text-3xl @lg:text-4xl"
+                          : displayName.length > 12
+                            ? "text-3xl sm:text-4xl @lg:text-6xl"
+                            : "text-4xl sm:text-5xl @lg:text-7xl"
+                      }`}
+                    >
+                      {displayName}
+                    </h1>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraft(profile.name ?? "");
+                        setEditing(true);
+                      }}
+                      aria-label="Edit display name"
+                      className={`press flex size-9 shrink-0 items-center justify-center rounded-[var(--r-full)] ${onDark ? "text-white/60 hover:bg-white/10 hover:text-white" : "text-[var(--fg-faint)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"}`}
+                    >
+                      <PencilIcon className="size-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    className={`mt-3.5 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-1.5 text-sm ${onDark ? "text-white/75" : "text-[var(--fg-dim)]"}`}
                   >
-                    Your listening
-                  </Link>
-                </div>
+                    <span>
+                      <Replay
+                        slot="count-playlists"
+                        value={settled ? playlistCount.toLocaleString() : null}
+                        className={`font-bold tabular-nums ${strong}`}
+                      />{" "}
+                      <Replay
+                        slot="label-playlists"
+                        value={settled ? plural(playlistCount, "playlist") : null}
+                      />
+                    </span>
+                    <Replay
+                      slot="count-dot"
+                      value={settled ? "·" : null}
+                      className={onDark ? "text-white/40" : "text-[var(--fg-faint)]"}
+                      decorative
+                    />
+                    <span>
+                      <Replay
+                        slot="count-songs"
+                        value={settled ? songCount.toLocaleString() : null}
+                        className={`font-bold tabular-nums ${strong}`}
+                      />{" "}
+                      <Replay slot="label-songs" value={settled ? plural(songCount, "song") : null} />
+                    </span>
+                    <Link
+                      href="/stats"
+                      className={`press ml-1 rounded-[var(--r-full)] px-2.5 py-0.5 text-[12px] font-semibold ${onDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-[var(--surface-2)] text-[var(--fg)] hover:bg-[var(--surface-3)]"}`}
+                    >
+                      Your listening
+                    </Link>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -276,58 +262,27 @@ export function ProfileView({
           Playlists
         </h2>
 
-        {!settled ? (
-          <>
-            <p className="saved-none rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
-              Nothing saved yet.
-            </p>
-            <ul
-              aria-hidden
-              className="saved-some grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5"
-            >
-              {Array.from({ length: 5 }, (_, index) => (
-                <li key={index} className="p-2.5">
-                  <div className="aspect-square w-full animate-pulse rounded-[var(--r-md)] bg-[var(--surface-2)]" />
-                  <div className="mt-2.5 h-3.5 w-3/4 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
-                  <div className="mt-1.5 h-3 w-2/5 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : !playlists?.length ? (
-          <p className="rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]">
-            Nothing saved yet.
-          </p>
+        {settled && playlists?.length ? (
+          <PlaylistGrid playlists={playlists} />
         ) : (
-          <ul className="grid grid-cols-2 gap-3 @md:grid-cols-3 @md:gap-4 @2xl:grid-cols-4 @4xl:grid-cols-5">
-            {playlists.map((playlist) => (
-              <li key={playlist.id}>
-                <Link
-                  href={`/playlist/${playlist.id}`}
-                  className="block rounded-[var(--r-lg)] p-2.5 transition hover:bg-[var(--surface-2)]"
-                >
-                  <PlaylistCover
-                    covers={playlist.covers}
-                    className="slab aspect-square w-full rounded-[var(--r-md)]"
-                  />
-                  <span className="mt-2.5 block truncate text-sm font-semibold">
-                    {playlist.name}
-                  </span>
-                  <span className="block text-xs text-[var(--fg-dim)]">
-                    {playlist.trackCount} {playlist.trackCount === 1 ? "song" : "songs"}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <EmptyNotice className={settled ? undefined : "saved-none"}>Nothing saved yet.</EmptyNotice>
+            {!settled && (
+              <ul aria-hidden className={`saved-some ${PLAYLIST_GRID}`}>
+                {Array.from({ length: 5 }, (_, index) => (
+                  <li key={index} className="p-2.5">
+                    <div className="aspect-square w-full animate-pulse rounded-[var(--r-md)] bg-[var(--surface-2)]" />
+                    <div className="mt-2.5 h-3.5 w-3/4 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
+                    <div className="mt-1.5 h-3 w-2/5 animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]" />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </div>
   );
-}
-
-function plural(value: number, label: string): string {
-  return `${label}${value === 1 ? "" : "s"}`;
 }
 
 function Replay({

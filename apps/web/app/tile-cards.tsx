@@ -72,15 +72,7 @@ export function ArtistCard({
             }`}
             style={{ background: "var(--accent)" }}
           >
-            {playing ? (
-              <span className="eq flex h-3.5 items-end gap-[3px]">
-                <span />
-                <span />
-                <span />
-              </span>
-            ) : (
-              <PlayIcon className="size-[18px] translate-x-px" />
-            )}
+            <PlayGlyph playing={playing} />
           </button>
         )}
       </div>
@@ -90,5 +82,17 @@ export function ArtistCard({
         <span className="mt-0.5 block truncate px-0.5 pb-0.5 text-xs text-[var(--fg-dim)]">{subtitle}</span>
       </Link>
     </div>
+  );
+}
+
+export function PlayGlyph({ playing }: { playing: boolean }) {
+  return playing ? (
+    <span className="eq flex h-3.5 items-end gap-[3px]">
+      <span />
+      <span />
+      <span />
+    </span>
+  ) : (
+    <PlayIcon className="size-[18px] translate-x-px" />
   );
 }

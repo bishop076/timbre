@@ -7,52 +7,43 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   console.error("usage: node scripts/free-port.mts <port>");
   process.exit(2);
 }
+const windows = process.platform === "win32";
 
 function run(file: string, args: string[]): string {
   try {
     return execFileSync(file, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   } catch (error) {
-    const stdout = (error as { stdout?: unknown } | null)?.stdout;
+    const { stdout } = error as { stdout?: unknown };
     return typeof stdout === "string" ? stdout : "";
   }
 }
 
 function listeners(): number[] {
-  const pids = new Set<number>();
-  if (process.platform === "win32") {
-    for (const line of run("netstat", ["-ano", "-p", "tcp"]).split(/\r?\n/)) {
-      const [, local, , state, pidColumn] = line.trim().split(/\s+/);
-      if (state !== "LISTENING" || local === undefined || pidColumn === undefined) continue;
-      if (!local.endsWith(`:${port}`)) continue;
-      const pid = Number(pidColumn);
-      if (Number.isInteger(pid) && pid > 0) pids.add(pid);
-    }
-  } else {
-    for (const token of run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]).split(/\s+/)) {
-      const pid = Number(token);
-      if (Number.isInteger(pid) && pid > 0) pids.add(pid);
-    }
-  }
+  const tokens = windows
+    ? run("netstat", ["-ano", "-p", "tcp"])
+        .split(/\r?\n/)
+        .map((line) => line.trim().split(/\s+/))
+        .filter(([, local, , state]) => state === "LISTENING" && local?.endsWith(`:${port}`))
+        .map((columns) => columns[4])
+    : run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]).split(/\s+/);
+  const pids = new Set(tokens.map(Number).filter((pid) => Number.isInteger(pid) && pid > 0));
   pids.delete(process.pid);
   return [...pids];
-}
-
-function kill(pid: number): void {
-  if (process.platform === "win32") {
-    run("taskkill", ["/PID", String(pid), "/T", "/F"]);
-  } else {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-    }
-  }
 }
 
 const found = listeners();
 if (found.length === 0) process.exit(0);
 
 console.log(`[free-port] port ${port} held by pid ${found.join(", ")} — stopping the leftover`);
-for (const pid of found) kill(pid);
+for (const pid of found) {
+  if (windows) {
+    run("taskkill", ["/PID", String(pid), "/T", "/F"]);
+  } else {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {}
+  }
+}
 
 const deadline = Date.now() + 3000;
 while (Date.now() < deadline && listeners().length > 0) {

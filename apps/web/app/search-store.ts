@@ -1,29 +1,13 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { createLocalStore, useLocalStore } from "./local-store.ts";
 
-let query = "";
-const listeners = new Set<() => void>();
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot(): string {
-  return query;
-}
-
-function getServerSnapshot(): string {
-  return "";
-}
+const store = createLocalStore({ initial: "" });
 
 export function setSearchQuery(next: string): void {
-  if (next === query) return;
-  query = next;
-  for (const listener of listeners) listener();
+  if (next !== store.getSnapshot()) store.publish(next);
 }
 
 export function useSearchQuery(): string {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  return useLocalStore(store);
 }

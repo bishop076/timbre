@@ -2,22 +2,22 @@
 
 import { useState } from "react";
 
+import { EYEBROW } from "../page-chrome";
 import { beginConnect, saveSpotifyClientId, spotifyClientId } from "./connection.ts";
 import { disconnectSpotify, useSpotifyTokens } from "./token-store.ts";
 
 export function SpotifyConnect() {
-  const tokens = useSpotifyTokens();
+  const connected = Boolean(useSpotifyTokens());
   const [clientId, setClientId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const connected = Boolean(tokens);
   const configured = typeof window !== "undefined" && Boolean(spotifyClientId());
 
   async function connect() {
     setBusy(true);
     setError(null);
-    if (clientId.trim()) saveSpotifyClientId(clientId);
+    const typed = clientId.trim();
+    if (typed) saveSpotifyClientId(typed);
     const reason = await beginConnect();
     if (reason) {
       setError(reason);
@@ -27,7 +27,7 @@ export function SpotifyConnect() {
 
   return (
     <section className="slab-sm rounded-[var(--r-md)] bg-[var(--surface-2)] p-3">
-      <h3 className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">Spotify</h3>
+      <h3 className={EYEBROW}>Spotify</h3>
 
       <p className="mt-1.5 text-sm text-[var(--fg-dim)]">
         {connected

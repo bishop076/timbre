@@ -4,12 +4,12 @@ import { QueueRow } from "./now-playing";
 import { usePlayerControls } from "./player-context";
 import { sameRecording } from "./song-match";
 
-export function SimilarSongs({ limit = 5 }: { limit?: number }) {
+export function SimilarSongs() {
   const { radio, queue, play } = usePlayerControls();
 
   const suggestions = radio
     .filter((song) => !queue.some((queued) => sameRecording(queued, song)))
-    .slice(0, limit);
+    .slice(0, 5);
 
   if (suggestions.length === 0) return null;
 

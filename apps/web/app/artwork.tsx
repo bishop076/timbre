@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { proxied as viaProxy } from "./artwork-url";
+import { proxied } from "./artwork-url";
 import { NoteIcon } from "./icons";
 
 function plainThumbnail(url: string | null | undefined): string | null {
@@ -29,7 +29,7 @@ export function Artwork({
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   const chosen = failedSrc === src ? plainThumbnail(src) : src;
-  const attempted = viaProxy(chosen);
+  const attempted = proxied(chosen);
   const showImage = Boolean(attempted) && failedSrc !== chosen;
 
   return (

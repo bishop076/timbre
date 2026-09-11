@@ -1,7 +1,7 @@
 import { normalizeLoose } from "@timbre/core";
 import { z } from "zod";
 
-import { CACHE_CONTROL_DAY, guard } from "@/lib/api";
+import { CACHE_CONTROL_DAY, guard, json } from "@/lib/api";
 import { getProviderRuntime, getYtMusicLyrics } from "@/lib/providers";
 import { queryText } from "@/lib/query-text";
 
@@ -18,33 +18,31 @@ function withoutArtistPrefix(title: string, artist: string): string {
     : title;
 }
 
-const CACHEABLE = { headers: { "cache-control": CACHE_CONTROL_DAY } };
-
 export async function GET(request: Request) {
   const refusal = guard(request);
   if (refusal) return refusal;
 
-  const url = new URL(request.url);
+  const params = new URL(request.url).searchParams;
   const parsed = querySchema.safeParse({
-    title: url.searchParams.get("title"),
-    artist: url.searchParams.get("artist"),
-    ids: url.searchParams.getAll("id"),
+    title: params.get("title"),
+    artist: params.get("artist"),
+    ids: params.getAll("id"),
   });
   if (!parsed.success) {
     return Response.json({ error: "A title and artist are required." }, { status: 400 });
   }
 
   const { title, artist, ids } = parsed.data;
-  const { limiter } = getProviderRuntime();
+  const runtime = getProviderRuntime();
 
   try {
     const found = await getYtMusicLyrics()(
-      { limiter, signal: request.signal },
+      { ...runtime, signal: request.signal },
       { videoIds: ids, title: withoutArtistPrefix(title, artist), artist },
     );
-    if (!found) return Response.json({ lyrics: null }, { status: 200 });
+    if (!found) return Response.json({ lyrics: null });
 
-    return Response.json(
+    return json(
       {
         lyrics: {
           instrumental: false,
@@ -53,7 +51,7 @@ export async function GET(request: Request) {
           attribution: found.attribution,
         },
       },
-      CACHEABLE,
+      CACHE_CONTROL_DAY,
     );
   } catch {
     return Response.json(

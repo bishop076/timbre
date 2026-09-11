@@ -1,15 +1,10 @@
 import { dedupeParts, durationsMatch } from "@timbre/core";
 
-import { byPlayability, type Song, type SourceTrack } from "./types.ts";
+import { PLAYBACK_RANK, type Song, type SourceTrack } from "./types.ts";
 
-interface Parts {
-  base: string;
-  variants: string[];
-  artists: string[];
-}
+type Parts = ReturnType<typeof dedupeParts>;
 
 interface Group {
-  key: string;
   parts: Parts;
   isrc: string | null;
   tracks: SourceTrack[];
@@ -21,23 +16,17 @@ function creditsAgree(a: string[], b: string[]): boolean {
 }
 
 function matches(group: Group, track: SourceTrack, parts: Parts): boolean {
-  if (group.isrc && track.isrc) {
-    return group.isrc === track.isrc;
-  }
-
-  if (group.parts.base !== parts.base) return false;
-  if (group.parts.variants.join("+") !== parts.variants.join("+")) return false;
-  if (!creditsAgree(group.parts.artists, parts.artists)) return false;
-
-  return group.tracks.every((existing) => durationsMatch(existing.durationMs, track.durationMs));
+  if (group.isrc && track.isrc) return group.isrc === track.isrc;
+  return (
+    group.parts.base === parts.base &&
+    group.parts.variants.join("+") === parts.variants.join("+") &&
+    creditsAgree(group.parts.artists, parts.artists) &&
+    group.tracks.every((existing) => durationsMatch(existing.durationMs, track.durationMs))
+  );
 }
 
 function firstDefined<T>(tracks: SourceTrack[], pick: (track: SourceTrack) => T | null): T | null {
-  for (const track of tracks) {
-    const value = pick(track);
-    if (value !== null && value !== undefined) return value;
-  }
-  return null;
+  return tracks.map(pick).find((value) => value !== null && value !== undefined) ?? null;
 }
 
 export function mergeTracks(tracks: SourceTrack[]): Song[] {
@@ -45,33 +34,32 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
 
   for (const track of tracks) {
     const parts = dedupeParts(track.title, track.artists);
-    const key = [parts.base, parts.variants.join("+"), parts.artists.join("+")].join("|");
     const existing =
       (track.isrc ? groups.find((group) => group.isrc === track.isrc) : undefined) ??
       groups.find((group) => matches(group, track, parts));
 
-    if (existing) {
-      if (!existing.tracks.some((candidate) => candidate.source === track.source)) {
-        existing.tracks.push(track);
-      }
-      existing.isrc ??= track.isrc;
+    if (!existing) {
+      groups.push({ parts, isrc: track.isrc, tracks: [track] });
       continue;
     }
-
-    groups.push({ key, parts, isrc: track.isrc, tracks: [track] });
+    if (!existing.tracks.some((candidate) => candidate.source === track.source)) {
+      existing.tracks.push(track);
+    }
+    existing.isrc ??= track.isrc;
   }
 
-  return groups.map((group) => {
-    const sources = [...group.tracks].sort(byPlayability);
+  return groups.map(({ parts, isrc, tracks: grouped }) => {
+    const sources = grouped.sort((a, b) => PLAYBACK_RANK[a.playback] - PLAYBACK_RANK[b.playback]);
     const primary = sources[0]!;
+    const key = [parts.base, parts.variants.join("+"), parts.artists.join("+")].join("|");
 
     return {
-      id: group.isrc || `${group.key}#${primary.source}:${primary.sourceId}`,
+      id: isrc || `${key}#${primary.source}:${primary.sourceId}`,
       title: primary.title,
       artists: primary.artists,
       album: firstDefined(sources, (track) => track.album),
       durationMs: firstDefined(sources, (track) => track.durationMs),
-      isrc: group.isrc,
+      isrc,
       artworkUrl: firstDefined(sources, (track) => track.artworkUrl),
       artworkFallbacks: sources.find((track) => track.artworkUrl)?.artworkFallbacks,
       sources,

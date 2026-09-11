@@ -9,12 +9,7 @@ export function pixelDelta(deltaY: number, deltaMode: number): number {
   return deltaY;
 }
 
-export interface WheelSteps {
-  steps: number;
-  rest: number;
-}
-
-export function wheelSteps(accumulated: number): WheelSteps {
+export function wheelSteps(accumulated: number): { steps: number; rest: number } {
   const steps = Math.trunc(accumulated / WHEEL_THRESHOLD) + 0;
   return { steps, rest: accumulated - steps * WHEEL_THRESHOLD };
 }

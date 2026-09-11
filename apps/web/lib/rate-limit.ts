@@ -1,41 +1,22 @@
-export interface RateLimitOptions {
-  limit: number;
-  windowMs: number;
-  max?: number;
-  now?: () => number;
-}
-
-export interface RateLimitVerdict {
-  ok: boolean;
-  remaining: number;
-  retryAfterSeconds: number;
-  first?: boolean;
-}
-
-interface Window {
-  count: number;
-  resetAt: number;
-}
-
-export interface RateLimiter {
-  check(key: string): RateLimitVerdict;
-  readonly size: number;
-}
-
 export function createRateLimiter({
   limit,
   windowMs,
   max = 10_000,
   now = Date.now,
-}: RateLimitOptions): RateLimiter {
-  const windows = new Map<string, Window>();
+}: {
+  limit: number;
+  windowMs: number;
+  max?: number;
+  now?: () => number;
+}) {
+  const windows = new Map<string, { count: number; resetAt: number }>();
 
   return {
     get size() {
       return windows.size;
     },
 
-    check(key) {
+    check(key: string) {
       const at = now();
       const existing = windows.get(key);
 
@@ -44,18 +25,15 @@ export function createRateLimiter({
           for (const [id, window] of windows) {
             if (window.resetAt <= at) windows.delete(id);
           }
-          if (windows.size >= max) {
-            const oldest = windows.keys().next();
-            if (!oldest.done) windows.delete(oldest.value);
-          }
+          if (windows.size >= max) windows.delete(windows.keys().next().value!);
         }
         windows.set(key, { count: 1, resetAt: at + windowMs });
         return { ok: true, remaining: limit - 1, retryAfterSeconds: 0 };
       }
 
       existing.count += 1;
-      const remaining = Math.max(0, limit - existing.count);
-      if (existing.count <= limit) return { ok: true, remaining, retryAfterSeconds: 0 };
+      const remaining = limit - existing.count;
+      if (remaining >= 0) return { ok: true, remaining, retryAfterSeconds: 0 };
 
       return {
         ok: false,
@@ -68,8 +46,6 @@ export function createRateLimiter({
 }
 
 export function clientKey(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  const first = forwarded?.split(",")[0]?.trim();
-  if (first) return first;
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
+  const first = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return first || request.headers.get("x-real-ip")?.trim() || "unknown";
 }

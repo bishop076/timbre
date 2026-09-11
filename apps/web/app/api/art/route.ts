@@ -1,4 +1,4 @@
-import { guardArtwork } from "@/lib/api";
+import { guard } from "@/lib/api";
 import { allowed, capped, fetchAllowed, MAX_BYTES } from "@/lib/artwork-proxy";
 
 function isRasterImage(contentType: string): boolean {
@@ -7,31 +7,19 @@ function isRasterImage(contentType: string): boolean {
 }
 
 export async function GET(request: Request) {
-  const refusal = guardArtwork(request);
+  const refusal = guard(request, "artwork");
   if (refusal) return refusal;
 
   const raw = new URL(request.url).searchParams.get("u");
   if (!raw) return new Response("Missing url.", { status: 400 });
 
-  let target: URL;
-  try {
-    target = new URL(raw);
-  } catch {
-    return new Response("Not a url.", { status: 400 });
-  }
+  const target = URL.parse(raw);
+  if (!target) return new Response("Not a url.", { status: 400 });
+  if (!allowed(target)) return new Response("Host not allowed.", { status: 403 });
 
-  if (!allowed(target)) {
-    return new Response("Host not allowed.", { status: 403 });
-  }
-
-  let upstream: Response | null;
-  try {
-    upstream = await fetchAllowed(target, { signal: request.signal });
-  } catch {
-    return new Response("Upstream unreachable.", { status: 502 });
-  }
-
-  if (!upstream) return new Response("Host not allowed.", { status: 403 });
+  const upstream = await fetchAllowed(target, { signal: request.signal }).catch(() => undefined);
+  if (upstream === undefined) return new Response("Upstream unreachable.", { status: 502 });
+  if (upstream === null) return new Response("Host not allowed.", { status: 403 });
 
   const type = upstream.headers.get("content-type") ?? "";
   if (!upstream.ok || !isRasterImage(type)) {

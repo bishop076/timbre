@@ -18,34 +18,29 @@ import {
   VideoOffIcon,
 } from "../icons";
 import { PlaybackMenu } from "../player/playback-menu";
-import { usePlayer, type RepeatMode } from "../player/player-context";
+import { usePlayerControls, usePlayerProgress } from "../player/player-context";
 import { Volume } from "../player/volume";
+import { Scrub } from "../player/wavy-progress";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { LikeButton } from "../playlists/like-button";
-import { Scrub } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 import { SourceLink } from "./source-link";
 
-export function ModeButton({
-  label,
-  on,
-  onClick,
-  icon,
-  variant,
-}: {
-  label: string;
-  on: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  variant: "bar" | "sheet";
-}) {
+type Variant = "bar" | "sheet";
+
+const REPEAT_LABELS = { off: "Repeat off", all: "Repeat queue", one: "Repeat one" };
+
+export function ModeButton({ mode, variant }: { mode: "shuffle" | "repeat"; variant: Variant }) {
+  const { shuffle, repeat, toggleShuffle, cycleRepeat } = usePlayerControls();
   const bar = variant === "bar";
+  const on = mode === "shuffle" ? shuffle : repeat !== "off";
+  const Icon = mode === "shuffle" ? ShuffleIcon : repeat === "one" ? RepeatOneIcon : RepeatIcon;
 
   return (
     <button
       type="button"
-      onClick={onClick}
-      aria-label={label}
+      onClick={mode === "shuffle" ? toggleShuffle : cycleRepeat}
+      aria-label={mode === "shuffle" ? "Shuffle" : REPEAT_LABELS[repeat]}
       aria-pressed={on}
       className={`press flex items-center justify-center ${
         bar
@@ -57,7 +52,7 @@ export function ModeButton({
           : `text-[var(--fg-faint)]${bar ? " hover:text-[var(--fg)]" : ""}`
       }`}
     >
-      {icon}
+      <Icon className="size-[18px]" />
       {bar && (
         <span
           className={`absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full bg-current transition-opacity ${
@@ -69,16 +64,66 @@ export function ModeButton({
   );
 }
 
-export function repeatMode(repeat: RepeatMode): { label: string; icon: React.ReactNode } {
-  return {
-    label: repeat === "one" ? "Repeat one" : repeat === "all" ? "Repeat queue" : "Repeat off",
-    icon:
-      repeat === "one" ? (
-        <RepeatOneIcon className="size-[18px]" />
+function PlayButton({ variant }: { variant: Variant }) {
+  const { current, state, toggle } = usePlayerControls();
+  const playing = state === "playing";
+  const icon = variant === "bar" ? "size-5" : "size-7";
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={!current || state === "unplayable"}
+      aria-label={playing ? "Pause" : "Play"}
+      className={`slab press tint flex ${
+        variant === "bar" ? "size-10 rounded-[var(--r-lg)]" : "size-16 rounded-[var(--r-full)]"
+      } items-center justify-center text-[var(--accent-fg)] disabled:opacity-40`}
+      style={{ background: "var(--accent)" }}
+    >
+      {state === "resolving" || state === "loading" ? (
+        <SpinnerIcon className={`${icon} animate-spin`} />
+      ) : playing ? (
+        <PauseIcon className={icon} />
       ) : (
-        <RepeatIcon className="size-[18px]" />
-      ),
-  };
+        <PlayIcon className={`${icon} translate-x-px`} />
+      )}
+    </button>
+  );
+}
+
+export function Transport({ variant }: { variant: Variant }) {
+  const { current, index, hasNext, previous, next } = usePlayerControls();
+  const skip = `slab-sm press flex ${variant === "bar" ? "h-9 w-12" : "h-12 w-16"} items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40`;
+  const icon = variant === "bar" ? "size-[18px]" : "size-5";
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={previous}
+        disabled={!current || index === 0}
+        aria-label="Previous track"
+        className={skip}
+      >
+        <PrevIcon className={icon} />
+      </button>
+      <PlayButton variant={variant} />
+      <button type="button" onClick={next} disabled={!hasNext} aria-label="Next track" className={skip}>
+        <NextIcon className={icon} />
+      </button>
+    </>
+  );
+}
+
+function Elapsed() {
+  const { position, duration } = usePlayerProgress();
+
+  return (
+    <span className="mr-1 hidden font-mono text-[11px] tabular-nums text-[var(--fg-faint)] xl:inline">
+      {formatElapsed(position, duration)} /{" "}
+      {duration > 0 ? formatElapsed(duration, duration) : "—:—"}
+    </span>
+  );
 }
 
 export function PlayerBar() {
@@ -93,37 +138,20 @@ export function PlayerBar() {
     streamUrl,
     panelOpen,
     theater,
-    index,
-    position,
-    duration,
-    toggle,
-    next,
-    previous,
-    seek,
     togglePanel,
     toggleTheater,
-    shuffle,
-    repeat,
-    hasNext,
-    toggleShuffle,
-    cycleRepeat,
-  } = usePlayer();
+  } = usePlayerControls();
 
-  const busy = state === "resolving" || state === "loading";
-  const playing = state === "playing";
-  const source = sourceStyle(activeSource ?? "ytmusic");
-
-  const audioOnly = Boolean(streamUrl);
+  if (!current) return null;
 
   const panelButton = (
     <button
       type="button"
       onClick={togglePanel}
-      disabled={!current}
       aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
       aria-pressed={panelOpen}
-      className={`slab-sm press size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40 ${
-        audioOnly ? "hidden xl:flex" : "flex"
+      className={`slab-sm press size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] ${
+        streamUrl ? "hidden xl:flex" : "flex"
       }`}
       style={{ background: panelOpen ? "var(--accent)" : "var(--surface-2)" }}
     >
@@ -131,172 +159,101 @@ export function PlayerBar() {
     </button>
   );
 
-  const theaterButton = (
-    <button
-      type="button"
-      onClick={toggleTheater}
-      disabled={!current}
-      aria-label={theater ? "Shrink video" : "Expand video"}
-      aria-pressed={theater}
-      className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] disabled:opacity-40"
-      style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
-    >
-      {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
-    </button>
-  );
-
-  const artwork = (size: string) => (
-    <Artwork
-      src={current?.artworkUrl}
-      eager
-      className={`slab-sm ${size} shrink-0 rounded-[var(--r-md)]`}
-    />
+  const artwork = (
+    <Artwork src={current.artworkUrl} eager className="slab-sm size-11 shrink-0 rounded-[var(--r-md)]" />
   );
 
   const meta = (
     <div className="min-w-0 flex-1">
-      {current ? (
-        <>
-          <p className="flex items-center gap-2 truncate text-sm font-medium">
-            {playing && (
-              <span aria-hidden className="eq tint flex h-3 shrink-0 items-end gap-0.5 text-[var(--accent)]">
-                <span />
-                <span />
-                <span />
-              </span>
-            )}
-            <span className="min-w-0 truncate">{current.title}</span>
-          </p>
-          <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
-            <ArtistLink artists={current.artists} className="min-w-0 truncate" />
-            {state === "unplayable" ? (
-              <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
-            ) : subscriptionTrack ? (
-              <span className="shrink-0 text-[var(--accent)]">
-                press to start — full song if you&rsquo;re signed in
-              </span>
-            ) : (
-              <SourceLink
-                song={current}
-                activeSource={activeSource}
-                label={state === "resolving" ? "finding a copy…" : source.short}
-                className="hidden sm:inline"
-              />
-            )}
-            {playingPreview && state !== "unplayable" && (
-              <span className="shrink-0 text-amber-500">30-second preview</span>
-            )}
-            {youtubeTurnedAway && state !== "unplayable" && (
-              <span className="min-w-0 truncate text-amber-500" title="YouTube refused this connection">
-                · YouTube refused this connection
-              </span>
-            )}
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="truncate text-sm text-[var(--fg-dim)]">Nothing playing</p>
-          <p className="truncate text-xs text-[var(--fg-faint)]">
-            Pick a song and it plays right here
-          </p>
-        </>
-      )}
+      <p className="flex items-center gap-2 truncate text-sm font-medium">
+        {state === "playing" && (
+          <span aria-hidden className="eq tint flex h-3 shrink-0 items-end gap-0.5 text-[var(--accent)]">
+            <span />
+            <span />
+            <span />
+          </span>
+        )}
+        <span className="min-w-0 truncate">{current.title}</span>
+      </p>
+      <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
+        <ArtistLink artists={current.artists} className="min-w-0 truncate" />
+        {state === "unplayable" ? (
+          <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
+        ) : subscriptionTrack ? (
+          <span className="shrink-0 text-[var(--accent)]">
+            press to start — full song if you&rsquo;re signed in
+          </span>
+        ) : (
+          <SourceLink
+            song={current}
+            activeSource={activeSource}
+            label={
+              state === "resolving"
+                ? "finding a copy…"
+                : sourceStyle(activeSource ?? "ytmusic").short
+            }
+            className="hidden sm:inline"
+          />
+        )}
+        {playingPreview && state !== "unplayable" && (
+          <span className="shrink-0 text-amber-500">30-second preview</span>
+        )}
+        {youtubeTurnedAway && state !== "unplayable" && (
+          <span className="min-w-0 truncate text-amber-500" title="YouTube refused this connection">
+            · YouTube refused this connection
+          </span>
+        )}
+      </p>
     </div>
-  );
-
-  const playButton = (size: string, icon: string) => (
-    <button
-      type="button"
-      onClick={toggle}
-      disabled={!current || state === "unplayable"}
-      aria-label={playing ? "Pause" : "Play"}
-      className={`slab press tint flex ${size} items-center justify-center rounded-[var(--r-lg)] text-[var(--accent-fg)] disabled:opacity-40`}
-      style={{ background: "var(--accent)" }}
-    >
-      {busy ? (
-        <SpinnerIcon className={`${icon} animate-spin`} />
-      ) : playing ? (
-        <PauseIcon className={icon} />
-      ) : (
-        <PlayIcon className={`${icon} translate-x-px`} />
-      )}
-    </button>
   );
 
   return (
     <>
       <footer className="shrink-0 border-t-[length:var(--edge)] border-[var(--ink)] bg-[var(--surface-1)] px-3 pb-2 pt-2.5 lg:hidden">
         <div className="mb-2 flex items-center gap-2">
-          {artwork("size-11")}
+          {artwork}
           {meta}
           {panelButton}
-          {playButton("size-10", "size-5")}
+          <PlayButton variant="bar" />
         </div>
-        <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
+        <Scrub />
       </footer>
 
       <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:flex">
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
-          <Scrub position={position} duration={duration} playing={playing} onSeek={seek} height="h-4" />
+          <Scrub height="h-4" />
         </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          {artwork("size-11")}
+          {artwork}
           {meta}
-          {current && <LikeButton song={current} />}
-          {current && <AddToPlaylist song={current} className="shrink-0" />}
+          <LikeButton song={current} />
+          <AddToPlaylist song={current} className="shrink-0" />
         </div>
 
         <div className="flex shrink-0 items-center justify-center">
           <div className="relative flex items-center gap-2">
-            <ModeButton
-              variant="bar"
-              label="Shuffle"
-              on={shuffle}
-              onClick={toggleShuffle}
-              icon={<ShuffleIcon className="size-[18px]" />}
-            />
-
-            <button
-              type="button"
-              onClick={previous}
-              disabled={!current || index === 0}
-              aria-label="Previous track"
-              className="slab-sm press flex h-9 w-12 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
-            >
-              <PrevIcon className="size-[18px]" />
-            </button>
-
-            {playButton("size-10", "size-5")}
-
-            <button
-              type="button"
-              onClick={next}
-              disabled={!hasNext}
-              aria-label="Next track"
-              className="slab-sm press flex h-9 w-12 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
-            >
-              <NextIcon className="size-[18px]" />
-            </button>
-
-            <ModeButton
-              variant="bar"
-              {...repeatMode(repeat)}
-              on={repeat !== "off"}
-              onClick={cycleRepeat}
-            />
+            <ModeButton mode="shuffle" variant="bar" />
+            <Transport variant="bar" />
+            <ModeButton mode="repeat" variant="bar" />
           </div>
         </div>
 
         <div className="flex flex-1 items-center justify-end gap-1.5">
-          <span className="mr-1 hidden font-mono text-[11px] tabular-nums text-[var(--fg-faint)] xl:inline">
-            {formatElapsed(position, duration)} /{" "}
-            {duration > 0 ? formatElapsed(duration, duration) : "—:—"}
-          </span>
+          <Elapsed />
           <Volume />
           <PlaybackMenu variant="bar" />
           <span className="mx-1 h-6 w-px bg-[var(--line)]" />
-          {theaterButton}
+          <button
+            type="button"
+            onClick={toggleTheater}
+            aria-label={theater ? "Shrink video" : "Expand video"}
+            aria-pressed={theater}
+            className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)]"
+            style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
+          >
+            {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
+          </button>
           {panelButton}
         </div>
       </footer>
