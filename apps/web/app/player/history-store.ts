@@ -10,6 +10,7 @@
  */
 
 import { createLocalStore, useLocalStore } from "../local-store.ts";
+import { logPlay } from "../stats/play-log.ts";
 import type { PlayContext } from "../types";
 
 export interface PlayedSong {
@@ -98,6 +99,10 @@ export function useHistory(): PlayedSong[] {
 /** Records a play, newest first, one entry per song. A repeat moves to the front rather
  * than adding a row, or a track on loop fills the whole shelf. */
 export function recordPlay(song: PlayedSong): void {
+  // Counted before the early return below: a repeat is not a new row on the shelf, but it is
+  // another play, and "Your listening" counts plays (`stats/play-log.ts`).
+  logPlay(song);
+
   const current = getHistorySnapshot();
   // Already at the front *and* saying the same thing. The `source` comparison matters: rows
   // written before it existed carry none, and skipping on id alone meant replaying the song
