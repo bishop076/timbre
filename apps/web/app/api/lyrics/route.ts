@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { CACHE_CONTROL_DAY, guard } from "@/lib/api";
 import { optionalQueryText, queryFlag, queryText } from "@/lib/query-text";
+import { createBackoff, isBackoffSignal, type Backoff } from "@/lib/upstream-backoff";
 
 /*
  * Lyrics, from LRCLIB — the only keyless source licensing synced lines. Proxied rather
@@ -13,6 +14,63 @@ export const revalidate = 86_400;
 
 /** LRCLIB asks clients to identify themselves rather than spoof a browser. */
 const USER_AGENT = "Timbre (https://github.com/bishop076/timbre)";
+
+/*
+ * LRCLIB's "not now", honoured (docs/EXPOSURE.md E-18, RESEARCH-2026-08-20 G-10). Being
+ * proxied makes every reader one client to LRCLIB, so its 429 is addressed to the whole
+ * deployment — and it goes out of its way to say for how long, exposing `Retry-After` even
+ * to browsers. This route used to read neither and answer "no lyrics", which let every
+ * track change keep asking through the refusal. Now the instance stops calling until the
+ * header's time has passed and tells readers the lyrics are busy, not missing.
+ *
+ * Cached on `globalThis` like the limiters in `lib/api.ts`, so a hot reload does not forget
+ * a refusal. Thirty seconds when LRCLIB names no time; never more than ten minutes, past
+ * which one probing request costs less than a misread header silencing lyrics for an hour.
+ */
+const globalForLyrics = globalThis as unknown as { __timbreLrclibBackoff?: Backoff };
+
+function lrclibBackoff(): Backoff {
+  return (globalForLyrics.__timbreLrclibBackoff ??= createBackoff({
+    defaultSeconds: 30,
+    maxSeconds: 600,
+  }));
+}
+
+/** LRCLIB refused, and how long this instance is now waiting before asking again. */
+class LrclibBusy extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("LRCLIB is rate limiting this deployment.");
+  }
+}
+
+/** Every call to LRCLIB, so none can skip the refusal check. */
+async function lrclib(url: URL): Promise<Response> {
+  const response = await fetch(url, {
+    headers: { "user-agent": USER_AGENT },
+    signal: AbortSignal.timeout(6_000),
+  });
+
+  const retryAfter = response.headers.get("retry-after");
+  if (isBackoffSignal(response.status, retryAfter)) {
+    throw new LrclibBusy(lrclibBackoff().trip(retryAfter));
+  }
+  return response;
+}
+
+/**
+ * "Busy", distinct from "none": a 503 with the wait passed on, so the panel can say so and
+ * come back when it is over rather than at once. Never cached — at the edge it would outlive
+ * the refusal it describes by a day.
+ */
+function busy(seconds: number, body: Record<string, unknown>): Response {
+  return Response.json(
+    { ...body, busy: true, error: "Lyrics are busy. Try again shortly." },
+    {
+      status: 503,
+      headers: { "Retry-After": String(seconds), "cache-control": "no-store" },
+    },
+  );
+}
 
 const querySchema = z.object({
   title: queryText(300),
@@ -73,12 +131,7 @@ function parseLrc(body: string): LyricLine[] {
 }
 
 async function lookup(url: URL): Promise<LrcLibTrack | null> {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": USER_AGENT,
-    },
-    signal: AbortSignal.timeout(6_000),
-  });
+  const response = await lrclib(url);
 
   if (!response.ok) return null;
   const body = (await response.json()) as unknown;
@@ -114,6 +167,10 @@ export async function GET(request: Request) {
 
   const { title, artist, album, duration, id, alternatives } = parsed.data;
 
+  // Checked before anything goes out: while LRCLIB's wait runs, asking again only extends it.
+  const waiting = lrclibBackoff().remainingSeconds();
+  if (waiting > 0) return busy(waiting, alternatives ? { alternatives: [] } : { lyrics: null });
+
   // YouTube Music titles carry noise — "(Official Video)", "[4K Remaster]" — that a
   // lyrics database has never heard of, so the matcher's parser strips it first.
   const cleaned = parseTitle(title).base || title;
@@ -141,10 +198,7 @@ export async function GET(request: Request) {
       search.searchParams.set("track_name", cleaned);
       search.searchParams.set("artist_name", artist);
 
-      const response = await fetch(search, {
-        headers: { "user-agent": USER_AGENT },
-        signal: AbortSignal.timeout(6_000),
-      });
+      const response = await lrclib(search);
       if (!response.ok) return Response.json({ alternatives: [] }, { status: 200 });
 
       const results = (await response.json()) as (LrcLibTrack & {
@@ -182,10 +236,7 @@ export async function GET(request: Request) {
       search.searchParams.set("track_name", cleaned);
       search.searchParams.set("artist_name", artist);
 
-      const response = await fetch(search, {
-        headers: { "user-agent": USER_AGENT },
-        signal: AbortSignal.timeout(6_000),
-      });
+      const response = await lrclib(search);
       if (response.ok) {
         const results = (await response.json()) as LrcLibTrack[];
         // Prefer a result with timings; plain text is a consolation prize.
@@ -207,7 +258,10 @@ export async function GET(request: Request) {
         matchedArtist: track.artistName,
       },
     }, CACHEABLE);
-  } catch {
+  } catch (error) {
+    if (error instanceof LrclibBusy) {
+      return busy(error.retryAfterSeconds, alternatives ? { alternatives: [] } : { lyrics: null });
+    }
     // Upstream down or slow. The panel renders "no lyrics" either way.
     return Response.json({ lyrics: null }, { status: 200 });
   }

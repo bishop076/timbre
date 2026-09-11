@@ -565,6 +565,18 @@ throttled, not the abuser.
 It also permanently links the deployment to that GitHub account. Intended, but
 worth stating plainly rather than discovering later.
 
+**The proxying is a trade-off already made; the back-off is fixed 2026-09-11.**
+Calling LRCLIB from the browser would remove the single-client problem and was
+declined for the reader's IP (RESEARCH-2026-08-20 **G-10**). What was genuinely
+open is that the route read no `429` and no `Retry-After`. It now does: a `429`,
+or a `503` naming a wait, stops the instance calling LRCLIB until `Retry-After`
+has passed (30s when unnamed, 10 minutes at most — `lib/upstream-backoff.ts`),
+and readers get a `503` saying the lyrics are busy, with the wait passed on,
+instead of "no lyrics". Per instance and in memory, like E-4's counter, so
+N instances can each spend one request learning about the same refusal.
+YouTube Music's lyrics go through the sidecar instead and are unaffected, which
+is also the reader's way round a busy LRCLIB.
+
 ---
 
 # Verified correct — do not re-investigate
