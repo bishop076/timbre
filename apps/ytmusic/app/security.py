@@ -4,8 +4,6 @@ from fastapi import Header, HTTPException, status
 
 from .config import SHARED_SECRETS
 
-HEADER_NAME = "X-Timbre-Secret"
-
 
 def matches(presented: str) -> bool:
     candidate = presented.encode("utf-8", "surrogateescape")
@@ -16,10 +14,7 @@ def matches(presented: str) -> bool:
 
 
 async def require_shared_secret(
-    x_timbre_secret: str | None = Header(default=None, alias=HEADER_NAME),
+    x_timbre_secret: str | None = Header(default=None, alias="X-Timbre-Secret"),
 ) -> None:
     if x_timbre_secret is None or not matches(x_timbre_secret):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid shared secret.",
-        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing or invalid shared secret.")

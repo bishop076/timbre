@@ -114,22 +114,19 @@ test("spacing yields rather than returning short when one artist owns what is le
   assert.equal(drawRadio(candidates, { count: 3 }).length, 3);
 });
 
-test("asking for more than the pool holds returns the pool, not a hang", () => {
+test("an oversized ask returns the pool; an empty pool or zero count returns nothing", () => {
   assert.equal(drawRadio(pool(4), { count: 25 }).length, 4);
-});
-
-test("an empty pool and a zero count are both empty, not errors", () => {
   assert.deepEqual(drawRadio([], { count: 5 }), []);
   assert.deepEqual(drawRadio(pool(), { count: 0 }), []);
 });
 
-test("the extreme ends of random() still select a song", () => {
-  assert.equal(drawRadio(pool(5), { count: 5, random: scripted([0]) }).length, 5);
+test("the extreme ends of random() still select, and zero walks the pool in rank order", () => {
   assert.equal(drawRadio(pool(5), { count: 5, random: scripted([0.999999999]) }).length, 5);
-});
-
-test("a scripted draw of zero walks the pool in rank order", () => {
-  const drawn = drawRadio(pool(5), { count: 3, random: scripted([0]) });
-
-  assert.deepEqual(titles(drawn), ["Song 1", "Song 2", "Song 3"]);
+  assert.deepEqual(titles(drawRadio(pool(5), { count: 5, random: scripted([0]) })), [
+    "Song 1",
+    "Song 2",
+    "Song 3",
+    "Song 4",
+    "Song 5",
+  ]);
 });

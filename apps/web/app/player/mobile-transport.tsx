@@ -3,18 +3,10 @@
 import { useState } from "react";
 
 import { formatElapsed } from "../duration";
-import {
-  ChevronIcon,
-  NextIcon,
-  PauseIcon,
-  PlayIcon,
-  PrevIcon,
-  ShuffleIcon,
-  SpinnerIcon,
-} from "../icons";
+import { ChevronIcon } from "../icons";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { LikeButton } from "../playlists/like-button";
-import { ModeButton, repeatMode } from "../shell/player-bar";
+import { ModeButton, Transport } from "../shell/player-bar";
 import { LyricsPanel } from "./lyrics-panel";
 import { PlaybackMenu } from "./playback-menu";
 import { getPlaybackPrefs } from "./playback-prefs";
@@ -22,28 +14,8 @@ import { usePlayer } from "./player-context";
 import { Scrub } from "./wavy-progress";
 
 export function MobileTransport() {
-  const {
-    current,
-    state,
-    position,
-    duration,
-    seek,
-    toggle,
-    next,
-    previous,
-    index,
-    shuffle,
-    repeat,
-    hasNext,
-    toggleShuffle,
-    cycleRepeat,
-    toggleTheater,
-  } = usePlayer();
-
+  const { current, position, duration, toggleTheater } = usePlayer();
   const [showLyrics, setShowLyrics] = useState(() => getPlaybackPrefs().lyricsByDefault);
-
-  const playing = state === "playing";
-  const busy = state === "loading" || state === "resolving";
 
   return (
     <div className="flex min-h-0 shrink flex-col gap-3 px-4 pb-3 pt-3">
@@ -84,7 +56,7 @@ export function MobileTransport() {
       </div>
 
       <div>
-        <Scrub position={position} duration={duration} playing={playing} onSeek={seek} />
+        <Scrub />
         <div className="mt-0.5 flex justify-between font-mono text-[11px] tabular-nums text-[var(--fg-faint)]">
           <span>{formatElapsed(position, duration)}</span>
           <span>{formatElapsed(duration, duration)}</span>
@@ -92,58 +64,12 @@ export function MobileTransport() {
       </div>
 
       <div className="flex items-center justify-center gap-4">
-        <button
-          type="button"
-          onClick={previous}
-          disabled={!current || index === 0}
-          aria-label="Previous track"
-          className="slab-sm press flex h-12 w-16 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
-        >
-          <PrevIcon className="size-5" />
-        </button>
-
-        <button
-          type="button"
-          onClick={toggle}
-          disabled={!current || state === "unplayable"}
-          aria-label={playing ? "Pause" : "Play"}
-          className="slab press tint flex size-16 items-center justify-center rounded-[var(--r-full)] text-[var(--accent-fg)] disabled:opacity-40"
-          style={{ background: "var(--accent)" }}
-        >
-          {busy ? (
-            <SpinnerIcon className="size-7 animate-spin" />
-          ) : playing ? (
-            <PauseIcon className="size-7" />
-          ) : (
-            <PlayIcon className="size-7 translate-x-px" />
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={next}
-          disabled={!hasNext}
-          aria-label="Next track"
-          className="slab-sm press flex h-12 w-16 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40"
-        >
-          <NextIcon className="size-5" />
-        </button>
+        <Transport variant="sheet" />
       </div>
 
       <div className="slab-sm mx-auto flex items-center gap-2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-2">
-        <ModeButton
-          variant="sheet"
-          label="Shuffle"
-          on={shuffle}
-          onClick={toggleShuffle}
-          icon={<ShuffleIcon className="size-[18px]" />}
-        />
-        <ModeButton
-          variant="sheet"
-          {...repeatMode(repeat)}
-          on={repeat !== "off"}
-          onClick={cycleRepeat}
-        />
+        <ModeButton mode="shuffle" variant="sheet" />
+        <ModeButton mode="repeat" variant="sheet" />
         {current && <LikeButton song={current} className="size-11" />}
         {current && (
           <AddToPlaylist song={current} className="flex size-11 items-center justify-center" />

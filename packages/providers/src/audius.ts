@@ -1,6 +1,6 @@
 import { ProviderError } from "@timbre/core";
 
-import type { RadioSeed, RankedList, SearchContext, SearchProvider, SourceTrack } from "./types.ts";
+import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
 import { createHostPool, type HostPool } from "./host-pool.ts";
 import { createRequester } from "./request.ts";
@@ -13,25 +13,21 @@ export const AUDIUS_HOSTS = [
 ] as const;
 
 const COOL_DOWN_MS = 60_000;
-
-const WEB = "https://audius.co";
-
-interface AudiusArtwork {
-  "150x150"?: string;
-  "480x480"?: string;
-  "1000x1000"?: string;
-  mirrors?: string[];
-}
+const VERSIONS = 8;
 
 interface AudiusTrack {
   id: string;
   title: string;
   duration?: number;
   permalink?: string;
-  artwork?: AudiusArtwork | null;
+  artwork?: {
+    "150x150"?: string;
+    "480x480"?: string;
+    "1000x1000"?: string;
+    mirrors?: string[];
+  } | null;
   user?: { name?: string; handle?: string };
   isrc?: string | null;
-  genre?: string | null;
   is_streamable?: boolean;
   is_available?: boolean;
   is_delete?: boolean;
@@ -45,11 +41,8 @@ function playable(raw: AudiusTrack): boolean {
   return raw.stream_conditions === null || raw.stream_conditions === undefined;
 }
 
-function artworkMirrors(artwork: AudiusArtwork | null | undefined): string[] | undefined {
-  const primary = artwork?.["480x480"] ?? artwork?.["1000x1000"] ?? artwork?.["150x150"];
-  const mirrors = artwork?.mirrors;
+function artworkMirrors(primary: string | undefined, mirrors: string[] | undefined) {
   if (!primary || !mirrors?.length) return undefined;
-
   try {
     const path = new URL(primary).pathname;
     return mirrors.map((host) => `${host.replace(/\/+$/, "")}${path}`);
@@ -60,7 +53,7 @@ function artworkMirrors(artwork: AudiusArtwork | null | undefined): string[] | u
 
 function toSourceTrack(raw: AudiusTrack): SourceTrack {
   const artist = raw.user?.name?.trim() || raw.user?.handle?.trim();
-
+  const artwork = raw.artwork?.["480x480"] ?? raw.artwork?.["1000x1000"] ?? raw.artwork?.["150x150"];
   return {
     source: "audius",
     sourceId: raw.id,
@@ -69,18 +62,14 @@ function toSourceTrack(raw: AudiusTrack): SourceTrack {
     album: null,
     durationMs: raw.duration ? raw.duration * 1000 : null,
     isrc: raw.isrc?.trim() || null,
-    url: raw.permalink ? `${WEB}${raw.permalink}` : null,
-    artworkUrl: raw.artwork?.["480x480"] ?? raw.artwork?.["1000x1000"] ?? raw.artwork?.["150x150"] ?? null,
-    artworkFallbacks: artworkMirrors(raw.artwork),
+    url: raw.permalink ? `https://audius.co${raw.permalink}` : null,
+    artworkUrl: artwork ?? null,
+    artworkFallbacks: artworkMirrors(artwork, raw.artwork?.mirrors),
     playback: "queue",
   };
 }
 
-const request = createRequester({
-  id: "audius",
-  label: "Audius",
-  init: cachePolicy,
-});
+const request = createRequester({ id: "audius", label: "Audius", init: cachePolicy });
 
 function hostFault(error: unknown): "none" | "fast" | "slow" {
   if (!(error instanceof ProviderError)) return "none";
@@ -91,7 +80,6 @@ function hostFault(error: unknown): "none" | "fast" | "slow" {
 
 async function get<T>(hosts: HostPool, ctx: SearchContext, path: string): Promise<T> {
   let failure: unknown;
-
   for (const host of hosts.order()) {
     try {
       const body = await request<T>(ctx, `${host}/v1${path}`);
@@ -105,15 +93,23 @@ async function get<T>(hosts: HostPool, ctx: SearchContext, path: string): Promis
       failure = error;
     }
   }
-
   throw failure;
 }
 
-export function audiusStreamUrl(trackId: string): string {
-  return `${AUDIUS_HOSTS[0]}/v1/tracks/${encodeURIComponent(trackId)}/stream?skip_play_count=false`;
+async function searchTracks(
+  hosts: HostPool,
+  ctx: SearchContext,
+  query: string,
+  asked: number,
+  keep: number,
+) {
+  const data = await get<{ data?: AudiusTrack[] }>(
+    hosts,
+    ctx,
+    `/tracks/search?query=${encodeURIComponent(query)}&limit=${asked}`,
+  );
+  return (data.data ?? []).filter(playable).slice(0, keep).map(toSourceTrack);
 }
-
-const VERSIONS = 8;
 
 export function createAudiusProvider(): SearchProvider {
   const hosts = createHostPool(AUDIUS_HOSTS, COOL_DOWN_MS);
@@ -123,29 +119,15 @@ export function createAudiusProvider(): SearchProvider {
     playback: "queue",
     searchable: true,
 
-    async search(ctx, query, limit) {
-      const asked = Math.min(limit * 2, 100);
-      const data = await get<{ data?: AudiusTrack[] }>(
-        hosts,
-        ctx,
-        `/tracks/search?query=${encodeURIComponent(query)}&limit=${asked}`,
-      );
-      return (data.data ?? []).filter(playable).slice(0, limit).map(toSourceTrack);
+    search(ctx, query, limit) {
+      return searchTracks(hosts, ctx, query, Math.min(limit * 2, 100), limit);
     },
 
-    async radio(ctx, seed: RadioSeed, limit): Promise<RankedList[]> {
+    async radio(ctx, seed, limit) {
       if (!seed.title) return [];
-
       const query = [seed.title, seed.artist].filter(Boolean).join(" ");
       const asked = Math.min(Math.max(limit, VERSIONS) * 2, 100);
-
-      const data = await get<{ data?: AudiusTrack[] }>(
-        hosts,
-        ctx,
-        `/tracks/search?query=${encodeURIComponent(query)}&limit=${asked}`,
-      );
-      const tracks = (data.data ?? []).filter(playable).slice(0, VERSIONS).map(toSourceTrack);
-
+      const tracks = await searchTracks(hosts, ctx, query, asked, VERSIONS);
       return tracks.length > 0 ? [{ list: "audius:versions", tracks }] : [];
     },
   };

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { getEnv, hasSoundCloud } from "@/lib/env";
-import { SOURCE_STYLES } from "../sources";
+import { sourceStyle } from "../sources";
 
 export const dynamic = "force-dynamic";
 
@@ -37,19 +37,7 @@ const SOURCES = [
     href: "https://music.apple.com",
     role: "Charts and availability, from the public iTunes catalogue.",
   },
-  {
-    id: "soundcloud",
-    href: "https://soundcloud.com",
-    role: "",
-  },
-] as const;
-
-function soundcloudRole(searchable: boolean): string {
-  if (!searchable) {
-    return "Playback only, on this deployment. Paste a SoundCloud link into the search box and it plays, in SoundCloud's own player. What is missing is the catalogue search, which the operator has not turned on — so Timbre can play a SoundCloud track you already found, but cannot find one for you.";
-  }
-  return "Search and playback. Tracks play in SoundCloud's own player, so the play is counted for the uploader exactly as it would be on soundcloud.com. Catalogue search is on for this deployment; it is off by default, because it needs a client_id the operator has to supply.";
-}
+];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -63,7 +51,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function AboutPage() {
-  const searchable = hasSoundCloud(getEnv());
+  const sources = [
+    ...SOURCES,
+    {
+      id: "soundcloud",
+      href: "https://soundcloud.com",
+      role: hasSoundCloud(getEnv())
+        ? "Search and playback. Tracks play in SoundCloud's own player, so the play is counted for the uploader exactly as it would be on soundcloud.com. Catalogue search is on for this deployment; it is off by default, because it needs a client_id the operator has to supply."
+        : "Playback only, on this deployment. Paste a SoundCloud link into the search box and it plays, in SoundCloud's own player. What is missing is the catalogue search, which the operator has not turned on — so Timbre can play a SoundCloud track you already found, but cannot find one for you.",
+    },
+  ];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-6 sm:px-7">
@@ -147,25 +144,23 @@ export default function AboutPage() {
           streams and the artwork are theirs.
         </p>
         <ul className="mt-1 space-y-3">
-          {SOURCES.map((source) => {
-            const style = SOURCE_STYLES[source.id];
+          {sources.map(({ id, href, role }) => {
+            const { label, color } = sourceStyle(id);
             return (
               <li
-                key={source.id}
+                key={id}
                 className="slab-sm rounded-[var(--r-md)] bg-[var(--surface-2)] px-4 py-3"
               >
                 <a
-                  href={source.href}
+                  href={href}
                   target="_blank"
                   rel="noreferrer noopener"
                   className="text-sm font-bold underline underline-offset-2"
-                  style={{ color: style?.color }}
+                  style={{ color }}
                 >
-                  {style?.label ?? source.id}
+                  {label}
                 </a>
-                <p className="mt-1 text-[13px] leading-relaxed text-[var(--fg-dim)]">
-                  {source.id === "soundcloud" ? soundcloudRole(searchable) : source.role}
-                </p>
+                <p className="mt-1 text-[13px] leading-relaxed text-[var(--fg-dim)]">{role}</p>
               </li>
             );
           })}

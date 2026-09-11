@@ -4,38 +4,20 @@ import { after, test } from "node:test";
 
 import { allowed, capped, fetchAllowed, MAX_BYTES } from "./artwork-proxy.ts";
 
-const routes: Record<string, (response: http.ServerResponse) => void> = {
-  "/image": (response) => {
-    response.writeHead(200, { "content-type": "image/png" });
-    response.end("png bytes");
-  },
-  "/offsite": (response) => {
-    response.writeHead(302, { location: "https://evil.example/steal.png" });
-    response.end();
-  },
-  "/relative": (response) => {
-    response.writeHead(302, { location: "/image" });
-    response.end();
-  },
-  "/no-location": (response) => {
-    response.writeHead(302);
-    response.end();
-  },
-  "/loop": (response) => {
-    response.writeHead(302, { location: "/loop" });
-    response.end();
-  },
-  "/not-modified": (response) => {
-    response.writeHead(304);
-    response.end();
-  },
+const routes: Record<string, [number, http.OutgoingHttpHeaders?, string?]> = {
+  "/image": [200, { "content-type": "image/png" }, "png bytes"],
+  "/offsite": [302, { location: "https://evil.example/steal.png" }],
+  "/relative": [302, { location: "/image" }],
+  "/no-location": [302],
+  "/loop": [302, { location: "/loop" }],
+  "/not-modified": [304],
 };
 
 const server = http.createServer((request, response) => {
-  const handler = routes[new URL(request.url ?? "/", "http://localhost").pathname];
-  if (handler) return handler(response);
-  response.writeHead(404);
-  response.end();
+  const { pathname } = new URL(request.url ?? "/", "http://localhost");
+  const [status, headers, body] = routes[pathname] ?? [404];
+  response.writeHead(status, headers);
+  response.end(body);
 });
 
 const listening = new Promise<number>((resolve) => {
@@ -46,12 +28,6 @@ const listening = new Promise<number>((resolve) => {
 
 after(() => server.close());
 
-async function at(path: string) {
-  return new URL(path, `http://127.0.0.1:${await listening}`);
-}
-
-const onLoopback = (url: URL) => url.hostname === "127.0.0.1";
-
 test("the allowlist refuses anything that is not https", () => {
   assert.equal(allowed(new URL("https://i.ytimg.com/vi/x/hq.jpg")), true);
   assert.equal(allowed(new URL("http://i.ytimg.com/vi/x/hq.jpg")), false);
@@ -59,60 +35,34 @@ test("the allowlist refuses anything that is not https", () => {
   assert.equal(allowed(new URL("https://i.ytimg.com.evil.example/x.png")), false);
 });
 
-test("a redirect off the allowlist is refused rather than followed", async () => {
-  const result = await fetchAllowed(await at("/offsite"), { isAllowed: onLoopback });
-  assert.equal(result, null);
-});
+const cases: [string, string, number | null][] = [
+  ["a plain response is returned untouched", "/image", 200],
+  ["a redirect that stays on an allowed host is followed", "/relative", 200],
+  ["304 is not treated as a redirect", "/not-modified", 304],
+  ["a redirect off the allowlist is refused rather than followed", "/offsite", null],
+  ["a redirect chain that will not end is abandoned", "/loop", null],
+  ["a redirect with no location is refused", "/no-location", null],
+];
 
-test("a redirect that stays on an allowed host is followed", async () => {
-  const result = await fetchAllowed(await at("/relative"), { isAllowed: onLoopback });
-  assert.equal(result?.status, 200);
-  assert.equal(await result?.text(), "png bytes");
-});
-
-test("a redirect chain that will not end is abandoned", async () => {
-  const result = await fetchAllowed(await at("/loop"), { isAllowed: onLoopback });
-  assert.equal(result, null);
-});
-
-test("a redirect with no location is refused", async () => {
-  const result = await fetchAllowed(await at("/no-location"), { isAllowed: onLoopback });
-  assert.equal(result, null);
-});
-
-test("304 is not treated as a redirect", async () => {
-  const result = await fetchAllowed(await at("/not-modified"), { isAllowed: onLoopback });
-  assert.equal(result?.status, 304);
-});
-
-test("a plain response is returned untouched", async () => {
-  const result = await fetchAllowed(await at("/image"), { isAllowed: onLoopback });
-  assert.equal(result?.status, 200);
-  assert.equal(result?.headers.get("content-type"), "image/png");
-});
+for (const [name, path, status] of cases) {
+  test(name, async () => {
+    const url = new URL(path, `http://127.0.0.1:${await listening}`);
+    const result = await fetchAllowed(url, { isAllowed: (hop) => hop.hostname === "127.0.0.1" });
+    assert.equal(result?.status ?? null, status);
+    if (status === 200) {
+      assert.equal(result?.headers.get("content-type"), "image/png");
+      assert.equal(await result?.text(), "png bytes");
+    }
+  });
+}
 
 test("a body past the cap errors even when nothing declared its size", async () => {
-  const oversized = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(new Uint8Array(MAX_BYTES + 1));
-      controller.close();
-    },
-  });
-
-  await assert.rejects(
-    () => new Response(capped(oversized, MAX_BYTES)).arrayBuffer(),
-    /size limit/,
-  );
+  const oversized = new Response(new Uint8Array(MAX_BYTES + 1)).body;
+  await assert.rejects(() => new Response(capped(oversized, MAX_BYTES)).arrayBuffer(), /size limit/);
 });
 
 test("a body within the cap passes through whole", async () => {
-  const small = new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(new Uint8Array(1024));
-      controller.close();
-    },
-  });
-
+  const small = new Response(new Uint8Array(1024)).body;
   const body = await new Response(capped(small, MAX_BYTES)).arrayBuffer();
   assert.equal(body.byteLength, 1024);
 });

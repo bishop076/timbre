@@ -8,15 +8,13 @@ import { SpotifySection } from "./spotify/spotify-section";
 
 import { ArtistLink } from "./artist-link";
 import { log } from "./logs.ts";
-import { AddToQueue } from "./player/add-to-queue";
+import { EYEBROW } from "./page-chrome";
 import { usePlayerControls } from "./player/player-context";
-import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { useSearchQuery } from "./search-store";
-import { SongRow } from "./song-row";
+import { SongActions, SongRow } from "./song-row";
 import { SourceBadges } from "./source-badges";
 import { sourceStyle } from "./sources";
 import type { Song, SongsResponse } from "./types";
-import { formatDuration } from "./duration";
 
 function readableFailure(cause: unknown): string {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -28,17 +26,13 @@ function readableFailure(cause: unknown): string {
   return cause instanceof Error ? cause.message : "Something went wrong.";
 }
 
-function isUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
-
+const ALERT = "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400";
 
 export function SearchResults() {
   const query = useSearchQuery();
   const [results, setResults] = useState<SongsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -47,33 +41,26 @@ export function SearchResults() {
     const timer = setTimeout(() => {
       controller.current?.abort();
 
-      if (!trimmed) {
-        setResults(null);
-        setLoading(false);
-        setError(null);
-        return;
-      }
-
+      setError(null);
       const pasted = pastedCollectionOf(trimmed);
-      if (pasted && !pasted.withSong) {
+      if (!trimmed || (pasted && !pasted.withSong)) {
         setResults(null);
         setLoading(false);
-        setError(null);
         return;
       }
 
       const next = new AbortController();
       controller.current = next;
       setLoading(true);
-      setError(null);
 
-      const endpoint = isUrl(trimmed)
+      const link = /^https?:\/\//i.test(trimmed);
+      const endpoint = link
         ? `/api/resolve?url=${encodeURIComponent(trimmed)}`
         : `/api/search?q=${encodeURIComponent(trimmed)}`;
 
       fetch(endpoint, { signal: next.signal })
         .then(async (response) => {
-          if (response.status === 404 && isUrl(trimmed)) {
+          if (response.status === 404 && link) {
             const body = (await response.json().catch(() => ({}))) as { error?: string };
             throw new Error(body.error ?? "That link isn't one Timbre can play.");
           }
@@ -111,141 +98,113 @@ export function SearchResults() {
   const hasQuery = query.trim().length > 0;
   const pastedCollection = pastedCollectionOf(query);
   const songs = results?.songs ?? [];
-
   const attempted = results?.attempted ?? 0;
   const allSourcesDown = attempted > 0 && results?.failures.length === attempted;
 
   return (
-    <>
-      <div aria-live="polite">
-        {error && (
-          <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-            {error}
+    <div aria-live="polite">
+      {error && <p className={ALERT}>{error}</p>}
+
+      {allSourcesDown ? (
+        <div role="alert" className={ALERT}>
+          <p className="font-semibold">Couldn&rsquo;t reach any music service.</p>
+          <p className="mt-1 text-red-400/80">
+            This is on our side, not yours — your search is fine. Try again in a moment.
           </p>
-        )}
-
-        {allSourcesDown ? (
-          <div
-            role="alert"
-            className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+        </div>
+      ) : (
+        results?.failures.map((failure) => (
+          <p
+            key={failure.source}
+            className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500"
           >
-            <p className="font-semibold">Couldn&rsquo;t reach any music service.</p>
-            <p className="mt-1 text-red-400/80">
-              This is on our side, not yours — your search is fine. Try again in a moment.
-            </p>
-          </div>
-        ) : (
-          results?.failures.map((failure) => (
-            <p
-              key={failure.source}
-              className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500"
-            >
-              {sourceStyle(failure.source).label} is unavailable — showing everything else.
-            </p>
-          ))
-        )}
+            {sourceStyle(failure.source).label} is unavailable — showing everything else.
+          </p>
+        ))
+      )}
 
-        {!hasQuery && (
-          <div className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
-            <p>
-              Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
-            </p>
-            <p className="mx-auto mt-3 max-w-md text-[var(--fg-faint)]">
-              Paste a <span className="text-[var(--fg-dim)]">SoundCloud</span> or{" "}
-              <span className="text-[var(--fg-dim)]">Spotify</span> link and it plays here.
-              Neither can be searched — only opened.
-            </p>
-            <p className="mx-auto mt-2 max-w-md text-[var(--fg-faint)]">
-              A <span className="text-[var(--fg-dim)]">YouTube</span> playlist link opens the whole
-              list.
-            </p>
-          </div>
-        )}
+      {!hasQuery && (
+        <div className="rise py-16 text-center text-sm text-[var(--fg-dim)]">
+          <p>
+            Type above to search, or press <kbd className="font-mono">/</kbd> from anywhere.
+          </p>
+          <p className="mx-auto mt-3 max-w-md text-[var(--fg-faint)]">
+            Paste a <span className="text-[var(--fg-dim)]">SoundCloud</span> or{" "}
+            <span className="text-[var(--fg-dim)]">Spotify</span> link and it plays here.
+            Neither can be searched — only opened.
+          </p>
+          <p className="mx-auto mt-2 max-w-md text-[var(--fg-faint)]">
+            A <span className="text-[var(--fg-dim)]">YouTube</span> playlist link opens the whole
+            list.
+          </p>
+        </div>
+      )}
 
-        {hasQuery && loading && songs.length === 0 && <Skeletons />}
+      {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
-        {pastedCollection && (
-          <Link
-            href={pastedCollection.href}
-            className="slab press flex items-center justify-between gap-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-4 transition hover:bg-[var(--surface-3)]"
-          >
-            <span>
-              <span className="block text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-                {pastedCollection.service} {pastedCollection.noun}
-              </span>
-              <span className="mt-0.5 block text-sm font-semibold">
-                Open this {pastedCollection.noun} in Timbre
-              </span>
+      {pastedCollection && (
+        <Link
+          href={pastedCollection.href}
+          className="slab press flex items-center justify-between gap-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-4 transition hover:bg-[var(--surface-3)]"
+        >
+          <span>
+            <span className={`block ${EYEBROW}`}>
+              {pastedCollection.service} {pastedCollection.noun}
             </span>
-            <span aria-hidden className="text-lg text-[var(--fg-dim)]">→</span>
-          </Link>
-        )}
+            <span className="mt-0.5 block text-sm font-semibold">
+              Open this {pastedCollection.noun} in Timbre
+            </span>
+          </span>
+          <span aria-hidden className="text-lg text-[var(--fg-dim)]">→</span>
+        </Link>
+      )}
 
-        {hasQuery && !pastedCollection && !loading && songs.length === 0 && !error && !allSourcesDown && (
-          <p className="py-16 text-center text-[var(--fg-dim)]">
-            Nothing found for “{query.trim()}”.
-          </p>
-        )}
+      {hasQuery && !pastedCollection && !loading && songs.length === 0 && !error && !allSourcesDown && (
+        <p className="py-16 text-center text-[var(--fg-dim)]">
+          Nothing found for “{query.trim()}”.
+        </p>
+      )}
 
-        {hasQuery && songs.length > 0 && (
-          <ul className="rise divide-y divide-[var(--line)]">
-            {songs.map((song) => (
-              <ResultRow key={song.id} song={song} />
-            ))}
-          </ul>
-        )}
+      {hasQuery && songs.length > 0 && (
+        <ResultList songs={songs} className="rise divide-y divide-[var(--line)]" />
+      )}
 
-        <SpotifySection
-          query={query}
-          render={(found) => (
-            <ul className="divide-y divide-[var(--line)]">
-              {found.map((song) => (
-                <ResultRow key={song.id} song={song} />
-              ))}
-            </ul>
-          )}
-        />
-      </div>
-    </>
+      <SpotifySection
+        query={query}
+        render={(found) => <ResultList songs={found} className="divide-y divide-[var(--line)]" />}
+      />
+    </div>
   );
 }
 
-function ResultRow({ song }: { song: Song }) {
+function ResultList({ songs, className }: { songs: Song[]; className: string }) {
   const { play, current, state } = usePlayerControls();
 
   return (
-    <SongRow
-      song={song}
-      onPlay={() => play(song)}
-      isCurrent={current?.id === song.id}
-      isPlaying={state === "playing"}
-      size="lg"
-      subtitle={
-        <>
-          <ArtistLink artists={song?.artists ?? []} />
-          {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
-        </>
-      }
-      trailing={
-        <>
-          <SourceBadges song={song} className="hidden @xl:flex" />
-
-          <span className="hidden w-12 shrink-0 pr-1 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
-            {formatDuration(song.durationMs)}
-          </span>
-
-          <AddToQueue
-            song={song}
-            className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
-          />
-
-          <AddToPlaylist
-            song={song}
-            className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
-          />
-        </>
-      }
-    />
+    <ul className={className}>
+      {songs.map((song) => (
+        <SongRow
+          key={song.id}
+          song={song}
+          onPlay={() => play(song)}
+          isCurrent={current?.id === song.id}
+          isPlaying={state === "playing"}
+          size="lg"
+          subtitle={
+            <>
+              <ArtistLink artists={song.artists} />
+              {song.album ? <span className="opacity-60"> · {song.album}</span> : null}
+            </>
+          }
+          trailing={
+            <>
+              <SourceBadges song={song} className="hidden @xl:flex" />
+              <SongActions song={song} durationClassName="pr-1" />
+            </>
+          }
+        />
+      ))}
+    </ul>
   );
 }
 

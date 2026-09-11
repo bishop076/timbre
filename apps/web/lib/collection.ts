@@ -5,15 +5,15 @@ import {
   isYtMusicProvider,
   listProviders,
   type SpotifyCollectionKind,
-  type YtMusicPlaylist,
 } from "@timbre/providers";
 
 import { cached } from "./api";
-import { deezer } from "./deezer";
-import { coversOf, toTrackByOrder, type ChartTrack, type RawTrack } from "./discover";
-import { drawStation, drawStations, fetchFresh, genreOfStation } from "./genre-feed";
+import { deezer, deezerList, fetchChartTracks, type RawTrack } from "./deezer";
+import { coversOf, fetchGenres, toTrackByOrder, type ChartTrack } from "./discover";
+import { drawStation, drawStations, fetchFresh } from "./genre-feed";
 import { listNames } from "./genre-tally";
 import { getProviderRuntime } from "./providers";
+import { genreOfStation } from "./radios";
 
 export type CollectionKind =
   | "genre"
@@ -24,7 +24,7 @@ export type CollectionKind =
   | "spotify-playlist"
   | "ytmusic-playlist";
 
-export interface CollectionSection {
+interface CollectionSection {
   key: string;
   title: string | null;
   caption: string | null;
@@ -45,20 +45,24 @@ export interface Collection {
   from: "Deezer" | "Spotify" | "YouTube Music";
 }
 
-function tiles(tracks: ChartTrack[]): string[] {
-  return coversOf(
-    tracks.map((track) => track.artworkUrl),
-    4,
-  );
-}
-
-function single(tracks: ChartTrack[]): CollectionSection[] {
-  return [{ key: "all", title: null, caption: null, tracks, ranked: false }];
-}
-
-function assemble(sections: CollectionSection[]): { sections: CollectionSection[]; tracks: ChartTrack[] } {
+function sectioned(sections: CollectionSection[]): Pick<Collection, "sections" | "tracks" | "covers"> {
   const kept = sections.filter((section) => section.tracks.length > 0);
-  return { sections: kept, tracks: kept.flatMap((section) => section.tracks) };
+  const tracks = kept.flatMap((section) => section.tracks);
+  return { sections: kept, tracks, covers: coversOf(tracks.map((track) => track.artworkUrl), 4) };
+}
+
+function unsectioned(tracks: ChartTrack[]) {
+  return sectioned([{ key: "all", title: null, caption: null, tracks, ranked: false }]);
+}
+
+function newIn(genre: string | undefined, tracks: ChartTrack[]): CollectionSection {
+  return {
+    key: "new",
+    title: `New in ${genre}`,
+    caption: "Deezer editors' picks, newest release first",
+    tracks,
+    ranked: false,
+  };
 }
 
 function without(tracks: ChartTrack[], taken: ChartTrack[]): ChartTrack[] {
@@ -68,15 +72,18 @@ function without(tracks: ChartTrack[], taken: ChartTrack[]): ChartTrack[] {
     .map((track, index) => ({ ...track, position: index + 1 }));
 }
 
+function joined(...parts: (string | null)[]): string {
+  return parts.filter(Boolean).join(" · ");
+}
+
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
   const raw = await deezer<{
-    id: number;
     title: string;
     nb_tracks?: number;
     picture_big?: string;
     creator?: { name?: string };
     tracks?: { data?: RawTrack[] };
-  }>(`/playlist/${id}`, 86_400);
+  }>(`/playlist/${id}`);
   if (!raw?.title) return null;
 
   const tracks = (raw.tracks?.data ?? []).slice(0, 100).map(toTrackByOrder);
@@ -86,13 +93,9 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
     kind,
     id,
     title: raw.title,
-    subtitle: [`${raw.nb_tracks ?? tracks.length} songs`, by ? `by ${by}` : null, "on Deezer"]
-      .filter(Boolean)
-      .join(" · "),
-    covers: tiles(tracks),
+    subtitle: joined(`${raw.nb_tracks ?? tracks.length} songs`, by ? `by ${by}` : null, "on Deezer"),
     coverUrl: raw.picture_big ?? null,
-    tracks,
-    sections: single(tracks),
+    ...unsectioned(tracks),
     genreId: null,
     from: "Deezer",
   };
@@ -101,79 +104,67 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
 async function fromGenre(id: string): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
   const genre = Number(id);
+  const overall = genre === 0;
 
-  const [chartRaw, genres, fresh, drawn] = await Promise.all([
-    deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
-    deezer<{ data?: { id: number; name: string }[] }>("/genre", 604_800),
-    genre === 0 ? Promise.resolve([]) : fetchFresh(genre),
-    genre === 0 ? Promise.resolve({ stations: [], tracks: [] }) : drawStations(genre),
+  const [charted, genres, fresh, drawn] = await Promise.all([
+    fetchChartTracks(id),
+    fetchGenres(),
+    overall ? [] : fetchFresh(genre),
+    overall ? { stations: [], tracks: [] } : drawStations(genre),
   ]);
 
-  const name = genres?.data?.find((entry) => entry.id === genre)?.name;
-  if (genre !== 0 && name === undefined) return null;
+  const name = genres.find((entry) => entry.id === genre)?.name;
+  if (!overall && name === undefined) return null;
 
-  const chart = (chartRaw?.tracks?.data ?? []).map(toTrackByOrder);
+  const chart = charted.map(toTrackByOrder);
   const newest = without(fresh, chart);
   const onAir = without(drawn.tracks, [...chart, ...newest]).slice(0, 30);
+  const stations = drawn.stations.map((station) => station.title);
 
-  const { sections, tracks } = assemble([
-    {
-      key: "new",
-      title: `New in ${name}`,
-      caption: "Deezer editors' picks, newest release first",
-      tracks: newest,
-      ranked: false,
-    },
+  const shelf = sectioned([
+    newIn(name, newest),
     {
       key: "stations",
       title: `On ${name} stations now`,
-      caption: drawn.stations.length
-        ? `From ${listNames(drawn.stations.map((station) => station.title))} — a new draw every 15 minutes`
-        : null,
+      caption: stations.length ? `From ${listNames(stations)} — a new draw every 15 minutes` : null,
       tracks: onAir,
       ranked: false,
     },
     {
       key: "chart",
-      title: genre === 0 ? null : `${name} chart`,
-      caption: genre === 0 ? null : "Deezer's chart for the genre — it leans on whatever is big overall",
+      title: overall ? null : `${name} chart`,
+      caption: overall ? null : "Deezer's chart for the genre — it leans on whatever is big overall",
       tracks: chart,
       ranked: true,
     },
   ]);
-  if (tracks.length === 0) return null;
+  if (shelf.tracks.length === 0) return null;
 
-  const title = genre === 0 ? "Top songs this week" : `${name} right now`;
   const fresher = newest.length + onAir.length;
 
   return {
     kind: "genre",
     id,
-    title,
-    subtitle:
-      genre === 0
-        ? `${chart.length} songs · Deezer chart`
-        : [fresher ? `${fresher} fresh` : null, chart.length ? `${chart.length} charting` : null, "Deezer"]
-            .filter(Boolean)
-            .join(" · "),
-    covers: tiles(tracks),
+    title: overall ? "Top songs this week" : `${name} right now`,
+    subtitle: overall
+      ? `${chart.length} songs · Deezer chart`
+      : joined(
+          fresher ? `${fresher} fresh` : null,
+          chart.length ? `${chart.length} charting` : null,
+          "Deezer",
+        ),
     coverUrl: null,
-    tracks,
-    sections,
-    genreId: genre === 0 ? null : genre,
+    ...shelf,
+    genreId: overall ? null : genre,
     from: "Deezer",
   };
 }
 
 async function fromMood(term: string): Promise<Collection | null> {
-  const found = await deezer<{ data?: { id: number; nb_tracks?: number }[] }>(
+  const found = await deezerList<{ id: number; nb_tracks?: number }>(
     `/search/playlist?q=${encodeURIComponent(term)}&limit=10`,
-    86_400,
   );
-
-  const best = (found?.data ?? [])
-    .slice()
-    .sort((a, b) => (b.nb_tracks ?? 0) - (a.nb_tracks ?? 0))[0];
+  const best = found.toSorted((a, b) => (b.nb_tracks ?? 0) - (a.nb_tracks ?? 0))[0];
   if (!best) return null;
 
   const collection = await fromPlaylist(String(best.id), "mood");
@@ -182,24 +173,20 @@ async function fromMood(term: string): Promise<Collection | null> {
   return {
     ...collection,
     id: term,
-    title: label(term),
+    title: term
+      .split(/[-\s]+/)
+      .filter(Boolean)
+      .map((word) => (/^\d/.test(word) ? word : word[0]!.toUpperCase() + word.slice(1)))
+      .join(" "),
     subtitle: `${collection.title} · ${collection.subtitle}`,
   };
-}
-
-function label(term: string): string {
-  return term
-    .split(/[-\s]+/)
-    .filter(Boolean)
-    .map((word) => (/^\d/.test(word) ? word : word[0]!.toUpperCase() + word.slice(1)))
-    .join(" ");
 }
 
 async function fromRadio(id: string): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
   const [meta, onAir, genre] = await Promise.all([
-    deezer<{ title?: string; picture_big?: string }>(`/radio/${id}`, 86_400),
+    deezer<{ title?: string; picture_big?: string }>(`/radio/${id}`),
     drawStation(Number(id)),
     genreOfStation(Number(id)),
   ]);
@@ -207,42 +194,33 @@ async function fromRadio(id: string): Promise<Collection | null> {
 
   const fresh = genre ? without(await fetchFresh(genre.id), onAir) : [];
 
-  const { sections, tracks } = assemble([
-    {
-      key: "on-air",
-      title: fresh.length ? "On air now" : null,
-      caption: fresh.length ? "A new draw every 15 minutes" : null,
-      tracks: onAir,
-      ranked: false,
-    },
-    {
-      key: "new",
-      title: genre ? `New in ${genre.name}` : null,
-      caption: "Deezer editors' picks, newest release first",
-      tracks: fresh,
-      ranked: false,
-    },
-  ]);
-
   return {
     kind: "radio",
     id,
     title: meta?.title ?? "Radio",
-    subtitle: [`${onAir.length} songs on air`, fresh.length ? `${fresh.length} new` : null, "Deezer radio"]
-      .filter(Boolean)
-      .join(" · "),
-    covers: tiles(tracks),
+    subtitle: joined(
+      `${onAir.length} songs on air`,
+      fresh.length ? `${fresh.length} new` : null,
+      "Deezer radio",
+    ),
     coverUrl: meta?.picture_big ?? null,
-    tracks,
-    sections,
+    ...sectioned([
+      {
+        key: "on-air",
+        title: fresh.length ? "On air now" : null,
+        caption: fresh.length ? "A new draw every 15 minutes" : null,
+        tracks: onAir,
+        ranked: false,
+      },
+      newIn(genre?.name, fresh),
+    ]),
     genreId: genre?.id ?? null,
     from: "Deezer",
   };
 }
 
 async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Collection | null> {
-  const { limiter } = getProviderRuntime();
-  const found = await fetchSpotifyCollection({ limiter }, kind, id).catch(() => null);
+  const found = await fetchSpotifyCollection(getProviderRuntime(), kind, id).catch(() => null);
   if (!found || found.tracks.length === 0) return null;
 
   const tracks: ChartTrack[] = found.tracks.map((track, index) => ({
@@ -262,28 +240,24 @@ async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Col
     found.total > tracks.length ? `${tracks.length} of ${found.total} songs` : `${tracks.length} songs`;
 
   return {
-    kind: kind === "album" ? "spotify-album" : "spotify-playlist",
+    kind: `spotify-${kind}`,
     id,
     title: found.title,
-    subtitle: [found.by ? `by ${found.by}` : null, found.year, count, "on Spotify"]
-      .filter(Boolean)
-      .join(" · "),
-    covers: tiles(tracks),
+    subtitle: joined(found.by ? `by ${found.by}` : null, found.year, count, "on Spotify"),
     coverUrl: found.coverUrl,
-    tracks,
-    sections: single(tracks),
+    ...unsectioned(tracks),
     genreId: null,
     from: "Spotify",
   };
 }
 
 async function fromYouTube(id: string): Promise<Collection | null> {
-  const { limiter } = getProviderRuntime();
+  const runtime = getProviderRuntime();
   const provider = listProviders().find(isYtMusicProvider);
   if (!provider) return null;
 
-  const found = await cached<YtMusicPlaylist | null>(`ytmusic-playlist:${id}`, () =>
-    provider.playlist({ limiter }, id, 100),
+  const found = await cached(`ytmusic-playlist:${id}`, () =>
+    provider.playlist(runtime, id, 100),
   ).catch(() => null);
   if (!found) return null;
 
@@ -318,20 +292,15 @@ async function fromYouTube(id: string): Promise<Collection | null> {
     kind: "ytmusic-playlist",
     id,
     title: found.title,
-    subtitle: [by ? `by ${by}` : null, found.year, count, "on YouTube Music"].filter(Boolean).join(" · "),
-    covers: tiles(tracks),
+    subtitle: joined(by ? `by ${by}` : null, found.year, count, "on YouTube Music"),
     coverUrl: found.artworkUrl,
-    tracks,
-    sections: single(tracks),
+    ...unsectioned(tracks),
     genreId: null,
     from: "YouTube Music",
   };
 }
 
-export async function fetchCollection(
-  kind: CollectionKind,
-  id: string,
-): Promise<Collection | null> {
+export async function fetchCollection(kind: CollectionKind, id: string): Promise<Collection | null> {
   if (kind === "genre") return fromGenre(id);
   if (kind === "playlist") return fromPlaylist(id, "playlist");
   if (kind === "radio") return fromRadio(id);

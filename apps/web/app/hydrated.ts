@@ -2,18 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 
-function subscribe(): () => void {
-  return () => {};
-}
-
-function onClient(): boolean {
-  return true;
-}
-
-function onServer(): boolean {
-  return false;
-}
+const subscribe = () => () => {};
 
 export function useHydrated(): boolean {
-  return useSyncExternalStore(subscribe, onClient, onServer);
+  return useSyncExternalStore(subscribe, () => true, () => false);
 }

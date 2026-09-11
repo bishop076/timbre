@@ -23,8 +23,6 @@ export function StackedColumns({
   segments: readonly string[];
   unit: string;
 }) {
-  if (columns.length === 0) return null;
-
   const max = Math.max(...columns.map((column) => column.total), 1);
   const step = max <= 5 ? 1 : max <= 12 ? 2 : max <= 30 ? 5 : 10;
   const ceiling = Math.ceil((max * 1.1) / step) * step;

@@ -26,17 +26,11 @@ const RESERVED = [
 const source = readFileSync(new URL("./layout.tsx", import.meta.url), "utf8");
 
 function scriptBodies(): string[] {
-  const bodies: string[] = [];
-  for (const constant of ["THEME_SCRIPT", "SW_CLEANUP_SCRIPT"]) {
-    const marker = `const ${constant} = \``;
-    const start = source.indexOf(marker);
-    assert.notEqual(start, -1, `${constant} should exist in layout.tsx`);
-    const from = start + marker.length;
-    const end = source.indexOf("`", from);
-    assert.notEqual(end, -1, `${constant} should be a closed template literal`);
-    bodies.push(source.slice(from, end));
-  }
-  return bodies;
+  return ["THEME_SCRIPT", "SW_CLEANUP_SCRIPT"].map((constant) => {
+    const body = new RegExp(`const ${constant} = \`([^\`]*)\``).exec(source)?.[1];
+    assert.ok(body !== undefined, `${constant} should be a closed template literal in layout.tsx`);
+    return body;
+  });
 }
 
 function withoutComments(body: string): string {
@@ -45,10 +39,7 @@ function withoutComments(body: string): string {
 
 test("the boot scripts declare no var that shadows a window property", () => {
   for (const body of scriptBodies()) {
-    const declared = [...withoutComments(body).matchAll(/\bvar\s+([A-Za-z_$][\w$]*)/g)].map(
-      (m) => m[1]!,
-    );
-    for (const identifier of declared) {
+    for (const [, identifier] of withoutComments(body).matchAll(/\bvar\s+([A-Za-z_$][\w$]*)/g)) {
       assert.ok(
         !RESERVED.includes(identifier),
         `var ${identifier} at global scope is window.${identifier} — rename it. ` +

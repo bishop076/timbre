@@ -18,35 +18,21 @@ const KINDS = new Set<CollectionKind>([
 
 export const revalidate = 900;
 
-const loadCollection = cache(fetchCollection);
+const loadCollection = cache(async (kind: string, id: string) =>
+  KINDS.has(kind as CollectionKind) ? fetchCollection(kind as CollectionKind, id) : null,
+);
 
-function parse(kind: string): CollectionKind | null {
-  return KINDS.has(kind as CollectionKind) ? (kind as CollectionKind) : null;
-}
+type Props = { params: Promise<{ kind: string; id: string }> };
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ kind: string; id: string }>;
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { kind, id } = await params;
-  const parsed = parse(kind);
-  if (!parsed) return { title: "Not found — Timbre" };
-
-  const collection = await loadCollection(parsed, id);
+  const collection = await loadCollection(kind, id);
   return { title: collection ? `${collection.title} — Timbre` : "Not found — Timbre" };
 }
 
-export default async function CollectionPage({
-  params,
-}: {
-  params: Promise<{ kind: string; id: string }>;
-}) {
+export default async function CollectionPage({ params }: Props) {
   const { kind, id } = await params;
-  const parsed = parse(kind);
-  if (!parsed) notFound();
-
-  const collection = await loadCollection(parsed, id);
+  const collection = await loadCollection(kind, id);
   if (!collection) notFound();
 
   return <CollectionView collection={collection} />;

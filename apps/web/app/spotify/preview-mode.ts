@@ -1,33 +1,20 @@
 "use client";
 
-import { createNotifier } from "../local-store.ts";
+import { readItem, writeItem } from "../local-store.ts";
 
 const KEY = "timbre:spotify:previews-only";
 
-const notifier = createNotifier();
-let snapshot = false;
-
-function read(): boolean {
-  try {
-    return window.sessionStorage.getItem(KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+let previewsOnly = false;
 
 export function rememberSpotifyPreviewsOnly(): void {
-  if (snapshot) return;
-  snapshot = true;
-  try {
-    window.sessionStorage.setItem(KEY, "1");
-  } catch {
-  }
-  notifier.emit();
+  if (previewsOnly) return;
+  previewsOnly = true;
+  writeItem(KEY, "1", "sessionStorage");
 }
 
 export function spotifyPreviewsOnly(): boolean {
-  if (!snapshot) snapshot = read();
-  return snapshot;
+  previewsOnly ||= readItem(KEY, "sessionStorage") === "1";
+  return previewsOnly;
 }
 
 export function openSpotifyWindow(trackId: string): void {
@@ -37,5 +24,3 @@ export function openSpotifyWindow(trackId: string): void {
     "width=420,height=560,noopener",
   );
 }
-
-export const subscribeSpotifyPreviewMode = notifier.subscribe;

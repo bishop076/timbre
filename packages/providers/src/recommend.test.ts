@@ -34,19 +34,15 @@ test("a song two lists agree on beats a song only one list ranked first", () => 
     list("a", [track("Solo", "Alpha"), track("Agreed", "Beta")]),
     list("b", [track("Other", "Gamma"), track("Agreed", "Beta")]),
   ];
-
-  const ranked = recommend(lists, { limit: 5 });
-  assert.equal(ranked[0]!.title, "Agreed");
+  assert.equal(recommend(lists, { limit: 5 })[0]!.title, "Agreed");
 });
 
 test("three lists agreeing beats two", () => {
-  const lists = [
+  const scored = scoreCandidates([
     list("a", [track("Twice", "Alpha"), track("Thrice", "Beta")]),
     list("b", [track("Twice", "Alpha"), track("Thrice", "Beta")]),
     list("c", [track("Filler", "Gamma"), track("Thrice", "Beta")]),
-  ];
-
-  const scored = scoreCandidates(lists);
+  ]);
   const thrice = scored.find((entry) => entry.song.title === "Thrice")!;
   const twice = scored.find((entry) => entry.song.title === "Twice")!;
 
@@ -56,12 +52,10 @@ test("three lists agreeing beats two", () => {
 });
 
 test("cross-source agreement survives the merge into one song", () => {
-  const lists = [
+  const scored = scoreCandidates([
     list("yt", [track("Shared", "Alpha", { source: "ytmusic" })]),
     list("dz", [track("Shared", "Alpha", { source: "deezer" })]),
-  ];
-
-  const scored = scoreCandidates(lists);
+  ]);
   assert.equal(scored.length, 1);
   assert.equal(scored[0]!.lists, 2);
   assert.deepEqual(
@@ -71,17 +65,9 @@ test("cross-source agreement survives the merge into one song", () => {
 });
 
 test("an art track is demoted below an official video that ranked equally", () => {
-  const lists = [
-    list("a", [
-      track("Art", "Alpha", { videoType: "MUSIC_VIDEO_TYPE_ATV" }),
-      track("Official", "Beta", { videoType: "MUSIC_VIDEO_TYPE_OMV" }),
-    ]),
-    list("b", [
-      track("Official", "Beta", { videoType: "MUSIC_VIDEO_TYPE_OMV" }),
-      track("Art", "Alpha", { videoType: "MUSIC_VIDEO_TYPE_ATV" }),
-    ]),
-  ];
-
+  const art = track("Art", "Alpha", { videoType: "MUSIC_VIDEO_TYPE_ATV" });
+  const official = track("Official", "Beta", { videoType: "MUSIC_VIDEO_TYPE_OMV" });
+  const lists = [list("a", [art, official]), list("b", [official, art])];
   assert.equal(recommend(lists, { limit: 2 })[0]!.title, "Official");
 });
 
@@ -118,93 +104,64 @@ test("one artist holding every top score does not take every top slot", () => {
     track("Five", "Gamma"),
     track("Six", "Delta"),
   ];
-  const lists = [list("a", ranking), list("b", ranking)];
+  const artists = recommend([list("a", ranking), list("b", ranking)], { limit: 4 }).map(
+    (song) => song.artists[0],
+  );
 
-  const artists = recommend(lists, { limit: 4 }).map((song) => song.artists[0]);
-
-  for (let index = 1; index < artists.length; index += 1) {
-    if (artists[index] === artists[index - 1]) {
-      assert.fail(`same artist twice in a row at ${index}: ${artists.join(", ")}`);
-    }
-  }
+  assert.ok(
+    artists.every((artist, index) => artist !== artists[index - 1]),
+    `same artist twice in a row: ${artists.join(", ")}`,
+  );
   assert.equal(artists[0], "Alpha");
 });
 
-test("spacing yields when an artist genuinely owns everything left", () => {
-  const ranking = [
-    track("One", "Alpha"),
-    track("Two", "Alpha"),
-    track("Three", "Alpha"),
-    track("Other", "Beta"),
-  ];
+test("spacing reorders but never drops, even when one artist owns everything left", () => {
+  const alpha = [track("One", "Alpha"), track("Two", "Alpha"), track("Three", "Alpha")];
+  const ranking = [...alpha, track("Other", "Beta")];
 
-  const picked = recommend([list("a", ranking), list("b", ranking)], { limit: 4 });
-  assert.equal(picked.length, 4);
-});
-
-test("spacing artists out reorders but never drops", () => {
-  const lists = [
-    list("a", [track("One", "Alpha"), track("Two", "Alpha"), track("Three", "Alpha")]),
-  ];
-
-  assert.equal(recommend(lists, { limit: 3 }).length, 3);
+  assert.equal(recommend([list("a", ranking), list("b", ranking)], { limit: 4 }).length, 4);
+  assert.equal(recommend([list("a", alpha)], { limit: 3 }).length, 3);
 });
 
 test("excluded songs are dropped however they were spelled", () => {
   const lists = [list("a", [track("Wonderwall (Remastered)", "Oasis"), track("Keep", "Beta")])];
-
   const excluded = scoreCandidates([list("x", [track("Wonderwall", "Oasis")])]).map(
     (entry) => entry.song,
   );
-
   assert.deepEqual(titles(recommend(lists, { limit: 5, exclude: excluded })), ["Keep"]);
 });
 
-test("a music video and its audio track are one entry, not two", () => {
-  const lists = [
-    list("yt", [
-      track("Watermelon Sugar (Official Video)", "Harry Styles", {
-        durationMs: 189_000,
-        videoType: "MUSIC_VIDEO_TYPE_OMV",
-      }),
-    ]),
-    list("dz", [
-      track("Watermelon Sugar", "Harry Styles", { source: "deezer", durationMs: 174_000 }),
-    ]),
-  ];
-
-  const picked = recommend(lists, { limit: 5 });
-  assert.equal(picked.length, 1);
-  assert.ok(picked[0]!.sources.some((source) => source.source === "ytmusic"));
+test("a music video and its audio track are one entry, however the title is decorated", () => {
+  for (const [video, audio, artist] of [
+    ["Watermelon Sugar (Official Video)", "Watermelon Sugar", "Harry Styles"],
+    ["Levitating (feat. DaBaby)", "Levitating", "Dua Lipa"],
+  ] as const) {
+    const yt = track(video, artist, { durationMs: 189_000, videoType: "MUSIC_VIDEO_TYPE_OMV" });
+    const dz = track(audio, artist, { source: "deezer", durationMs: 174_000 });
+    const picked = recommend([list("yt", [yt]), list("dz", [dz])], { limit: 5 });
+    assert.equal(picked.length, 1, video);
+    assert.ok(picked[0]!.sources.some((source) => source.source === "ytmusic"));
+  }
 });
 
 test("a repeat inside one list is the same evidence, not more of it", () => {
-  const lists = [
+  const scored = scoreCandidates([
     list("a", [track("Repeated", "Alpha"), track("Once", "Beta"), track("Repeated", "Alpha")]),
-  ];
-
-  const scored = scoreCandidates(lists);
+  ]);
   assert.equal(scored.find((entry) => entry.song.title === "Repeated")!.lists, 1);
 });
 
-test("an empty or failed list changes nothing", () => {
+test("an empty list changes nothing, and no lists at all is empty rather than an error", () => {
   const withList = recommend([list("a", [track("One", "Alpha")])], { limit: 5 });
   const withEmpty = recommend([list("a", [track("One", "Alpha")]), list("dead", [])], { limit: 5 });
-
   assert.deepEqual(titles(withEmpty), titles(withList));
-});
-
-test("no lists at all is empty, not an error", () => {
   assert.deepEqual(recommend([], { limit: 5 }), []);
   assert.deepEqual(scoreCandidates([list("a", [])]), []);
 });
 
 test("the limit is respected", () => {
-  const lists = [
-    list("a", Array.from({ length: 30 }, (_, index) => track(`Song ${index}`, `Artist ${index}`))),
-  ];
-
-  assert.equal(recommend(lists, { limit: 8 }).length, 8);
+  const tracks = Array.from({ length: 30 }, (_, index) => track(`Song ${index}`, `Artist ${index}`));
+  assert.equal(recommend([list("a", tracks)], { limit: 8 }).length, 8);
 });
 
 test("a feature credited in one list and dropped in the other is still agreement", () => {
@@ -215,9 +172,7 @@ test("a feature credited in one list and dropped in the other is still agreement
       track("Sunflower", "Post Malone", { source: "deezer" }),
     ]),
   ];
-
-  const scored = scoreCandidates(lists);
-  const sunflower = scored.find((entry) => entry.song.title.startsWith("Sunflower"))!;
+  const sunflower = scoreCandidates(lists).find((entry) => entry.song.title.startsWith("Sunflower"))!;
 
   assert.equal(sunflower.lists, 2);
   assert.equal(titles(recommend(lists, { limit: 5 }))[0], "Sunflower (feat. Swae Lee)");
@@ -227,25 +182,9 @@ test("the seed is excluded however its feature is credited", () => {
   const lists = [
     list("yt", [track("Sunflower (feat. Swae Lee)", "Post Malone"), track("Keep", "Beta")]),
   ];
-
   const picked = recommend(lists, {
     limit: 5,
     exclude: [{ title: "Sunflower", artists: ["Post Malone"] }],
   });
-
   assert.deepEqual(titles(picked), ["Keep"]);
-});
-
-test("one recording spelled two ways is one entry, not two", () => {
-  const lists = [
-    list("yt", [
-      track("Levitating (feat. DaBaby)", "Dua Lipa", {
-        durationMs: 203_000,
-        videoType: "MUSIC_VIDEO_TYPE_OMV",
-      }),
-    ]),
-    list("dz", [track("Levitating", "Dua Lipa", { source: "deezer", durationMs: 183_000 })]),
-  ];
-
-  assert.equal(recommend(lists, { limit: 5 }).length, 1);
 });
