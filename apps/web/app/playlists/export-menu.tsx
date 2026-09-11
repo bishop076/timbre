@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { exportProfile } from "../profile/profile-backup";
 import { playlistsToCsv } from "./csv";
+import { getLikedSongs, useLikes } from "./likes-store";
 import { allPlaylists, exportPlaylists } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
@@ -26,12 +27,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 /**
  * Three ways out, because they are three different jobs.
  *
- * **A backup** carries the name and both pictures as well as the lists — it is what gets
- * this browser back after clearing site data. **Playlists only** is the same file without
- * the part that is about a person, for sending a list to somebody. **CSV** is for a
+ * **A backup** carries the name, both pictures and the liked songs as well as the lists — it
+ * is what gets this browser back after clearing site data. **Playlists only** is the same
+ * file without the parts that are about a person, for sending a list to somebody. **CSV** is for a
  * spreadsheet, and does not come back in: see `csv.ts`.
  */
 export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean; hasProfile: boolean }) {
+  const hasLikes = useLikes().songs.length > 0;
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -69,7 +71,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
       // Read at the click, not held in state: the pictures are the largest thing here and
       // only this path needs them.
       const profile = withProfile ? await exportProfile() : null;
-      const file = exportPlaylists({ profile });
+      const file = exportPlaylists({ profile, liked: withProfile ? getLikedSongs() : [] });
       saveFile(
         JSON.stringify(file, null, 2),
         "application/json",
@@ -82,7 +84,10 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
   }
 
   function csv() {
-    saveFile(playlistsToCsv(allPlaylists()), "text/csv;charset=utf-8", `timbre-playlists-${today()}.csv`);
+    // Liked songs as one more list, so the spreadsheet is everything that was saved.
+    const liked = getLikedSongs();
+    const lists = liked.length > 0 ? [{ name: "Liked songs", songs: liked }, ...allPlaylists()] : allPlaylists();
+    saveFile(playlistsToCsv(lists), "text/csv;charset=utf-8", `timbre-playlists-${today()}.csv`);
     close();
   }
 
@@ -95,7 +100,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
         ref={trigger}
         type="button"
         onClick={() => setOpen((was) => !was)}
-        disabled={!hasPlaylists && !hasProfile}
+        disabled={!hasPlaylists && !hasProfile && !hasLikes}
         aria-haspopup="menu"
         aria-expanded={open}
         className="press rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[13px] font-semibold disabled:opacity-40"
@@ -114,7 +119,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
           <button type="button" role="menuitem" disabled={busy} onClick={() => void backup(true)} className={item}>
             <span className="text-[13px] font-semibold">Back up everything</span>
             <span className="text-[11px] leading-relaxed text-[var(--fg-faint)]">
-              Playlists, your name and pictures. For this browser or your next one.
+              Playlists, liked songs, your name and pictures. For this browser or your next one.
             </span>
           </button>
           <button
@@ -129,7 +134,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
               Nothing about you — for sending to someone.
             </span>
           </button>
-          <button type="button" role="menuitem" disabled={!hasPlaylists} onClick={csv} className={item}>
+          <button type="button" role="menuitem" disabled={!hasPlaylists && !hasLikes} onClick={csv} className={item}>
             <span className="text-[13px] font-semibold">Spreadsheet (CSV)</span>
             <span className="text-[11px] leading-relaxed text-[var(--fg-faint)]">
               To read or sort elsewhere. Timbre can&rsquo;t import it back.
