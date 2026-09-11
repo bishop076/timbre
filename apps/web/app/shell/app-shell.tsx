@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayerControls } from "../player/player-context";
 import { useArtworkAccent } from "../player/use-artwork-accent";
+import { useSleepTimerDriver } from "../player/use-sleep-timer";
 import { useTransportKeys } from "../player/use-transport-keys";
 import { TopBar } from "../top-bar";
 import { PlayerBar } from "./player-bar";
@@ -72,6 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const washed = !pathname.startsWith("/profile");
 
   useTransportKeys();
+  useSleepTimerDriver();
 
   return (
     <div
