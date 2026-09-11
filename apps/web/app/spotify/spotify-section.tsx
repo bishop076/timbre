@@ -2,21 +2,22 @@
 
 import { useEffect, useState } from "react";
 
-import { searchSpotify, type SpotifySearchResult } from "./search.ts";
+import { searchSpotify, searchSpotifyCatalogue, type SpotifySearchResult } from "./search.ts";
 import { useSpotifyTokens } from "./token-store.ts";
 import type { Song } from "../types";
 
 /**
  * Spotify's results, in their own attributed section beneath the blended ones.
  *
- * **Separate is the requirement, not a layout choice.** Developer Terms IV.2 forbid blending
- * Spotify content with another service's, so these are never merged into the ranked list and
- * never become queue members: each row hands off to Spotify's own embed, which the reader
- * presses. It is also the only shape that could work — the token is in this browser and the
- * ranked search runs on the server.
+ * **Separate is the requirement, not a layout choice.** These are never merged into the ranked
+ * list: each row hands off to Spotify's own embed, which the reader presses. That keeps a
+ * connected account clear of Developer Terms IV.2, which forbid blending Spotify content with
+ * another service's, and the no-account search is held to the same line.
  *
- * Renders nothing at all when no account is connected. An empty section under every search
- * would read as a source that is failing rather than one nobody asked for.
+ * **Everyone gets it now.** It used to need a connected account, which a developer app caps at
+ * five people. Timbre's server searches Spotify's public catalogue anonymously instead
+ * (`/api/spotify/search`), and the reader's own account is the fallback for when that surface
+ * breaks — it is Spotify's private one, and it will.
  */
 export function SpotifySection({ query, render }: { query: string; render: (songs: Song[]) => React.ReactNode }) {
   const tokens = useSpotifyTokens();
@@ -27,16 +28,27 @@ export function SpotifySection({ query, render }: { query: string; render: (song
 
   const connected = Boolean(tokens);
   const trimmed = query.trim();
+  // A pasted link is resolved by the ranked search above, not searched for as words.
+  const searchable = Boolean(trimmed) && !/^https?:\/\//i.test(trimmed);
 
   useEffect(() => {
-    if (!connected || !trimmed) return;
+    if (!searchable) return;
 
-    // Debounced like the blended search above it, and for a stronger reason: this one runs
-    // on the reader's own Spotify quota, and a request already on the wire is not recalled
-    // by aborting it. Ten keystrokes were ten searches, which is how the 429 was earned.
+    // Debounced like the blended search above it: a request already on the wire is not
+    // recalled by aborting it, and ten keystrokes were ten searches.
     const aborter = new AbortController();
     const timer = setTimeout(() => {
-      searchSpotify(trimmed, aborter.signal)
+      searchSpotifyCatalogue(trimmed, aborter.signal)
+        .then((songs): SpotifySearchResult => ({ kind: "ok", songs, from: "catalogue" }))
+        .catch(async (cause: unknown): Promise<SpotifySearchResult> => {
+          if (aborter.signal.aborted) throw cause;
+          // The catalogue refused. A connected account is a second, independent way in.
+          if (connected) return searchSpotify(trimmed, aborter.signal);
+          return {
+            kind: "error",
+            message: cause instanceof Error ? cause.message : "Spotify did not answer.",
+          };
+        })
         .then((next) => setFound({ key: trimmed, result: next }))
         .catch((cause: unknown) => {
           // Aborted by a newer query: that effect owns the answer. Anything else is a
@@ -57,11 +69,11 @@ export function SpotifySection({ query, render }: { query: string; render: (song
     };
     // `connected` rather than `tokens`: the object is replaced on every refresh, and keying
     // on it would re-run this search an hour into a session for no reason.
-  }, [connected, trimmed]);
+  }, [connected, searchable, trimmed]);
 
   const result = found?.key === trimmed ? found.result : null;
 
-  if (!connected || !trimmed || !result || result.kind === "off") return null;
+  if (!searchable || !result || result.kind === "off") return null;
 
   return (
     <section className="mt-8">
@@ -78,8 +90,10 @@ export function SpotifySection({ query, render }: { query: string; render: (song
       )}
 
       <p className="px-1 pt-2 text-[11px] text-[var(--fg-faint)]">
-        From your own Spotify account. These play in Spotify&rsquo;s player and do not join
-        the queue.
+        {result.kind === "ok" && result.from === "account"
+          ? "From your own Spotify account."
+          : "From Spotify's public catalogue — no account needed."}{" "}
+        These play in Spotify&rsquo;s player and do not join the queue.
       </p>
     </section>
   );

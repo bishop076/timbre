@@ -8,6 +8,7 @@ export * from "./soundcloud.ts";
 export * from "./audius.ts";
 export * from "./archive.ts";
 export * from "./spotify.ts";
+export * from "./spotify-web.ts";
 export * from "./mixcloud.ts";
 export * from "./deezer.ts";
 export * from "./apple.ts";

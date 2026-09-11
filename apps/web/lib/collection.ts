@@ -1,17 +1,20 @@
 import "server-only";
 
+import { fetchSpotifyCollection, type SpotifyCollectionKind } from "@timbre/providers";
+
 import { deezer } from "./deezer";
 import { coversOf, toTrackByOrder, type ChartTrack, type RawTrack } from "./discover";
 import { drawStation, drawStations, fetchFresh, genreOfStation } from "./genre-feed";
 import { listNames } from "./genre-tally";
+import { getProviderRuntime } from "./providers";
 
 /*
- * A collection: songs gathered under one name — a genre, a Deezer playlist, a station, or a
- * mood resolved to one. All kinds resolve to the same shape, so the page rendering them
- * never knows which it has and there is no second layout.
+ * A collection: songs gathered under one name — a genre, a Deezer playlist, a station, a mood
+ * resolved to one, or a Spotify album or playlist someone pasted. All kinds resolve to the same
+ * shape, so the page rendering them never knows which it has and there is no second layout.
  */
 
-export type CollectionKind = "genre" | "playlist" | "mood" | "radio";
+export type CollectionKind = "genre" | "playlist" | "mood" | "radio" | "spotify-album" | "spotify-playlist";
 
 /** A named run of a collection's songs. A playlist is one untitled section; a genre is three. */
 export interface CollectionSection {
@@ -38,6 +41,8 @@ export interface Collection {
   sections: CollectionSection[];
   /** The Deezer genre it belongs to, so the page can add what *you* played in it. */
   genreId: number | null;
+  /** The catalogue it was assembled from, named on the page. */
+  from: "Deezer" | "Spotify";
 }
 
 /** Four covers, tiled. */
@@ -94,6 +99,7 @@ async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collectio
     tracks,
     sections: single(tracks),
     genreId: null,
+    from: "Deezer",
   };
 }
 
@@ -172,6 +178,7 @@ async function fromGenre(id: string): Promise<Collection | null> {
     tracks,
     sections,
     genreId: genre === 0 ? null : genre,
+    from: "Deezer",
   };
 }
 
@@ -253,6 +260,54 @@ async function fromRadio(id: string): Promise<Collection | null> {
     tracks,
     sections,
     genreId: genre?.id ?? null,
+    from: "Deezer",
+  };
+}
+
+/**
+ * A Spotify album or playlist, read anonymously — see `packages/providers/src/spotify-web.ts`.
+ * Reached by pasting its link. Each track keeps its Spotify identity, so the player looks for
+ * a full copy it can queue first and falls back to Spotify's own embed, exactly as it does for
+ * a pasted Spotify track. A refusal from Spotify reads as "not found" rather than a 500: the
+ * surface is private and will break, and a page that says so beats one that crashes.
+ */
+async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Collection | null> {
+  const { limiter } = getProviderRuntime();
+  const found = await fetchSpotifyCollection({ limiter }, kind, id).catch(() => null);
+  if (!found || found.tracks.length === 0) return null;
+
+  const tracks: ChartTrack[] = found.tracks.map((track, index) => ({
+    // Namespaced like every other Spotify id in the app, so none can meet a merged song's.
+    id: `spotify:${track.sourceId}`,
+    title: track.title,
+    artists: track.artists,
+    album: track.album,
+    durationMs: track.durationMs,
+    isrc: track.isrc,
+    artworkUrl: track.artworkUrl,
+    sources: [{ source: "spotify", sourceId: track.sourceId, url: track.url, playback: "manual" }],
+    position: index + 1,
+    popularity: 0,
+  }));
+
+  // Said when Spotify has more than one page's worth, or "100 songs" undersells a 300-song list.
+  const count =
+    found.total > tracks.length ? `${tracks.length} of ${found.total} songs` : `${tracks.length} songs`;
+
+  return {
+    kind: kind === "album" ? "spotify-album" : "spotify-playlist",
+    id,
+    title: found.title,
+    // The Deezer playlist's wording. The kind is already the eyebrow above the title.
+    subtitle: [found.by ? `by ${found.by}` : null, found.year, count, "on Spotify"]
+      .filter(Boolean)
+      .join(" · "),
+    covers: tiles(tracks),
+    coverUrl: found.coverUrl,
+    tracks,
+    sections: single(tracks),
+    genreId: null,
+    from: "Spotify",
   };
 }
 
@@ -264,5 +319,7 @@ export async function fetchCollection(
   if (kind === "genre") return fromGenre(id);
   if (kind === "playlist") return fromPlaylist(id, "playlist");
   if (kind === "radio") return fromRadio(id);
+  if (kind === "spotify-album") return fromSpotify("album", id);
+  if (kind === "spotify-playlist") return fromSpotify("playlist", id);
   return fromMood(id);
 }

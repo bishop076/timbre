@@ -58,13 +58,7 @@ export function CollectionView({ collection }: { collection: Collection }) {
 
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
-            {collection.kind === "genre"
-              ? collection.genreId === null
-                ? "Chart"
-                : "Genre"
-              : collection.kind === "radio"
-                ? "Station"
-                : "Collection"}
+            {eyebrowOf(collection)}
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:mt-1.5 sm:text-3xl @lg:text-4xl">
             {collection.title}
@@ -95,7 +89,7 @@ export function CollectionView({ collection }: { collection: Collection }) {
 
           {/* Said once here, not on every row. */}
           <p className="mt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
-            Assembled from Deezer and kept nowhere. Playing a song searches for a copy Timbre can
+            Assembled from {collection.from} and kept nowhere. Playing a song searches for a copy Timbre can
             actually play, so an occasional match is a different upload of the same recording.
             {snapshot && (
               <>
@@ -166,6 +160,22 @@ export function CollectionView({ collection }: { collection: Collection }) {
       )}
     </div>
   );
+}
+
+/** The word above the title: what kind of thing this page is. */
+function eyebrowOf(collection: Collection): string {
+  switch (collection.kind) {
+    case "genre":
+      return collection.genreId === null ? "Chart" : "Genre";
+    case "radio":
+      return "Station";
+    case "spotify-album":
+      return "Spotify album";
+    case "spotify-playlist":
+      return "Spotify playlist";
+    default:
+      return "Collection";
+  }
 }
 
 /**

@@ -25,7 +25,9 @@ export interface ChartTrack {
   durationMs: number | null;
   isrc: string | null;
   artworkUrl: string | null;
-  sources: { source: string; sourceId: string; url: string | null; playback: "link" }[];
+  /** `link` for Deezer, which cannot play here; `manual` for a Spotify collection's tracks,
+   * whose embed can, once pressed. Either way the player looks for a full copy first. */
+  sources: { source: string; sourceId: string; url: string | null; playback: "link" | "manual" }[];
   position: number;
   /** Deezer's popularity score, 0–1,000,000. Not a play count — label it as a score. */
   popularity: number;

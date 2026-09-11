@@ -1,7 +1,10 @@
 "use client";
 
-import { SpotifySection } from "./spotify/spotify-section";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+
+import { spotifyCollectionPath } from "./spotify/collection-link";
+import { SpotifySection } from "./spotify/spotify-section";
 
 import { ArtistLink } from "./artist-link";
 import { log } from "./logs.ts";
@@ -64,6 +67,15 @@ export function SearchResults() {
         return;
       }
 
+      // A Spotify album or playlist is a page of its own, not a song to resolve — the card
+      // below links to it, and asking /api/resolve would only answer "not a track".
+      if (spotifyCollectionPath(trimmed)) {
+        setResults(null);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
       const next = new AbortController();
       controller.current = next;
       setLoading(true);
@@ -117,6 +129,7 @@ export function SearchResults() {
   }, [query]);
 
   const hasQuery = query.trim().length > 0;
+  const pastedCollection = spotifyCollectionPath(query);
   const songs = results?.songs ?? [];
 
   // Guarded on `attempted > 0`: optional, and `0 === 0` declares a false total outage.
@@ -177,7 +190,24 @@ export function SearchResults() {
         {hasQuery && loading && songs.length === 0 && <Skeletons />}
 
         {/* `!allSourcesDown`: "nothing found" is only true if something actually looked. */}
-        {hasQuery && !loading && songs.length === 0 && !error && !allSourcesDown && (
+        {pastedCollection && (
+          <Link
+            href={pastedCollection.href}
+            className="slab press flex items-center justify-between gap-4 rounded-[var(--r-lg)] bg-[var(--surface-2)] px-4 py-4 transition hover:bg-[var(--surface-3)]"
+          >
+            <span>
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-[var(--fg-dim)]">
+                Spotify {pastedCollection.kind}
+              </span>
+              <span className="mt-0.5 block text-sm font-semibold">
+                Open this {pastedCollection.kind} in Timbre
+              </span>
+            </span>
+            <span aria-hidden className="text-lg text-[var(--fg-dim)]">→</span>
+          </Link>
+        )}
+
+        {hasQuery && !pastedCollection && !loading && songs.length === 0 && !error && !allSourcesDown && (
           <p className="py-16 text-center text-[var(--fg-dim)]">
             Nothing found for “{query.trim()}”.
           </p>
@@ -191,8 +221,7 @@ export function SearchResults() {
           </ul>
         )}
 
-        {/* Below the ranked list and never inside it — see `SpotifySection`. Renders nothing
-            unless the reader has connected their own account. */}
+        {/* Below the ranked list and never inside it — see `SpotifySection`. */}
         <SpotifySection
           query={query}
           render={(found) => (
