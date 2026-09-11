@@ -13,6 +13,7 @@ import {
   SpinnerIcon,
 } from "../icons";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { LikeButton } from "../playlists/like-button";
 import { ModeButton, repeatMode } from "../shell/player-bar";
 import { LyricsPanel } from "./lyrics-panel";
 import { getPlaybackPrefs } from "./playback-prefs";
@@ -147,6 +148,7 @@ export function MobileTransport() {
           on={repeat !== "off"}
           onClick={cycleRepeat}
         />
+        {current && <LikeButton song={current} className="size-11" />}
         {current && (
           <AddToPlaylist song={current} className="flex size-11 items-center justify-center" />
         )}

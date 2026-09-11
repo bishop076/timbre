@@ -20,6 +20,7 @@ import {
 import { usePlayer, type RepeatMode } from "../player/player-context";
 import { Volume } from "../player/volume";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
+import { LikeButton } from "../playlists/like-button";
 import { Scrub } from "../player/wavy-progress";
 import { sourceStyle } from "../sources";
 import { SourceLink } from "./source-link";
@@ -292,6 +293,7 @@ export function PlayerBar() {
           {meta}
           {/* `shrink-0` because `meta` is the flexible one — otherwise the button is what a
               long title squeezes, changing width per song. */}
+          {current && <LikeButton song={current} />}
           {current && <AddToPlaylist song={current} className="shrink-0" />}
         </div>
 

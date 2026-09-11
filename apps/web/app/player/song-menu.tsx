@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { CheckIcon, NextIcon, PlayIcon, QueueAddIcon } from "../icons";
+import { CheckIcon, HeartFilledIcon, HeartIcon, NextIcon, PlayIcon, QueueAddIcon } from "../icons";
+import { likeSong, unlikeSong, useIsLiked } from "../playlists/likes-store";
 import type { Song } from "../types";
 import { usePlayerControls } from "./player-context";
 import { sameTrack } from "./song-match";
@@ -15,8 +16,8 @@ import { sameTrack } from "./song-match";
  *
  * A context menu is the discoverable version of the same actions: everyone already tries
  * right-clicking a list. It is deliberately short — the two ways to put a song somewhere in
- * the queue, and the ordinary play — since a menu that lists everything is another thing to
- * read rather than a shortcut.
+ * the queue, the ordinary play, and the like, which is the one save that needs no choosing —
+ * since a menu that lists everything is another thing to read rather than a shortcut.
  *
  * Positioned at the pointer, so it is not anchored to any element and cannot reuse
  * `useAnchoredMenu`. Portalled for the same reason that one is: shelves and panels are
@@ -72,6 +73,7 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
 
   const queued = queue.some((entry) => sameTrack(entry, song));
   const playing = current !== null && sameTrack(current, song);
+  const liked = useIsLiked(song);
 
   // Measured, not assumed: the menu is short but its height still decides whether it opens
   // downwards. `useLayoutEffect` so the unplaced frame is never painted — the same trick
@@ -161,6 +163,19 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
         hint={queued ? "Queued" : undefined}
       >
         Add to queue
+      </Item>
+
+      <Item
+        icon={
+          liked ? (
+            <HeartFilledIcon className="size-4 text-[var(--accent)]" />
+          ) : (
+            <HeartIcon className="size-4" />
+          )
+        }
+        onClick={() => run(() => (liked ? unlikeSong(song) : likeSong(song)))}
+      >
+        {liked ? "Unlike" : "Like"}
       </Item>
     </div>,
     document.body,
