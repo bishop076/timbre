@@ -10,6 +10,9 @@ updates:
     groups:
       npm:
         patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: uv
     directory: /apps/ytmusic
