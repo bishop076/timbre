@@ -90,6 +90,52 @@
   border-color: var(--line);
 }
 
+/**
+ * A tile's frame — a song, a release, an artist. The cover sits inside it with its title, so
+ * a shelf reads as a row of objects rather than pictures with captions hanging under them.
+ * A slab on a light ground; on a dark one the edge takes the line tone and the shadow goes,
+ * since black ink on near-black is an outline with nothing to lift it off.
+ */
+.tile-card {
+  border: var(--edge) solid var(--ink);
+  box-shadow: var(--drop);
+  background: var(--surface-1);
+  border-radius: var(--r-lg);
+  transition:
+    background-color 0.2s var(--ease),
+    transform 0.09s var(--ease),
+    box-shadow 0.09s var(--ease);
+}
+.tile-card:hover {
+  background: var(--surface-2);
+}
+/* Sinks like `.press`, but its own rule: `.press` sets `transition` too, and being declared
+   later it would drop the background fade above. */
+.tile-card:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0 0 0 var(--ink);
+}
+/* A wash of the foreground rather than a surface token: the card sits on the content panel,
+   whose gradient is lighter than `--surface-1`, so a surface fill read as a hole, not a card. */
+:root[data-theme="dark"] .tile-card {
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--fg) 9%, transparent);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .tile-card:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+/** The picture inside a card: edged in the same ink on a light ground, bare on a dark one,
+ * where the card's own soft edge already frames it. */
+.tile-cover {
+  border: var(--edge) solid var(--ink);
+}
+:root[data-theme="dark"] .tile-cover {
+  border: 0;
+}
+
 /* Pressable things sink into their own shadow rather than scaling. */
 .press {
   transition:
