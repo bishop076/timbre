@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.11.1 — 11 September 2026
+
+### Fixed
+
+- **player** — leave YouTube when it refuses the connection, and say so
+
 ## 0.11.0 — 9 September 2026
 
 ### Added
