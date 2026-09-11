@@ -50,7 +50,15 @@ const EMPTY: PlayedSong[] = [];
 function isPlayed(value: unknown): value is PlayedSong {
   if (typeof value !== "object" || value === null) return false;
   const entry = value as Partial<PlayedSong>;
-  return typeof entry.id === "string" && typeof entry.title === "string";
+  // The elements too, not only the array: `artists: [1]` passed a container check and then
+  // threw in Explore's name normalising, on every load (docs/SECURITY.md S-11).
+  return (
+    typeof entry.id === "string" &&
+    typeof entry.title === "string" &&
+    Array.isArray(entry.artists) &&
+    entry.artists.every((artist) => typeof artist === "string") &&
+    (entry.artworkUrl == null || typeof entry.artworkUrl === "string")
+  );
 }
 
 function read(): PlayedSong[] {
