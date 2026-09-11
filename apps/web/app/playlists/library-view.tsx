@@ -4,19 +4,29 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { PlusIcon } from "../icons";
+import { applyProfile, hasLocalProfile } from "../profile/profile-backup";
+import { readProfileExport, type ProfileExport } from "../profile/profile-file";
+import { useLocalImages } from "../profile/local-images";
+import { useLocalProfile } from "../profile/local-profile";
 import { SiteLinks } from "../shell/site-links";
+import { ExportMenu } from "./export-menu";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
-import { createPlaylist, exportPlaylists, importPlaylists, loadPlaylists, usePlaylists } from "./store";
+import { createPlaylist, importPlaylists, loadPlaylists, usePlaylists } from "./store";
 
 /** Every playlist in this browser. A real route rather than only a rail, since the rail is
  * desktop-only and a phone would have no way back to what it saved. Export is the only way
  * to move playlists off this browser or survive clearing site data. */
 export function LibraryView() {
   const { playlists, settled, error } = usePlaylists();
+  const profile = useLocalProfile();
+  const images = useLocalImages();
   const [name, setName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // A backup's profile, held while the reader decides: this browser already has one, and an
+  // import never replaces something without being asked — see `profile-backup.ts`.
+  const [offered, setOffered] = useState<ProfileExport | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -31,34 +41,41 @@ export function LibraryView() {
     setName("");
   }
 
-  // A blob URL and a synthetic click — there is no export endpoint to send this to.
-  function download() {
-    const blob = new Blob([JSON.stringify(exportPlaylists(), null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `timbre-playlists-${new Date().toISOString().slice(0, 10)}.json`;
-    // In the document, revoked next turn: Firefox ignores a detached anchor outright, and
-    // revoking on the same tick races the browser's own read.
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
   async function upload(file: File | undefined) {
     if (!file) return;
     setProblem(null);
     setNotice(null);
+    setOffered(null);
     try {
-      const added = importPlaylists(JSON.parse(await file.text()));
-      setNotice(`Imported ${added} playlist${added === 1 ? "" : "s"}.`);
+      const data: unknown = JSON.parse(await file.text());
+      const added = importPlaylists(data);
+      const lists = `${added} playlist${added === 1 ? "" : "s"}`;
+      const incoming = readProfileExport((data as { profile?: unknown }).profile);
+
+      if (incoming && !hasLocalProfile()) {
+        // Nothing here to lose, so a backup restores itself.
+        await applyProfile(incoming);
+        setNotice(added > 0 ? `Imported ${lists} and your profile.` : "Imported your profile.");
+      } else {
+        if (incoming) setOffered(incoming);
+        setNotice(`Imported ${lists}.`);
+      }
     } catch (cause) {
       setProblem(cause instanceof Error ? cause.message : "Couldn't read that file.");
     } finally {
       if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function adoptOffered() {
+    if (!offered) return;
+    const incoming = offered;
+    setOffered(null);
+    try {
+      await applyProfile(incoming);
+      setNotice("Profile replaced with the one from the file.");
+    } catch (cause) {
+      setProblem(cause instanceof Error ? cause.message : "Couldn't use that profile.");
     }
   }
 
@@ -99,14 +116,10 @@ export function LibraryView() {
           >
             Import
           </button>
-          <button
-            type="button"
-            onClick={download}
-            disabled={!playlists?.length}
-            className="press rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[13px] font-semibold disabled:opacity-40"
-          >
-            Export
-          </button>
+          <ExportMenu
+            hasPlaylists={Boolean(playlists?.length)}
+            hasProfile={Boolean(profile.name || images.avatar || images.banner)}
+          />
         </div>
       </div>
 
@@ -139,6 +152,37 @@ export function LibraryView() {
         </p>
       )}
       {notice && <p className="mt-3 text-sm text-[var(--accent)]">{notice}</p>}
+      {offered && (
+        <div className="mt-3 flex max-w-xl flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-3.5 py-2.5">
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[var(--fg-dim)]">
+            The file also has a profile
+            {offered.name ? (
+              <>
+                {" "}
+                for <span className="font-semibold text-[var(--fg)]">{offered.name}</span>
+              </>
+            ) : null}
+            . Yours was kept.
+          </p>
+          <div className="flex shrink-0 gap-1.5">
+            <button
+              type="button"
+              onClick={() => void adoptOffered()}
+              className="slab-sm press rounded-[var(--r-sm)] px-2.5 py-1.5 text-[12px] font-bold text-[var(--accent-fg)]"
+              style={{ background: "var(--accent)" }}
+            >
+              Use the file’s
+            </button>
+            <button
+              type="button"
+              onClick={() => setOffered(null)}
+              className="press rounded-[var(--r-sm)] bg-[var(--surface-3)] px-2.5 py-1.5 text-[12px] font-semibold"
+            >
+              Keep mine
+            </button>
+          </div>
+        </div>
+      )}
 
       {isEmpty ? (
         <p className="mt-8 text-sm leading-relaxed text-[var(--fg-dim)]">
