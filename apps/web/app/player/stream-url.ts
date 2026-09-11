@@ -17,6 +17,19 @@ export function isProgressive(source: string | null): source is ProgressiveSourc
 }
 
 /**
+ * The hostnames serving Audius's `/v1` API, in the order they are tried. Mirrored from
+ * `AUDIUS_HOSTS` in `packages/providers/src/audius.ts`, which says why these four and why
+ * the list is not discovered. All four answered `/stream` with a 302 carrying
+ * `skip_play_count=false` through to the content node, measured 2026-09-11.
+ */
+const AUDIUS_HOSTS = [
+  "https://api.audius.co",
+  "https://discoveryprovider.audius.co",
+  "https://discoveryprovider2.audius.co",
+  "https://discoveryprovider3.audius.co",
+] as const;
+
+/**
  * `skip_play_count=false` on Audius is not decoration: without it the redirect arrives
  * carrying `true` and the listen is never credited to the artist. The archive needs no such
  * argument — its `sourceId` is already `{identifier}/{filename}`, which is the whole handle
@@ -25,8 +38,24 @@ export function isProgressive(source: string | null): source is ProgressiveSourc
 export function streamUrlFor(source: ProgressiveSource, sourceId: string): string {
   switch (source) {
     case "audius":
-      return `https://api.audius.co/v1/tracks/${encodeURIComponent(sourceId)}/stream?skip_play_count=false`;
+      return `${AUDIUS_HOSTS[0]}/v1/tracks/${encodeURIComponent(sourceId)}/stream?skip_play_count=false`;
     case "archive":
       return `https://archive.org/download/${sourceId.split("/").map(encodeURIComponent).join("/")}`;
   }
+}
+
+/**
+ * The same stream on the next Audius host, or null when there is nowhere else to ask — the
+ * last host, or a source with only one.
+ *
+ * The server's search already walks the hosts, so on a day `api.audius.co` is down it still
+ * returns Audius results; without this, every one of them then failed to play from the host
+ * the search had just routed around.
+ */
+export function nextStreamHost(url: string): string | null {
+  for (let index = 0; index < AUDIUS_HOSTS.length - 1; index++) {
+    const host = AUDIUS_HOSTS[index]!;
+    if (url.startsWith(`${host}/`)) return `${AUDIUS_HOSTS[index + 1]}${url.slice(host.length)}`;
+  }
+  return null;
 }

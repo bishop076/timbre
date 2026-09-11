@@ -19,11 +19,36 @@
 // variants, and `isrc` is present in the schema but was empty on every track sampled, so the
 // merger falls to title+artist+duration with nothing to backstop it.
 
+import { ProviderError } from "@timbre/core";
+
 import type { RadioSeed, RankedList, SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
+import { createHostPool, type HostPool } from "./host-pool.ts";
 import { createRequester } from "./request.ts";
 
-const API = "https://api.audius.co/v1";
+/**
+ * Every hostname that serves Audius's `/v1` API, in the order they are asked.
+ *
+ * **Hardcoded on purpose, and not discovered.** `/health_check` lists 76 registered nodes,
+ * and none of them serves `/v1` — ten of ten answered 404 or 502 when asked — while the
+ * node-discovery endpoint now advertises only `api.audius.co`. These four were measured
+ * answering identical results with `ACAO: *` on 2026-08-19 and again on 2026-08-20
+ * (`docs/SUGGESTIONS.md` S-10, `docs/RESEARCH-2026-08-20.md` G-9), and all four answered
+ * search with 200 and `/stream` with 302 on 2026-09-11. They are one vendor with redundancy,
+ * not a network: a list that has itself gone stale is worse than none, so re-measure before
+ * adding to it. Mirrored in `apps/web/app/player/stream-url.ts`.
+ */
+export const AUDIUS_HOSTS = [
+  "https://api.audius.co",
+  "https://discoveryprovider.audius.co",
+  "https://discoveryprovider2.audius.co",
+  "https://discoveryprovider3.audius.co",
+] as const;
+
+/** How long a host that failed is asked last. Short, because the usual failure is a node
+ * restarting, and a host benched for longer than its outage is redundancy thrown away. */
+const COOL_DOWN_MS = 60_000;
+
 const WEB = "https://audius.co";
 
 interface AudiusArtwork {
@@ -113,7 +138,46 @@ const request = createRequester({
   init: cachePolicy,
 });
 
-const get = <T>(ctx: SearchContext, path: string): Promise<T> => request<T>(ctx, `${API}${path}`);
+/**
+ * What a failure says about the host that produced it.
+ *
+ * - `none` — nothing: a 4xx is about the request, and every host would give the same
+ *   answer; a caller's own abort is not a failure at all.
+ * - `fast` — a refused connection, a 5xx, a body that is not JSON. The host is at fault and
+ *   the next one costs milliseconds to ask, so it is asked at once.
+ * - `slow` — the deadline ran out. Also the host's fault, but it has already cost six
+ *   seconds, and making the reader wait out a second one for the same search is worse than
+ *   reporting Audius as down this once. The cool-down moves the *next* request on instead.
+ */
+function hostFault(error: unknown): "none" | "fast" | "slow" {
+  if (!(error instanceof ProviderError)) return "none";
+  if (error.status !== undefined && error.status < 500) return "none";
+  const cause = error.cause;
+  return cause instanceof DOMException && cause.name === "TimeoutError" ? "slow" : "fast";
+}
+
+/** One API call, walked across the hosts until one answers or the fault stops mattering. */
+async function get<T>(hosts: HostPool, ctx: SearchContext, path: string): Promise<T> {
+  let failure: unknown;
+
+  for (const host of hosts.order()) {
+    try {
+      const body = await request<T>(ctx, `${host}/v1${path}`);
+      hosts.up(host);
+      return body;
+    } catch (error) {
+      const fault = hostFault(error);
+      if (fault === "none") throw error;
+      hosts.down(host);
+      if (fault === "slow") throw error;
+      failure = error;
+    }
+  }
+
+  // Every host failed fast. The last one's error stands for them all: they are one vendor,
+  // so what the last said is almost certainly what the first did.
+  throw failure;
+}
 
 /**
  * The URL an `<audio>` element is pointed at. Deliberately the API's own redirecting
@@ -133,7 +197,7 @@ const get = <T>(ctx: SearchContext, path: string): Promise<T> => request<T>(ctx,
  * the content node and audio still answers `206 audio/mpeg`.
  */
 export function audiusStreamUrl(trackId: string): string {
-  return `${API}/tracks/${encodeURIComponent(trackId)}/stream?skip_play_count=false`;
+  return `${AUDIUS_HOSTS[0]}/v1/tracks/${encodeURIComponent(trackId)}/stream?skip_play_count=false`;
 }
 
 /** How many versions of the seed to fetch. Small: this list is a garnish on the ranking, not
@@ -141,6 +205,10 @@ export function audiusStreamUrl(trackId: string): string {
 const VERSIONS = 8;
 
 export function createAudiusProvider(): SearchProvider {
+  // Per provider rather than per module, so each test starts with every host healthy. The
+  // runtime registers one provider per instance, which makes the two the same in production.
+  const hosts = createHostPool(AUDIUS_HOSTS, COOL_DOWN_MS);
+
   return {
     id: "audius",
     playback: "queue",
@@ -151,6 +219,7 @@ export function createAudiusProvider(): SearchProvider {
       // worse than a slightly larger one.
       const asked = Math.min(limit * 2, 100);
       const data = await get<{ data?: AudiusTrack[] }>(
+        hosts,
         ctx,
         `/tracks/search?query=${encodeURIComponent(query)}&limit=${asked}`,
       );
@@ -180,6 +249,7 @@ export function createAudiusProvider(): SearchProvider {
       const asked = Math.min(Math.max(limit, VERSIONS) * 2, 100);
 
       const data = await get<{ data?: AudiusTrack[] }>(
+        hosts,
         ctx,
         `/tracks/search?query=${encodeURIComponent(query)}&limit=${asked}`,
       );
