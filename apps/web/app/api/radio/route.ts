@@ -6,8 +6,6 @@ import { log } from "@/lib/log";
 import { getProviderRuntime } from "@/lib/providers";
 import { optionalQueryText } from "@/lib/query-text";
 
-export const revalidate = 3600;
-
 export const GET = queryRoute(
   z.object({
     id: optionalQueryText(64),
