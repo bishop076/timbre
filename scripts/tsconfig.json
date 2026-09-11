@@ -6,9 +6,13 @@
   // Type stripping has two rules the settings below enforce: type-only imports must
   // say `import type` (verbatimModuleSyntax), and imports name the real file with its
   // extension (allowImportingTsExtensions), because Node will not guess one.
+  //
+  // `DOM` because spotify-canary.mts imports packages/providers, and tsc checks an import with
+  // the importer's settings: the providers are written against fetch's DOM types (`cache` on
+  // `RequestInit`), which is what their own tsconfig loads too.
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
