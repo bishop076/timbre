@@ -27,6 +27,7 @@ import {
   type QueueEdit,
 } from "./queue-ops";
 import { plausiblySameSong, sameTrack } from "./song-match";
+import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import {
   getVolumeServerSnapshot,
@@ -479,6 +480,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   // The song already written to history. Held per id so a pause/resume, or a fall-through to
   // another copy, does not record twice; see `handleStateChange`.
   const recorded = useRef<string | null>(null);
+  /** The source `load` started on because the reader named it, until its first failure —
+   * which is that source's own, since nothing runs before it. See `source-choice.ts`. */
+  const steered = useRef<string | null>(null);
 
   /** The only way the queue is written. Keeps {@link queueRef} in step in the same tick, so
    * a caller that appends and then navigates sees what it just added. */
@@ -780,6 +784,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // Cleared on every deliberate (re)start: repeat-one re-loads the *same* id, and the
       // per-id guard otherwise swallowed every play after the first.
       recorded.current = null;
+      steered.current = null;
       // Seeded with the length the *song* already carries rather than zero. Every source
       // reports its own duration eventually, but "eventually" is a player handshake away,
       // and until then a bar left at zero shows `—:—` — or, worse, whatever the last track
@@ -803,9 +808,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // first, and that path also warms the fall-through list, so intercepting it would
       // trade a behaviour for nothing. Anything the named source cannot start falls through
       // to the usual order rather than stranding a song something else could have played.
+      //
+      // A source picked for this recording earlier in the session counts as named, so a
+      // replay from history, a playlist or the queue goes where the reader last sent it.
+      prefer ??= rememberedSource(song);
       if (prefer && prefer !== "ytmusic") {
         const chosen = chosenSource(song, prefer);
         if (chosen) {
+          steered.current = prefer;
           switch (chosen.kind) {
             case "progressive":
               attemptProgressive(chosen.source, chosen.sourceId);
@@ -977,6 +987,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const play = useCallback(
     (song: Song, rest: Song[] = [], prefer?: string) => {
+      // Remembered for the session, or forgotten when it is YouTube Music — the ladder's own
+      // first rung. The rule for each kind of source is in `source-choice.ts`.
+      if (prefer) pickSource(song, prefer, playbackFrom(song, prefer));
       const others = rest.filter((candidate) => candidate.id !== song.id);
       const loaded = songRef.current;
 
@@ -1470,6 +1483,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       options: { stalled?: boolean; refused?: boolean } = {},
     ) => {
       const song = songRef.current;
+      // The source the reader picked would not play, so replaying the song should not walk
+      // back into it. Only this first report is its own; any later one is a rung below.
+      if (song && steered.current) forgetFailedSource(song, steered.current);
+      steered.current = null;
       const failures = youtubeFailures.current;
       const alreadyLeft = turnedAway(failures);
       if (options.stalled) failures.stalled = true;
