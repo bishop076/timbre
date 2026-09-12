@@ -3,6 +3,7 @@
 import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import { formatElapsed } from "../duration";
+import { Equalizer } from "../equalizer";
 import { NextIcon, PauseIcon, PlayHereIcon, PlayIcon, PrevIcon, SpinnerIcon } from "../icons";
 import type { RemotePlayer } from "./tab-sync";
 import { commandRemote, takeOverRemote } from "./use-tab-sync";
@@ -24,11 +25,7 @@ export function RemoteBar({ remote }: { remote: RemotePlayer }) {
     <div className="min-w-0 flex-1">
       <p className="flex items-center gap-2 truncate text-sm font-medium">
         {playing && (
-          <span aria-hidden className="eq tint flex h-3 shrink-0 items-end gap-0.5 text-[var(--accent)]">
-            <span />
-            <span />
-            <span />
-          </span>
+          <Equalizer className="tint h-3 shrink-0 gap-0.5 text-[var(--accent)]" />
         )}
         <span className="min-w-0 truncate">{song.title}</span>
       </p>
