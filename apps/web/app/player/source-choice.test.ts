@@ -30,12 +30,18 @@ test("picking YouTube Music again goes back to the default", () => {
   });
 });
 
-test("a clip or a pressed embed is a choice for now and changes nothing", () => {
+test("a clip is a choice for now and changes nothing", () => {
   const choices: SourceChoices = { [key]: "soundcloud" };
   assert.equal(afterPick(choices, key, "deezer", "preview"), choices);
-  assert.equal(afterPick(choices, key, "apple", "manual"), choices);
-  assert.equal(afterPick(choices, key, "spotify", "manual"), choices);
   assert.equal(key in afterPick({}, key, "deezer", "preview"), false);
+});
+
+test("an embed you pressed is remembered, so the song stays on that source", () => {
+  assert.deepEqual(afterPick({}, key, "deezer", "manual"), { [key]: "deezer" });
+  assert.deepEqual(afterPick({}, key, "apple", "manual"), { [key]: "apple" });
+  assert.deepEqual(afterPick({ [key]: "soundcloud" }, key, "spotify", "manual"), {
+    [key]: "spotify",
+  });
 });
 
 test("the remembered source failing forgets it, and nothing else does", () => {
