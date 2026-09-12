@@ -702,7 +702,13 @@ function usePlayerValue() {
     };
   }, []);
 
-  const toggle = useCallback(() => toggleRef.current?.(), []);
+  // When a pause came from a press here. An embed reports the pause back within a beat, so a
+  // report that arrives long after the last press is one nobody here asked for.
+  const asked = useRef(0);
+  const toggle = useCallback(() => {
+    asked.current = Date.now();
+    toggleRef.current?.();
+  }, []);
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
 
   const togglePanel = useCallback(() => {
@@ -722,7 +728,20 @@ function usePlayerValue() {
 
   const handleStateChange = useCallback(
     (next: PlayState) => {
+      const was = stateRef.current;
       setState(next);
+
+      // The log recorded which source refused and what it fell back to, but never that playback
+      // simply stopped — the one thing it could not account for afterwards.
+      if (next === "paused" && was === "playing" && Date.now() - asked.current > 1000) {
+        log(
+          "warn",
+          `Playback paused on its own (${activeSource ?? "no source"})${
+            current ? ` during “${current.title}”` : ""
+          } — nothing here asked it to.`,
+        );
+      }
+
       if (next !== "playing" || !current || recorded.current === current.id) return;
       recorded.current = current.id;
 
