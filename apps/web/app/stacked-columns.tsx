@@ -138,18 +138,23 @@ export function StackedColumns({
         </div>
       </div>
 
-      <ul className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {segments.map((name, band) => (
-          <li key={name} className="flex items-center gap-1.5 text-[11px] text-[var(--fg-dim)]">
-            <span
-              aria-hidden
-              className="size-2.5 shrink-0 rounded-[3px]"
-              style={{ background: STEPS[band] }}
-            />
-            {name}
-          </li>
-        ))}
-      </ul>
+      {/* One band needs no legend: the section's own title already names what is plotted, and a
+          lone swatch reading "Plays" under a chart of plays is furniture. Rendered conditionally
+          rather than with `hidden`, which the `flex` utility would out-specify. */}
+      {segments.length > 1 && (
+        <ul className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          {segments.map((name, band) => (
+            <li key={name} className="flex items-center gap-1.5 text-[11px] text-[var(--fg-dim)]">
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-[3px]"
+                style={{ background: STEPS[band] }}
+              />
+              {name}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
