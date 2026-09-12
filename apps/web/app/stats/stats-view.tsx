@@ -67,12 +67,13 @@ function Stats({ stats, capped }: { stats: ListeningStats; capped: boolean }) {
         {stats.days > 0 && <Figure unit="day" value={stats.days} />}
       </dl>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:gap-10">
-        <TopArtists stats={stats} />
+      <div className="mt-8 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
+        <div className="flex min-w-0 flex-col gap-10">
+          <TopArtists stats={stats} />
+          {stats.dated > 0 && <Weekdays stats={stats} />}
+        </div>
         <TopSongs stats={stats} />
       </div>
-
-      {stats.dated > 0 && <Weekdays stats={stats} />}
     </>
   );
 }
@@ -157,7 +158,7 @@ function TopSongs({ stats }: { stats: ListeningStats }) {
 
 function Weekdays({ stats }: { stats: ListeningStats }) {
   return (
-    <section className="mt-10">
+    <section className="min-w-0">
       <SectionTitle>When you listen</SectionTitle>
       <Caption className="mb-4 mt-1 max-w-2xl">
         Plays by day of the week, in this device&rsquo;s time zone.
@@ -165,7 +166,7 @@ function Weekdays({ stats }: { stats: ListeningStats }) {
           ` ${stats.undated === 1 ? "The one song" : `The ${stats.undated} songs`} from before Timbre kept times ${stats.undated === 1 ? "is" : "are"} left out.`}
       </Caption>
 
-      <div className="max-w-2xl">
+      <div>
         <StackedColumns
           columns={WEEKDAYS.map((day, index) => {
             const plays = stats.weekdays[index] ?? 0;
