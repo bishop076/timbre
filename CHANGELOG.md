@@ -10,6 +10,18 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.14.5 — 12 September 2026
+
+### Fixed
+
+- **ui** — stop a button growing by its own edge when you pick it
+- **stats** — fill the empty half of the page, and drop a legend of one
+- **theme** — let Spotify's other covers tint, and hold the colour when a read fails
+- **player** — keep the source you picked for a song
+- **artist** — stop a one-word name collecting its namesakes
+- **explore** — drop the caption repeated on every genre shelf
+- **ui** — move the shelf arrows back into the header
+
 ## 0.14.4 — 12 September 2026
 
 ### Fixed
