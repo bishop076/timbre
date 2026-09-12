@@ -16,6 +16,18 @@ export const ALLOWED_HOSTS = new Set([
   "i.scdn.co",
   "image-cdn-ak.spotifycdn.com",
   "image-cdn-fa.spotifycdn.com",
+  // Spotify serves anything that is not a plain album cover — mixes, blends, editorial and
+  // mosaic art — from these instead. Without them the picture loads but the accent cannot.
+  "mosaic.scdn.co",
+  "thisis-images.scdn.co",
+  "daily-mix.scdn.co",
+  "dailymix-images.scdn.co",
+  "newjams-images.scdn.co",
+  "seeded-session-images.scdn.co",
+  "seed-mix-image.spotifycdn.com",
+  "blend-playlist-covers.spotifycdn.com",
+  // song-shape.ts rewrites Audius covers to this host.
+  "api.audius.co",
   "archive.org",
   "thumbnailer.mixcloud.com",
 ]);

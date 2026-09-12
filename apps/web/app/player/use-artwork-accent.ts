@@ -60,6 +60,11 @@ export function useArtworkAccent(artworkUrl: string | null | undefined): void {
     lastUrl.current = `${theme.mode}:${artworkUrl}`;
 
     style.setProperty("--artwork-img", `url("${art}")`);
-    return sampleHue(art, (found) => apply(found && { hue: found.h * 360, sat: found.s }, theme));
+    // A read that fails — a host the proxy refuses, a rate-limited fetch, a decode error —
+    // reports null, and null repaints everything the default violet. Hold the last swatch
+    // instead: a stale accent beats the app flashing back to its factory colour.
+    return sampleHue(art, (found) =>
+      apply(found ? { hue: found.h * 360, sat: found.s } : lastSwatch(), theme),
+    );
   }, [artworkUrl, themeKey]);
 }
