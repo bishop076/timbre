@@ -28,7 +28,12 @@ export function afterPick(
   playback: Playback,
 ): SourceChoices {
   if (source === "ytmusic") return without(choices, key);
-  if (playback !== "queue" || choices[key] === source) return choices;
+
+  // An embed you pressed is still a choice: picking Deezer, Apple or Spotify for a song means
+  // that song keeps playing there until it fails (`afterFailure` drops it). Only a 30-second
+  // clip stays a one-off — it is not a source anyone would want as a standing default.
+  if (playback === null || playback === "preview") return choices;
+  if (choices[key] === source) return choices;
 
   const next: Record<string, string> = { ...without(choices, key), [key]: source };
   const keys = Object.keys(next);
