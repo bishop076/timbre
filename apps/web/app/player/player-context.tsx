@@ -55,6 +55,12 @@ function writeProgress(position: number, duration: number): void {
   ticks.emit();
 }
 
+/** The list a queue was started from — a playlist for now. */
+export interface QueueOrigin {
+  kind: "playlist";
+  id: string;
+}
+
 const PlayerContext = createContext<PlayerControls | null>(null);
 
 export function usePlayerControls(): PlayerControls {
@@ -209,6 +215,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
 function usePlayerValue() {
   const [queue, setQueue] = useState<Song[]>([]);
+  // Which list this queue was started from. A song carries `from` for its artist, but nothing
+  // recorded the list itself, so no page could say "this is the one playing".
+  const [queueOrigin, setQueueOrigin] = useState<QueueOrigin | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState<ChosenSource | null>(null);
   const [youtubeTurnedAway, setYoutubeTurnedAway] = useState(false);
@@ -412,12 +421,14 @@ function usePlayerValue() {
   );
 
   const play = useCallback(
-    (song: Song, rest: Song[] = [], prefer?: string) => {
+    (song: Song, rest: Song[] = [], prefer?: string, origin?: QueueOrigin) => {
       if (prefer) pickSource(song, prefer, playbackFrom(song, prefer));
       const switchingSource = prefer && rest.length === 0 && songRef.current?.id === song.id;
       if (!switchingSource) {
         writeQueue([song, ...rest.filter((candidate) => candidate.id !== song.id)]);
         setIndex(0);
+        // Only a fresh queue changes where playback came from; swapping a song's source does not.
+        setQueueOrigin(origin ?? null);
       }
       openSong(song, prefer);
     },
@@ -585,6 +596,7 @@ function usePlayerValue() {
   );
 
   const clearQueue = useCallback(() => {
+    setQueueOrigin(null);
     writeQueue((queued) => queued.slice(0, index + 1));
   }, [index, writeQueue]);
 
@@ -817,6 +829,7 @@ function usePlayerValue() {
 
   return {
     queue,
+    queueOrigin,
     index,
     current,
     videoId,
