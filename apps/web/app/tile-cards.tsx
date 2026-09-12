@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Artwork } from "./artwork";
+import { Equalizer } from "./equalizer";
 import { PlayIcon } from "./icons";
 
 export function ReleaseCard({
@@ -87,11 +88,7 @@ export function ArtistCard({
 
 export function PlayGlyph({ playing }: { playing: boolean }) {
   return playing ? (
-    <span className="eq flex h-3.5 items-end gap-[3px]">
-      <span />
-      <span />
-      <span />
-    </span>
+    <Equalizer className="h-3.5 gap-[3px]" />
   ) : (
     <PlayIcon className="size-[18px] translate-x-px" />
   );
