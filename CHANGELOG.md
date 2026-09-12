@@ -10,6 +10,18 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.15.0 — 12 September 2026
+
+### Added
+
+- **playlists** — show which playlist is playing
+
+### Fixed
+
+- **player** — do not keep a source that cannot say when a song ended
+
+2 further changes under the hood — refactoring, docs and tests.
+
 ## 0.14.5 — 12 September 2026
 
 ### Fixed
