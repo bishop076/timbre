@@ -11,7 +11,8 @@
     "start": "pnpm --filter @timbre/web start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck && tsc -p scripts",
-    "test": "pnpm -r test && node --test \"scripts/*.test.mts\"",
+    "typecheck:fast": "pnpm -r --parallel typecheck:fast && tsgo -p scripts",
+    "test": "pnpm -r --parallel test && node --test \"scripts/*.test.mts\"",
     "spotify:canary": "node scripts/spotify-canary.mts"
   },
   "engines": {
@@ -20,6 +21,7 @@
   "packageManager": "pnpm@11.11.0",
   "devDependencies": {
     "@types/node": "^20",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "dotenv-cli": "^11.0.0",
     "typescript": "^5"
   }

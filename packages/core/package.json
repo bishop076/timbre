@@ -10,10 +10,12 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "typecheck:fast": "tsgo --noEmit",
     "test": "node --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "typescript": "^5"
   }
 }
