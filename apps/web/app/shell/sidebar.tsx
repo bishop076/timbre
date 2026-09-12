@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Artwork } from "../artwork";
+import { Equalizer } from "../equalizer";
 import { useHydrated } from "../hydrated";
 import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
@@ -242,6 +243,7 @@ function PlaylistRows({
   playlists: PlaylistSummary[] | null;
   settled: boolean;
 }) {
+  const { queueOrigin, state } = usePlayerControls();
   if (!settled || playlists === null) {
     return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
   }
@@ -256,11 +258,17 @@ function PlaylistRows({
 
   return (
     <ul className="flex flex-col gap-0.5">
-      {playlists.map((playlist) => (
+      {playlists.map((playlist) => {
+        const playing = queueOrigin?.id === playlist.id && state === "playing";
+
+        return (
         <li key={playlist.id}>
           <Link
             href={`/playlist/${playlist.id}`}
-            className="flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left hover:bg-[var(--surface-2)]"
+            className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${
+              playing ? "tint" : "hover:bg-[var(--surface-2)]"
+            }`}
+            style={playing ? { background: "var(--accent-wash)" } : undefined}
           >
             <PlaylistCover
               covers={playlist.covers}
@@ -268,14 +276,22 @@ function PlaylistRows({
               iconClassName="size-4"
             />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold">{playlist.name}</span>
+              <span
+                className={`flex items-center gap-1.5 text-[13px] font-semibold ${
+                  playing ? "text-[var(--accent)]" : ""
+                }`}
+              >
+                <span className="truncate">{playlist.name}</span>
+                {playing && <Equalizer className="tint h-3 shrink-0 gap-0.5" />}
+              </span>
               <span className="block truncate text-[11px] text-[var(--fg-dim)]">
                 {playlist.trackCount} {playlist.trackCount === 1 ? "song" : "songs"}
               </span>
             </span>
           </Link>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

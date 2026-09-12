@@ -6,8 +6,9 @@ import { useEffect, useState } from "react";
 import { PlayRow } from "../album/album-view";
 import { ArtistLink } from "../artist-link";
 import { formatDuration } from "../duration";
-import { ChevronIcon, CloseIcon, SearchIcon, TrashIcon } from "../icons";
+import { ChevronIcon, TrashIcon } from "../icons";
 import { EmptyNotice, Notice, Page, PageHeader } from "../page-chrome";
+import { SearchField } from "../search-field";
 import { usePlayerControls } from "../player/player-context";
 import { SongRow } from "../song-row";
 import { SourceBadges } from "../source-badges";
@@ -78,7 +79,7 @@ export function PlaylistView({ id }: { id: string }) {
         <p className="mt-2 text-xs text-[var(--fg-faint)]">
           {songs.length} {songs.length === 1 ? "song" : "songs"}
         </p>
-        <PlayRow songs={songs}>
+        <PlayRow songs={songs} origin={{ kind: "playlist", id: playlist.id }}>
           <PlaylistActions id={playlist.id} name={playlist.name} onDeletedGoTo="/library" />
         </PlayRow>
       </PageHeader>
@@ -89,36 +90,26 @@ export function PlaylistView({ id }: { id: string }) {
         </p>
       )}
 
-      {songs.length >= 10 && (
-        <div className="mb-3 flex items-center justify-end gap-3">
-          {term !== "" && (
-            <p className="text-xs tabular-nums text-[var(--fg-faint)]">
-              {visible.length} of {songs.length}
-            </p>
-          )}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-extrabold tracking-tight">Songs</h2>
 
-          <div className="relative w-full max-w-[210px]">
-            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-[var(--fg-faint)]" />
-            <input
-              type="search"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder="Find in playlist"
-              aria-label={`Find a song in ${playlist.name}`}
-              className="slab-sm w-full rounded-[var(--r-full)] bg-[var(--surface-2)] py-1.5 pl-8 pr-8 text-[12px] font-medium outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-1)]"
-            />
-            {filter !== "" && (
-              <button
-                type="button"
-                onClick={() => setFilter("")}
-                aria-label="Clear filter"
-                className="press absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:text-[var(--fg)]"
-              >
-                <CloseIcon className="size-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
+        {term !== "" && (
+          <p className="shrink-0 text-xs tabular-nums text-[var(--fg-faint)]">
+            {visible.length} of {songs.length}
+          </p>
+        )}
+      </div>
+
+      {songs.length >= 10 && (
+        <SearchField
+          value={filter}
+          onChange={setFilter}
+          onClear={() => setFilter("")}
+          placeholder="Find in playlist"
+          label={`Find a song in ${playlist.name}`}
+          clearLabel="Clear filter"
+          className="mb-3"
+        />
       )}
 
       {visible.length === 0 ? (
