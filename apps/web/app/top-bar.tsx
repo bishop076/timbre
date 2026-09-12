@@ -66,6 +66,9 @@ export function TopBar() {
             <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-[18px] -translate-y-1/2 text-[var(--fg-dim)]" />
             <input
               ref={input}
+              // Named so the browser stops flagging an unidentified field, and so its
+              // session restore and autofill have something stable to key the box on.
+              name="q"
               type="search"
               value={query}
               onChange={(event) => change(event.target.value)}
