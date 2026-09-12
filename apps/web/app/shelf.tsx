@@ -6,7 +6,7 @@ import { ChevronIcon } from "./icons";
 import { SectionHeader } from "./page-chrome";
 
 const ARROW =
-  "slab-sm press absolute top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] pointer-fine:flex disabled:invisible";
+  "slab-sm press flex size-7 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] transition-opacity disabled:opacity-30";
 
 export function Shelf({
   title,
@@ -79,25 +79,24 @@ export function Shelf({
             {caption}
           </p>
         )}
+        <div className="flex items-center gap-1">
+          {([-1, 1] as const).map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              onClick={() => nudge(direction)}
+              disabled={direction < 0 ? !canLeft : !canRight}
+              aria-label={`Scroll ${title} ${direction < 0 ? "left" : "right"}`}
+              className={ARROW}
+            >
+              <ChevronIcon className={`size-4 ${direction < 0 ? "rotate-90" : "-rotate-90"}`} />
+            </button>
+          ))}
+        </div>
       </SectionHeader>
 
-      <div className="relative">
-        {([-1, 1] as const).map((direction) => (
-          <button
-            key={direction}
-            type="button"
-            onClick={() => nudge(direction)}
-            disabled={direction < 0 ? !canLeft : !canRight}
-            aria-label={`Scroll ${title} ${direction < 0 ? "left" : "right"}`}
-            className={`${ARROW} ${direction < 0 ? "left-2" : "right-2"}`}
-          >
-            <ChevronIcon className={`size-5 ${direction < 0 ? "rotate-90" : "-rotate-90"}`} />
-          </button>
-        ))}
-
-        <div ref={row} className="shelf flex gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4">
-          {children}
-        </div>
+      <div ref={row} className="shelf flex gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4">
+        {children}
       </div>
     </section>
   );
