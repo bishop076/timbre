@@ -23,3 +23,11 @@ test("a longer billing containing the whole name is kept", () => {
   assert.equal(creditNames("le real", "Lé Real Music"), true);
   assert.equal(creditNames("le real", "Lé Realism"), false);
 });
+
+test("a one-word name is not billed on, so near-namesakes stay out", () => {
+  assert.equal(creditNames("risy", "risy"), true);
+  assert.equal(creditNames("risy", "Risy Morales"), false);
+  assert.equal(creditNames("risy", "Risy Boy tv"), false);
+  // Still credited when the one-word name is a real part of a joint billing.
+  assert.equal(creditNames("risy", "risy & Chanpan"), true);
+});
