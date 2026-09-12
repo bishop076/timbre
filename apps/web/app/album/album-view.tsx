@@ -7,29 +7,41 @@ import type { AlbumDetail } from "@/lib/discography";
 import { ArtistLink } from "../artist-link";
 import { toArtistSlug } from "../artist-slug";
 import { Artwork } from "../artwork";
-import { PlayIcon } from "../icons";
+import { PauseIcon, PlayIcon } from "../icons";
 import { Caption, EmptyNotice, Page, PageHeader } from "../page-chrome";
-import { usePlayerControls } from "../player/player-context";
+import { usePlayerControls, type QueueOrigin } from "../player/player-context";
 import { SaveAsPlaylist } from "../playlists/save-as-playlist";
 import { SongActions, SongRow } from "../song-row";
 import { ROW_BADGES, SourceBadges } from "../source-badges";
 import type { Song } from "../types";
 
-export function PlayRow({ songs, children }: { songs: Song[]; children?: React.ReactNode }) {
-  const { play } = usePlayerControls();
+export function PlayRow({
+  songs,
+  origin,
+  children,
+}: {
+  songs: Song[];
+  origin?: QueueOrigin;
+  children?: React.ReactNode;
+}) {
+  const { play, queueOrigin, state, toggle } = usePlayerControls();
   if (songs.length === 0 && !children) return null;
+
+  // Playing *this* list, rather than merely playing something.
+  const mine = origin !== undefined && queueOrigin?.id === origin.id;
+  const playingMine = mine && state === "playing";
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2">
       {songs.length > 0 && (
         <button
           type="button"
-          onClick={() => play(songs[0]!, songs)}
+          onClick={() => (mine ? toggle() : play(songs[0]!, songs, undefined, origin))}
           className="slab-sm press inline-flex items-center gap-2 rounded-[var(--r-full)] px-5 py-2.5 text-sm font-bold text-[var(--accent-fg)]"
           style={{ background: "var(--accent)" }}
         >
-          <PlayIcon className="size-4" />
-          Play
+          {playingMine ? <PauseIcon className="size-4" /> : <PlayIcon className="size-4" />}
+          {playingMine ? "Pause" : "Play"}
         </button>
       )}
       {children}
