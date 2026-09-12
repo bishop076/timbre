@@ -39,10 +39,16 @@ function toSourceTrack(raw: DeezerTrack): SourceTrack {
   };
 }
 
+// Deezer localises artist names to the country it geolocates the caller to, from the
+// request IP alone — `country=US` is ignored, only `Accept-Language` moves it. Left alone,
+// a server in Tokyo returns テーム・インパラ for Tame Impala, and merge.ts keys on the
+// artist name, so the same song from Deezer and Apple stops deduping.
+const HEADERS = { "accept-language": "en-US,en;q=0.9" };
+
 const request = createRequester({
   id: "deezer",
   label: "Deezer",
-  init: cachePolicy,
+  init: (ctx) => ({ ...cachePolicy(ctx), headers: HEADERS }),
   checkBody: (body) => {
     const error = (body as { error?: { message?: string } } | null)?.error;
     if (error) throw new ProviderError("deezer", "transient", error.message ?? "Deezer error.");
