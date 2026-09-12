@@ -93,7 +93,7 @@ export function RankingsView({
                     className={`press shrink-0 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition @3xl:w-full ${
                       active
                         ? "slab-sm text-[var(--accent-fg)]"
-                        : "bg-[var(--surface-2)] text-[var(--fg-dim)] hover:text-[var(--fg)] @3xl:bg-transparent"
+                        : "slab-ghost bg-[var(--surface-2)] text-[var(--fg-dim)] hover:text-[var(--fg)] @3xl:bg-transparent"
                     }`}
                     style={active ? { background: "var(--accent)" } : undefined}
                   >

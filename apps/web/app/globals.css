@@ -129,6 +129,11 @@
 .slab-soft {
   border-color: var(--line);
 }
+/* Holds the space `.slab`/`.slab-sm` will take. A control that gains its edge only when
+   selected would otherwise grow by 2 × --edge on click, and shove whatever sits beside it. */
+.slab-ghost {
+  border: var(--edge) solid transparent;
+}
 
 .press {
   transition:

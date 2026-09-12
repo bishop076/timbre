@@ -42,7 +42,7 @@ function NavLinks({ sidebar = false }: { sidebar?: boolean }) {
             ? `press flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-semibold ${
                 active
                   ? "slab-sm tint text-[var(--accent-fg)]"
-                  : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                  : "slab-ghost text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
               }`
             : `flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-bold ${
                 active ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
@@ -128,7 +128,7 @@ export function Sidebar() {
                 className={`press rounded-[var(--r-full)] px-2.5 py-1 text-[11px] font-bold ${
                   selected
                     ? "slab-sm tint text-[var(--accent-fg)]"
-                    : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
+                    : "slab-ghost bg-[var(--surface-2)] text-[var(--fg-dim)]"
                 }`}
                 style={selected ? { background: "var(--accent)" } : undefined}
               >

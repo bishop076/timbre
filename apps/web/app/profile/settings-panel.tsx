@@ -353,7 +353,9 @@ function Choice({
               onClick={() => onChange(option.value)}
               aria-pressed={selected}
               className={`press rounded-[var(--r-full)] px-3 py-1.5 text-[12px] font-bold ${
-                selected ? "slab-sm text-[var(--accent-fg)]" : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
+                selected
+                  ? "slab-sm text-[var(--accent-fg)]"
+                  : "slab-ghost bg-[var(--surface-2)] text-[var(--fg-dim)]"
               }`}
               style={selected ? { background: "var(--accent)" } : undefined}
             >
@@ -448,7 +450,7 @@ export function SettingsPanel() {
                     className={`press flex shrink-0 items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2 text-left text-[13px] font-semibold transition sm:w-full ${
                       selected
                         ? "slab-sm text-[var(--accent-fg)]"
-                        : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                        : "slab-ghost text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
                     }`}
                     style={selected ? { background: "var(--accent)" } : undefined}
                   >
