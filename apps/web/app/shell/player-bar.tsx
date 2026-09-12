@@ -3,6 +3,7 @@
 import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import { formatElapsed } from "../duration";
+import { Equalizer } from "../equalizer";
 import {
   CollapseIcon,
   ExpandIcon,
@@ -167,11 +168,7 @@ export function PlayerBar() {
     <div className="min-w-0 flex-1">
       <p className="flex items-center gap-2 truncate text-sm font-medium">
         {state === "playing" && (
-          <span aria-hidden className="eq tint flex h-3 shrink-0 items-end gap-0.5 text-[var(--accent)]">
-            <span />
-            <span />
-            <span />
-          </span>
+          <Equalizer className="tint h-3 shrink-0 gap-0.5 text-[var(--accent)]" />
         )}
         <span className="min-w-0 truncate">{current.title}</span>
       </p>
