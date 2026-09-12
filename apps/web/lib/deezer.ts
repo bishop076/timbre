@@ -12,10 +12,18 @@ export interface RawTrack {
   album?: { title?: string; cover_medium?: string; cover_big?: string };
 }
 
+// Deezer localises names — artists, genres, editorial titles — to whatever country it
+// geolocates the caller to, and it reads that from the request IP alone: `country=US` is
+// ignored, only `Accept-Language` moves it. Without this a server in Tokyo renders
+// "Fresh in ダンス" and bills Tame Impala as テーム・インパラ, which also breaks the
+// cross-provider merge in merge.ts, since that keys on the artist name.
+export const DEEZER_HEADERS = { "accept-language": "en-US,en;q=0.9" };
+
 export async function deezer<T>(path: string, revalidateSeconds = 86_400): Promise<T | null> {
   try {
     const response = await fetch(`https://api.deezer.com${path}`, {
       signal: AbortSignal.timeout(6_000),
+      headers: DEEZER_HEADERS,
       next: { revalidate: revalidateSeconds },
     });
     if (!response.ok) return null;
