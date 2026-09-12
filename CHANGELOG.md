@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.15.3 — 13 September 2026
+
+### Fixed
+
+- **security** — drop a cover whose host is not allowlisted, rather than loading it
+
+3 further changes under the hood — refactoring, docs and tests.
+
 ## 0.15.2 — 13 September 2026
 
 ### Fixed
