@@ -10,6 +10,24 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.15.1 — 13 September 2026
+
+### Fixed
+
+- **sidecar** — bound the upstream timeout to just above the caller's deadline
+- **artist** — a percent in a name is not a broken escape
+- **providers** — strip the backslash from the Archive creator phrase too
+- **security** — hold history and the play log to the playlist's cover rule
+- **security** — draw covers through the proxy in the two players that did not
+- **security** — pin Audius covers to Audius's own host
+- **deezer** — ask for English names whatever the exit IP says
+- **api** — key the rate limiter on a header a proxy owns
+- **sidecar** — log a refused request, never the secret it carried
+- **csp** — enforce the policy, and report what it blocks
+- **art** — pin the path on allowlisted hosts that also answer an API
+
+6 further changes under the hood — refactoring, docs and tests.
+
 ## 0.15.0 — 12 September 2026
 
 ### Added
