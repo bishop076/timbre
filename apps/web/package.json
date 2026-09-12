@@ -8,7 +8,8 @@
     "start": "dotenv -e ../../.env -- next start",
     "lint": "eslint",
     "test": "node --import ./test-hooks.mjs --test \"app/**/*.test.ts\" \"lib/**/*.test.ts\"",
-    "typecheck": "next typegen && tsc --noEmit && tsc -p sw"
+    "typecheck": "next typegen && tsc --noEmit && tsc -p sw",
+    "typecheck:fast": "next typegen && tsgo --noEmit && tsgo -p sw"
   },
   "postcss": {
     "plugins": {
@@ -29,6 +30,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",

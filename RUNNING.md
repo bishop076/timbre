@@ -179,6 +179,7 @@ ignores unknown keys — so they are harmless, just misleading about what the ap
 ```bash
 pnpm test          # every workspace package, plus scripts/*.test.mts
 pnpm typecheck     # runs next typegen first; a fresh clone fails without it. Also scripts/ and the service worker
+pnpm typecheck:fast   # same checks, ~3x quicker — see below
 pnpm lint
 
 cd apps/ytmusic && .venv/Scripts/python.exe -m pytest -q
@@ -186,6 +187,24 @@ cd apps/ytmusic && .venv/Scripts/python.exe -m pytest -q
 
 Changing a Python dependency means re-running `uv lock` and committing the result, or CI
 fails on `--locked`.
+
+### Why there are two typecheck commands
+
+Almost all of `pnpm typecheck` is `tsc` starting up rather than checking anything —
+`packages/core` is a handful of files and still took 4.4s, and the repo pays that four
+times over (core, providers, web, the service worker). `typecheck:fast` runs the same
+projects through `tsgo`, the native Go build of TypeScript 7, which has no Node startup to
+pay: 17.7s → 6.0s, with `next typegen` (3.5s, unavoidable) now the largest piece left.
+
+**`pnpm typecheck` is still the gate, and CI runs that one.** `tsgo` ships as a preview, so
+it checks your work while you write it and `tsc` has the last word before anything merges.
+The two were compared on a planted error and emitted byte-identical diagnostics, but one
+comparison is not a guarantee — if they ever disagree, `tsc` is right by definition.
+
+This is also why `typescript` stays pinned at 5 in every `package.json`: `next.config.ts`
+imports the compiler API (`ts.transpileModule`, `ts.ScriptTarget`) to build the service
+worker, and TypeScript 7 rewrites it. `@typescript/native-preview` is a separate package
+shipping only the `tsgo` binary, so the two live side by side without argument.
 
 ## The pre-commit hook, and what it is for
 
