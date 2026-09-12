@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { CloseIcon, SearchIcon, SpinnerIcon } from "../icons";
+import { SearchField } from "../search-field";
 import type { Song, SongsResponse } from "../types";
 import { AddToQueue } from "./add-to-queue";
 import { QueueRow } from "./now-playing";
@@ -60,34 +60,16 @@ export function QueueSearch({ children }: { children: ReactNode }) {
   return (
     <>
       <div className="shrink-0 px-3 pb-1 pt-3">
-        <div className="flex items-center gap-2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-1.5 focus-within:bg-[var(--surface-3)]">
-          <SearchIcon className="size-4 shrink-0 text-[var(--fg-faint)]" />
-          <input
-            ref={field}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Escape" || !query) return;
-              event.stopPropagation();
-              clear();
-            }}
-            type="search"
-            placeholder="Search to add to queue"
-            aria-label="Search for songs to add to the queue"
-            className="min-w-0 flex-1 appearance-none bg-transparent text-[13px] outline-none placeholder:text-[var(--fg-faint)] [&::-webkit-search-cancel-button]:appearance-none"
-          />
-          {loading && <SpinnerIcon className="size-3.5 shrink-0 text-[var(--fg-faint)]" />}
-          {query && !loading && (
-            <button
-              type="button"
-              onClick={clear}
-              aria-label="Clear the search"
-              className="flex size-5 shrink-0 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] transition hover:bg-[var(--surface-1)] hover:text-[var(--fg)]"
-            >
-              <CloseIcon className="size-3.5" />
-            </button>
-          )}
-        </div>
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          onClear={clear}
+          placeholder="Search to add to queue"
+          label="Search for songs to add to the queue"
+          clearLabel="Clear the search"
+          busy={loading}
+          field={field}
+        />
       </div>
 
       {trimmed ? (
