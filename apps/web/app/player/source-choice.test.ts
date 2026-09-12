@@ -37,11 +37,15 @@ test("a clip is a choice for now and changes nothing", () => {
 });
 
 test("an embed you pressed is remembered, so the song stays on that source", () => {
-  assert.deepEqual(afterPick({}, key, "deezer", "manual"), { [key]: "deezer" });
-  assert.deepEqual(afterPick({}, key, "apple", "manual"), { [key]: "apple" });
   assert.deepEqual(afterPick({ [key]: "soundcloud" }, key, "spotify", "manual"), {
     [key]: "spotify",
   });
+});
+
+test("a source that cannot say when a song ended is never made the standing default", () => {
+  // Remembering these would leave the rest of the queue stranded behind a song that never ends.
+  assert.equal(key in afterPick({}, key, "deezer", "manual"), false);
+  assert.equal(key in afterPick({}, key, "apple", "manual"), false);
 });
 
 test("the remembered source failing forgets it, and nothing else does", () => {

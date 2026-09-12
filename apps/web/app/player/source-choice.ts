@@ -14,6 +14,12 @@ export function choiceKey(song: Pick<Song, "title" | "artists">): string {
   return dedupeKey(song.title, song.artists);
 }
 
+// Deezer and Apple play in a bare embed that reports neither progress nor the end of a track —
+// `subscription-player.tsx` passes `useTransport(null)` — so a queue playing on one of them stops
+// dead once the song finishes. Pressing one is fine; remembering it would strand every song after
+// it, which is worse than the wrong logo. They stay a one-off until those embeds can report an end.
+const STOPS_AFTER_ONE = new Set(["deezer", "apple"]);
+
 function without(choices: SourceChoices, key: string): SourceChoices {
   if (!(key in choices)) return choices;
   const next = { ...choices };
@@ -29,10 +35,11 @@ export function afterPick(
 ): SourceChoices {
   if (source === "ytmusic") return without(choices, key);
 
-  // An embed you pressed is still a choice: picking Deezer, Apple or Spotify for a song means
-  // that song keeps playing there until it fails (`afterFailure` drops it). Only a 30-second
-  // clip stays a one-off — it is not a source anyone would want as a standing default.
+  // An embed you pressed is still a choice: picking Spotify for a song means that song keeps
+  // playing there until it fails (`afterFailure` drops it). Only a 30-second clip stays a
+  // one-off — it is not a source anyone would want as a standing default.
   if (playback === null || playback === "preview") return choices;
+  if (STOPS_AFTER_ONE.has(source)) return choices;
   if (choices[key] === source) return choices;
 
   const next: Record<string, string> = { ...without(choices, key), [key]: source };
