@@ -143,7 +143,7 @@ export function ThemePicker() {
                 className={`press rounded-[var(--r-full)] px-3 py-1 text-[11px] font-bold ${
                   theme.customLight === option.light
                     ? "slab-sm text-[var(--accent-fg)]"
-                    : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
+                    : "slab-ghost bg-[var(--surface-2)] text-[var(--fg-dim)]"
                 }`}
                 style={theme.customLight === option.light ? { background: "var(--accent)" } : undefined}
               >
