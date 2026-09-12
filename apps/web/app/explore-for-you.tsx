@@ -84,9 +84,7 @@ function GenreShelf({ pick }: { pick: Pick }) {
     <Shelf
       title={pick.because ? `${pick.name} for you` : `Fresh in ${pick.name}`}
       caption={
-        pick.because
-          ? `Because you play ${listNames(pick.because.slice(0, 2))}`
-          : "New releases and station picks"
+        pick.because ? `Because you play ${listNames(pick.because.slice(0, 2))}` : undefined
       }
     >
       {songs === null ? (
