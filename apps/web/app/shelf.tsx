@@ -5,8 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronIcon } from "./icons";
 import { SectionHeader } from "./page-chrome";
 
+// Centred on the artwork, not the tile: the tile's middle includes its caption, which put the
+// arrow low on the cover. 3.5rem and 5.25rem are half of TILE's two widths — the covers are square.
 const ARROW =
-  "slab-sm press absolute top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] pointer-fine:flex disabled:invisible";
+  "slab-sm press absolute top-[3.5rem] z-10 hidden size-9 -translate-y-1/2 sm:top-[5.25rem] items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] pointer-fine:flex disabled:invisible";
 
 export function Shelf({
   title,
