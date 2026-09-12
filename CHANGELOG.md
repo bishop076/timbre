@@ -10,6 +10,18 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.15.2 — 13 September 2026
+
+### Fixed
+
+- **player** — do not re-walk the ladder once YouTube is already judged blocked
+- **deezer** — tell "there is no such thing" from "could not ask"
+- **security** — the last two players draw their cover through the proxy
+- **player** — scope the rescue guard and the radio seed to the attempt
+- **player** — walk the ladder when YouTube's player is the thing that failed
+
+6 further changes under the hood — refactoring, docs and tests.
+
 ## 0.15.1 — 13 September 2026
 
 ### Fixed
