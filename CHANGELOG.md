@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.14.3 — 12 September 2026
+
+### Fixed
+
+- **ui** — centre the shelf arrows on the artwork
+
 ## 0.14.2 — 12 September 2026
 
 ### Fixed
