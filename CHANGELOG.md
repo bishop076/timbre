@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.16.0 — 13 September 2026
+
+### Added
+
+- **search** — put the query in the URL, so a search can be reloaded and shared
+
+### Fixed
+
+- **art** — let an Audius cover follow its directory to the node that holds it
+
 ## 0.15.3 — 13 September 2026
 
 ### Fixed
