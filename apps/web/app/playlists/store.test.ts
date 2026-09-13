@@ -113,12 +113,69 @@ test("a rescued song gains the copies that played, beside the ones it had", asyn
 test("a backup carries liked songs, and a file holding only those still imports", async () => {
   const { store } = await fresh();
   const file = store.exportPlaylists({ liked: [song("l")] });
-  assert.equal(file.version, 2);
+  assert.equal(file.version, 3);
   assert.equal(file.liked.length, 1);
   assert.equal("liked" in store.exportPlaylists({ liked: [] }), false);
 
   assert.equal(store.importPlaylists({ ...exportFile([]), liked: [song("l")] }), 0);
   assert.throws(() => store.importPlaylists({ ...exportFile([]), liked: [] }), /no playlists/);
+});
+
+test("a backup carries the listening history and the play log it promises to", async () => {
+  const { store } = await fresh();
+  const history = [song("h")];
+  const plays = { plays: [["h", 1]], songs: { h: song("h") } };
+
+  const file = store.exportPlaylists({ history, plays });
+  assert.equal(file.version, 3);
+  assert.deepEqual(file.history, history);
+  assert.deepEqual(file.plays, plays);
+
+  // Version 2 said nothing about either, and a file holding only them is still a real backup.
+  assert.equal("history" in store.exportPlaylists({ history: [] }), false);
+  assert.equal("plays" in store.exportPlaylists({}), false);
+  assert.equal(store.importPlaylists({ ...exportFile([]), history }), 0);
+});
+
+test("importing the same backup twice does not duplicate the library", async () => {
+  const { store } = await fresh();
+  const file = exportFile([
+    { id: "p1", name: "Evening", createdAt: "2026-01-01", songs: [song("a"), song("b")] },
+  ]);
+
+  assert.equal(store.importPlaylists(file), 1);
+  assert.equal(store.importPlaylists(file), 1);
+
+  const lists = store.allPlaylists();
+  assert.equal(lists.length, 1);
+  assert.equal(lists[0].songs.length, 2);
+
+  // A second file for the same playlist merges its new songs in rather than forking it.
+  const grown = exportFile([
+    { id: "p1", name: "Evening", createdAt: "2026-01-01", songs: [song("b"), song("c")] },
+  ]);
+  store.importPlaylists(grown);
+  assert.equal(store.allPlaylists().length, 1);
+  assert.deepEqual(
+    store.allPlaylists()[0].songs.map((entry: { id: string }) => entry.id),
+    ["a", "b", "c"],
+  );
+});
+
+test("a playlist refuses a song it already holds", async () => {
+  const { store } = await fresh();
+  const made = store.createPlaylist("Repeats");
+
+  assert.equal(store.addSongToPlaylist(made.id, song("a")), 1);
+  assert.equal(store.addSongToPlaylist(made.id, song("a")), 0);
+  assert.equal(store.addSongsToPlaylist(made.id, [song("a"), song("b"), song("b")]), 1);
+
+  assert.deepEqual(
+    store.allPlaylists()[0].songs.map((entry: { id: string }) => entry.id),
+    ["a", "b"],
+  );
+  assert.deepEqual([...store.playlistsHolding("a")], [made.id]);
+  assert.deepEqual([...store.playlistsHolding("zz")], []);
 });
 
 test("a write before any read keeps the playlists already saved", async () => {
