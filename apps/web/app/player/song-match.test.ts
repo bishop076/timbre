@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { plausiblySameSong, sameRecording, sameTrack } from "./song-match.ts";
+import { plausiblySameSong, rankMatches, sameRecording, sameTrack } from "./song-match.ts";
 import type { Song } from "../types";
 
 function song(title: string, artist = "", durationMs: number | null = null): Song {
@@ -186,4 +186,71 @@ test("distinct ISRCs settle it even when the names agree", () => {
   const b = { ...song("Wonderwall", "Oasis"), id: "two", isrc: "GBAAA0000002" };
 
   assert.equal(sameTrack(a, b), false);
+});
+
+test("the versions a title names only in its credit are refused too", () => {
+  const seed = song("Creep", "Radiohead", 238_000);
+
+  assert.equal(plausiblySameSong(seed, song("Creep", "Vitamin String Tribute", 238_000)), false);
+  assert.equal(plausiblySameSong(seed, song("Creep", "Made Famous By Radiohead", 238_000)), false);
+  assert.equal(plausiblySameSong(seed, song("Creep (Rendition)", "Radiohead", 238_000)), false);
+});
+
+test("the live and cover words the old list missed", () => {
+  const seed = song("Skinny Love", "Bon Iver", 238_000);
+
+  for (const title of [
+    "Skinny Love (Tiny Desk Concert)",
+    "Skinny Love - En Vivo",
+    "Skinny Love (Ao Vivo)",
+    "Skinny Love (Demo)",
+    "Skinny Love (A Cappella)",
+    "Skinny Love - Piano Version",
+    "Skinny Love (Lofi)",
+  ]) {
+    assert.equal(plausiblySameSong(seed, song(title, "Bon Iver", 238_000)), false, title);
+  }
+});
+
+test("a seed that is itself a live cut still matches live copies of itself", () => {
+  const seed = song("Wish You Were Here (Live at Wembley)", "Pink Floyd", 320_000);
+  assert.equal(
+    plausiblySameSong(seed, song("Wish You Were Here - Live at Wembley", "Pink Floyd", 320_000)),
+    true,
+  );
+});
+
+test("ranking puts the studio recording ahead of the live take that outranked it", () => {
+  const seed = song("Everlong", "Foo Fighters", 250_000);
+  const live = song("Everlong (Live at Wembley)", "Foo Fighters", 310_000);
+  const studio = song("Everlong", "Foo Fighters", 250_000);
+
+  assert.deepEqual(
+    rankMatches(seed, [live, studio]).map((found) => found.durationMs),
+    [250_000, 310_000],
+  );
+});
+
+test("ranking puts the credited artist ahead of somebody else's upload", () => {
+  const seed = song("Everlong", "Foo Fighters", 250_000);
+  const stranger = song("Everlong", "Guitar Channel", 250_000);
+  const real = song("Everlong", "Foo Fighters", 250_000);
+
+  assert.deepEqual(
+    rankMatches(seed, [stranger, real]).map((found) => found.artists[0]),
+    ["Foo Fighters", "Guitar Channel"],
+  );
+});
+
+test("ranking keeps the search's own order when nothing separates two results", () => {
+  const seed = song("Everlong", "Foo Fighters", 250_000);
+  const first = song("Everlong", "Foo Fighters", 250_000);
+  const second = song("Everlong", "Foo Fighters", 250_000);
+  first.id = "first";
+  second.id = "second";
+
+  assert.deepEqual(
+    rankMatches(seed, [first, second]).map((found) => found.id),
+    ["first", "second"],
+  );
 });
