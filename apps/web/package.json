@@ -1,6 +1,6 @@
 {
   "name": "@timbre/web",
-  "version": "0.16.1",
+  "version": "0.16.2",
   "private": true,
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev --hostname 127.0.0.1",
