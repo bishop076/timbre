@@ -150,6 +150,7 @@ export function NowPlayingPanel() {
     index,
     radio,
     play,
+    goTo,
     move,
     removeAt,
     clearQueue,
@@ -161,6 +162,14 @@ export function NowPlayingPanel() {
 
   const queued = queue.slice(index + 1);
   const last = queued.length - 1;
+
+  // A row already in the queue is a seek, not a new queue. `play(song, upcoming)` rebuilt the
+  // queue as [song, ...rest], discarding the playing song and everything before it: Previous
+  // greyed out for good, the play history was gone, and `play`'s fourth argument being absent
+  // cleared `queueOrigin`, so the playlist it came from stopped showing as active. Rows past
+  // the queue are blend picks with no index to seek to, so those still start a queue.
+  const startFrom = (song: Song, position: number) =>
+    position < queued.length ? goTo(index + 1 + position) : play(song, upcoming);
   const known = new Set(queue.map((song) => song.id));
   const upcoming = [
     ...queued,
@@ -306,14 +315,14 @@ export function NowPlayingPanel() {
                             const at = index + 1 + position;
                             return (
                               <li key={`${song.id}-${position}`}>
-                                {position === queued.length && position > 0 && (
+                                {position === queued.length && (
                                   <p className="px-1.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--fg-faint)]">
                                     Then, from your blend
                                   </p>
                                 )}
                                 <QueueRow
                                   song={song}
-                                  onPlay={() => play(song, upcoming)}
+                                  onPlay={() => startFrom(song, position)}
                                   actions={
                                     position < queued.length ? (
                                       <QueueActions
@@ -375,7 +384,7 @@ export function NowPlayingPanel() {
                       </span>
                     )}
                   </p>
-                  <QueueRow song={upcoming[0]} onPlay={() => play(upcoming[0], upcoming)} />
+                  <QueueRow song={upcoming[0]} onPlay={() => startFrom(upcoming[0]!, 0)} />
                 </div>
               )}
             </div>
