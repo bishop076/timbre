@@ -110,8 +110,22 @@ const globalForBiography = globalThis as unknown as {
 async function musicBrainzTurn(signal: AbortSignal): Promise<void> {
   const now = Date.now();
   const slot = Math.max(now, globalForBiography.__timbreMusicBrainzNextSlot ?? 0);
-  globalForBiography.__timbreMusicBrainzNextSlot = slot + MUSICBRAINZ_GAP_MS;
-  if (slot > now) await sleep(slot - now, undefined, { signal });
+  const taken = slot + MUSICBRAINZ_GAP_MS;
+  globalForBiography.__timbreMusicBrainzNextSlot = taken;
+  if (slot <= now) return;
+
+  try {
+    await sleep(slot - now, undefined, { signal });
+  } catch (cause) {
+    // A caller that gave up never took its turn, and the queue advanced by a full gap anyway.
+    // Six concurrent lookups was enough for that to push everyone behind them past the 6s
+    // deadline, so they timed out too and gave their slots away in turn — an outage that fed
+    // itself, from requests that were never sent. Hand the slot back if it is still ours.
+    if (globalForBiography.__timbreMusicBrainzNextSlot === taken) {
+      globalForBiography.__timbreMusicBrainzNextSlot = slot;
+    }
+    throw cause;
+  }
 }
 
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T | null> {

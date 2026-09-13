@@ -259,7 +259,10 @@ function PlaylistRows({
   return (
     <ul className="flex flex-col gap-0.5">
       {playlists.map((playlist) => {
-        const playing = queueOrigin?.id === playlist.id && state === "playing";
+        const playing =
+          queueOrigin?.kind === "playlist" &&
+          queueOrigin.id === playlist.id &&
+          state === "playing";
 
         return (
         <li key={playlist.id}>
