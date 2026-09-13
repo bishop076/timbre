@@ -58,11 +58,36 @@ declare global {
   }
 }
 
+// `API_SRC` is only a loader: it pulls the real bundle from embed-cdn.spotifycdn.com, and that
+// bundle is what calls `onSpotifyIframeApiReady`. So the script's own `load` proves nothing and
+// its `error` never fires when the bundle is the thing that went missing. Worse, the callback is
+// spent on the first load — reaching `findScript` on a later one armed a `resolve` nobody would
+// ever call. Either way the promise settled neither way, `.catch` never ran, and the player sat
+// on "loading" for ever with no message: a Spotify-only track in a queue spun forever at 0:00.
+// Hold the api once it arrives, so a second load resolves from it, and give up out loud after
+// the same 8s the other embeds treat as "something is blocking this".
+const API_READY_MS = 8000;
+
+let embedApi: SpotifyIFrameApi | null = null;
+
 const loadApi = loadOnce<SpotifyIFrameApi>((resolve, reject) => {
-  window.onSpotifyIframeApiReady = resolve;
+  if (embedApi) return resolve(embedApi);
+
+  const timer = setTimeout(
+    () => reject(new Error("Spotify's embed API never became ready.")),
+    API_READY_MS,
+  );
+
+  window.onSpotifyIframeApiReady = (api) => {
+    clearTimeout(timer);
+    embedApi = api;
+    resolve(api);
+  };
+
   if (findScript(API_SRC)) return;
   const script = addScript(API_SRC, document.body);
   script.addEventListener("error", () => {
+    clearTimeout(timer);
     script.remove();
     reject(new Error("Spotify embed API blocked."));
   });
