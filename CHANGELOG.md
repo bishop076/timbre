@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.6 — 13 September 2026
+
+### Fixed
+
+- **profile** — save the picture before the thumbnail, and let Mixcloud hear the volume slider
+
 ## 0.17.5 — 13 September 2026
 
 ### Fixed
