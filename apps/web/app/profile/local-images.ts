@@ -3,6 +3,9 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import { createNotifier, readItem, writeItem } from "../local-store.ts";
+import { log } from "../logs.ts";
+
+const describe = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 export type ImageKind = "avatar" | "banner";
 
@@ -158,7 +161,13 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
     window.localStorage.setItem(THUMB_KEY[kind], encoded);
     window.localStorage.setItem(THUMB_VERSION_KEY, THUMB_VERSION);
     paintThumbVariables(kind);
-  } catch {}
+  } catch (cause) {
+    // Swallowed silently before, including the `QuotaExceededError` this is most likely to
+    // throw. The picture itself is safe in IndexedDB by the time this runs; what is lost is
+    // the pre-hydration painting, so the name and avatar flash in on load instead of being
+    // there. Worth saying out loud, not worth failing the save over.
+    log("warn", `Profile ${kind}: the thumbnail could not be stored — ${describe(cause)}`);
+  }
 }
 
 function dropThumb(kind: ImageKind): void {
@@ -191,14 +200,17 @@ function publish(kind: ImageKind, blob?: Blob): void {
 
 export async function setLocalImage(kind: ImageKind, file: File): Promise<void> {
   const { redraw } = await import("./image-resize");
-
   const blob = await redraw(file, kind);
-  await writeThumb(kind, blob);
 
+  // IndexedDB first, because it holds the picture and the thumbnail is only a painting of it.
+  // The other way round, a failed put ran `dropThumb`, which removed the thumbnail belonging
+  // to the picture the reader still had and had not replaced. Until the next full page load
+  // regenerated it `hasLocalImage()` was false, so "Remove picture" disappeared — and
+  // `hasLocalProfile()` under-reported, which is the flag deciding whether an imported profile
+  // overwrites the local one *without asking*. A failed save now changes nothing at all.
   try {
     await run("readwrite", (store) => store.put(blob, kind));
   } catch (cause) {
-    dropThumb(kind);
     throw new Error(
       cause instanceof DOMException && cause.name === "QuotaExceededError"
         ? "This browser is out of storage. Remove a picture or some playlists."
@@ -206,6 +218,7 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
     );
   }
 
+  await writeThumb(kind, blob);
   publish(kind, blob);
 }
 
