@@ -12,7 +12,15 @@ export function toArtistSlug(name: string): string {
 }
 
 export function fromArtistSlug(slug: string): string {
-  return decodeURIComponent(slug).replace(/-+/g, " ").trim();
+  // Next hands this segment over already decoded, so a name that legitimately carries a
+  // percent — or a hand-typed /artist/100%25 — reaches `decodeURIComponent` as a lone `%`
+  // and it throws `URIError`. `generateMetadata` calls this too, and that runs outside the
+  // route's error boundary, so the throw became a 500 rather than the empty state.
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {}
+  return decoded.replace(/-+/g, " ").trim();
 }
 
 export function titleCase(value: string): string {
