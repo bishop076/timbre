@@ -40,6 +40,7 @@ interface Alternative {
 interface Alternatives {
   alternatives: Alternative[];
   busyFor?: number;
+  failed?: boolean;
 }
 
 const NUDGES = [
@@ -79,7 +80,10 @@ function lyricsRetry(answer: LyricsAnswer): number | null {
 async function readAlternatives(response: Response): Promise<Alternatives | null> {
   const busyFor = busySeconds(response.status, response.headers.get("retry-after"));
   if (busyFor !== null) return { alternatives: [], busyFor };
-  return response.ok ? response.json() : null;
+  // A refusal is not an empty list. Reading one as `null` let it fall through to `?? []` and
+  // the panel then said "LRCLIB has only this one" about a lookup that never completed —
+  // stating as fact the very thing the request failed to establish.
+  return response.ok ? response.json() : { alternatives: [], failed: true };
 }
 
 function alternativesRetry(found: Alternatives): number | null {
@@ -262,6 +266,7 @@ function LyricsToolbar({
   );
   const alternatives = data?.alternatives ?? [];
   const busy = !loading && Boolean(data?.busyFor);
+  const failed = !loading && Boolean(data?.failed);
 
   const label =
     provider === "ytmusic"
@@ -357,7 +362,14 @@ function LyricsToolbar({
             </p>
           )}
 
-          {!loading && !busy && alternatives.length === 0 && (
+          {failed && (
+            <p className="px-1 py-2 text-[11px] leading-relaxed text-[var(--fg-faint)]">
+              LRCLIB didn&rsquo;t answer, so there may be other versions this couldn&rsquo;t
+              fetch. Closing and reopening this tries again.
+            </p>
+          )}
+
+          {!loading && !busy && !failed && alternatives.length === 0 && (
             <p className="px-1 py-2 text-[11px] leading-relaxed text-[var(--fg-faint)]">
               {provider === "ytmusic"
                 ? "LRCLIB has nothing for this one."

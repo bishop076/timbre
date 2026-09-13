@@ -38,6 +38,7 @@ class FakeClient:
 
     def get_watch_playlist(self, videoId: str, limit: int):
         self.watched.append(videoId)
+        self._fail(f"watch:{videoId}")
         self._fail("watch")
         return {"tracks": [], "lyrics": self.tabs.get(videoId)}
 
@@ -178,6 +179,29 @@ def test_uploads_are_tried_in_order(client, tabs, asked, watched, calls) -> None
     assert texts(ask(*asked)) == (["line one"] if calls else [])
     assert client.watched == watched
     assert client.calls == calls
+
+
+def test_one_failing_upload_does_not_end_the_search(client) -> None:
+    """A candidate that fails is skipped, not fatal.
+
+    Each id is handed over precisely so the next can be tried; raising on the first meant one
+    region-blocked upload returned 502 and the panel said YouTube Music did not answer, while
+    a sibling id had the lyrics.
+    """
+    client.errors = {f"watch:{OTHER}": RuntimeError("region blocked")}
+    client.tabs = {THIRD: BROWSE}
+    client.timed = timed(("line one", 0))
+
+    assert texts(ask(OTHER, THIRD)) == ["line one"]
+    assert client.watched == [OTHER, THIRD]
+
+
+def test_every_upload_failing_is_still_an_upstream_failure(client) -> None:
+    client.errors = {"watch": RuntimeError("ytmusic is down")}
+    with pytest.raises(HTTPException) as raised:
+        ask(OTHER, THIRD)
+    assert raised.value.status_code == 502
+    assert client.watched == [OTHER, THIRD]
 
 
 @pytest.mark.parametrize(

@@ -82,14 +82,33 @@ export function chartAll(ctx: SearchContext, limit: number): Promise<SearchAllRe
   );
 }
 
-export async function resolveUrl(ctx: SearchContext, url: string): Promise<SourceTrack | null> {
+/**
+ * The track a link points at, or null when no provider claims it.
+ *
+ * `failures` separates the two things a null used to conflate. The empty `catch` meant a
+ * SoundCloud link pasted while SoundCloud was 500ing — or while its bucket was drained, which
+ * arrives as a `rate_limited` ProviderError and was swallowed identically — came back
+ * indistinguishable from a link to a service Timbre does not support, and the caller told the
+ * reader their link was the problem. Nothing was logged either, so the outage was invisible.
+ */
+export async function resolveUrl(
+  ctx: SearchContext,
+  url: string,
+): Promise<{ track: SourceTrack | null; failures: { source: string; message: string }[] }> {
+  const failures: { source: string; message: string }[] = [];
+
   for (const provider of listProviders()) {
     try {
       const track = await provider.resolve?.(ctx, url);
-      if (track) return track;
-    } catch {}
+      if (track) return { track, failures };
+    } catch (cause) {
+      if (ctx.signal?.aborted) break;
+      const message = cause instanceof Error ? cause.message : String(cause);
+      failures.push({ source: provider.id, message });
+      ctx.report?.("resolve_failed", { source: provider.id, error: cause });
+    }
   }
-  return null;
+  return { track: null, failures };
 }
 
 export async function recommendFrom(

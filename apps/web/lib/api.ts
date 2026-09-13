@@ -71,10 +71,21 @@ export function queryRoute<S extends z.ZodObject>(
   };
 }
 
-export function cached<T>(key: string, produce: () => Promise<T>): Promise<T> {
+export function cached<T>(
+  key: string,
+  produce: () => Promise<T>,
+  keep?: (value: T) => boolean,
+): Promise<T> {
   globalForApi.__timbreResponseCache ??= createCache<unknown>({ ttlMs: 120_000, max: 500 });
-  return globalForApi.__timbreResponseCache.take(key, produce) as Promise<T>;
+  return globalForApi.__timbreResponseCache.take(
+    key,
+    produce,
+    keep as ((value: unknown) => boolean) | undefined,
+  ) as Promise<T>;
 }
+
+/** A body worth caching is one no provider failed to contribute to. */
+export const whole = (body: { failures?: unknown[] }): boolean => !body.failures?.length;
 
 export function json(body: unknown, cacheControl: string): Response {
   return Response.json(body, { headers: { "cache-control": cacheControl } });
