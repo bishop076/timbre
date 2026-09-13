@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.16.1 — 13 September 2026
+
+### Fixed
+
+- **player** — stop a Spotify embed waiting forever on an API that never answers
+
+2 further changes under the hood — refactoring, docs and tests.
+
 ## 0.16.0 — 13 September 2026
 
 ### Added
