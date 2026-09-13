@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { proxied } from "../artwork-url";
 import { useLatest, useTransport } from "./embed";
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
@@ -27,9 +28,12 @@ export function ProgressiveAudioPlayer({
   const audioRef = useRef<HTMLAudioElement>(null);
   useMediaSession(audioRef);
 
-  const covers = [artworkUrl, ...(artworkFallbacks ?? [])].filter(
-    (url): url is string => Boolean(url),
-  );
+  // Every other cover in the app draws through `<Artwork>`, which proxies. This one used
+  // the raw URL, so a cover on a host `/api/art` does not serve was fetched by the browser
+  // straight from that host. `proxied` keeps the allowlisted ones on our origin.
+  const covers = [artworkUrl, ...(artworkFallbacks ?? [])]
+    .map((url) => proxied(url))
+    .filter((url): url is string => Boolean(url));
   const [skipped, setSkipped] = useState<{ key: string; count: number }>({ key: "", count: 0 });
   const coverKey = artworkUrl ?? "";
   const cover = covers[skipped.key === coverKey ? skipped.count : 0] ?? null;
