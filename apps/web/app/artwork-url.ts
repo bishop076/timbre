@@ -13,7 +13,15 @@ export function proxied(url: string | null | undefined): string | null {
   const target = parse(url);
   // `allowed` rather than the bare host set, so this never hands the proxy a URL it will
   // refuse — the two agree on the path rules as well as the hosts.
-  return target && allowed(target) ? `/api/art?u=${encodeURIComponent(url)}` : url;
+  //
+  // An unlisted host returns null rather than the URL itself. Passing it through was the
+  // failure this function exists to prevent: the browser then fetches the cover straight
+  // from a host nobody vetted, handing it the reader's address and user agent, past the
+  // proxy's allowlist, size cap and content-type check. S-21 fixed the provider that was
+  // minting such URLs; this closes the door behind it rather than trusting that every
+  // future provider remembers. Callers render the note-icon placeholder for null, which is
+  // the same thing they already show for a song with no artwork at all.
+  return target && allowed(target) ? `/api/art?u=${encodeURIComponent(url)}` : null;
 }
 
 const square = (side: number) => `${side}x${side}`;
