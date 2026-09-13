@@ -74,3 +74,41 @@ test("the entry count stays under the cap", async () => {
   assert.equal(cache.size, 3);
   assert.equal(await cache.take("e", async () => "refetched"), "e");
 });
+
+test("a degraded answer is returned but not remembered", async () => {
+  const cache = createCache<{ songs: string[]; failures: string[] }>({
+    ttlMs: 10_000,
+    max: 10,
+    now: clock().now,
+  });
+  const whole = (body: { failures: string[] }) => body.failures.length === 0;
+  let calls = 0;
+
+  const partial = await cache.take(
+    "q",
+    async () => {
+      calls += 1;
+      return { songs: ["one"], failures: ["deezer"] };
+    },
+    whole,
+  );
+
+  // The caller still gets the best that could be had; nobody else inherits it.
+  assert.deepEqual(partial.songs, ["one"]);
+  assert.equal(cache.size, 0, "a result missing a provider is not the answer to the query");
+
+  const full = await cache.take(
+    "q",
+    async () => {
+      calls += 1;
+      return { songs: ["one", "two"], failures: [] };
+    },
+    whole,
+  );
+  assert.deepEqual(full.songs, ["one", "two"]);
+  assert.equal(cache.size, 1);
+  assert.equal(calls, 2);
+
+  await cache.take("q", async () => ({ songs: ["never asked"], failures: [] }), whole);
+  assert.equal(calls, 2, "once whole, it is served from the cache");
+});

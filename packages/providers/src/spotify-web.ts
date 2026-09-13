@@ -249,7 +249,12 @@ export async function discoverHashesFrom(ctx: SearchContext, fresh = false): Pro
       } catch {}
     }
 
-    discovered = { at: Date.now(), result };
+    // Caching this unconditionally cached the failures too. Both sources above swallow into
+    // an empty `catch`, so one network blip left `result.hashes` empty and pinned it for the
+    // full TTL — and the only caller that matters is the `PersistedQueryNotFound` repair,
+    // which needs a hash it has not already tried. So a blip at the moment Spotify rotated a
+    // hash disabled the self-heal for half an hour, when retrying would have fixed it at once.
+    if (Object.keys(result.hashes).length > 0) discovered = { at: Date.now(), result };
     return result;
   })().finally(() => {
     discovering = null;

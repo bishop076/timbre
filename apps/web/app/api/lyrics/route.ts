@@ -2,6 +2,7 @@ import { parseTitle } from "@timbre/core";
 import { z } from "zod";
 
 import { CACHE_CONTROL_DAY, json, queryRoute } from "@/lib/api";
+import { describeError, log } from "@/lib/log";
 import { optionalQueryText, queryFlag, queryText } from "@/lib/query-text";
 import { createBackoff, isBackoffSignal, type Backoff } from "@/lib/upstream-backoff";
 
@@ -102,6 +103,8 @@ async function bestMatch(track: string, artist: string, album?: string, duration
   return results.find((item) => item.syncedLyrics) ?? results[0] ?? null;
 }
 
+const LOOKUP_FAILED = "LRCLIB did not answer.";
+
 export const GET = queryRoute(
   z.object({
     title: queryText(300),
@@ -153,7 +156,18 @@ export const GET = queryRoute(
       );
     } catch (error) {
       if (error instanceof LrclibBusy) return busy(error.retryAfterSeconds, alternatives);
-      return Response.json({ lyrics: null });
+
+      // `{ lyrics: null }` at 200 is the answer for "this song has no lyrics", and returning
+      // it here asserted that about every LRCLIB timeout, DNS failure and unparseable body —
+      // `readAnswer` maps a 200 with a null body to `none` and a 502 to `failed`, so the panel
+      // stated as fact something the request never established. On the `alternatives` path it
+      // was worse: a body with no `alternatives` key reads as an empty list, so the panel also
+      // claimed to have seen every alternative there is. A failure says it failed.
+      log("warn", "lyrics_upstream_failed", { ...describeError(error), alternatives });
+      return Response.json(alternatives ? { error: LOOKUP_FAILED } : { lyrics: null, error: LOOKUP_FAILED }, {
+        status: 502,
+        headers: { "cache-control": "no-store" },
+      });
     }
   },
 );
