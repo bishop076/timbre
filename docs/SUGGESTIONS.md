@@ -327,35 +327,3 @@ sampled once. Do **not** build dynamic node discovery from `/health_check`: thos
 
 **Why it is a suggestion and not a fix:** one measurement is not an uptime study,
 and a fallback list that is itself stale is worse than none.
-
----
-
-## S-11 · Put the search query in the URL `PARKED`
-
-*Observed 2026-09-13. The behaviour is certain; whether to change it is a product call, not
-a defect.*
-
-`search-suggestions.tsx:57` navigates with `router.push("/search")` and no query string. The
-query lives in `search-store.ts`, a `createLocalStore` with `initial: ""` and no `write`, so
-it is in memory and nothing else. The consequences follow directly:
-
-- Reloading `/search` shows an empty page — the results you were looking at are gone.
-- A search cannot be linked, bookmarked or sent to anyone.
-- Back and forward do not restore one.
-
-**Parked rather than done, on two grounds.** The first is that it cuts against the app's own
-privacy posture: the privacy page's line is that searching sends your words to this server
-and that little is kept. A query in the URL is additionally in browser history, in the
-`Referer` of anything the page links out to, and in access logs — three places it is not
-today, none of which the page currently has to account for. The second is that it is a
-visible behaviour change to the most-used screen, and this repo has a history of those
-landing badly when nobody asked for them.
-
-**What it would take, if wanted:** push `/search?q=…`, read `useSearchParams()` in
-`SearchResults`, keep the store as the live-typing buffer and let the URL be the committed
-query. Small — an afternoon including the back/forward cases. The privacy page would want a
-line about the URL, and `Referrer-Policy` is already `strict-origin-when-cross-origin`,
-which strips the query from cross-origin referrers and is most of the leak closed.
-
-**To promote:** a decision, not a measurement. Either the shareability is worth the three
-extra places the query lands, or it is not.
