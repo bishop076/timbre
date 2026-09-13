@@ -1,7 +1,7 @@
 import { mergeTracks, searchAll } from "@timbre/providers";
 import { z } from "zod";
 
-import { cached, queryRoute, reportFailures, whole } from "@/lib/api";
+import { cached, publicFailures, queryRoute, reportFailures, whole } from "@/lib/api";
 import { getProviderRuntime } from "@/lib/providers";
 import { queryText } from "@/lib/query-text";
 
@@ -20,7 +20,7 @@ export const GET = queryRoute(
       async () => {
         const { tracks, failures, attempted } = await searchAll(getProviderRuntime(), q, limit);
         reportFailures("/api/search", failures);
-        return { songs: mergeTracks(tracks), failures, attempted };
+        return { songs: mergeTracks(tracks), failures: publicFailures(failures), attempted };
       },
       // A result missing a provider is not the answer to this query, only the best that could
       // be had at that moment; caching it served everyone the same gap for the full two
