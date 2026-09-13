@@ -1444,7 +1444,10 @@ without the secret and with a wrong one, `/health` 200.
 S-14 put the middleware in front of every path but `/health` they answer **401**. No
 consequence — neither reveals more than the other — but the table should say 401.
 
-**Still open:** S-26. E-7, unchanged by this pass. S-10, S-13, S-18.
+**Still open:** S-26. E-7, unchanged by this pass. S-13, S-18. *(S-10 was listed here
+and closed hours later in `5953138`, by a parallel session — see that entry. The two
+passes ran side by side, which is also why S-21 could land on the `/content/<cid>/` shape
+S-20 had just pinned.)*
 
 **A finding of this pass expired while it was being written.** It read the five dead keys out
 of `.env` and offered to close S-19 by inspection. Between that reading and this commit the
