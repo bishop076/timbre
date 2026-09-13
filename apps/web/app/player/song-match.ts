@@ -26,12 +26,8 @@ function normalizeName(value: string): string {
 }
 
 function sameArtist(seed: Song, found: Song): boolean {
-  const seedNames = seed.artists
-    .map(normalizeName)
-    .filter((name) => name.length > 3);
-  const foundNames = found.artists
-    .map(normalizeName)
-    .filter((name) => name.length > 3);
+  const seedNames = seed.artists.map(normalizeName).filter((name) => name.length > 3);
+  const foundNames = found.artists.map(normalizeName).filter((name) => name.length > 3);
   if (seedNames.length === 0 || foundNames.length === 0) return true;
 
   const foundHay = normalizeName(`${found.artists.join(" ")} ${found.title}`);
@@ -43,22 +39,20 @@ function sameArtist(seed: Song, found: Song): boolean {
 
 function credited(seed: Song, found: Song): boolean {
   const foundArtists = normalizeName(found.artists.join(" "));
-  return seed.artists
-    .map(normalizeName)
-    .some((name) => name.length > 3 && foundArtists.includes(name));
+  return seed.artists.map(normalizeName).some((name) => name.length > 3 && foundArtists.includes(name));
 }
 
 function sameLength(seed: Song, found: Song): boolean {
   if (!seed.durationMs || !found.durationMs) return true;
   const gap = Math.abs(seed.durationMs - found.durationMs);
-  if (!credited(seed, found))
-    return gap <= Math.max(10_000, seed.durationMs * 0.08);
+  if (!credited(seed, found)) return gap <= Math.max(10_000, seed.durationMs * 0.08);
   return gap <= Math.max(20_000, seed.durationMs * 0.25);
 }
 
 const VERSIONS: RegExp[] = [
   /\binstrumental\b|\bkaraoke\b|\boff\s*vocal\b|\bbacking\s+track\b/i,
-  /\bcover(ed)?\b|\bsings\b|\bsung\s+by\b|\btribute\b|\bmade\s+famous\s+by\b|\bin\s+the\s+style\s+of\b|\brendition\b/i,
+  /\bcover(ed)?\b|\bsings\b|\bsung\s+by\b|\btribute\b|\bmade\s+famous\s+by\b|\brendition\b/i,
+  /\bin\s+the\s+style\s+of\b/i,
   /\bremix\b|\bbootleg\b|\bmashup\b/i,
   /\blive\b|\ben\s+vivo\b|\bao\s+vivo\b|\bconcert\b|\btiny\s+desk\b|\bon\s+stage\b/i,
   /\bacoustic\b|\bunplugged\b|\bstripped\b|\bpiano\s+version\b|\ba\s*cappella\b|\bacapella\b/i,
@@ -77,9 +71,7 @@ function versionText(song: Song): string {
 function versionsAdded(seed: Song, found: Song): number {
   const wanted = versionText(seed);
   const got = versionText(found);
-  return VERSIONS.filter(
-    (version) => version.test(got) && !version.test(wanted),
-  ).length;
+  return VERSIONS.filter((version) => version.test(got) && !version.test(wanted)).length;
 }
 
 function sameVersion(seed: Song, found: Song): boolean {
@@ -94,14 +86,10 @@ export function plausiblySameSong(seed: Song, found: Song): boolean {
   const wanted = titleWords(seed.title);
   if (wanted.length === 0) return true;
 
-  const haystack = new Set(
-    titleWords(`${found.title} ${found.artists.join(" ")}`),
-  );
+  const haystack = new Set(titleWords(`${found.title} ${found.artists.join(" ")}`));
   const hits = wanted.filter((word) => haystack.has(word)).length;
 
-  return (
-    hits >= Math.max(2, Math.ceil(wanted.length / 2)) || hits === wanted.length
-  );
+  return hits >= Math.max(2, Math.ceil(wanted.length / 2)) || hits === wanted.length;
 }
 
 // `plausiblySameSong` decides what is *not* this song; this decides which survivor to reach for
@@ -111,20 +99,13 @@ export function plausiblySameSong(seed: Song, found: Song): boolean {
 // usually credited to somebody else, and a live take is usually a different length.
 function durationGap(seed: Song, found: Song): number {
   if (!seed.durationMs || !found.durationMs) return 0.5;
-  return Math.min(
-    1,
-    Math.abs(seed.durationMs - found.durationMs) / Math.max(seed.durationMs, 1),
-  );
+  return Math.min(1, Math.abs(seed.durationMs - found.durationMs) / Math.max(seed.durationMs, 1));
 }
 
 function closeness(seed: Song, found: Song): number {
   const sameIsrc = Boolean(seed.isrc && found.isrc && seed.isrc === found.isrc);
-  return (
-    (sameIsrc ? 4 : 0) +
-    (credited(seed, found) ? 2 : 0) -
-    versionsAdded(seed, found) * 3 -
-    durationGap(seed, found) * 2
-  );
+  const version = versionsAdded(seed, found);
+  return (sameIsrc ? 4 : 0) + (credited(seed, found) ? 2 : 0) - version * 3 - durationGap(seed, found) * 2;
 }
 
 export function rankMatches(seed: Song, matches: Song[]): Song[] {
@@ -142,22 +123,14 @@ export function sameTrack(a: TrackLike, b: TrackLike): boolean {
   return alike(a, b, "respect");
 }
 
-function alike(
-  a: TrackLike,
-  b: TrackLike,
-  variants: "ignore" | "respect",
-): boolean {
+function alike(a: TrackLike, b: TrackLike, variants: "ignore" | "respect"): boolean {
   if (a.id === b.id) return true;
   if (a.isrc && b.isrc) return a.isrc === b.isrc;
 
   const left = dedupeParts(a.title, a.artists);
   const right = dedupeParts(b.title, b.artists);
   if (!left.base || left.base !== right.base) return false;
-  if (
-    variants === "respect" &&
-    left.variants.join("+") !== right.variants.join("+")
-  )
-    return false;
+  if (variants === "respect" && left.variants.join("+") !== right.variants.join("+")) return false;
 
   if (left.artists.length === 0 || right.artists.length === 0) return true;
   return left.artists.some((name) => right.artists.includes(name));
