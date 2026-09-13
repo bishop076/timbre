@@ -72,7 +72,11 @@ jobs:
         env:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
-          PUSH_TOKEN: ${{ github.token }}
+          # github.token cannot push to main: the repository's default workflow
+          # permission is read, and the job-level `contents: write` above does not
+          # win against it. The Publish step below already reaches for the same PAT
+          # for the same reason, so this is that pattern, not a new grant.
+          PUSH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           git config user.name "bishop076"
           git config user.email "271764729+bishop076@users.noreply.github.com"
