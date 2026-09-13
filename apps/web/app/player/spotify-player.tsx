@@ -16,7 +16,7 @@ import {
   useLatest,
   useTransport,
 } from "./embed";
-import { usePlayerControls } from "./player-context";
+import { spotifyIsLeading, stopLeadingWithSpotify, usePlayerControls } from "./player-context";
 
 const SpotifySdkPlayer = dynamic(() =>
   import("./spotify-sdk-player").then((m) => m.SpotifySdkPlayer),
@@ -247,6 +247,20 @@ export function SpotifyPlayer({
           trackId={trackId}
           onOutcome={(outcome) => {
             if (outcome.kind !== "unavailable") return;
+
+            // Downgrading to the 30-second embed was the right answer while Spotify was the last
+            // rung on the ladder: nothing else could play the track, so a clip with a line of
+            // PREVIEW_REASONS explaining it beat silence. Spotify leads now, which inverts that —
+            // YouTube has not had its turn, and a clip the queue cannot advance past is worse than
+            // the fallback sitting right there unused. So hand the verdict to the ladder instead,
+            // and for the verdicts that are a property of this browser or this account rather than
+            // of one track, say so once so the next song does not open here at all.
+            if (spotifyIsLeading()) {
+              if (SESSION_WIDE.has(outcome.reason)) stopLeadingWithSpotify();
+              live.current.handleError(`Spotify could not play it (${outcome.reason})`, true);
+              return;
+            }
+
             if (SESSION_WIDE.has(outcome.reason)) {
               sessionFailure = { token, reason: outcome.reason };
             }
