@@ -5,11 +5,13 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { PlusIcon } from "../icons";
 import { Caption, Notice } from "../page-chrome";
+import { importHistory } from "../player/history-store";
 import { useFilePicker } from "../profile/image-picker";
 import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { applyProfile, hasLocalProfile } from "../profile/profile-backup";
 import { readProfileExport, type ProfileExport } from "../profile/profile-file";
+import { importPlayLog } from "../stats/play-log";
 import { ExportMenu } from "./export-menu";
 import { importLikedSongs } from "./likes-store";
 import { LikedTile } from "./liked-tile";
@@ -65,6 +67,9 @@ export function PlaylistGrid({
   );
 }
 
+const listOf = (names: string[]) =>
+  names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+
 export function LibraryView() {
   const { playlists, settled, error } = usePlaylists();
   const profile = useLocalProfile();
@@ -75,20 +80,32 @@ export function LibraryView() {
   const picker = useFilePicker("application/json,.json", "Couldn't read that file.", async (file) => {
     setNotice(null);
     setOffered(null);
-    const data = JSON.parse(await file.text()) as { liked?: unknown; profile?: unknown };
+    const data = JSON.parse(await file.text()) as {
+      liked?: unknown;
+      profile?: unknown;
+      history?: unknown;
+      plays?: unknown;
+    };
     const added = importPlaylists(data);
     const likes = importLikedSongs(data.liked);
+    // Version 2 files carry neither, and say so by leaving the keys out.
+    const played = importHistory(data.history) + importPlayLog(data.plays);
     const lists = [
       added > 0 || likes === 0 ? `${added} playlist${added === 1 ? "" : "s"}` : null,
       likes > 0 ? `${likes} liked song${likes === 1 ? "" : "s"}` : null,
+      played > 0 ? `${played} play${played === 1 ? "" : "s"}` : null,
     ]
       .filter(Boolean)
-      .join(" and ");
+      .join(", ");
     const incoming = readProfileExport(data.profile);
 
     if (incoming && !hasLocalProfile()) {
       await applyProfile(incoming);
-      setNotice(added > 0 || likes > 0 ? `Imported ${lists}, and your profile.` : "Imported your profile.");
+      setNotice(
+        added > 0 || likes > 0 || played > 0
+          ? `Imported ${lists}, and your profile.`
+          : "Imported your profile.",
+      );
     } else {
       setOffered(incoming);
       setNotice(`Imported ${lists}.`);
@@ -110,8 +127,12 @@ export function LibraryView() {
   async function adopt(incoming: ProfileExport) {
     setOffered(null);
     try {
-      await applyProfile(incoming);
-      setNotice("Profile replaced with the one from the file.");
+      const applied = await applyProfile(incoming);
+      setNotice(
+        applied.length === 3
+          ? "Profile replaced with the one from the file."
+          : `Took the ${listOf(applied)} from the file; the rest of your profile is unchanged.`,
+      );
     } catch (cause) {
       picker.setError(cause instanceof Error ? cause.message : "Couldn't use that profile.");
     }
