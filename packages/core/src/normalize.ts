@@ -105,3 +105,22 @@ export function dedupeKey(title: string, artists: string[]): string {
 export function durationsMatch(a: number | null, b: number | null, toleranceMs = 3_000): boolean {
   return a === null || b === null || Math.abs(a - b) <= toleranceMs;
 }
+
+/**
+ * An ISRC reduced to the twelve characters it actually is, or null if it isn't one.
+ *
+ * The standard is written `CC-XXX-YY-NNNNN` and spelled by each source however it likes:
+ * Deezer emits it bare, while SoundCloud's (`publisher_metadata.isrc`) and Audius's are typed
+ * by the uploader, hyphens, lower case and all. Compared byte for byte, `gb-aaw-95-00189` and
+ * `GBAAW9500189` are two different recordings — which split one song into two rows, each
+ * holding half its sources, so a song with a playable copy could present as one without.
+ *
+ * Anything that is not an ISRC comes back null rather than being trusted as an identity: this
+ * value is a merge key *and* the song's id, so a free-text field full of something else must
+ * not decide either.
+ */
+export function normalizeIsrc(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const bare = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  return /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/.test(bare) ? bare : null;
+}
