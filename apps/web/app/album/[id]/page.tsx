@@ -16,7 +16,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function AlbumPage({ params }: Props) {
-  const album = await fetchAlbum((await params).id).catch(() => null);
+  // Deliberately uncaught: `fetchAlbum` throws when Deezer could not answer, and this page is
+  // force-static, so turning that into notFound() would cache the wrong answer for an hour.
+  // The boundary in error.tsx offers a retry instead.
+  const album = await fetchAlbum((await params).id);
   if (!album) notFound();
 
   return <AlbumView album={album} />;

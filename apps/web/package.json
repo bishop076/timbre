@@ -7,7 +7,7 @@
     "build": "dotenv -e ../../.env -- next build",
     "start": "dotenv -e ../../.env -- next start",
     "lint": "eslint",
-    "test": "node --test \"app/**/*.test.ts\" \"lib/**/*.test.ts\"",
+    "test": "node --import ./test-hooks.mjs --test \"app/**/*.test.ts\" \"lib/**/*.test.ts\"",
     "typecheck": "next typegen && tsc --noEmit && tsc -p sw"
   },
   "postcss": {
