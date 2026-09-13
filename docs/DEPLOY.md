@@ -103,6 +103,26 @@ Done in that order nothing 401s at any point. Done as a single swap on each side
 every search fails until both have finished deploying — which is why the list
 exists.
 
+**Step 1 needs the old value, and the CLI cannot give it to you.** `vercel env add`
+stores as type `Secret` by default, and the CLI says so: *"This value is hidden in the
+dashboard and unavailable to pulls; use `--type config` for values you need to read
+later."* So `vercel env pull` returns an eleven-character placeholder where the secret
+should be — long enough to look like a short secret, which is the trap. Read the real
+value from the Vercel dashboard, or accept the window below.
+
+**Rotated 2026-09-13 without the old value**, because it could not be read. The window
+is smaller than it looks if you order the redeploys by duration rather than by role:
+update **both** environment variables first (nothing changes until a redeploy), then
+redeploy the **web app** and wait for it to go live, and only then the sidecar. Nothing
+breaks while the web app builds — both old deployments still agree — and the outage is
+just the sidecar's redeploy, which is 17s against the web app's 1m. Doing it the other
+way round makes the gap the longer of the two. Measured: health and an end-to-end search
+both correct immediately after.
+
+Removing the variable removes **every** environment it was set for, not just the one
+named. The sidecar's was `Production, Preview`; after `vercel env rm … production` the
+Preview entry was gone too and had to be re-added.
+
 Then verify, with `$SEC` set to that value:
 
 ```bash

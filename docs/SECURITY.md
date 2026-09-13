@@ -947,11 +947,21 @@ digest, uv by version, and the lock is exported with hashes and installed with
 `--require-hashes`. `.dockerignore` carries every pattern the fix below asks for. Each
 of these is at the lines cited below.
 
-**Still open: the secret-strength check only warns, deliberately.** A secret under 32
+**The blocker on the secret-strength check is gone as of 2026-09-13.** A secret under 32
 characters logs a warning at boot instead of refusing to start
-(`apps/ytmusic/app/config.py:4,18-23`). The length of the secret deployed on Vercel could
-not be verified, and refusing to boot would have taken the sidecar down on the next
-deploy. It can become a refusal once the deployed secret is known to be long enough.
+(`apps/ytmusic/app/config.py:4,18-23`). The condition this entry set for making it a
+refusal — *"once the deployed secret is known to be long enough"* — is now met: both
+Vercel projects were rotated to freshly generated 64-character values, so the deployed
+length is known rather than assumed, and a refusal would no longer take the sidecar down
+on the next deploy. **The change itself is still not made**, and should be a deliberate
+one: it converts a warning into a boot failure, so it wants landing when someone can
+watch the deploy rather than riding along with unrelated work.
+
+Note what nearly went wrong while establishing this. `vercel env pull` returns an
+eleven-character placeholder for a `Secret`-typed variable, not the value — and eleven
+characters reads exactly like a real secret that is too short. Taken at face value it
+would have looked like confirmation of this very finding. It was caught by checking the
+string's shape rather than its length; see DEPLOY.md.
 **uv itself followed in `c124f7c`:** it now comes from `ghcr.io/astral-sh/uv:0.12.5`
 pinned by digest, in a build stage that never reaches the final image, and CI builds the
 sidecar image on every push.
@@ -1032,11 +1042,18 @@ The email pair was a Mailpit address on `localhost` and carried no password at a
 was sitting there was five dead values rather than five live ones — but that is a finding,
 not a presumption, and the difference is exactly why they were read before being deleted.
 
-**The live secret is a separate matter, and is open.** `YTMUSIC_SHARED_SECRET` is 64 hex
-characters, comfortably past `MIN_SECRET_LENGTH`, and is the one value in the file that
-authenticates anything. It was disclosed to a transcript on 2026-09-13 and should be
-rotated. The sidecar's comma-separated list exists precisely so that can happen without
-downtime, and the deployed environment has to move with it.
+**The live secret was disclosed, and has been rotated. Closed 2026-09-13.** The local
+`YTMUSIC_SHARED_SECRET` reached a transcript, so it was replaced in place with a fresh 64
+hex characters, and the sidecar was confirmed to load the new one.
+
+Production was rotated too, on the owner's instruction, even though it could not be shown
+to share the disclosed value — the sidecar sits behind Vercel deployment protection, so
+every probe from outside returns 302 before the app sees it, and the stored value cannot
+be read back. Unprovable either way was not a reason to leave a 23-day-old shared secret
+standing. Both projects now hold independent freshly generated values, and preview holds a
+third rather than borrowing production's. Verified after: `/api/health` reports the sidecar
+ok, and an end-to-end search returns the result RUNNING.md documents as correct. The
+window and why it was unavoidable are in DEPLOY.md.
 
 - **pnpm 11.10.0** (`packageManager` in `package.json:20`) was inside
   GHSA-c59q-g84q-2gj5 · CVE-2026-82392 (`>=11.0.0 <11.11.0`, high): a crafted
