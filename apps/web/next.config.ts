@@ -30,9 +30,10 @@ const COMMIT =
   process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA ?? process.env.GIT_COMMIT ?? "";
 
 // Every origin the top document loads a script from or frames. Verified against the code
-// rather than guessed: the five script hosts are the `API_SRC`/`SDK_SRC` constants in
+// rather than guessed: the script hosts start at the `API_SRC`/`SDK_SRC` constants in
 // app/player/*, and the frame hosts are the four `<iframe>` sites plus the players those
-// SDKs inject for themselves.
+// SDKs inject for themselves. A constant is only where an origin starts, though — an API
+// that is a loader adds a host the code never names, which is what the two below are.
 const PLAYERS = [
   "https://www.youtube.com",
   "https://w.soundcloud.com",
@@ -46,6 +47,14 @@ const PLAYERS = [
 // preconnects to both, which is the evidence they are talked to from this document.
 const SOUNDCLOUD_ASSETS = "https://widget.sndcdn.com https://api-widget.soundcloud.com";
 
+// Spotify's embed API is a loader and nothing else: `open.spotify.com/embed/iframe-api/v1`
+// injects one script from here, and *that* is what calls `onSpotifyIframeApiReady`. Naming
+// only the loader let it through and blocked the bundle, so every Spotify-only track died at
+// the 8s timeout in spotify-player.tsx with "No source here could play this one." Read off
+// the loader's own response body, not guessed. The Web Playback SDK at sdk.scdn.co, and both
+// Mixcloud APIs, were checked the same way and pull nothing beyond origins already named.
+const SPOTIFY_EMBED_ASSETS = "https://embed-cdn.spotifycdn.com";
+
 const IN_PRODUCTION = process.env.NODE_ENV === "production";
 
 const REPORT_TO = "/api/csp-report";
@@ -55,7 +64,7 @@ const CONTENT_SECURITY_POLICY = [
   // React's development build needs `eval` for its debugging features — reconstructing a
   // callstack from another environment, chiefly — so without this every dev page load logs
   // a CSP error and the overlay reports an issue. Production never calls `eval`.
-  `script-src 'self' 'unsafe-inline'${IN_PRODUCTION ? "" : " 'unsafe-eval'"} ${PLAYERS} ${SOUNDCLOUD_ASSETS}`,
+  `script-src 'self' 'unsafe-inline'${IN_PRODUCTION ? "" : " 'unsafe-eval'"} ${PLAYERS} ${SOUNDCLOUD_ASSETS} ${SPOTIFY_EMBED_ASSETS}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
