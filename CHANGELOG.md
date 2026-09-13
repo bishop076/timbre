@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.7 — 13 September 2026
+
+### Fixed
+
+- **api** — three misreports a production build found that no test could
+
 ## 0.17.6 — 13 September 2026
 
 ### Fixed
