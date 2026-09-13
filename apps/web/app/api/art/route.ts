@@ -22,7 +22,23 @@ export async function GET(request: Request) {
   if (upstream === null) return new Response("Host not allowed.", { status: 403 });
 
   const type = upstream.headers.get("content-type") ?? "";
-  if (!upstream.ok || !isRasterImage(type)) {
+
+  // A CDN that refuses is not a cover that does not exist, and the two used to leave here as
+  // the same 404 "Not an image." Found live: a burst of a dozen concurrent covers made Deezer
+  // start refusing, every one came back 404, and `<Artwork>` drew the placeholder it draws for
+  // a song with no art — B-37's symptom exactly, from a different cause. A reload a moment
+  // later served all of them. Say which it was, and never let a refusal be cached as an
+  // answer: the success path below is `immutable` for a year.
+  if (!upstream.ok) {
+    void upstream.body?.cancel();
+    const missing = upstream.status === 404 || upstream.status === 410;
+    return new Response(missing ? "No such image." : "Upstream refused.", {
+      status: missing ? 404 : 502,
+      headers: { "cache-control": "no-store" },
+    });
+  }
+
+  if (!isRasterImage(type)) {
     void upstream.body?.cancel();
     return new Response("Not an image.", { status: 404 });
   }
