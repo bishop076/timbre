@@ -16,7 +16,8 @@ import {
   useLatest,
   useTransport,
 } from "./embed";
-import { spotifyIsLeading, stopLeadingWithSpotify, usePlayerControls } from "./player-context";
+import { usePlayerControls } from "./player-context";
+import { afterSpotifyRefusal, SESSION_WIDE } from "./spotify-lead";
 
 const SpotifySdkPlayer = dynamic(() =>
   import("./spotify-sdk-player").then((m) => m.SpotifySdkPlayer),
@@ -46,23 +47,6 @@ const PREVIEW_REASONS: Record<string, string> = {
   "device-offline":
     "Spotify's player disconnected — another device may have taken over the session. This is their 30-second preview.",
 };
-
-// Some verdicts are a property of this browser and this session, not of the track: a blocker
-// killing spclient.spotify.com, a free account, a browser that cannot run the SDK at all.
-// Held per track, each of those cost a fresh 10s of spinning before *every* Spotify song —
-// B-35's mistake inverted, session-wide state scoped to a single attempt. The ones that can
-// genuinely differ between tracks (`refused`, `playback_error`, `device-offline`) stay per
-// track, and the verdict is filed against the token it was reached under, so a reconnect
-// retires the ones a reconnect actually fixes.
-const SESSION_WIDE = new Set([
-  "not-connected",
-  "sdk-failed",
-  "blocked",
-  "initialization_error",
-  "authentication_error",
-  "account_error",
-  "stale-scopes",
-]);
 
 let sessionFailure: { token: string | null; reason: string } | null = null;
 
@@ -255,8 +239,7 @@ export function SpotifyPlayer({
             // the fallback sitting right there unused. So hand the verdict to the ladder instead,
             // and for the verdicts that are a property of this browser or this account rather than
             // of one track, say so once so the next song does not open here at all.
-            if (spotifyIsLeading()) {
-              if (SESSION_WIDE.has(outcome.reason)) stopLeadingWithSpotify();
+            if (afterSpotifyRefusal(outcome.reason) === "fall-through") {
               live.current.handleError(`Spotify could not play it (${outcome.reason})`, true);
               return;
             }
