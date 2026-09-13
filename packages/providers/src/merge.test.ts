@@ -220,3 +220,33 @@ test("a track carrying an ISRC joins the group that holds it, not the first titl
   const owner = songs.find((song) => song.isrc === "GBK3W2000225")!;
   assert.deepEqual(sourcesOf(owner).sort(), ["deezer", "soundcloud", "ytmusic"]);
 });
+
+test("an ISRC spelled differently by two sources is still one song", () => {
+  const [song, ...rest] = mergeTracks([
+    track({ source: "deezer", isrc: "GBAAW9500189" }),
+    track({ source: "soundcloud", isrc: "gb-aaw-95-00189", title: "Bittersweet Symphony " }),
+  ]);
+
+  assert.equal(rest.length, 0, "hyphens and case are spelling, not identity");
+  assert.deepEqual(
+    song!.sources.map((entry) => entry.source).sort(),
+    ["deezer", "soundcloud"],
+  );
+  assert.equal(song!.isrc, "GBAAW9500189", "the canonical form is what the song carries");
+  assert.equal(song!.id, "GBAAW9500189");
+});
+
+test("a free-text isrc field that is not an ISRC decides nothing", () => {
+  const songs = mergeTracks([
+    track({ source: "audius", isrc: "none", title: "One" }),
+    track({ source: "deezer", isrc: "n/a", title: "Two" }),
+  ]);
+
+  // Two unrelated songs, each with junk where an ISRC should be. Trusting it byte-for-byte
+  // would have merged them on "not an ISRC" — and made it the id of whichever won.
+  assert.equal(songs.length, 2);
+  assert.deepEqual(
+    songs.map((entry) => entry.isrc),
+    [null, null],
+  );
+});

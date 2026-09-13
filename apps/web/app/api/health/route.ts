@@ -1,5 +1,6 @@
 import { guard } from "@/lib/api";
 import { getEnv, hasSoundCloud } from "@/lib/env";
+import { describeError, log } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,11 @@ async function checkYtMusic(url: string): Promise<{ status: "ok" | "error"; deta
     if (response.ok) return { status: "ok" };
     return { status: "error", detail: `sidecar returned ${response.status}` };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "sidecar unreachable";
-    return { status: "error", detail };
+    // `error.message` here is the platform's own text — "connect ECONNREFUSED 127.0.0.1:8787"
+    // and the like — returned verbatim to an unauthenticated caller, while every log path in
+    // the app scrubs through `describeError`. Say what happened, not where.
+    log("warn", "health_sidecar_unreachable", { ...describeError(error) });
+    return { status: "error", detail: "sidecar unreachable" };
   }
 }
 
