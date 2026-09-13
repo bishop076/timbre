@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
+import { getHistorySnapshot } from "../player/history-store";
 import { exportProfile } from "../profile/profile-backup";
+import { getPlayLog } from "../stats/play-log";
 import { playlistsToCsv } from "./csv";
 import { getLikedSongs, useLikes } from "./likes-store";
 import { allPlaylists, exportPlaylists } from "./store";
@@ -30,7 +32,13 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
     setBusy(true);
     try {
       const profile = withProfile ? await exportProfile() : null;
-      const file = exportPlaylists({ profile, liked: withProfile ? getLikedSongs() : [] });
+      const file = exportPlaylists({
+        profile,
+        liked: withProfile ? getLikedSongs() : [],
+        // "Back up everything" has to mean it: these two are what /stats, Recently played and
+        // the For-you shelves are built from, and a backup without them loses all of it.
+        ...(withProfile ? { history: getHistorySnapshot(), plays: getPlayLog() } : {}),
+      });
       saveFile(
         JSON.stringify(file, null, 2),
         "application/json",

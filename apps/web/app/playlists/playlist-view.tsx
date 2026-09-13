@@ -16,6 +16,9 @@ import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
 
+/** Below this a playlist is short enough to scan, so the filter field stays out of the way. */
+const FILTER_MIN = 10;
+
 export function PlaylistView({ id }: { id: string }) {
   const [filter, setFilter] = useState("");
   const { play, current, state } = usePlayerControls();
@@ -52,9 +55,27 @@ export function PlaylistView({ id }: { id: string }) {
   }
 
   const { songs } = playlist;
-  const term = filter.trim().toLowerCase();
+  const origin = { kind: "playlist" as const, id: playlist.id };
+  // The filter field only renders past FILTER_MIN songs, but `filter` lives above it and
+  // nothing reset it: filtering an 11-song playlist and then deleting matched songs until
+  // nine were left unmounted the field with the term still set, leaving "Nothing in this
+  // playlist matches …" and no control anywhere to clear it — the survivors were unreachable
+  // without a reload. Deriving the term from whether the field is on screen means the state
+  // cannot outlive the only thing that can clear it.
+  const filtering = songs.length >= FILTER_MIN;
+  const term = filtering ? filter.trim().toLowerCase() : "";
+  // `${id}-${position}` changed on both rows of every move, so React unmounted and remounted
+  // them instead of moving them — and the arrows live in a `group-hover` wrapper, so the
+  // button just clicked vanished from under the pointer. Numbering only the repeats of an id
+  // gives a key that a reorder does not disturb, while still being unique when a playlist
+  // holds the same song twice.
+  const seen = new Map<string, number>();
   const visible = songs
-    .map((song, position) => ({ song, position }))
+    .map((song, position) => {
+      const repeat = seen.get(song.id) ?? 0;
+      seen.set(song.id, repeat + 1);
+      return { song, position, key: repeat === 0 ? song.id : `${song.id}#${repeat}` };
+    })
     .filter(
       ({ song }) =>
         term === "" ||
@@ -79,7 +100,7 @@ export function PlaylistView({ id }: { id: string }) {
         <p className="mt-2 text-xs text-[var(--fg-faint)]">
           {songs.length} {songs.length === 1 ? "song" : "songs"}
         </p>
-        <PlayRow songs={songs} origin={{ kind: "playlist", id: playlist.id }}>
+        <PlayRow songs={songs} origin={origin}>
           <PlaylistActions id={playlist.id} name={playlist.name} onDeletedGoTo="/library" />
         </PlayRow>
       </PageHeader>
@@ -100,7 +121,7 @@ export function PlaylistView({ id }: { id: string }) {
         )}
       </div>
 
-      {songs.length >= 10 && (
+      {filtering && (
         <SearchField
           value={filter}
           onChange={setFilter}
@@ -122,11 +143,18 @@ export function PlaylistView({ id }: { id: string }) {
         </EmptyNotice>
       ) : (
         <ul className="divide-y divide-[var(--line)]">
-          {visible.map(({ song, position }) => (
+          {visible.map(({ song, position, key }) => (
             <SongRow
-              key={`${song.id}-${position}`}
+              key={key}
               song={song}
-              onPlay={() => play(song, songs)}
+              onPlay={() =>
+                play(
+                  song,
+                  [...songs.slice(position), ...songs.slice(0, position)],
+                  undefined,
+                  origin,
+                )
+              }
               isCurrent={current?.id === song.id}
               isPlaying={state === "playing"}
               rank={position + 1}

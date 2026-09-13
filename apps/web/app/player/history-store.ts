@@ -48,6 +48,31 @@ const store = createJsonStore("timbre:history", EMPTY, (stored) => {
 
 export const getHistorySnapshot = store.getSnapshot;
 
+/**
+ * Appends a backup's recently-played list to this browser's, skipping songs already in it,
+ * and returns how many were new. History carries no timestamps, so imported entries land
+ * behind what this browser played itself rather than being interleaved by guesswork.
+ */
+export function importHistory(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  const incoming = value.map(played).filter((entry): entry is PlayedSong => entry !== null);
+  if (incoming.length === 0) return 0;
+
+  const current = getHistorySnapshot();
+  const seen = new Set(current.map((entry) => entry.id));
+  const merged = [...current];
+  for (const entry of incoming) {
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    merged.push(entry);
+  }
+
+  const next = merged.slice(0, LIMIT);
+  if (next.length === current.length) return 0;
+  store.save(next);
+  return next.length - current.length;
+}
+
 export function useHistory(): PlayedSong[] {
   return useLocalStore(store);
 }

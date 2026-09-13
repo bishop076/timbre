@@ -83,6 +83,7 @@ function persist(): void {
 }
 
 export const loadPlaylists = store.load;
+export const getPlaylistsState = store.getSnapshot;
 
 export function usePlaylists(): PlaylistsState {
   return useLocalStore(store);
@@ -129,16 +130,42 @@ export function deletePlaylist(id: string): void {
   persist();
 }
 
-export function addSongToPlaylist(id: string, song: Song): void {
-  addSongsToPlaylist(id, [song]);
+export function addSongToPlaylist(id: string, song: Song): number {
+  return addSongsToPlaylist(id, [song]);
 }
 
-export function addSongsToPlaylist(id: string, songs: readonly Song[]): void {
-  update(id, (playlist) =>
-    songs.length > 0
-      ? { songs: [...playlist.songs, ...songs.map((song) => ({ ...song, from: undefined }))] }
-      : null,
-  );
+/** The playlists that already hold this song, so a menu can say so before it adds a second. */
+export function playlistsHolding(songId: string): Set<string> {
+  const holders = new Set<string>();
+  for (const playlist of held()) {
+    if (playlist.songs.some((song) => song.id === songId)) holders.add(playlist.id);
+  }
+  return holders;
+}
+
+/**
+ * Appends, skipping songs the playlist already holds and repeats inside the batch itself.
+ *
+ * Nothing checked membership before: `likes-store` guards with `isLikedIn`, playlists did not,
+ * and the menu shows a track count rather than "already in this list" — so re-saving a song
+ * you had just saved silently stored it twice. The cover collage then drew the same art four
+ * times, the queue carried the duplicate (`play` only de-dupes the song it was handed), and
+ * the sidebar rendered two `<li>` under one key and lit both as playing.
+ */
+export function addSongsToPlaylist(id: string, songs: readonly Song[]): number {
+  let added = 0;
+  update(id, (playlist) => {
+    const known = new Set(playlist.songs.map((song) => song.id));
+    const fresh: Song[] = [];
+    for (const song of songs) {
+      if (known.has(song.id)) continue;
+      known.add(song.id);
+      fresh.push({ ...song, from: undefined });
+    }
+    added = fresh.length;
+    return fresh.length > 0 ? { songs: [...playlist.songs, ...fresh] } : null;
+  });
+  return added;
 }
 
 export function removeSongAt(id: string, position: number): void {
@@ -178,17 +205,36 @@ export function addSourcesToSong(songId: string, found: Song["sources"]): number
   return changed;
 }
 
+/**
+ * The backup file. Version 3 adds `history` and `plays`.
+ *
+ * Version 2 carried playlists, the profile and liked songs and nothing else — so "Back up
+ * everything … For this browser or your next one" shipped a file with no listening history
+ * and no play log in it, which between them are the only data behind /stats, Recently played,
+ * the search suggestions and the whole For-you system. Migrating browsers on that promise
+ * lost every play count silently. `importPlaylists` still reads version 2; the new keys are
+ * simply absent there.
+ */
 export function exportPlaylists({
   profile,
   liked,
-}: { profile?: ProfileExport | null; liked?: Song[] } = {}) {
+  history,
+  plays,
+}: {
+  profile?: ProfileExport | null;
+  liked?: Song[];
+  history?: unknown;
+  plays?: unknown;
+} = {}) {
   return {
     format: "timbre.playlists",
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     playlists: all,
     ...(profile ? { profile } : {}),
     ...(liked?.length ? { liked } : {}),
+    ...(Array.isArray(history) && history.length > 0 ? { history } : {}),
+    ...(plays ? { plays } : {}),
   };
 }
 
@@ -207,21 +253,63 @@ export function importPlaylists(data: unknown): number {
       typeof playlist?.name === "string" && Array.isArray(playlist.songs),
   );
   if (incoming.length === 0) {
-    if (readProfileExport(file.profile) || (Array.isArray(file.liked) && file.liked.length > 0)) return 0;
+    const carriesSomething =
+      readProfileExport(file.profile) ||
+      (Array.isArray(file.liked) && file.liked.length > 0) ||
+      (Array.isArray(file.history) && file.history.length > 0) ||
+      Boolean(file.plays);
+    if (carriesSomething) return 0;
     throw new Error("That file has no playlists in it.");
   }
 
   const now = new Date().toISOString();
-  all = [
-    ...incoming.map((playlist) => ({
-      id: crypto.randomUUID(),
-      name: playlist.name.trim().slice(0, 120) || "Imported playlist",
+  const existing = held();
+
+  // Re-importing the same file used to double the whole library: every incoming playlist was
+  // minted a fresh `crypto.randomUUID()` and prepended, so nothing could ever recognise a
+  // playlist it already had, and there is no undo. Liked songs in the very same file *are*
+  // de-duped (`likes-store.ts`), which is what made the asymmetry a surprise rather than a
+  // rule. Carry the exported id across so a playlist keeps its identity between browsers, and
+  // fall back to the name for files old enough not to carry one. A match merges: songs the
+  // list already holds are left alone, and anything new is appended.
+  const byId = new Map(existing.map((playlist) => [playlist.id, playlist]));
+  const byName = new Map(existing.map((playlist) => [playlist.name.toLowerCase(), playlist]));
+
+  const added: LocalPlaylist[] = [];
+  for (const playlist of incoming) {
+    const id = typeof playlist.id === "string" && playlist.id ? playlist.id.slice(0, 120) : null;
+    const name = playlist.name.trim().slice(0, 120) || "Imported playlist";
+    const songs = usableSongs(playlist.songs);
+
+    const match = (id && byId.get(id)) || byName.get(name.toLowerCase());
+    if (match) {
+      const known = new Set(match.songs.map((song) => song.id));
+      const fresh: Song[] = [];
+      for (const song of songs) {
+        if (known.has(song.id)) continue;
+        known.add(song.id);
+        fresh.push(song);
+      }
+      if (fresh.length > 0) {
+        match.songs = [...match.songs, ...fresh];
+        match.updatedAt = now;
+      }
+      continue;
+    }
+
+    const made: LocalPlaylist = {
+      id: id && !byId.has(id) ? id : crypto.randomUUID(),
+      name,
       createdAt: text(playlist.createdAt, now),
       updatedAt: now,
-      songs: usableSongs(playlist.songs),
-    })),
-    ...held(),
-  ];
+      songs,
+    };
+    byId.set(made.id, made);
+    byName.set(made.name.toLowerCase(), made);
+    added.push(made);
+  }
+
+  all = [...added, ...existing];
   persist();
   return incoming.length;
 }

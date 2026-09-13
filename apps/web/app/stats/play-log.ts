@@ -61,8 +61,44 @@ export function parsePlayLog(raw: unknown, limit = PLAY_LOG_LIMIT): PlayLog {
 
 const store = createJsonStore("timbre:plays", EMPTY_LOG, parsePlayLog);
 
+export const getPlayLog = store.getSnapshot;
+
 export function usePlayLog(): PlayLog {
   return useLocalStore(store);
+}
+
+/**
+ * Merges a backup's play log into this browser's, newest first, and returns how many plays
+ * were new. A play is identified by its song and its timestamp, so importing the same file
+ * twice adds nothing the second time.
+ */
+export function importPlayLog(value: unknown, limit = PLAY_LOG_LIMIT): number {
+  const incoming = parsePlayLog(value, limit);
+  if (incoming.plays.length === 0) return 0;
+
+  const current = store.getSnapshot();
+  const key = ([id, at]: PlayLog["plays"][number]) => `${id}@${at}`;
+  const seen = new Set(current.plays.map(key));
+
+  let added = 0;
+  const plays = [...current.plays];
+  for (const play of incoming.plays) {
+    if (seen.has(key(play))) continue;
+    seen.add(key(play));
+    plays.push(play);
+    added += 1;
+  }
+  if (added === 0) return 0;
+
+  plays.sort((a, b) => b[1] - a[1]);
+  const kept = plays.slice(0, limit);
+  const songs: Record<string, PlayedSong> = {};
+  for (const [id] of kept) {
+    const record = loggedSong(current, id) ?? loggedSong(incoming, id);
+    if (record) songs[id] = record;
+  }
+  store.save({ plays: kept, songs });
+  return added;
 }
 
 export function logPlay(song: PlayedSong, at = Date.now()): void {

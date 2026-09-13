@@ -6,7 +6,14 @@ import { createPortal } from "react-dom";
 import { CheckIcon, PlaylistAddIcon, PlusIcon } from "../icons";
 import { Caption } from "../page-chrome";
 import type { Song } from "../types";
-import { addSongToPlaylist, createPlaylist, loadPlaylists, usePlaylists } from "./store";
+import {
+  addSongToPlaylist,
+  createPlaylist,
+  getPlaylistsState,
+  loadPlaylists,
+  playlistsHolding,
+  usePlaylists,
+} from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
 export function AddToPlaylist({ song, className }: { song: Song; className?: string }) {
@@ -15,6 +22,10 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
   const { playlists, error } = usePlaylists();
   const { open, setOpen, close, root, trigger, menu, placed, style } = useAnchoredMenu();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Nothing used to say a list already held this song — the menu showed a track count and
+  // nothing else — so a second click on a list you had just saved to silently stored a
+  // duplicate. The store refuses the duplicate now; this is the half that says so.
+  const holding = open ? playlistsHolding(song.id) : null;
 
   const cancelClose = useCallback(() => {
     if (closeTimer.current !== null) clearTimeout(closeTimer.current);
@@ -47,6 +58,14 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
 
   function save(playlistId: string) {
     addSongToPlaylist(playlistId, song);
+    // A failed write leaves the mutated playlist in memory, so the row still reads as saved
+    // while the song is in fact gone on reload. The warning `persist()` publishes used to be
+    // rendered inside this menu and then closed over 700 ms later, taking the only notice of
+    // the failure with it. Hold the menu open instead and let the alert stand.
+    if (getPlaylistsState().error) {
+      setSaved(null);
+      return;
+    }
     setSaved(playlistId);
     closeSoon();
   }
@@ -97,8 +116,11 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
                   className="flex w-full items-center gap-2 rounded-[var(--r-sm)] px-2 py-2 text-left text-[13px] font-medium hover:bg-[var(--surface-2)]"
                 >
                   <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
-                  {saved === playlist.id ? (
-                    <CheckIcon className="size-4 shrink-0 text-[var(--accent)]" />
+                  {saved === playlist.id || holding?.has(playlist.id) ? (
+                    <CheckIcon
+                      className="size-4 shrink-0 text-[var(--accent)]"
+                      aria-label="Already in this playlist"
+                    />
                   ) : (
                     <span className="shrink-0 text-[11px] tabular-nums text-[var(--fg-faint)]">
                       {playlist.trackCount}

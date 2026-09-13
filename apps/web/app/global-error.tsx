@@ -4,21 +4,65 @@ function ownedKeys(): string[] {
   return Object.keys(localStorage).filter((key) => key.startsWith("timbre:"));
 }
 
+/** The keys the envelope below lifts into named fields, so they are not repeated under `storage`. */
+const CARRIED = new Set(["timbre:playlists", "timbre:likes", "timbre:history", "timbre:plays"]);
+
+function readJson(key: string): unknown {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The escape hatch on the crash screen, and the copy below calls the file it writes the only
+ * way back — so it has to be a file the app can actually read back. It used to dump raw
+ * localStorage keyed by name (`{"timbre:playlists": "<json string>", …}`), a shape both
+ * `importPlaylists` and `readProfileExport` reject out of hand. Write the same
+ * `timbre.playlists` v3 envelope the Export menu writes, and carry the unrecognised keys
+ * alongside under `storage` so nothing is lost even though the importer ignores them.
+ *
+ * Spotify's tokens stay out of it, as they always did.
+ */
+function backupFile(): string {
+  const rest: Record<string, string | null> = {};
+  for (const key of ownedKeys()) {
+    if (key.startsWith("timbre:spotify")) continue;
+    if (!CARRIED.has(key)) rest[key] = localStorage.getItem(key);
+  }
+
+  return JSON.stringify(
+    {
+      format: "timbre.playlists",
+      version: 3,
+      exportedAt: new Date().toISOString(),
+      playlists: readJson("timbre:playlists") ?? [],
+      liked: readJson("timbre:likes") ?? [],
+      history: readJson("timbre:history") ?? [],
+      plays: readJson("timbre:plays"),
+      storage: rest,
+    },
+    null,
+    2,
+  );
+}
+
+/**
+ * Not appended to the document and revoked in the same tick, this silently did nothing at all
+ * in Firefox — on the one screen whose whole purpose is rescuing data before a reset.
+ * `playlists/export-menu.tsx` has had the right idiom the whole time; this is it.
+ */
 function download(): void {
   try {
-    const dump = Object.fromEntries(
-      ownedKeys()
-        .filter((key) => !key.startsWith("timbre:spotify"))
-        .map((key) => [key, localStorage.getItem(key)]),
-    );
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" }),
-    );
+    const url = URL.createObjectURL(new Blob([backupFile()], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "timbre-storage-backup.json";
+    link.download = `timbre-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   } catch {}
 }
 
