@@ -929,6 +929,24 @@ image. It was found by opening the app and looking at the network panel.
 | **Cause** | `script-src` named `https://open.spotify.com`, the `API_SRC` constant in `spotify-player.tsx`. But that URL is **a loader and nothing else** — it injects one script from `embed-cdn.spotifycdn.com`, and that bundle is what calls `onSpotifyIframeApiReady`. The loader was allowed, the bundle refused, so the callback never fired. |
 | **Fix** | `SPOTIFY_EMBED_ASSETS` adds `https://embed-cdn.spotifycdn.com` to `script-src` in `next.config.ts`. |
 
+**It took two fixes, and the first one only exposed the second.** With the origin
+allowed, the bundle downloaded and then threw `EvalError` — it evaluates a string
+at `iframe-api/src/v1/index.ts`, and `'unsafe-eval'` was granted to development
+only, on a comment reading "Production never calls `eval`." That was true of our
+code and was never checked against the third-party bundles the page loads. So the
+symptom did not change at all between the two fixes: same 8s timeout, same "No
+source here could play this one.", a different directive refusing a different
+thing. Both are `script-src`; only the second is a real weakening, and E-14 now
+carries it.
+
+**A dev-only directive cannot fail in development, which is the whole trap.** The
+dev server grants `'unsafe-eval'`, so the header renders correctly there and the
+embed works; CI never loads a page at all. Checking the fix against a local dev
+server — which is what was done — could not have caught it, and neither could
+typecheck, lint or 514 tests. Only the production header on a real Spotify track
+shows it. **Verify a `script-src` change against `NODE_ENV=production`**, or the
+next dev-only branch of this policy will do the same thing.
+
 **This was shipped by E-14's own resolution, hours earlier.** That entry enumerated
 the script origins *from the code* and said so as a virtue — "more reliable than a
 console sweep". It is more reliable for the origins a constant names, and blind to

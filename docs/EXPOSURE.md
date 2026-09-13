@@ -521,6 +521,22 @@ to catch exactly this had no collector behind it, and the one signal it did
 produce needed someone to have a console open on a Spotify track. Enforcement
 found it in hours because blocking is the only report a user files.
 
+**`'unsafe-eval'` is now granted in production too, and that is a downgrade.** The
+entry above rested on "`script-src` keeps `'unsafe-inline'`" being the only
+concession, with the policy still buying `object-src 'none'`, `base-uri`,
+`form-action`, `frame-ancestors` and an origin allowlist. That is still true, but
+`script-src` no longer refuses evaluated strings, so an injected script has one
+more way to run. Against a browser holding a Spotify refresh token — the reason
+this entry was re-rated `high` — that is the wrong direction, and it is being
+recorded as a loss rather than presented as neutral.
+
+**It is not optional at this altitude.** Spotify's embed bundle evaluates a
+string to initialise; without the directive there is no embed controller, and
+Spotify tracks do not play. **The way out is isolation, not tightening:** serve
+the embed from an origin of its own, give that origin the loose policy, and drive
+it over `postMessage`, so `'unsafe-eval'` never applies to the document that can
+read `localStorage`. That is the next thing this entry should be judged on.
+
 ## E-15 · The `timbre-name` cookie is not `Secure` `FIXED`
 
 **Severity:** low.
