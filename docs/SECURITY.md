@@ -529,7 +529,7 @@ search under the deadline.
 
 ---
 
-# S-10 · Three server-rendered pages call no `guard()`, and are uncached on every hit `PARTLY FIXED`
+# S-10 · Three server-rendered pages call no `guard()`, and are uncached on every hit `FIXED`
 
 **Severity:** `MEDIUM` — A06:2025 Insecure Design. Cost and availability. **Confirmed
 live.**
@@ -558,8 +558,22 @@ two minutes — so a fresh `/artist/<anything>` no longer fans out to every sour
 
 **Still open:**
 
-- **A failure can be cached like an answer** on the album and collection pages, and in
-  the artist page's header and discography.
+- ~~**A failure can be cached like an answer**~~ — **fixed 2026-09-13 in `5953138`.**
+  `deezerOrFail` throws `DeezerUnavailable` where `deezer` swallowed, and the split is by
+  Deezer's own error code, checked against the live API: `800 DataException` is the only
+  one that means genuinely absent, `4` and `700` are transient, and the deterministic rest
+  (a malformed path, a bad parameter) read as absent because retrying cannot change them.
+  Network failure, a non-ok status and an unparseable body are unavailability. Only the
+  entity lookups moved — `fetchAlbum`, `fromPlaylist`, `fromRadio`, and `fromYouTube`,
+  whose `catch` was flattening a distinction the sidecar already made with `softStatuses`.
+  Lists and feeds still degrade to empty. Both pages gained an `error.tsx`, so the failure
+  offers a retry rather than a crash. **What made it testable:** `import "server-only"`
+  throws under `node --test`, which is why no lib module carrying it had a test;
+  `--conditions=react-server` is the documented workaround and is wrong here, because it
+  also swaps React for its react-server build and twenty existing tests fail on it.
+  `apps/web/test-hooks.mjs` maps that one specifier. Web suite 301 → 316.
+
+  The original finding, for the record:
   `deezer()` returns `null` for "not found" and "failed" alike
   (`apps/web/lib/deezer.ts:15-28`), and each page turns `null` into `notFound()`
   (`album/[id]/page.tsx:19-20`, `collection/[kind]/[id]/page.tsx:36-37`). The Spotify
@@ -1380,22 +1394,21 @@ non-root, `--require-hashes`), `.dockerignore` covering `.env*`, SHA-pinned Acti
 `persist-credentials: false`, and `UPSTREAM_TABLE` pinned to a commit rather than a branch.
 `.env` has never been committed — checked with `--diff-filter=A` over all refs.
 
-**Still open:** E-7, narrowed by S-20 but not closed. S-10's Deezer "not found" versus
-"failed". S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. On the CSP, the next step is
+**Still open:** E-7, narrowed by S-20 but not closed. S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. On the CSP, the next step is
 `connect-src`, which now has reports behind it. **S-19's `.env` leftovers are closed** —
 read, found dead, and removed in place the same day; what remains under that entry is
 rotating the one live secret.
 
-**Sequenced behind another session, not overlooked.** S-10's remaining half lives in
+**S-10 landed after this pass, once the files came free.** S-10's remaining half lives in
 `apps/web/lib/deezer.ts` and `packages/providers/src/deezer.ts`. A parallel session held
 both for most of this pass with an `Accept-Language` fix — Deezer localises artist and genre
 names to the country it geolocates the request IP to, which also broke `merge.ts`, whose
 cross-provider dedupe keys on the artist name. They have since moved it to branch
-`fix/deezer-locale` and returned the files. S-10 is queued behind that branch landing rather
-than taken now, because its fix sits in the same function as their hunk: `deezer()` returns
-`null` for both "no such artist" and "the request failed", and `lib/api.ts` caches the
-second as though it were the first. Whichever lands second takes the conflict, and theirs is
-already written.
+`fix/deezer-locale` and returned the files. They landed it as `c9b6497`, and S-10 went in on top as
+`5953138` — sequenced rather than raced, because both edit the same function. Their
+observation while handing it over is in the fix: the `catch` at the foot of `deezer()`
+swallowed aborts, timeouts and parse failures too, so the distinction was lost twice, not
+once.
 
 ## Fifth pass, 2026-09-13
 
