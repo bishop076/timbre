@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { MemoryBucketStore, ProviderError, RateLimiter } from "@timbre/core";
 
 import type { SearchProvider } from "./types.ts";
-import { AUDIUS_HOSTS, createAudiusProvider } from "./audius.ts";
+import { audiusCover, AUDIUS_HOSTS, createAudiusProvider } from "./audius.ts";
 
 const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
 
@@ -127,5 +127,53 @@ test("the caller's own abort is not a host failure", async () => {
 
     await provider.search!(ctx, "delilah", 5);
     assert.deepEqual(asked, [PRIMARY, PRIMARY]);
+  });
+});
+
+test("a cover is pinned to Audius's own host, whatever node the response names", () => {
+  const cid = "baeaaaiqsecd464n7qxtqqo67upgngf2fcajvoo34d77qqipyxnu2vpqazrwom";
+
+  // The hosts a live /v1/tracks/trending answered with on 2026-09-13.
+  for (const host of [
+    "https://audius-creator-7.theblueprint.xyz",
+    "https://cn1.mainnet.audiusindex.org",
+    "https://val014.open-audio-validator.com",
+    "https://v.monophonic.digital",
+  ]) {
+    assert.equal(
+      audiusCover(`${host}/content/${cid}/480x480.jpg`),
+      `${PRIMARY}/content/${cid}/480x480.jpg`,
+    );
+  }
+
+  assert.equal(audiusCover(`${PRIMARY}/content/${cid}/150x150.jpg`), `${PRIMARY}/content/${cid}/150x150.jpg`);
+  assert.equal(audiusCover(undefined), null);
+});
+
+test("anything that is not a cover path is dropped rather than re-hosted", () => {
+  // A path Audius never mints for artwork must not become an api.audius.co request.
+  assert.equal(audiusCover("https://api.audius.co/v1/tracks?query=x"), null);
+  assert.equal(audiusCover("https://evil.example/content/abc/480x480.jpg/../../v1/users"), null);
+  assert.equal(audiusCover("https://evil.example/steal"), null);
+  assert.equal(audiusCover("https://evil.example/content/abc/999x999.jpg"), null);
+  assert.equal(audiusCover("not a url"), null);
+});
+
+test("mirror hosts never reach the browser", async () => {
+  const track = {
+    id: "abc",
+    title: "Delilah",
+    user: { name: "Someone" },
+    stream_conditions: null,
+    artwork: {
+      "480x480": "https://audius-creator-7.theblueprint.xyz/content/abc123/480x480.jpg",
+      mirrors: ["https://val014.open-audio-validator.com", "https://v.monophonic.digital"],
+    },
+  };
+
+  await withHosts({ [PRIMARY]: () => json({ data: [track] }) }, async (provider) => {
+    const [found] = await provider.search!(ctx, "delilah", 5);
+    assert.equal(found?.artworkUrl, `${PRIMARY}/content/abc123/480x480.jpg`);
+    assert.equal(found?.artworkFallbacks, undefined);
   });
 });

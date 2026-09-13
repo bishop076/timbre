@@ -41,14 +41,20 @@ function playable(raw: AudiusTrack): boolean {
   return raw.stream_conditions === null || raw.stream_conditions === undefined;
 }
 
-function artworkMirrors(primary: string | undefined, mirrors: string[] | undefined) {
-  if (!primary || !mirrors?.length) return undefined;
-  try {
-    const path = new URL(primary).pathname;
-    return mirrors.map((host) => `${host.replace(/\/+$/, "")}${path}`);
-  } catch {
-    return undefined;
-  }
+// Audius stores covers on community-run content nodes, so a response names whatever hosts
+// hold that track — `audius-creator-7.theblueprint.xyz`, `cn1.mainnet.audiusindex.org`,
+// `v.monophonic.digital` — and `artwork.mirrors` is a list of more of them. Handing those
+// to the browser would tell a stranger's server who is listening, and would walk past
+// `/api/art` entirely, since `proxied()` returns an unlisted host unchanged. Audius serves
+// the same bytes from its own API host, so keep the path and drop the host. `usableArtwork`
+// in the web app does this for a stored song; doing it here means a live search result is
+// already safe before it leaves the server, and the mirrors become the same URL as the
+// primary — which is why they are no longer carried.
+const COVER_PATH = /^\/content\/[A-Za-z0-9]+\/(?:150x150|480x480|1000x1000)\.jpg$/;
+
+export function audiusCover(raw: string | undefined): string | null {
+  const url = raw ? URL.parse(raw) : null;
+  return url && COVER_PATH.test(url.pathname) ? `${AUDIUS_HOSTS[0]}${url.pathname}` : null;
 }
 
 function permalinkUrl(permalink: string | undefined): string | null {
@@ -68,8 +74,7 @@ function toSourceTrack(raw: AudiusTrack): SourceTrack {
     durationMs: raw.duration ? raw.duration * 1000 : null,
     isrc: raw.isrc?.trim() || null,
     url: permalinkUrl(raw.permalink),
-    artworkUrl: artwork ?? null,
-    artworkFallbacks: artworkMirrors(artwork, raw.artwork?.mirrors),
+    artworkUrl: audiusCover(artwork),
     playback: "queue",
   };
 }
