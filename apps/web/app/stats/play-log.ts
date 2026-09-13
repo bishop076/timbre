@@ -1,5 +1,6 @@
 import { createJsonStore, useLocalStore } from "../local-store.ts";
 import type { PlayedSong } from "../player/history-store";
+import { usableArtwork } from "../song-shape.ts";
 
 export interface PlayLog {
   plays: [id: string, at: number][];
@@ -36,9 +37,12 @@ export function parsePlayLog(raw: unknown, limit = PLAY_LOG_LIMIT): PlayLog {
   const { plays, songs } = raw as { plays?: unknown; songs?: unknown };
   if (!Array.isArray(plays) || typeof songs !== "object" || songs === null) return EMPTY_LOG;
 
+  // Same rule as the history store: a stored cover is kept only if `/api/art` would serve
+  // it, so an old entry naming a third-party host stops being drawn from that host.
   const known: Record<string, PlayedSong> = {};
   for (const [id, song] of Object.entries(songs)) {
-    if (song?.id === id && typeof song.title === "string") known[id] = song;
+    if (song?.id !== id || typeof song.title !== "string") continue;
+    known[id] = { ...song, artworkUrl: usableArtwork(song.artworkUrl) };
   }
 
   const kept: PlayLog["plays"] = [];
