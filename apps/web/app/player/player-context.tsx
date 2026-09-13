@@ -12,27 +12,52 @@ import {
   type ReactNode,
 } from "react";
 
-import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
+import {
+  createLocalStore,
+  createNotifier,
+  useLocalStore,
+} from "../local-store.ts";
 import { log } from "../logs.ts";
 import { addSourcesToSong } from "../playlists/store";
+import { getSpotifyTokens } from "../spotify/token-store.ts";
 import type { Song, SongsResponse } from "../types";
 import { drawRadio } from "./draw-radio";
 import { getHistorySnapshot, recordPlay } from "./history-store";
 import { playedHandle } from "./played-handle";
 import { getPlaybackPrefs, usePlaybackPrefs } from "./playback-prefs";
-import { insertAfter, moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
+import {
+  insertAfter,
+  moveWithin,
+  removeAt as removeFromQueue,
+  type QueueEdit,
+} from "./queue-ops";
 import { takeTrackEndStop } from "./sleep-timer.ts";
-import { plausiblySameSong, sameTrack } from "./song-match";
-import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
-import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
+import { plausiblySameSong, rankMatches, sameTrack } from "./song-match";
+import {
+  forgetFailedSource,
+  pickSource,
+  rememberedSource,
+} from "./source-choice";
+import {
+  isProgressive,
+  streamUrlFor,
+  type ProgressiveSource,
+} from "./stream-url";
 import { useTabSync } from "./use-tab-sync";
 import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
-import { whyLeftYouTube, type LeftYouTube, type YouTubeFailures } from "./youtube-refusal";
+import {
+  whyLeftYouTube,
+  type LeftYouTube,
+  type YouTubeFailures,
+} from "./youtube-refusal";
 
 const RADIO_POOL = 50;
 const RADIO_PICKS = 25;
+const RADIO_RETRIES = 2;
+const RADIO_RETRY_MS = 2500;
 
-export type PlayState = "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
+export type PlayState =
+  "idle" | "resolving" | "loading" | "playing" | "paused" | "unplayable";
 
 export type RepeatMode = "off" | "all" | "one";
 
@@ -50,7 +75,11 @@ const ticks = createNotifier();
 let progressSnapshot = ZERO_PROGRESS;
 
 function writeProgress(position: number, duration: number): void {
-  if (position === progressSnapshot.position && duration === progressSnapshot.duration) return;
+  if (
+    position === progressSnapshot.position &&
+    duration === progressSnapshot.duration
+  )
+    return;
   progressSnapshot = { position, duration };
   ticks.emit();
 }
@@ -65,12 +94,17 @@ const PlayerContext = createContext<PlayerControls | null>(null);
 
 export function usePlayerControls(): PlayerControls {
   const context = useContext(PlayerContext);
-  if (!context) throw new Error("usePlayer must be used inside <PlayerProvider>.");
+  if (!context)
+    throw new Error("usePlayer must be used inside <PlayerProvider>.");
   return context;
 }
 
 export function usePlayerProgress() {
-  return useSyncExternalStore(ticks.subscribe, () => progressSnapshot, () => ZERO_PROGRESS);
+  return useSyncExternalStore(
+    ticks.subscribe,
+    () => progressSnapshot,
+    () => ZERO_PROGRESS,
+  );
 }
 
 export function usePlayer() {
@@ -94,7 +128,9 @@ function renew(ref: { current: AbortController | null }): AbortController {
 }
 
 function youtubeIdOf(song: Song): string | null {
-  return song.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null;
+  return (
+    song.sources.find((source) => source.source === "ytmusic")?.sourceId ?? null
+  );
 }
 
 function youtubeIds(songs: Song[]): string[] {
@@ -103,18 +139,26 @@ function youtubeIds(songs: Song[]): string[] {
 
 async function findMatches(song: Song, signal: AbortSignal): Promise<Song[]> {
   const query = [song.title, song.artists[0]].filter(Boolean).join(" ");
-  const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`, { signal });
+  const response = await fetch(
+    `/api/search?q=${encodeURIComponent(query)}&limit=10`,
+    { signal },
+  );
   if (!response.ok) throw new Error("search failed");
   const data = (await response.json()) as SongsResponse;
-  return data.songs.filter((found) => plausiblySameSong(song, found));
+  return rankMatches(
+    song,
+    data.songs.filter((found) => plausiblySameSong(song, found)),
+  );
 }
 
 // Names no cause, as B-33's three codes do. An extension, a network filter and this site's own
 // Content-Security-Policy all present identically here, and the app cannot tell them apart —
 // `POST /api/csp-report` is what distinguishes the third.
 const GAVE_UP_ON_YOUTUBE: Record<LeftYouTube, string> = {
-  blocked: "YouTube's player never loaded here, and nothing else could play it.",
-  refused: "YouTube refused this connection (a VPN, maybe), and nothing else could play it.",
+  blocked:
+    "YouTube's player never loaded here, and nothing else could play it.",
+  refused:
+    "YouTube refused this connection (a VPN, maybe), and nothing else could play it.",
 };
 
 function giveUpReason(
@@ -131,14 +175,19 @@ function giveUpReason(
       ? "The only copy on YouTube wouldn't play here, and nothing else could either."
       : `None of the ${youtubeCopies} copies on YouTube would play here, and nothing else could either.`;
   }
-  if (triedProgressive) return "This track wouldn't stream, and there's no copy on YouTube.";
+  if (triedProgressive)
+    return "This track wouldn't stream, and there's no copy on YouTube.";
   return "No source here could play this one.";
 }
 
 function progressiveOf(song: Song) {
   const found = song.sources.find((source) => isProgressive(source.source));
   return found && isProgressive(found.source)
-    ? { kind: "progressive" as const, source: found.source, sourceId: found.sourceId }
+    ? {
+        kind: "progressive" as const,
+        source: found.source,
+        sourceId: found.sourceId,
+      }
     : null;
 }
 
@@ -154,32 +203,54 @@ function chosenSource(song: Song, source: string): ChosenSource | null {
   if (!track) return null;
 
   const id = track.sourceId;
-  if (source === "soundcloud") return track.url ? { kind: "soundcloud", url: track.url } : null;
+  if (source === "soundcloud")
+    return track.url ? { kind: "soundcloud", url: track.url } : null;
   if (source === "ytmusic" || source === "mixcloud" || source === "spotify") {
     return id ? { kind: source, id } : null;
   }
-  if (isProgressive(source)) return id ? { kind: "progressive", source, sourceId: id } : null;
-  if ((source === "apple" || source === "deezer") && id) return { kind: "subscription", source, id };
-  return track.previewUrl ? { kind: "preview", source, url: track.previewUrl } : null;
+  if (isProgressive(source))
+    return id ? { kind: "progressive", source, sourceId: id } : null;
+  if ((source === "apple" || source === "deezer") && id)
+    return { kind: "subscription", source, id };
+  return track.previewUrl
+    ? { kind: "preview", source, url: track.previewUrl }
+    : null;
 }
 
 function ownSource(song: Song): ChosenSource | null {
-  return progressiveOf(song) ?? chosenSource(song, "mixcloud") ?? chosenSource(song, "soundcloud");
+  return (
+    progressiveOf(song) ??
+    chosenSource(song, "mixcloud") ??
+    chosenSource(song, "soundcloud")
+  );
 }
 
-export function playbackFrom(song: Song, source: string): "queue" | "manual" | "preview" | null {
+export function playbackFrom(
+  song: Song,
+  source: string,
+): "queue" | "manual" | "preview" | null {
   const kind = chosenSource(song, source)?.kind;
   if (!kind) return null;
   if (kind === "spotify" || kind === "subscription") return "manual";
   return kind === "preview" ? "preview" : "queue";
 }
 
+// Leading with Spotify is only right while Spotify is carrying playback. A free account is the
+// case that cannot be read up front: `spotify-player.tsx` downgrades the SDK to the 30-second
+// embed on `account_error` without telling the ladder, so nothing here would learn it and every
+// song after would open on a clip the queue cannot advance past. One song falling through with
+// its Spotify rung already spent is that evidence, arriving late but in time to matter — step
+// back to YouTube-first for the rest of the session. A reload tries again, which is right: the
+// usual cause is a token, and reconnecting is the fix the copy in that file tells people to apply.
+let spotifyCanLead = true;
+
 function spentKey(chosen: ChosenSource): string {
   return chosen.kind === "spotify" ? `spotify:${chosen.id}` : chosen.kind;
 }
 
 function problemFor(chosen: ChosenSource): string | null {
-  if (chosen.kind === "preview") return "Only a 30-second preview — nothing can play this one in full.";
+  if (chosen.kind === "preview")
+    return "Only a 30-second preview — nothing can play this one in full.";
   if (chosen.kind !== "subscription") return null;
   const name = chosen.source === "apple" ? "Apple Music" : "Deezer";
   return `${name} plays this one — press it to start. Signed-in subscribers get the whole song.`;
@@ -196,7 +267,9 @@ const DEFAULT_MODES: PlayModes = { shuffle: false, repeat: "off" };
 
 function readModes(): PlayModes {
   try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(MODES_KEY) ?? "null");
+    const parsed: unknown = JSON.parse(
+      window.localStorage.getItem(MODES_KEY) ?? "null",
+    );
     if (typeof parsed !== "object" || parsed === null) return DEFAULT_MODES;
     const { shuffle, repeat } = parsed as Partial<PlayModes>;
     return {
@@ -216,13 +289,16 @@ const modeStore = createLocalStore<PlayModes>({
 
 function cycleRepeat(): void {
   const modes = modeStore.getSnapshot();
-  const repeat = modes.repeat === "off" ? "all" : modes.repeat === "all" ? "one" : "off";
+  const repeat =
+    modes.repeat === "off" ? "all" : modes.repeat === "all" ? "one" : "off";
   modeStore.save({ ...modes, repeat });
 }
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = usePlayerValue();
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  return (
+    <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>
+  );
 }
 
 function usePlayerValue() {
@@ -232,7 +308,8 @@ function usePlayerValue() {
   const [queueOrigin, setQueueOrigin] = useState<QueueOrigin | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState<ChosenSource | null>(null);
-  const [youtubeTurnedAway, setYoutubeTurnedAway] = useState<LeftYouTube | null>(null);
+  const [youtubeTurnedAway, setYoutubeTurnedAway] =
+    useState<LeftYouTube | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -268,10 +345,13 @@ function usePlayerValue() {
   const rescued = useRef<Set<string>>(new Set());
   const recorded = useRef<string | null>(null);
   const steered = useRef<string | null>(null);
-  const warmed = useRef(new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>());
+  const warmed = useRef(
+    new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>(),
+  );
 
   const current = queue[index] ?? null;
-  const activeSource = playing && ("source" in playing ? playing.source : playing.kind);
+  const activeSource =
+    playing && ("source" in playing ? playing.source : playing.kind);
   const videoId = playing?.kind === "ytmusic" ? playing.id : null;
   const soundcloudUrl = playing?.kind === "soundcloud" ? playing.url : null;
   const mixcloudKey = playing?.kind === "mixcloud" ? playing.id : null;
@@ -285,11 +365,14 @@ function usePlayerValue() {
         ? playing.url
         : null;
 
-  const writeQueue = useCallback((next: Song[] | ((queued: Song[]) => Song[])) => {
-    const value = typeof next === "function" ? next(queueRef.current) : next;
-    queueRef.current = value;
-    setQueue(value);
-  }, []);
+  const writeQueue = useCallback(
+    (next: Song[] | ((queued: Song[]) => Song[])) => {
+      const value = typeof next === "function" ? next(queueRef.current) : next;
+      queueRef.current = value;
+      setQueue(value);
+    },
+    [],
+  );
 
   const dropRadio = useCallback(() => {
     radioRequest.current?.abort();
@@ -306,24 +389,31 @@ function usePlayerValue() {
     setState(chosen.kind === "subscription" ? "paused" : "loading");
   }, []);
 
-  const matchesFor = useCallback((song: Song, signal: AbortSignal): Promise<Song[]> => {
-    const early = warmed.current.get(song.id);
-    if (!early) return findMatches(song, signal);
-    warmed.current.delete(song.id);
+  const matchesFor = useCallback(
+    (song: Song, signal: AbortSignal): Promise<Song[]> => {
+      const early = warmed.current.get(song.id);
+      if (!early) return findMatches(song, signal);
+      warmed.current.delete(song.id);
 
-    return new Promise<Song[]>((resolve, reject) => {
-      const abort = () => reject(new DOMException("Aborted", "AbortError"));
-      if (signal.aborted) return abort();
-      signal.addEventListener("abort", abort, { once: true });
-      early.matches
-        .catch(() => findMatches(song, signal))
-        .then(resolve, reject)
-        .finally(() => signal.removeEventListener("abort", abort));
-    });
-  }, []);
+      return new Promise<Song[]>((resolve, reject) => {
+        const abort = () => reject(new DOMException("Aborted", "AbortError"));
+        if (signal.aborted) return abort();
+        signal.addEventListener("abort", abort, { once: true });
+        early.matches
+          .catch(() => findMatches(song, signal))
+          .then(resolve, reject)
+          .finally(() => signal.removeEventListener("abort", abort));
+      });
+    },
+    [],
+  );
 
   const adoptElsewhere = useCallback(
-    (song: Song, matches: Song[], { mixcloud }: { mixcloud: boolean }): boolean => {
+    (
+      song: Song,
+      matches: Song[],
+      { mixcloud }: { mixcloud: boolean },
+    ): boolean => {
       if (rescued.current.has(song.id)) return false;
 
       const playable = (match: Song) =>
@@ -342,7 +432,9 @@ function usePlayerValue() {
         durationMs: song.durationMs ?? elsewhere.durationMs,
       };
       songRef.current = repaired;
-      writeQueue((queued) => queued.map((entry) => (entry.id === song.id ? repaired : entry)));
+      writeQueue((queued) =>
+        queued.map((entry) => (entry.id === song.id ? repaired : entry)),
+      );
       const repairedLists = addSourcesToSong(song.id, elsewhere.sources);
       if (repairedLists > 0) {
         log(
@@ -379,18 +471,31 @@ function usePlayerValue() {
       writeProgress(0, song.durationMs ? song.durationMs / 1000 : 0);
 
       prefer ??= rememberedSource(song);
-      const named = prefer && prefer !== "ytmusic" ? chosenSource(song, prefer) : null;
+      const named =
+        prefer && prefer !== "ytmusic" ? chosenSource(song, prefer) : null;
       if (prefer && named) {
         steered.current = prefer;
         return start(named);
       }
+
+      // Spotify first, when Spotify can actually carry a queue. Connected, the Web Playback SDK
+      // plays the whole track and reports its own end, so the next song follows; signed out, this
+      // source is a 30-second clip behind a press — `playbackFrom` calls it "manual" — and leading
+      // with it would stall the queue on every track that has it. So the order turns on the
+      // tokens rather than on the source list, and YouTube stays the opening move without them.
+      const spotifyFirst =
+        spotifyCanLead && getSpotifyTokens()
+          ? chosenSource(song, "spotify")
+          : null;
+      if (spotifyFirst) return start(spotifyFirst);
 
       const direct = youtubeIdOf(song);
       if (direct) {
         start({ kind: "ytmusic", id: direct });
         void findMatches(song, signal)
           .then((found) => {
-            if (songRef.current === song) candidates.current = youtubeIds(found);
+            if (songRef.current === song)
+              candidates.current = youtubeIds(found);
           })
           .catch(() => {});
         return;
@@ -410,7 +515,10 @@ function usePlayerValue() {
         if (first) return start({ kind: "ytmusic", id: first });
         if (adoptElsewhere(song, matches, { mixcloud: true })) return;
         if (spotify) {
-          log("warn", `“${song.title}” fell back to Spotify's embed — nothing else could play it`);
+          log(
+            "warn",
+            `“${song.title}” fell back to Spotify's embed — nothing else could play it`,
+          );
           return start(spotify);
         }
         const preview = previewOf(song);
@@ -437,7 +545,12 @@ function usePlayerValue() {
 
   const openSong = useCallback(
     (song: Song, prefer?: string) => {
-      if (!prefer && song.id === songRef.current?.id && settled(stateRef.current)) restart(false);
+      if (
+        !prefer &&
+        song.id === songRef.current?.id &&
+        settled(stateRef.current)
+      )
+        restart(false);
       else void load(song, prefer);
     },
     [load, restart],
@@ -446,9 +559,13 @@ function usePlayerValue() {
   const play = useCallback(
     (song: Song, rest: Song[] = [], prefer?: string, origin?: QueueOrigin) => {
       if (prefer) pickSource(song, prefer, playbackFrom(song, prefer));
-      const switchingSource = prefer && rest.length === 0 && songRef.current?.id === song.id;
+      const switchingSource =
+        prefer && rest.length === 0 && songRef.current?.id === song.id;
       if (!switchingSource) {
-        writeQueue([song, ...rest.filter((candidate) => candidate.id !== song.id)]);
+        writeQueue([
+          song,
+          ...rest.filter((candidate) => candidate.id !== song.id),
+        ]);
         setIndex(0);
         // Only a fresh queue changes where playback came from; swapping a song's source does not.
         setQueueOrigin(origin ?? null);
@@ -470,7 +587,9 @@ function usePlayerValue() {
 
   const unqueued = useCallback(
     (additions: Song[]) =>
-      additions.filter((song) => !queue.some((queued) => sameTrack(queued, song))),
+      additions.filter(
+        (song) => !queue.some((queued) => sameTrack(queued, song)),
+      ),
     [queue],
   );
 
@@ -501,7 +620,16 @@ function usePlayerValue() {
     // eslint-disable-next-line react-hooks/refs
     if (shuffle ? unplayed().length > 0 : index + 1 < queue.length) return true;
     return continueWithRadio && unqueued(radio).length > 0;
-  }, [continueWithRadio, index, queue, radio, repeat, shuffle, unplayed, unqueued]);
+  }, [
+    continueWithRadio,
+    index,
+    queue,
+    radio,
+    repeat,
+    shuffle,
+    unplayed,
+    unqueued,
+  ]);
 
   const advance = useCallback(
     (fromEnd: boolean) => {
@@ -538,7 +666,10 @@ function usePlayerValue() {
   );
 
   const next = useCallback(() => advance(false), [advance]);
-  const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
+  const previous = useCallback(
+    () => goTo(Math.max(0, index - 1)),
+    [goTo, index],
+  );
 
   const handleEnded = useCallback(() => {
     if (takeTrackEndStop()) setState("paused");
@@ -565,7 +696,10 @@ function usePlayerValue() {
   const notQueued = useCallback((additions: Song[]) => {
     const fresh: Song[] = [];
     for (const song of additions) {
-      if (![...queueRef.current, ...fresh].some((other) => sameTrack(other, song))) fresh.push(song);
+      if (
+        ![...queueRef.current, ...fresh].some((other) => sameTrack(other, song))
+      )
+        fresh.push(song);
     }
     return fresh;
   }, []);
@@ -574,7 +708,8 @@ function usePlayerValue() {
     (songs: Song[]) => {
       const fresh = notQueued(songs);
       if (fresh.length === 0) return;
-      if (queueRef.current.length > 0) return writeQueue((queued) => [...queued, ...fresh]);
+      if (queueRef.current.length > 0)
+        return writeQueue((queued) => [...queued, ...fresh]);
       writeQueue(fresh);
       setIndex(0);
       void load(fresh[0]);
@@ -609,8 +744,12 @@ function usePlayerValue() {
 
   const playNext = useCallback(
     (songs: Song[]) => {
-      const at = songs.length === 1 ? queue.findIndex((queued) => sameTrack(queued, songs[0])) : -1;
-      if (at === -1) applyEdit(insertAfter(queueRef.current, index, notQueued(songs)));
+      const at =
+        songs.length === 1
+          ? queue.findIndex((queued) => sameTrack(queued, songs[0]))
+          : -1;
+      if (at === -1)
+        applyEdit(insertAfter(queueRef.current, index, notQueued(songs)));
       else if (at !== index && at !== index + 1) {
         applyEdit(moveWithin(queue, index, at, at < index ? index : index + 1));
       }
@@ -628,29 +767,68 @@ function usePlayerValue() {
     if (!song || !activeSource || seededFor.current === song.id) return;
     seededFor.current = song.id;
 
-    const params = new URLSearchParams({ title: song.title, limit: String(RADIO_POOL) });
+    const params = new URLSearchParams({
+      title: song.title,
+      limit: String(RADIO_POOL),
+    });
     if (videoId) params.set("id", videoId);
     if (song.artists[0]) params.set("artist", song.artists[0]);
 
     const aborter = renew(radioRequest);
-    fetch(`/api/radio?${params}`, { signal: aborter.signal })
-      .then((response) => (response.ok ? (response.json() as Promise<SongsResponse>) : null))
-      .then((data) => {
-        if (aborter.signal.aborted || songRef.current?.id !== song.id) return;
-        const queued = queueRef.current;
-        const drawn = drawRadio(data?.songs ?? [], {
-          count: RADIO_PICKS,
-          exclude: queued,
-          avoid: getHistorySnapshot(),
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    // `seededFor` was claimed above, before the fetch, and every failure path left it claimed:
+    // the `!response.ok` branch turned a 429 into `null` and the bare `.catch` swallowed the
+    // rest. Only `dropRadio()` releases it, and `load` calls that solely when the song *id*
+    // changes — so one bad answer for the last song in a queue was final. `radio` stayed empty,
+    // `hasNext` went false, `advance` fell through to `setState("idle")`, and playback stopped
+    // with no message, no retry and a greyed-out Next button. Retry the fetch, and on giving up
+    // release the claim so a later attempt at the same song can seed it.
+    const giveUp = (why: string) => {
+      log("warn", `Radio: no picks for "${song.title}" — ${why}.`);
+      if (seededFor.current === song.id) seededFor.current = null;
+    };
+
+    const seed = (attempt: number): void => {
+      fetch(`/api/radio?${params}`, { signal: aborter.signal })
+        .then((response) => {
+          if (!response.ok)
+            throw new Error(`/api/radio answered ${response.status}`);
+          return response.json() as Promise<SongsResponse>;
+        })
+        .then((data) => {
+          if (aborter.signal.aborted || songRef.current?.id !== song.id) return;
+          const queued = queueRef.current;
+          const drawn = drawRadio(data.songs ?? [], {
+            count: RADIO_PICKS,
+            exclude: queued,
+            avoid: getHistorySnapshot(),
+          });
+          const parked =
+            indexRef.current < queued.length - 1 ||
+            !getPlaybackPrefs().continueWithRadio;
+          setRadio(parked ? drawn : []);
+          if (!parked && drawn.length > 0)
+            writeQueue((current) => [...current, ...drawn]);
+          // An empty draw is a successful request that still leaves the queue with nowhere to
+          // go, so it releases the claim too rather than pinning the song to no radio at all.
+          if (drawn.length === 0) giveUp("the answer held nothing playable");
+        })
+        .catch((cause: unknown) => {
+          if (aborter.signal.aborted || songRef.current?.id !== song.id) return;
+          const why = cause instanceof Error ? cause.message : String(cause);
+          if (attempt < RADIO_RETRIES) {
+            retry = setTimeout(() => seed(attempt + 1), RADIO_RETRY_MS);
+            return;
+          }
+          giveUp(why);
         });
-        const parked =
-          indexRef.current < queued.length - 1 || !getPlaybackPrefs().continueWithRadio;
-        setRadio(parked ? drawn : []);
-        if (!parked && drawn.length > 0) writeQueue((current) => [...current, ...drawn]);
-      })
-      .catch(() => {});
+    };
+
+    seed(0);
 
     return () => {
+      clearTimeout(retry);
       if (songRef.current?.id !== song.id) aborter.abort();
     };
     // Seeding follows the source actually starting, which is why `queue` and `index` are left
@@ -666,7 +844,9 @@ function usePlayerValue() {
     const upcoming = shuffle
       ? undefined
       : (queue[index + 1] ??
-        (last && continueWithRadio && repeat !== "all" ? unqueued(radio)[0] : undefined));
+        (last && continueWithRadio && repeat !== "all"
+          ? unqueued(radio)[0]
+          : undefined));
 
     for (const [id, early] of warmed.current) {
       if (id === upcoming?.id) continue;
@@ -733,7 +913,11 @@ function usePlayerValue() {
 
       // The log recorded which source refused and what it fell back to, but never that playback
       // simply stopped — the one thing it could not account for afterwards.
-      if (next === "paused" && was === "playing" && Date.now() - asked.current > 1000) {
+      if (
+        next === "paused" &&
+        was === "playing" &&
+        Date.now() - asked.current > 1000
+      ) {
         log(
           "warn",
           `Playback paused on its own (${activeSource ?? "no source"})${
@@ -742,12 +926,22 @@ function usePlayerValue() {
         );
       }
 
-      if (next !== "playing" || !current || recorded.current === current.id) return;
+      if (next !== "playing" || !current || recorded.current === current.id)
+        return;
       recorded.current = current.id;
 
       const { id, title, artists, artworkUrl, from } = current;
       const handle = playedHandle(current, activeSource, videoId);
-      recordPlay({ id, title, artists, artworkUrl, from, videoId, url: null, ...handle });
+      recordPlay({
+        id,
+        title,
+        artists,
+        artworkUrl,
+        from,
+        videoId,
+        url: null,
+        ...handle,
+      });
     },
     [current, videoId, activeSource],
   );
@@ -781,21 +975,56 @@ function usePlayerValue() {
       }
 
       if (!worthRetrying || !song) {
-        log("error", `Gave up on ${song ? `“${song.title}”` : "playback"}: ${reason}`);
+        log(
+          "error",
+          `Gave up on ${song ? `“${song.title}”` : "playback"}: ${reason}`,
+        );
         setState("unplayable");
         setProblem(reason);
         return;
       }
 
-      const warn = (message: string) => log("warn", `“${song.title}” ${message}`);
+      const warn = (message: string) =>
+        log("warn", `“${song.title}” ${message}`);
+
+      const spotifyRung = chosenSource(song, "spotify");
+      if (
+        spotifyCanLead &&
+        spotifyRung &&
+        spent.current.has(spentKey(spotifyRung))
+      ) {
+        spotifyCanLead = false;
+        warn(
+          "fell through with Spotify already spent — YouTube leads again for this session",
+        );
+      }
+
       setState("resolving");
       if (!leftYouTube) {
         try {
-          const onYouTube = song.sources.some((source) => source.source === "ytmusic");
-          if (onYouTube && candidates.current.length === 0) {
-            candidates.current = youtubeIds(await findMatches(song, renew(resolving).signal));
+          // The id the song shipped with is the one a provider asserted *is* this recording.
+          // Searching first and taking a result meant a Spotify track that fell through landed on
+          // whatever the query surfaced — routinely a live cut or a cover — while its own copy sat
+          // unused. Spend that one before asking the search for guesses.
+          const shipped = youtubeIdOf(song);
+          if (shipped && !attempted.current.has(shipped)) {
+            warn(
+              `fell back to the copy it shipped with (${shipped}): ${reason}`,
+            );
+            return start({ kind: "ytmusic", id: shipped });
           }
-          const alternative = candidates.current.find((id) => !attempted.current.has(id));
+
+          const onYouTube = song.sources.some(
+            (source) => source.source === "ytmusic",
+          );
+          if (onYouTube && candidates.current.length === 0) {
+            candidates.current = youtubeIds(
+              await findMatches(song, renew(resolving).signal),
+            );
+          }
+          const alternative = candidates.current.find(
+            (id) => !attempted.current.has(id),
+          );
           if (alternative) {
             warn(
               `fell back to another copy (${alternative}) after ${attempted.current.size}: ${reason}`,
@@ -817,7 +1046,9 @@ function usePlayerValue() {
 
       const soundcloud = chosenSource(song, "soundcloud");
       if (soundcloud && !spent.current.has("soundcloud")) {
-        warn(`fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`);
+        warn(
+          `fell back to SoundCloud after ${attempted.current.size} YouTube copies refused`,
+        );
         return start(soundcloud);
       }
 
@@ -825,7 +1056,9 @@ function usePlayerValue() {
         try {
           const matches = await findMatches(song, renew(resolving).signal);
           if (adoptElsewhere(song, matches, { mixcloud: false })) {
-            warn("was rescued onto another source — nothing it shipped with would play");
+            warn(
+              "was rescued onto another source — nothing it shipped with would play",
+            );
             return;
           }
         } catch (cause) {
@@ -841,7 +1074,9 @@ function usePlayerValue() {
 
       const preview = previewOf(song);
       if (preview && !spent.current.has("preview")) {
-        warn(`fell back to a ${preview.source} preview — nothing plays it in full`);
+        warn(
+          `fell back to a ${preview.source} preview — nothing plays it in full`,
+        );
         return start(preview);
       }
 
@@ -851,7 +1086,9 @@ function usePlayerValue() {
         `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${triedProgressive ? "tried" : "absent"}`,
       );
       setState("unplayable");
-      setProblem(giveUpReason(attempted.current.size, triedProgressive, leftYouTube));
+      setProblem(
+        giveUpReason(attempted.current.size, triedProgressive, leftYouTube),
+      );
     },
     [adoptElsewhere, start],
   );
