@@ -57,8 +57,10 @@ export function MixcloudPlayer({
     let cancelled = false;
     const alive = () => (cancelled ? null : live.current);
     const leaked: EventListenerOrEventListenerObject[] = [];
+    // Mixcloud not loading says nothing about the sources under it, so the ladder keeps walking —
+    // `spent` already holds "mixcloud", and it is not a rung, so this cannot come back round.
     const clearBlocked = blockedTimer("Mixcloud", (reason) =>
-      live.current.handleError(reason, false),
+      live.current.handleError(reason, true),
     );
 
     const host = Object.assign(document.createElement("iframe"), {
@@ -123,7 +125,7 @@ export function MixcloudPlayer({
       .catch(() => {
         if (cancelled) return;
         clearBlocked();
-        live.current.handleError("Couldn't load Mixcloud's player.", false);
+        live.current.handleError("Couldn't load Mixcloud's player.", true);
       });
 
     return () => {
