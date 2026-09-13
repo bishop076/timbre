@@ -43,7 +43,10 @@ export function createArchiveProvider(): SearchProvider {
       const artist = seed.artist;
       if (!artist) return [];
 
-      const query = `collection:etree AND format:"VBR MP3" AND creator:"${artist.replace(/"/g, "")}"`;
+      // `artist` is a query parameter on /api/radio. Stripping the quote alone left the
+      // backslash, and a trailing one escapes the closing quote in Lucene — so `x\` ended
+      // the phrase early and the rest of the name became query syntax. Drop both.
+      const query = `collection:etree AND format:"VBR MP3" AND creator:"${artist.replace(/["\\]/g, "")}"`;
       const found = await request<{ response?: { docs?: ArchiveDoc[] } }>(
         ctx,
         `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl%5B%5D=identifier&fl%5B%5D=creator&fl%5B%5D=title&fl%5B%5D=year&rows=5&output=json`,
