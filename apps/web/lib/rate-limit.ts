@@ -45,7 +45,19 @@ export function createRateLimiter({
   };
 }
 
+// `x-forwarded-for` is whatever the caller sent unless something in front overwrites it, so
+// on a host that does not, a rotating value gives every request its own bucket and the
+// limiter stops existing. Vercel does overwrite it — and separately sets
+// `x-vercel-forwarded-for`, which it never forwards from the caller — so read the headers a
+// proxy owns first and fall back to `x-forwarded-for` only when neither is present. That
+// keeps Vercel exactly as it was and makes the Dockerfile's deployment the weaker case
+// rather than the free one.
+const PROXY_OWNED = ["x-vercel-forwarded-for", "x-real-ip"] as const;
+
 export function clientKey(request: Request): string {
-  const first = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return first || request.headers.get("x-real-ip")?.trim() || "unknown";
+  for (const header of PROXY_OWNED) {
+    const value = request.headers.get(header)?.trim();
+    if (value) return value;
+  }
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 }
