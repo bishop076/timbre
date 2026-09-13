@@ -866,3 +866,28 @@ the tab. Neither is a new mistake — `load` already resets six other refs besid
 (`STOPS_AFTER_ONE`, 0.14.5), so a queue on one does not advance by itself and their picks are
 never made sticky — reaching two in a row takes deliberate pressing. The missing seed was real
 but almost unreachable, which is why it survived.
+
+---
+
+## B-36 · Deezer answered in the language of whatever country the server sat in `FIXED`
+
+**Severity:** high in appearance, and it quietly broke deduplication as well
+
+| | |
+|---|---|
+| **Symptom** | Home billed Tame Impala as テーム・インパラ, Explore's shelves read *"Fresh in ダンス"*, and the Rankings axis was Japanese. Nothing was misconfigured and no setting could change it. |
+| **Cause** | Deezer localises artist names, genre names and editorial titles to the country it geolocates the **request IP** to, and only to that. The PIA exit in use was Tokyo. `?country=US` is accepted and ignored; the only lever is `Accept-Language`, which neither Deezer caller sent. |
+| **Fix** | `apps/web/lib/deezer.ts` and `packages/providers/src/deezer.ts` both send `accept-language: en-US,en;q=0.9` (`c9b6497`). |
+
+**The second half, which nobody was looking for.** `merge.ts` keys cross-provider dedupe on
+the artist name, so a Deezer track returned as テーム・インパラ never merged with its Apple
+or YouTube twin. The same song appeared twice in a result list, with the two halves of its
+sources split between the duplicates — so a song that had a playable copy could present as
+one that did not. Fixing the language fixed the merge, which is why this is filed as a bug
+rather than as a display preference.
+
+**How to see it, and why you probably cannot.** It needs an exit outside an English-speaking
+country; from a UK or US address Deezer answers in English and the defect is invisible. That
+is what kept it unnoticed — it is a property of where the *server* sits, so it would have
+reached production the moment a Vercel region moved. The `spotify-web.ts` caller had set the
+same header since it was written; the two Deezer callers were the ones that never did.
