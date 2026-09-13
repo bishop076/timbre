@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { CloseIcon, SearchIcon } from "./icons";
 import { setSearchQuery, useSearchQuery } from "./search-store";
+import { searchPath } from "./search-url";
 import { SearchSuggestions } from "./search-suggestions";
 import { ProfileButton } from "./shell/sidebar";
 
@@ -40,7 +41,14 @@ export function TopBar() {
 
   function change(value: string) {
     setSearchQuery(value);
-    if (value.trim() && pathname !== "/search") router.push("/search");
+    // Arriving at /search is one history entry; typing once you are there is none. Keystrokes
+    // use replaceState rather than router.replace so the address bar keeps up without asking
+    // the server for the route again on every letter.
+    if (pathname !== "/search") {
+      if (value.trim()) router.push(searchPath(value));
+    } else {
+      window.history.replaceState(null, "", searchPath(value));
+    }
   }
 
   if (!SEARCHABLE.has(pathname)) return null;
@@ -91,7 +99,7 @@ export function TopBar() {
               <button
                 type="button"
                 onClick={() => {
-                  setSearchQuery("");
+                  change("");
                   input.current?.focus();
                 }}
                 aria-label="Clear search"
