@@ -364,6 +364,13 @@ function usePlayerValue() {
       candidates.current = [];
       attempted.current = new Set();
       spent.current = new Set();
+      // Scoped to this walk, like everything above it. `adoptElsewhere` is guarded so that a
+      // rescue whose own source then fails cannot rescue again and loop — that guard belongs to
+      // the attempt, not to the song for the life of the tab. Left standing it outlived its
+      // purpose: `id` is the ISRC where there is one, so meeting the song again in a later
+      // search brought back the original broken sources and the rescue that fixed them once
+      // silently declined to run.
+      rescued.current = new Set();
       youtubeFailures.current = { blocked: false, stalled: false, refusals: 0 };
       recorded.current = null;
       steered.current = null;
@@ -646,8 +653,13 @@ function usePlayerValue() {
     return () => {
       if (songRef.current?.id !== song.id) aborter.abort();
     };
+    // Seeding follows the source actually starting, which is why `queue` and `index` are left
+    // out. `playing` is what all six of the values this used to list are read from, and listing
+    // them separately meant the one with no value of its own — a subscription embed, identified
+    // only by `subscriptionTrack` — never re-seeded: two Apple or Deezer songs in a row left
+    // `seededFor` on the first. One dependency cannot fall out of step with its own derivations.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSource, videoId, streamUrl, soundcloudUrl, mixcloudKey, spotifyTrackId]);
+  }, [playing]);
 
   useEffect(() => {
     const last = index === queue.length - 1;
