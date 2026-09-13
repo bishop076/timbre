@@ -1056,6 +1056,139 @@ downtime, and the deployed environment has to move with it.
 
 ---
 
+# S-21 · A live search draws covers from hosts nobody vetted `FIXED`
+
+**OWASP:** A01:2025 Broken Access Control, as a privacy boundary rather than an authorisation
+one — and the mirror of S-20: that one was what the route *accepts*, this is what the browser
+*fetches* without ever reaching the route.
+
+**Fixed in this pass.** `proxied()` fails open by design — a host that is not on the
+allowlist is returned unchanged rather than dropped (`apps/web/app/artwork-url.ts:16`), so the
+picture still loads, just not through `/api/art`. The "Hostile artwork URLs" row below argues
+that is safe because a cover is "kept only on a host `/api/art` proxies, or as an Audius
+content path rewritten onto `api.audius.co`". That is true of `usableArtwork`, and
+`usableArtwork` runs on a song read back out of **storage** — playlists, likes, the charts
+cache, a tab-sync handoff.
+
+**A live search result is neither imported nor stored.** `/api/search`, `/api/radio` and
+`/api/resolve` are consumed exactly as they arrive, in six places (`search-results.tsx:73`,
+`queue-search.tsx:46`, `player-context.tsx:106` and `:627`, `artist-view.tsx:59`,
+`home-shelves.tsx:68`). Nothing sanitises them, because nothing needed to while every provider
+minted covers on its own CDN.
+
+**Audius does not.** It stores covers on community-run content nodes and names whichever hold
+the track. One call to `/v1/tracks/trending` on 2026-09-13 answered with
+`audius-creator-7.theblueprint.xyz`, `cn1.mainnet.audiusindex.org`, and in `artwork.mirrors`
+`val014.open-audio-validator.com` and `v.monophonic.digital`. So searching anything with an
+Audius hit had the listener's browser fetch from operators nobody vetted: address and user
+agent disclosed, and the allowlist, the 8 MB cap and the raster-only content-type check all
+skipped, because the request never touched the route that enforces them. `img-src` would not
+have helped — it is `https:`, deliberately wide.
+
+**Not code execution.** A cover is an `<img src>`; a script cannot run from one, and
+`usableArtwork` still governs anything that gets saved.
+
+**The fix** rewrites the cover in the provider (`packages/providers/src/audius.ts`), keeping
+the `/content/<cid>/<size>.jpg` path and dropping the host, so the URL is already on
+`api.audius.co` — and therefore already allowlisted, and already the shape S-20 pinned —
+before it leaves the server. `api.audius.co` serves the identical bytes, checked against a
+live cover: same length, same type. That makes the mirrors the same URL as the primary, so
+`artworkFallbacks` is no longer carried for Audius. Twelve assertions added.
+
+**`artworkFallbacks` is now dead plumbing**, still threaded through `types.ts`, `merge.ts:64`,
+`song-shape.ts` and the progressive player. It was left in place: a song stored before this
+change can still carry one, and `usableArtwork` sanitises it on read.
+
+---
+
+# S-22 · Two players set an `<img src>` without proxying it `FIXED`
+
+**Severity:** `LOW` on its own, and the delivery mechanism for S-21.
+
+**Fixed in this pass.** Every cover in the app draws through `<Artwork>` or `cover()`, and
+both call `proxied()`. Four did not, setting `src` to the raw URL: the progressive player
+(`progressive-audio-player.tsx:112`), SoundCloud's expanded view (`soundcloud-player.tsx:190`)
+and Mixcloud's and Spotify's panels. For those last three the host is an allowlisted vendor
+whose iframe the page already loads, so what was lost is the proxy, not the boundary. The
+progressive player is the one that plays Audius, and it also walks `artworkFallbacks` on
+error — one failed load per mirror host, each fetched in turn.
+
+**The first two are fixed here. Mixcloud's and Spotify's are not**, because another session
+held both files while this pass ran. Same one-line change in each.
+
+---
+
+# S-23 · History and the play log kept covers a playlist would have refused `FIXED`
+
+**Severity:** `LOW`, and what turned S-21 from a leak into a standing one.
+
+**Fixed in this pass.** A playlist and a liked song are read back through `usableSong`. The
+history store and the play log had their own weaker checks — `isPlayed` accepted any string as
+`artworkUrl` (`history-store.ts:26`), and `parsePlayLog` kept the whole song object on `id`
+and `title` alone (`play-log.ts:41`).
+
+So the cover that leaked during a search did not leak once. It was written to `localStorage`
+and drawn again from the same third-party host on every later visit to the home and stats
+pages, with no second search. Both now run `usableArtwork`, which also rewrites or drops what
+is already sitting in browsers, on read. Seven assertions added across two new files.
+
+---
+
+# S-24 · The sidecar waited five times longer than anyone was listening `FIXED`
+
+**OWASP:** A06:2025, availability.
+
+**Fixed in this pass.** `ytmusicapi` pins its session to `timeout=30` (`ytmusic.py:233`); the
+web app gives up on the sidecar after 6s (`packages/providers/src/request.ts:5`). Every route
+in the sidecar is a synchronous `def`, so FastAPI runs it in anyio's thread pool — 40 slots.
+On a slow YouTube each abandoned request therefore held a slot for another 24 seconds after
+the only caller had walked away and retried.
+
+`/health` is a synchronous `def` too, and the one route the shared-secret middleware lets
+through, so exhausting that pool also stops the check the web app uses to decide the sidecar
+is alive — the failure reports itself as the wrong thing. `routes/lyrics.py:16` sharpens it: a
+module-level `_mobile_lock` serialises every lyrics request process-wide, so they queue behind
+one 30s timeout at a time.
+
+**The fix** gives the client a session bounded at 8s — above the caller's deadline, so the
+sidecar is never the first to give up on a request someone is still waiting for, and far
+enough under 30 that an abandoned one frees its thread. `_prepare_session` returns a supplied
+session untouched, so the bound is not re-wrapped by the default. **`_mobile_lock` is
+unchanged**, and the sidecar still has no rate limiter of its own.
+
+---
+
+# S-25 · Smaller edges `FIXED`
+
+- **A backslash reached a Lucene phrase.** `/api/radio?artist=` is interpolated into
+  `creator:"..."` for the Archive etree search (`packages/providers/src/archive.ts:46`). The
+  quote was stripped, the backslash was not, and a trailing backslash escapes the closing
+  quote — so a name ending in one closed the phrase early and the rest became query syntax.
+  It steers an archive.org search and discloses nothing. Both characters are dropped now.
+- **A percent in an artist name answered 500.** Next hands the route segment over already
+  decoded, so `/artist/100%25` reached `decodeURIComponent` as `100%` and it threw `URIError`
+  (`apps/web/app/artist-slug.ts:15`). `generateMetadata` calls the same helper and runs
+  outside the route's error boundary, so a crafted URL got a 500 rather than the empty state
+  `error.tsx` exists to show. Decoding now falls back to the raw segment.
+
+---
+
+# S-26 · No upstream read has a size cap `OPEN`
+
+**Severity:** `LOW`. **Not fixed.**
+
+`/api/art` caps a body at 8 MB and streams it through a counter. Nothing else caps anything.
+`spotify-web.ts:85`, `:224` and `:489`, `spotify.ts:127` and `soundcloud-client-id.ts:20` all
+call `.text()` unbounded. The hash-discovery read at `:224` pulls Spotify's web-player bundle
+on a 20s deadline — megabytes — and `soundcloud-client-id.ts` drops its `bytes=0-65535` range
+on the second pass and reads whole bundles.
+
+Every one of those hosts is a vendor rather than an attacker, which is why this is low and why
+it was not fixed in the same pass as the rest: the bound wants to live in `createRequester`,
+where it applies once to every provider, and that is a wider change than the others here.
+
+---
+
 # Verified correct — do not re-investigate
 
 Each of these is a place a vulnerability would normally be, and is not.
@@ -1262,6 +1395,50 @@ than taken now, because its fix sits in the same function as their hunk: `deezer
 `null` for both "no such artist" and "the request failed", and `lib/api.ts` caches the
 second as though it were the first. Whichever lands second takes the conflict, and theirs is
 already written.
+
+## Fifth pass, 2026-09-13
+
+**Against `addfdc9` (local `main`), on branch `security/live-cover-hosts`, unpushed.** The
+fourth pass read the thirty commits since the third; this one re-read the parts no pass had
+opened — both provider packages end to end, the storage and import paths, the sidecar's four
+routes, and the scripts.
+
+- **New: S-21**, live search results carrying covers on unvetted hosts. This is the one worth
+  reading: S-20 tightened what `/api/art` accepts a week earlier, and the leak was on the
+  other side of it — a URL that never reaches the route cannot be refused by it. The reason no
+  earlier pass saw it is recorded in the entry: every sanitiser in this codebase sits on the
+  **storage** path, and a search result is not stored. Confirmed against the live Audius API
+  rather than argued from the code.
+- **New: S-22, S-23**, the two mechanisms that carried it — four `<img src>` set without
+  `proxied()`, and two stores validating covers more loosely than playlists do. `FIXED` except
+  Mixcloud's and Spotify's players, which another session held.
+- **New: S-24**, the sidecar's 30s upstream timeout behind a 6s caller deadline, in a 40-slot
+  thread pool, with `/health` inside the same pool. `FIXED`; `_mobile_lock` left alone.
+- **New: S-25** (Lucene backslash, `URIError` on a percent) `FIXED`, **S-26** (no upstream
+  size cap) `OPEN`.
+
+**Verified correct, this pass:** `core/limiter.ts` (token bucket, refunds on abort, per-key
+serialised), `host-pool.ts`, `image-resize.ts` (25 MB before decode, 5 MB animated), the CSV
+defusing again, `play-log.ts`'s `Object.hasOwn` guards against prototype pollution, every
+player's iframe URL (`encodeURIComponent` onto a fixed base), `free-port.mts` and
+`check-staged-imports.mts` (`execFileSync` with argument arrays, no shell), the sidecar's
+pydantic bounds and `normalize.py`, and `spotify-web.ts`'s bundle-origin pin. The sidecar's
+auth boundary was checked against the running service, not only read: all five POST routes 401
+without the secret and with a wrong one, `/health` 200.
+
+**A claim above is stale.** The table says `/docs`, `/redoc` and `/openapi.json` 404. Since
+S-14 put the middleware in front of every path but `/health` they answer **401**. No
+consequence — neither reveals more than the other — but the table should say 401.
+
+**Still open:** S-26. E-7, unchanged by this pass. S-10, S-13, S-18.
+
+**A finding of this pass expired while it was being written.** It read the five dead keys out
+of `.env` and offered to close S-19 by inspection. Between that reading and this commit the
+owner deleted them in place, which S-19 now records — so the item was closed by the fix, not
+by the inspection, and the sentence claiming they are "still in `.env`" was wrong by the time
+it would have been published. Rebasing onto `main` is what surfaced it. In a tree several
+sessions write to, a statement about an untracked file is only true for as long as it takes
+to write it down.
 
 ## Sources
 
