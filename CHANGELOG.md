@@ -10,6 +10,15 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.8 — 14 September 2026
+
+### Fixed
+
+- **security** — hold the artwork proxy to the one hop its comment promised
+- **player** — hand a Spotify refusal to the ladder instead of a 30-second clip
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.17.7 — 13 September 2026
 
 ### Fixed
