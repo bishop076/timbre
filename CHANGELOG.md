@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.9 — 14 September 2026
+
+### Fixed
+
+- **api** — the four B-41 left behind, one of which its own table claimed was fixed
+
 ## 0.17.8 — 14 September 2026
 
 ### Fixed
