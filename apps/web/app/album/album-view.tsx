@@ -98,7 +98,9 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
               <SongRow
                 key={song.id}
                 song={song}
-                onPlay={() => play(song, songs)}
+                onPlay={() =>
+                  play(song, [...songs.slice(position), ...songs.slice(0, position)])
+                }
                 isCurrent={isCurrent}
                 isPlaying={state === "playing"}
                 thumbnail={false}
