@@ -173,10 +173,16 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
     // on this copy: without the script there is no player for `start` to drive, so a second id
     // would not fail, it would hang at "loading" with nothing left to report. The ladder should
     // hear a source it can leave, and leave it — SoundCloud, Audius and the rest still play.
-    const clearBlocked = blockedTimer("YouTube", (reason) => {
-      apiBlocked = true;
-      live.current.handleError(reason, true, { blocked: true });
-    });
+    // Only worth arming while the verdict is still open. Once `apiBlocked` is set the effect
+    // below reports on mount instead, and a second timer would come back eight seconds later to
+    // walk the ladder again for a song that has already finished walking it — a wasted search
+    // and a visible flicker back through "finding a copy…".
+    const clearBlocked = apiBlocked
+      ? () => {}
+      : blockedTimer("YouTube", (reason) => {
+          apiBlocked = true;
+          live.current.handleError(reason, true, { blocked: true });
+        });
 
     void loadApi().then((YT) => {
       if (cancelled) return;
