@@ -1,8 +1,8 @@
-import { ALLOWED_HOSTS } from "@/lib/artwork-proxy";
+import { allowed } from "@/lib/artwork-proxy";
 
-function hostname(url: string): string | null {
+function parse(url: string): URL | null {
   try {
-    return new URL(url).hostname;
+    return new URL(url);
   } catch {
     return null;
   }
@@ -10,8 +10,10 @@ function hostname(url: string): string | null {
 
 export function proxied(url: string | null | undefined): string | null {
   if (typeof url !== "string" || !url) return null;
-  const host = url.startsWith("https://") ? hostname(url) : null;
-  return host && ALLOWED_HOSTS.has(host) ? `/api/art?u=${encodeURIComponent(url)}` : url;
+  const target = parse(url);
+  // `allowed` rather than the bare host set, so this never hands the proxy a URL it will
+  // refuse — the two agree on the path rules as well as the hosts.
+  return target && allowed(target) ? `/api/art?u=${encodeURIComponent(url)}` : url;
 }
 
 const square = (side: number) => `${side}x${side}`;

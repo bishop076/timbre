@@ -32,12 +32,25 @@ export const ALLOWED_HOSTS = new Set([
   "thumbnailer.mixcloud.com",
 ]);
 
+// Two of the hosts above are not image CDNs: they answer an API on the same name. The
+// allowlist is a host list and `/api/art` accepts any path on a listed host, so without
+// this the proxy is a lever for pointing the server at someone else's API. Nothing comes
+// back — the route returns 404 unless the reply is a raster image — but the request still
+// goes, which is a bound worth keeping tight. Both shapes are the ones the providers
+// actually mint: archive.ts:70 and song-shape.ts's Audius rewrite.
+export const ALLOWED_PATHS: Record<string, RegExp> = {
+  "api.audius.co": /^\/content\/[A-Za-z0-9]+\/(?:150x150|480x480|1000x1000)\.jpg$/,
+  "archive.org": /^\/services\/img\/[^/]+$/,
+};
+
 export const MAX_BYTES = 8 * 1024 * 1024;
 
 const MAX_HOPS = 3;
 
 export function allowed(url: URL): boolean {
-  return url.protocol === "https:" && ALLOWED_HOSTS.has(url.hostname);
+  if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname)) return false;
+  const path = ALLOWED_PATHS[url.hostname];
+  return path === undefined || path.test(url.pathname);
 }
 
 export function capped(
