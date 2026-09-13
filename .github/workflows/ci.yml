@@ -42,6 +42,12 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+      # The sidecar has had pip-audit since the first pass; this is the other runtime's
+      # half of it. Runtime dependencies only, and only high and above, so a dev-only
+      # advisory does not stop an unrelated pull request.
+      - name: Audit the locked dependencies
+        run: pnpm audit --prod --audit-level high
+
   ytmusic:
     name: Sidecar (lint, tests)
     runs-on: ubuntu-latest
