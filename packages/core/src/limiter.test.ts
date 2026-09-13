@@ -33,17 +33,29 @@ test("acquire spends from a persisted bucket", async () => {
   await limiter.acquire("conn:1", policy, { cost: 5 });
 });
 
-test("concurrent acquisitions on one key are paced, not all admitted at once", async () => {
-  const limiter = new RateLimiter(new MemoryBucketStore());
+// Real time is what made this flaky. The third caller sleeps a real 100ms, and the check below
+// used to be a single `setImmediate` turn — but the loop runs its timers phase *before* its check
+// phase, so any stall longer than the sleep (a loaded machine running the suites in parallel, a
+// GC pause) let the timer fire first and the assertion saw three. Mocking `setTimeout` takes
+// elapsed time out of it: the third cannot resolve until this test says so. `() => 0` freezes the
+// clock the limiter reads for the same reason, matching the other tests here.
+test("concurrent acquisitions on one key are paced, not all admitted at once", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const limiter = new RateLimiter(new MemoryBucketStore(), () => 0);
   let admitted = 0;
   const all = Promise.all(
     [1, 2, 3].map(() => limiter.acquire("apple", tight).then(() => (admitted += 1))),
   );
 
-  await new Promise((resolve) => setImmediate(resolve));
+  // `#inTurn` serialises through several awaits per caller, so let the microtasks settle. With
+  // the timer mocked there is nothing this can drain too far.
+  for (let turn = 0; turn < 4; turn++) await new Promise((resolve) => setImmediate(resolve));
   assert.equal(admitted, 2, "a two-token bucket admitted more than two callers at once");
+
+  t.mock.timers.tick(100);
   await all;
-  assert.equal(admitted, 3);
+  assert.equal(admitted, 3, "the third caller never arrived once its slot came round");
 });
 
 test("a failed acquisition does not stall the callers queued behind it", async () => {
