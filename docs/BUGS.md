@@ -916,3 +916,42 @@ be proxied, and checked that the host serves the bytes — it does, to `curl`, w
 redirects. The proxy sets `redirect: "manual"` and does not. Typecheck, lint, 341 tests and a
 production build were all green with every Audius cover broken, because nothing renders an
 image. It was found by opening the app and looking at the network panel.
+
+---
+
+## B-38 · Enforcing the CSP blocked every Spotify embed the same day `FIXED`
+
+**Severity:** high — every Spotify-only track was unplayable in production
+
+| | |
+|---|---|
+| **Symptom** | A Spotify-only track sat at 0:00 for 8s and then read *"No source here could play this one."* The console named the cause outright: *"Loading the script `https://embed-cdn.spotifycdn.com/_next/static/iframe_api.5d9c278…js` violates the following Content-Security-Policy directive: `script-src` …"* |
+| **Cause** | `script-src` named `https://open.spotify.com`, the `API_SRC` constant in `spotify-player.tsx`. But that URL is **a loader and nothing else** — it injects one script from `embed-cdn.spotifycdn.com`, and that bundle is what calls `onSpotifyIframeApiReady`. The loader was allowed, the bundle refused, so the callback never fired. |
+| **Fix** | `SPOTIFY_EMBED_ASSETS` adds `https://embed-cdn.spotifycdn.com` to `script-src` in `next.config.ts`. |
+
+**This was shipped by E-14's own resolution, hours earlier.** That entry enumerated
+the script origins *from the code* and said so as a virtue — "more reliable than a
+console sweep". It is more reliable for the origins a constant names, and blind to
+the ones a constant only *reaches*. `open.spotify.com/embed/iframe-api/v1` is the
+one loader among the five that pulls its real body from a different host, and no
+read of `app/player/*` can show that, because the second host appears nowhere in
+this repo except in a comment in `spotify-player.tsx` that says exactly this and
+was not consulted. The header was `Report-Only` for three weeks and enforcing for
+a few hours; the bug is entirely the second state.
+
+**What made it look like something else.** `giveUpReason` in `player-context.tsx`
+falls through to "No source here could play this one." when a song has no YouTube
+copy and nothing progressive was tried — which is true, and says nothing about
+the Spotify attempt that just failed. B-33's three named codes exist for YouTube
+and have no Spotify equivalent, so the one message that would have pointed here —
+*this site's own policy refused the player* — is the one the UI cannot say. It is
+still unsaid; only the block is fixed.
+
+**How the other four were cleared.** Each loader was fetched and read for the
+origins it injects: `sdk.scdn.co/spotify-player.js` pulls only from `sdk.scdn.co`,
+both Mixcloud APIs only from `player-widget.mixcloud.com`, YouTube's `iframe_api`
+only from `www.youtube.com`, and SoundCloud's two were already named by E-14 off
+`layout.tsx`'s preconnects. Spotify's embed was the only gap. **Adding a player,
+or seeing a player's API change, means doing this read again** — `curl` the API
+URL and grep it for origins; a constant in `app/player/*` is where a script host
+starts, not the set of them.

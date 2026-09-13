@@ -497,6 +497,30 @@ The paragraph below about `frame-src` is stale in one detail: there are more tha
 two external player origins now — Mixcloud, Spotify's embed and its Web Playback
 SDK joined YouTube and SoundCloud — and all are named in the policy.
 
+### Correction, same day: one script origin was missing, and enforcing found it
+
+**"Every one was already named in the policy" was wrong.** Enforcing the header
+broke every Spotify embed within hours — `open.spotify.com/embed/iframe-api/v1`
+is a loader that injects its real bundle from `embed-cdn.spotifycdn.com`, which
+`script-src` did not name. Filed as [B-38](BUGS.md); fixed by adding that origin.
+
+**The method above is what has to change, not just the list.** Reading origins
+off the `API_SRC`/`SDK_SRC` constants is sound for where a script host *starts*
+and blind to what a loader then fetches, and nothing static can close that gap —
+the second host appears nowhere in this repo. The four other loaders have since
+been fetched and read, and pull nothing beyond origins already named. Do that
+read whenever a player is added or its API changes.
+
+**It does not change the `Report-Only` → enforcing decision, but it does change
+what that period was worth.** `Report-Only` does not suppress the violation — the
+browser evaluated this one every time a Spotify track was opened for three weeks
+and said so in the console each time. What it had nowhere to go was off the
+screen: `report-uri`, `report-to` and `/api/csp-report` all arrived in `b4c2e73`,
+the same commit that flipped the header to enforcing. So the period that existed
+to catch exactly this had no collector behind it, and the one signal it did
+produce needed someone to have a console open on a Spotify track. Enforcement
+found it in hours because blocking is the only report a user files.
+
 ## E-15 · The `timbre-name` cookie is not `Secure` `FIXED`
 
 **Severity:** low.
