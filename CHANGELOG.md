@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.3 — 13 September 2026
+
+### Fixed
+
+- **api** — stop reporting a failure as an answer, and caching it as one
+
 ## 0.17.2 — 13 September 2026
 
 ### Fixed
