@@ -1,4 +1,4 @@
-import { PROVIDER_IDS } from "@timbre/core";
+import { PROVIDER_IDS, ProviderError } from "@timbre/core";
 
 import { recommend, type SongIdentity } from "./recommend.ts";
 import {
@@ -103,9 +103,20 @@ export async function resolveUrl(
       if (track) return { track, failures };
     } catch (cause) {
       if (ctx.signal?.aborted) break;
-      const message = cause instanceof Error ? cause.message : String(cause);
-      failures.push({ source: provider.id, message });
-      ctx.report?.("resolve_failed", { source: provider.id, error: cause });
+      // Only an outage counts. A provider handed a URL that is not its own answers with a
+      // refusal — the ytmusic sidecar 400s every link it does not recognise, and it is asked
+      // about every link — so counting every throw would report "Timbre couldn't reach the
+      // service" for a perfectly ordinary unsupported link, which is worse than the confusion
+      // this set out to fix. `transient` and `rate_limited` are the two kinds that mean the
+      // provider might have claimed this link on a better day.
+      const outage =
+        cause instanceof ProviderError &&
+        (cause.kind === "transient" || cause.kind === "rate_limited");
+      ctx.report?.(outage ? "resolve_failed" : "resolve_declined", {
+        source: provider.id,
+        error: cause,
+      });
+      if (outage) failures.push({ source: provider.id, message: cause.message });
     }
   }
   return { track: null, failures };
