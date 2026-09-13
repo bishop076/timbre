@@ -1,4 +1,5 @@
 import hmac
+import logging
 
 from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
@@ -6,6 +7,8 @@ from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .config import SHARED_SECRETS
+
+logger = logging.getLogger(__name__)
 
 MAX_BODY = 16 * 1024
 UNAUTHORIZED = "Missing or invalid shared secret."
@@ -32,6 +35,16 @@ class RequireSharedSecret:
         headers = Headers(scope=scope)
         secret = headers.get("x-timbre-secret")
         if secret is None or not matches(secret):
+            # A brute-force attempt and a misconfigured deploy are the same event without
+            # this line. Never log the value presented: a near-miss is still a credential.
+            client = scope.get("client")
+            logger.warning(
+                "refused %s %s from %s: %s",
+                scope.get("method", "?"),
+                scope["path"],
+                client[0] if client else "unknown",
+                "no shared secret" if secret is None else "wrong shared secret",
+            )
             refusal = JSONResponse({"detail": UNAUTHORIZED}, status.HTTP_401_UNAUTHORIZED)
             await refusal(scope, receive, send)
             return

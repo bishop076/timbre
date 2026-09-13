@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import logging
 import sys
 
 import pytest
@@ -99,6 +100,28 @@ def test_no_secret_is_refused_before_the_body_is_read(monkeypatch, secret, body)
     if secret is not None:
         headers["x-timbre-secret"] = secret
     assert call(app, headers, [body]) == (401, 0)
+
+
+@pytest.mark.parametrize(
+    ("secret", "reason"),
+    [(OLD, "wrong shared secret"), (None, "no shared secret")],
+    ids=["wrong", "missing"],
+)
+def test_a_refusal_is_logged_without_the_secret(monkeypatch, caplog, secret, reason):
+    app = load(monkeypatch, NEW, "app.main").app
+    headers = {"content-length": "2"}
+    if secret is not None:
+        headers["x-timbre-secret"] = secret
+
+    with caplog.at_level(logging.WARNING, logger="app.security"):
+        assert call(app, headers, [b"{}"]) == (401, 0)
+
+    assert reason in caplog.text
+    assert "/search" in caplog.text
+    assert "127.0.0.1" in caplog.text
+    # A near miss is still a credential; it must not reach the log.
+    assert OLD not in caplog.text
+    assert NEW not in caplog.text
 
 
 def test_an_oversized_body_is_refused(monkeypatch):
