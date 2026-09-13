@@ -176,3 +176,86 @@ test("a page host is never relayed unbounded", () => {
     );
   }
 });
+
+// `followsTo` stubs exactly one redirect, which is why nothing above caught the chain below.
+// This drives a whole walk: each entry in `locations` is answered as a 307 to the next, and
+// the walk ends with an image. Returns the URLs actually requested, so a test can assert
+// *where the walk stopped* rather than only whether it finished.
+async function walk(
+  target: URL,
+  locations: string[],
+  isAllowed: (url: URL) => boolean = () => false,
+): Promise<string[]> {
+  const real = globalThis.fetch;
+  const requested: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    requested.push(String(input));
+    const next = locations[requested.length - 1];
+    return next
+      ? new Response(null, { status: 307, headers: { location: next } })
+      : new Response("png bytes", { status: 200, headers: { "content-type": "image/png" } });
+  }) as typeof fetch;
+  try {
+    await fetchAllowed(target, { isAllowed });
+    return requested;
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+test("the latitude is spent on the first hop, not renewed on every one", async () => {
+  // The bug: `offsite` was computed once from the starting host and stayed truthy for every
+  // iteration, so a node redirecting to a node redirecting to a node was followed all the way
+  // to MAX_HOPS — three hops off the allowlist where the comment promised one.
+  const audius = new URL(`https://api.audius.co${COVER}`);
+  const requested = await walk(audius, [
+    `https://node-a.example${COVER}`,
+    `https://node-b.example${COVER}`,
+    `https://node-c.example${COVER}`,
+  ]);
+  assert.deepEqual(requested, [`https://api.audius.co${COVER}`, `https://node-a.example${COVER}`]);
+});
+
+test("a hop off the allowlist and back onto it is still followed", async () => {
+  // Spending the latitude must not cost the ordinary case: the node it lands on may perfectly
+  // well redirect to something the allowlist already accepts.
+  const requested = await walk(
+    new URL(`https://api.audius.co${COVER}`),
+    [`https://node-a.example${COVER}`, "https://i.scdn.co/image/final"],
+    (url) => url.hostname === "i.scdn.co",
+  );
+  assert.deepEqual(requested, [
+    `https://api.audius.co${COVER}`,
+    `https://node-a.example${COVER}`,
+    "https://i.scdn.co/image/final",
+  ]);
+});
+
+test("an encoded separator cannot smuggle a segment past a path pin", () => {
+  // `new URL` leaves `%2f` encoded, so `[^/]+` matched a value carrying the very separator the
+  // pattern exists to exclude. Whether the host decodes it back into one is the host's
+  // business — archive.org answers 404 today, which is a behaviour and not a promise — so the
+  // refusal belongs here rather than in a hope about someone else's routing.
+  assert.equal(allowed(new URL("https://archive.org/services/img/x%2f..%2f..%2fmetadata%2fy")), false);
+  assert.equal(allowed(new URL("https://archive.org/services/img/x%2F..%2Fmetadata")), false);
+  assert.equal(allowed(new URL("https://archive.org/services/img/x%5c..%5cmetadata")), false);
+
+  // A real identifier is untouched.
+  assert.equal(allowed(new URL("https://archive.org/services/img/some-identifier")), true);
+
+  // A host with no path pattern is not policed on this: it has no segments to protect, and any
+  // path on a pure image CDN was already accepted.
+  assert.equal(allowed(new URL("https://i.scdn.co/image/a%2fb")), true);
+});
+
+test("the address filter covers the ranges a literal can name", async () => {
+  const audius = new URL(`https://api.audius.co${COVER}`);
+  // Added here: carrier-grade NAT, which is where a Tailscale or provider-internal address
+  // lives, and the whole of 0.0.0.0/8 rather than only the exact quad.
+  for (const host of ["100.64.0.1", "100.127.255.254", "0.0.0.0", "0.1.2.3"]) {
+    assert.equal(await followsTo(audius, `https://${host}${COVER}`), false, host);
+  }
+  // Either side of that range is ordinary public space, and still followed.
+  assert.equal(await followsTo(audius, `https://100.63.0.1${COVER}`), true);
+  assert.equal(await followsTo(audius, `https://100.128.0.1${COVER}`), true);
+});
