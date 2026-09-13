@@ -5,6 +5,7 @@ import { useMemo, useSyncExternalStore } from "react";
 
 import { useHistory } from "./player/history-store";
 import { setSearchQuery } from "./search-store";
+import { searchPath } from "./search-url";
 import { seededShuffle } from "@/lib/rotation";
 
 const SUGGESTED_SEARCHES = [
@@ -54,7 +55,7 @@ export function SearchSuggestions() {
           type="button"
           onClick={() => {
             setSearchQuery(suggestion);
-            router.push("/search");
+            router.push(searchPath(suggestion));
           }}
           className="slab-sm press max-w-full truncate rounded-[var(--r-full)] bg-[var(--surface-2)] px-2.5 py-1 text-[12px] font-semibold text-[var(--fg-dim)] transition hover:text-[var(--fg)] sm:px-3 sm:py-1.5"
         >
