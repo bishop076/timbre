@@ -43,6 +43,30 @@ export const ALLOWED_PATHS: Record<string, RegExp> = {
   "archive.org": /^\/services\/img\/[^/]+$/,
 };
 
+// `api.audius.co` is a directory, not a CDN: asked for a cover it answers 307 to whichever
+// community node happens to hold it — v.monophonic.digital, cn1.mainnet.audiusindex.org, a
+// set nobody can enumerate and so nobody can allowlist. Refusing that hop, which is the right
+// rule for every other host here, is why every Audius cover came back 403.
+//
+// Following it is safe in the one way that matters, and it is worth being precise about why:
+// the leak this proxy exists to stop is the *browser* fetching from an unvetted host, which
+// hands that host the reader's address and user agent. A hop taken server-side hands it
+// nothing about the reader. The bound kept instead is the path — the redirect has to still be
+// asking for the same shape of cover — so a caller can never steer this anywhere beyond a
+// cover they could already have named directly.
+const FOLLOWS_OFFSITE: Record<string, RegExp> = {
+  "api.audius.co": /^\/content\/[A-Za-z0-9]+\/(?:150x150|480x480|1000x1000)\.jpg$/,
+};
+
+// Belt and braces on the hop above: a redirect must not be able to point the server at
+// something only the server can reach.
+const PRIVATE_HOST =
+  /^(?:localhost|\[|0\.0\.0\.0$|127\.|10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.)/i;
+
+function followableOffsite(next: URL, path: RegExp): boolean {
+  return next.protocol === "https:" && !PRIVATE_HOST.test(next.hostname) && path.test(next.pathname);
+}
+
 export const MAX_BYTES = 8 * 1024 * 1024;
 
 const MAX_HOPS = 3;
@@ -76,6 +100,9 @@ export async function fetchAllowed(
   { signal, isAllowed = allowed }: { signal?: AbortSignal; isAllowed?: (url: URL) => boolean } = {},
 ): Promise<Response | null> {
   let current = target;
+  // Keyed on where the request started, not on where it has got to, so one hop off the
+  // allowlist cannot become a second.
+  const offsite = FOLLOWS_OFFSITE[target.hostname];
 
   for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
     const response = await fetch(current, {
@@ -91,7 +118,8 @@ export async function fetchAllowed(
 
     const location = response.headers.get("location");
     const next = location ? URL.parse(location, current) : null;
-    if (!next || !isAllowed(next)) return null;
+    if (!next) return null;
+    if (!isAllowed(next) && !(offsite && followableOffsite(next, offsite))) return null;
     current = next;
   }
 

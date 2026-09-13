@@ -891,3 +891,28 @@ country; from a UK or US address Deezer answers in English and the defect is inv
 is what kept it unnoticed — it is a property of where the *server* sits, so it would have
 reached production the moment a Vercel region moved. The `spotify-web.ts` caller had set the
 same header since it was written; the two Deezer callers were the ones that never did.
+
+---
+
+## B-37 · Every Audius cover came back 403 from our own proxy `FIXED`
+
+**Severity:** low — artwork only — but it was invisible to every check the repo runs
+
+| | |
+|---|---|
+| **Symptom** | Audius rows in a search result had no artwork at all, where every other source had a cover. Nothing failed, nothing logged: `/api/art` answered 403 and `<Artwork>` drew the placeholder it draws for a song that genuinely has none. |
+| **Cause** | `api.audius.co` is a **directory, not a CDN**. Asked for a cover it answers `307` to whichever community node holds it — measured live: `v.monophonic.digital`, and `cn1.mainnet.audiusindex.org` for others. `fetchAllowed` checks every redirect target against the allowlist, correctly for every other host, so the hop was refused and the route returned "Host not allowed". |
+| **Fix** | `FOLLOWS_OFFSITE` lets that one host's redirect leave the allowlist, bounded by the cover path, `https`, and a private-address refusal. |
+
+**Why following it is safe, which is the whole question.** The leak `/api/art` exists to stop
+is the *browser* fetching from an unvetted host, which hands that host the reader's address
+and user agent. A hop taken server-side hands it nothing about the reader — that is what a
+proxy is. The bound kept instead of the hostname is the path: the redirect must still be
+asking for the same shape of cover, so a caller can never steer the server anywhere beyond a
+cover they could already have named.
+
+**How it survived.** S-21 rewrote Audius covers onto `api.audius.co` precisely so they would
+be proxied, and checked that the host serves the bytes — it does, to `curl`, which follows
+redirects. The proxy sets `redirect: "manual"` and does not. Typecheck, lint, 341 tests and a
+production build were all green with every Audius cover broken, because nothing renders an
+image. It was found by opening the app and looking at the network panel.

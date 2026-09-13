@@ -1089,6 +1089,18 @@ window and why it was unavoidable are in DEPLOY.md.
 
 # S-21 · A live search draws covers from hosts nobody vetted `FIXED`
 
+**One redirect rule was loosened in the same pass, deliberately — see BUGS.md B-37.**
+`api.audius.co` is a directory that answers a cover with a 307 to a community node, so the
+blanket "every hop must be allowlisted" rule was refusing every Audius cover. That host's
+redirect may now leave the allowlist, bounded by the cover path, `https`, and a refusal of
+private and loopback addresses. The reasoning is the same one that justifies the proxy at
+all: the exposure being prevented is the **browser** reaching an unvetted host, and a hop
+taken server-side exposes nothing about the reader. What replaces the hostname as the bound
+is the path — the redirect must still be asking for the same shape of cover — so a caller
+cannot steer the server anywhere beyond a cover they could already have named. Six
+assertions cover the refusals, including `127.0.0.1`, `localhost`, `169.254.169.254` and the
+RFC1918 ranges.
+
 **Followed up 2026-09-13: `proxied` now fails closed.** S-21 fixed the provider that was
 minting unvetted hosts; `proxied` itself still handed an unlisted host back unchanged, so
 the browser fetched the cover straight from it — the exact leak, one layer further out, and
