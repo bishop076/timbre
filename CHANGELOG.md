@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.4 — 13 September 2026
+
+### Fixed
+
+- **core** — canonicalise ISRCs, bound the art proxy, and read the queue from one place
+
 ## 0.17.3 — 13 September 2026
 
 ### Fixed
