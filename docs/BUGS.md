@@ -817,6 +817,23 @@ mistake again — asserting a cause the app never verified, and one that sends t
 their VPN settings over an extension. It now carries which of the two it was, and the bar and
 the give-up message read from it.
 
+**Observed, 2026-09-13, not just reasoned.** Driven in Chrome against a dev build, with
+`https://www.youtube.com/iframe_api` blocked at insertion so the script never executes — the
+same shape as an extension, and confirmed by `window.YT` staying `undefined`. First song:
+verdict at +8s from the player mounting, then the ladder walked and *As It Was* played from
+SoundCloud, reached through the rescue rung since the song carries only `ytmusic` and `apple`.
+Player bar read "SoundCloud · YouTube's player is blocked here". Second song (`Coming Up Roses`,
+`ytmusic` only): reported at **1.1s, not 8s** — the `apiBlocked` path — and gave up with
+"YouTube's player never loaded here, and nothing else could play it," which is correct for a
+song with nothing underneath it.
+
+**What the observation caught that reading had not.** The first cut left the eight-second timer
+armed on every mount, including mounts made *after* the verdict was already in. Eight seconds
+after a song had finished giving up, the timer fired again and walked the whole ladder a second
+time — a wasted `/api/search` and a visible flicker back through "finding a copy…". The timer is
+now armed only while the verdict is still open. This is the half the write-up called least
+scrutinised, and it was: reading the code found the hang, watching it found the echo.
+
 **A third cause, as of the CSP going enforcing.** `next.config.ts` served
 `Content-Security-Policy-Report-Only` until b4c2e73, so nothing it named was ever enforced.
 Now an origin missing from `PLAYERS` is blocked outright and presents exactly as the ad
