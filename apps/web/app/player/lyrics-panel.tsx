@@ -108,6 +108,20 @@ export function LyricsPanel() {
   const [fixing, setFixing] = useState(false);
   const [following, setFollowing] = useState(true);
 
+  // Both are about one song and neither was keyed to one. Scrolling the lyrics away from the
+  // active line and letting the track change inside the 6s resume window opened the next
+  // song's lyrics already unfollowed, behind a "Follow the song" button nobody had asked for;
+  // and the "Wrong lyrics?" drawer stayed open across the change, firing an
+  // `alternatives=1` request for a song the reader had not questioned. Adjusting state during
+  // render when the song it belongs to changes is React's own answer to this, and it settles
+  // before anything paints.
+  const [scopedTo, setScopedTo] = useState(prefKey);
+  if (scopedTo !== prefKey) {
+    setScopedTo(prefKey);
+    setFixing(false);
+    setFollowing(true);
+  }
+
   const container = useRef<HTMLDivElement>(null);
   const activeLine = useRef<HTMLButtonElement>(null);
   const resumeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
