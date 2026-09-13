@@ -207,21 +207,25 @@ test("a source whose next slot is past its deadline is refused at once as rate-l
       await assert.rejects(requester({ deadlineMs: 20 })({ limiter }, CHART), {
         kind: "rate_limited",
         provider: "deezer",
-        message: "Deezer has no free request slot within 0.02s.",
+        message: "Deezer has no free request slot within 0.01s.",
       });
       assert.equal(calls.length, DEFAULT_POLICIES.deezer.capacity, "a refused request must not go out");
     },
   ));
 
-test("the wait for a slot counts against the deadline", () =>
+test("the wait for a slot counts against the deadline, and is blamed on the queue", () =>
   withFetch(
     (init) => (init?.signal?.aborted ? Promise.reject(init.signal.reason) : Promise.resolve(json({}))),
-    async () => {
+    async (calls) => {
       const limiter = { acquire: () => sleep(40) } as unknown as RateLimiter;
+      // The budget is still shared — a slow queue still ends the attempt. But it ends as rate
+      // limiting rather than as "the provider did not answer", which was a claim about a
+      // request that was never sent.
       await assert.rejects(requester({ deadlineMs: 20 })({ limiter }, CHART), {
-        kind: "transient",
-        message: "Deezer did not answer within 0.02s.",
+        kind: "rate_limited",
+        message: "Deezer's queue used the whole 0.02s before the request could be sent.",
       });
+      assert.equal(calls.length, 0, "nothing is sent once the budget is gone");
     },
   ));
 

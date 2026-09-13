@@ -47,8 +47,29 @@ export function createRequester({
 }: RequesterOptions): SoftRequester {
   return async <T>(ctx: SearchContext, target: string | URL, extra?: RequestInit): Promise<T | null> => {
     ctx.signal?.throwIfAborted();
-    const signal = deadlineSignal(ctx.signal, deadlineMs);
-    await takeSlot(ctx, id, label, { ms: deadlineMs });
+
+    // The deadline clock used to start here, before `takeSlot`, and the limiter was handed the
+    // whole budget as its own maximum wait. So a 5.9s queue out of a 6s budget was admitted —
+    // spending the bucket's token — and the fetch that followed got a signal that aborted
+    // almost at once, reported as "<label> did not answer within 6s" for a request that never
+    // went out. Under Apple's 0.3/s refill that is the steady state under any load, so the
+    // logs and `/api/search`'s `failures[]` accused a healthy provider of timing out.
+    //
+    // The budget is still shared, which `request.test.ts` asserts on purpose. What changes is
+    // that the split is explicit: the queue may have half, the fetch keeps the rest, and
+    // running out of time in the queue is reported as the rate limiting it actually is.
+    const startedAt = Date.now();
+    await takeSlot(ctx, id, label, { ms: Math.max(1, Math.round(deadlineMs / 2)) });
+
+    const left = deadlineMs - (Date.now() - startedAt);
+    if (left <= 0) {
+      throw new ProviderError(
+        id,
+        "rate_limited",
+        `${label}'s queue used the whole ${deadlineMs / 1000}s before the request could be sent.`,
+      );
+    }
+    const signal = deadlineSignal(ctx.signal, left);
 
     let response: Response;
     try {
