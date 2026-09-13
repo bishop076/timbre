@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.1 — 13 September 2026
+
+### Fixed
+
+- **player** — bound the handshakes and retries that could stall a track for ever
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.17.0 — 13 September 2026
 
 ### Added
