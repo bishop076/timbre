@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
 import { hideWhenBroken } from "../artwork";
+import { proxied } from "../artwork-url";
 import { openSpotifyWindow } from "../spotify/preview-mode.ts";
 import { useSpotifyTokens } from "../spotify/token-store.ts";
 import { addScript, blockedReason, findScript, loadOnce, useLatest, useTransport } from "./embed";
@@ -167,7 +168,7 @@ export function SpotifyPlayer({
         {controls.current?.artworkUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={controls.current.artworkUrl}
+            src={proxied(controls.current.artworkUrl) ?? undefined}
             alt=""
             aria-hidden
             {...hideWhenBroken}
@@ -191,7 +192,7 @@ export function SpotifyPlayer({
       {cover && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={cover}
+          src={proxied(cover) ?? undefined}
           alt=""
           aria-hidden
           {...hideWhenBroken}

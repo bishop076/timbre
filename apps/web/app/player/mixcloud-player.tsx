@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { hideWhenBroken } from "../artwork";
+import { proxied } from "../artwork-url";
 import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
 
@@ -149,7 +150,7 @@ export function MixcloudPlayer({
       {artworkUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={artworkUrl}
+          src={proxied(artworkUrl) ?? undefined}
           alt=""
           aria-hidden
           {...hideWhenBroken}

@@ -1113,8 +1113,9 @@ whose iframe the page already loads, so what was lost is the proxy, not the boun
 progressive player is the one that plays Audius, and it also walks `artworkFallbacks` on
 error — one failed load per mirror host, each fetched in turn.
 
-**The first two are fixed here. Mixcloud's and Spotify's are not**, because another session
-held both files while this pass ran. Same one-line change in each.
+**All four are fixed now.** The first two in this pass; Mixcloud's and Spotify's were left
+because another session held both files while it ran, and were finished once that session's own
+work in them had landed. Same one-line change in each.
 
 ---
 
