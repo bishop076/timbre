@@ -35,6 +35,22 @@ test("the allowlist refuses anything that is not https", () => {
   assert.equal(allowed(new URL("https://i.ytimg.com.evil.example/x.png")), false);
 });
 
+test("a host that also answers an API is pinned to its cover paths", () => {
+  // The shapes archive.ts and song-shape.ts actually mint.
+  assert.equal(allowed(new URL("https://archive.org/services/img/some-identifier")), true);
+  assert.equal(allowed(new URL("https://api.audius.co/content/abc123/480x480.jpg")), true);
+
+  // Anything else on those two hosts is an API call wearing an image's clothes.
+  assert.equal(allowed(new URL("https://api.audius.co/v1/tracks?query=x")), false);
+  assert.equal(allowed(new URL("https://api.audius.co/content/abc123/999x999.jpg")), false);
+  assert.equal(allowed(new URL("https://archive.org/metadata/some-identifier")), false);
+  assert.equal(allowed(new URL("https://archive.org/advancedsearch.php?q=x")), false);
+  assert.equal(allowed(new URL("https://archive.org/services/img/a/../../metadata/b")), false);
+
+  // A plain image CDN keeps taking any path.
+  assert.equal(allowed(new URL("https://i.scdn.co/image/whatever")), true);
+});
+
 const cases: [string, string, number | null][] = [
   ["a plain response is returned untouched", "/image", 200],
   ["a redirect that stays on an allowed host is followed", "/relative", 200],

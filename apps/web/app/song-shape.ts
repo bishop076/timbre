@@ -1,4 +1,4 @@
-import { ALLOWED_HOSTS } from "../lib/artwork-proxy.ts";
+import { allowed } from "../lib/artwork-proxy.ts";
 import type { PlayContext, Song, SourceTrack } from "./types";
 
 export function usableSongs(value: unknown): Song[] {
@@ -92,7 +92,7 @@ export function usableArtwork(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const url = parse(value);
   if (!url || url.protocol !== "https:") return null;
-  if (ALLOWED_HOSTS.has(url.hostname)) return value;
+  if (allowed(url)) return value;
   return AUDIUS_COVER.test(url.pathname) ? `${AUDIUS_API}${url.pathname}` : null;
 }
 
