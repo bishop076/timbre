@@ -6,7 +6,8 @@ A vulnerability pass over Timbre, mapped to the **OWASP Top 10:2025**.
 `daf4756` — the first one run against a live deployment rather than a working
 tree, which is how S-7 was caught. **Third pass 2026-09-11**, against `8abfc8e`
 (local `main`, seven commits ahead of `origin/main`) and the live deployment —
-S-9 onward. Its statuses were updated on 2026-09-11 against `6f3b6ae`, and its
+S-9 onward. **Fourth pass 2026-09-13**, against `dcec2f4` — S-20, and the CSP flip
+E-14 had been waiting on. Its statuses were updated on 2026-09-11 against `6f3b6ae`, and its
 file:line citations re-pointed there, because the files `8abfc8e` was read at have
 since been trimmed: comments stripped, code simplified. The SHAs of the first two
 passes predate the history rewrites and no longer resolve.*
@@ -35,7 +36,8 @@ steal, and no server-side state to corrupt** — so five of the ten OWASP
 categories barely apply. The XSS surface, which is the one that should worry an
 app that embeds third-party players, is genuinely clean: there is exactly one
 `dangerouslySetInnerHTML` and it interpolates nothing, and there is not a single
-`postMessage` listener in the codebase.
+`postMessage` listener in the codebase. *(Fourth pass: that last clause is now stale —
+there are two same-origin `message` listeners. Neither is a cross-origin sink. See below.)*
 
 One finding is serious, is proven, and is not on the server.
 
@@ -1055,6 +1057,43 @@ Each of these is a place a vulnerability would normally be, and is not.
 | **GitHub Actions** | All twelve `uses:` were full SHAs matching their tag comments. S-13's split brings the count to fifteen, all still full SHAs; the two new actions, `actions/upload-artifact` v7.0.1 and `actions/download-artifact` v8.0.1, resolve to their pinned SHAs (`git ls-remote`, 2026-09-11); no `pull_request_target` or `workflow_run`; `release.mts` writes only integer version parts to `GITHUB_OUTPUT`; every script uses `execFileSync` with argument arrays; `vercel-ignore.sh` only `case`-matches the commit message. S-13 is about the job's *credentials*, not these. | read + public action repos |
 | **ReDoS, new regexes** | Every single-argument normaliser in `@timbre/core` run over adversarial 300-character inputs: slowest 3.2 ms. The new patterns in `spotify-web.ts` build their dynamic `RegExp`s from digits or constants only. | measured |
 
+# S-20 · The artwork proxy admitted two hosts that also answer an API `FIXED`
+
+**OWASP:** A10:2025 Server-Side Request Forgery, at the low end of it — the request goes,
+nothing comes back.
+
+**Fixed in this pass.** `/api/art` takes a URL and fetches it, and the only bound was a host
+allowlist. That is the right shape while every entry is an image CDN, which was true until
+`7f4bd46` added `api.audius.co` so Spotify's and Audius's covers could tint. Two entries then
+answered a general API on the same name: `api.audius.co`, and `archive.org`, whose
+`/metadata/` and `/advancedsearch.php` paths the archive provider itself calls.
+
+`usableArtwork` (`apps/web/app/song-shape.ts:91`) pins Audius covers to
+`/content/<cid>/<size>.jpg`, but that governs what Timbre **mints**, not what the route
+**accepts** — `/api/art?u=` took any path on a listed host. So a caller could aim the
+server's outbound requests at arbitrary Audius or Archive API paths, 300/min, with
+attacker-chosen query strings.
+
+**Nothing was disclosed.** The route returns 404 unless the reply is a raster image
+(`apps/web/app/api/art/route.ts:22-26`), and both hosts answer `application/json` on their
+API paths — checked against `https://api.audius.co/v1/tracks`, which is refused on exactly
+that ground. The body is cancelled, never forwarded. What remained is that the request was
+made at all.
+
+**The fix** adds `ALLOWED_PATHS` to `apps/web/lib/artwork-proxy.ts`: a host listed there must
+match its path pattern as well as its name, the two patterns being the shapes
+`packages/providers/src/archive.ts:70` and the Audius rewrite actually produce. `allowed()`
+enforces it, and `proxied()` and `usableArtwork()` were moved onto that one predicate so all
+three agree — `artwork-url.ts` previously decided with the bare host set and could hand the
+route a URL it would refuse. Six assertions added to `artwork-proxy.test.ts`.
+
+This is the class EXPOSURE **E-7** describes. A signature on `u` is still the boundary and a
+path pin only a tighter bound, so E-7 stays open — but note why the obvious fix does not
+drop in: `proxied()` runs inside client components, which cannot hold a signing key. Closing
+E-7 means moving artwork URL minting server-side, not adding an HMAC where `proxied()` is.
+
+---
+
 ---
 
 # Status
@@ -1126,6 +1165,62 @@ What is left, in order of consequence over effort:
 4. **S-13** — scope `RELEASE_TOKEN` to this repository.
 5. Everything else — the S-18 refusal and `uv` hash, the S-19 `.env` leftovers — is
    hardening, best done when the files are open for another reason.
+
+## Fourth pass, 2026-09-13
+
+**Against `dcec2f4` (local `main`, 0.15.0), covering the thirty commits since the third
+pass's `45649bc`.** Most are UI; two touched a trust boundary, and both were read.
+
+- **New: S-20**, the artwork proxy admitting two API hosts — found by auditing `7f4bd46`,
+  which widened the allowlist after the third pass had read it. `FIXED` here.
+- **E-14 is closed. The CSP is enforcing** (`apps/web/next.config.ts`). It was the first
+  item on the third pass's list and three weeks overdue then, blocked on a browser sweep
+  from a network where YouTube, SoundCloud and Mixcloud play. What made it shippable
+  without one: every origin the **top document** loads a script from or frames was
+  enumerated from the code — the five `API_SRC`/`SDK_SRC` constants in `app/player/*` and
+  the four `<iframe>` sites — and every one was already in the policy. What happens inside
+  those iframes is a separate browsing context this policy does not govern, which is what
+  made the sweep less load-bearing than it looked. `widget.sndcdn.com` and
+  `api-widget.soundcloud.com` were added to `script-src` on the evidence of `layout.tsx`'s
+  preconnects. The directives whose breakage static reading **cannot** predict —
+  `connect-src`, `img-src`, `media-src` — were deliberately left wide rather than tightened
+  in the same change.
+- **Violations are now visible.** `POST /api/csp-report` logs a `csp_violation` line, with
+  `report-uri` and `report-to` both pointing at it and a `Reporting-Endpoints` header
+  declaring the group. It is rate-limited on its own 20/min budget, caps the body at 8 KB,
+  reads only known keys, truncates each to 300 characters and echoes nothing. This is what
+  turns the next narrowing into a measurement rather than a guess.
+- **E-12 is closed.** The sidecar logs its 401s with method, path and peer — and never the
+  value presented, because a near miss is still a credential. Both halves are asserted.
+- **The rate-limit key no longer trusts the caller.** `clientKey` reads
+  `x-vercel-forwarded-for` and then `x-real-ip` before falling back to `x-forwarded-for`.
+  Vercel was never exposed — it overwrites XFF — but this repo ships a Dockerfile, and
+  behind any front end that does not overwrite, a rotating header gave every request its
+  own bucket and the limiter stopped existing. EXPOSURE called this conditional on the
+  deployment; it is no longer conditional for anything that sets a header it owns.
+- **CI audits both runtimes.** `pnpm audit --prod --audit-level high` now runs beside the
+  sidecar's `pip-audit`, which had been the only dependency gate in the repository.
+- **A claim above went stale, and is corrected here.** "There is not a single `postMessage`
+  listener in the codebase" no longer holds: `use-tab-sync.ts:176` listens on a
+  BroadcastChannel, and `mixcloud-player.tsx:76-92` briefly patches
+  `window.addEventListener` to capture the `message` listeners Mixcloud's SDK registers so
+  it can remove them on unmount. Neither is a cross-origin sink — a BroadcastChannel is
+  same-origin, and `parseMessage` validates every field, including running `usableSongs`
+  over a handoff queue before adopting it — so the **conclusion** stands. It should be
+  stated about those two, not about their absence.
+
+**Verified unchanged:** sidecar auth (constant-time, non-short-circuiting, refused before
+the body is read), `/api/resolve` (every provider validates before it fetches; the sidecar
+reduces a URL to an 11-character id), CSV formula injection (already defused,
+`playlists/csv.ts:12`), the PKCE `state` check before the code exchange, Spotify tokens
+(never logged, never in a URL, `Authorization` headers only), both Dockerfiles (digest-pinned,
+non-root, `--require-hashes`), `.dockerignore` covering `.env*`, SHA-pinned Actions with
+`persist-credentials: false`, and `UPSTREAM_TABLE` pinned to a commit rather than a branch.
+`.env` has never been committed — checked with `--diff-filter=A` over all refs.
+
+**Still open:** E-7, narrowed by S-20 but not closed. S-10's Deezer "not found" versus
+"failed". S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. S-19's `.env` leftovers. On the
+CSP, the next step is `connect-src`, which now has reports behind it.
 
 ## Sources
 

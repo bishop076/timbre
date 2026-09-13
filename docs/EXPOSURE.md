@@ -357,7 +357,7 @@ the old on the sidecar, move the web app across, drop the old.
 hit, so the time taken would report *which* secret matched, and mid-rotation that
 distinguishes a caller still on the old one.
 
-## E-12 · The secret is the sidecar's only defence `ACCEPTED`
+## E-12 · The secret is the sidecar's only defence `ACCEPTED` · logging `FIXED 2026-09-13`
 
 **Severity:** low as written; high if the secret ever leaks.
 
@@ -465,6 +465,37 @@ the browser**, which is the decision this rating exists to inform.
 `frame-src` permits `www.youtube.com` and `w.soundcloud.com`, which is the point
 of the app rather than a weakening of the policy — they are the only two external
 origins in the codebase.
+
+### Resolved 2026-09-13: the policy is enforcing
+
+**`next.config.ts` now sends `Content-Security-Policy`.** The nonce argument above
+is untouched and still correct — `script-src` keeps `'unsafe-inline'`, because
+dynamic rendering is still what this deployment cannot afford. What changed is the
+other half: the policy is no longer merely advisory, so the directives it *does*
+buy — `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`,
+`frame-ancestors 'none'`, and a `script-src` that refuses any origin not named —
+are now actually applied against the browser that holds the Spotify refresh token.
+
+**The "ten minutes of browser work" this entry prescribed was not what unblocked
+it.** Enumerating the origins from the code turned out to be sufficient, and more
+reliable than a console sweep: the five script hosts are the `API_SRC`/`SDK_SRC`
+constants in `app/player/*`, the frame hosts are the four `<iframe>` sites, and
+every one was already named in the policy. The sweep was load-bearing only for
+what the *iframes* fetch — and an iframe is a separate browsing context that this
+policy does not reach. `widget.sndcdn.com` and `api-widget.soundcloud.com` were
+added to `script-src` because `layout.tsx` preconnects to them.
+
+**Two directives were left wide on purpose.** `connect-src 'self' https:` and
+`media-src 'self' https: blob:` cannot be pinned from a static read, so narrowing
+them in the same change would have been the guess this entry rightly refused to
+make. They are the next step, and there is now something behind it:
+`POST /api/csp-report` logs a `csp_violation` line, wired up by both `report-uri`
+and `report-to` with a `Reporting-Endpoints` header. Rate-limited on its own
+20/min budget, 8 KB body cap, known keys only, each truncated, nothing echoed.
+
+The paragraph below about `frame-src` is stale in one detail: there are more than
+two external player origins now — Mixcloud, Spotify's embed and its Web Playback
+SDK joined YouTube and SoundCloud — and all are named in the policy.
 
 ## E-15 · The `timbre-name` cookie is not `Secure` `FIXED`
 
@@ -587,7 +618,7 @@ is also the reader's way round a busy LRCLIB.
 |---|---|
 | **No YouTube quota exists.** `apps/ytmusic/app/client.py:44` constructs `YTMusic()` with no credentials, and there is no YouTube Data API key anywhere in the repository. There is no quota to exhaust and no account to suspend. What is at risk is rate-limiting of the address and Vercel's allowances — not a Google quota. | `read` |
 | **Constant-time secret comparison.** `security.py` uses `hmac.compare_digest`, and accumulates rather than short-circuits so a rotation cannot leak which secret matched. Correct — though reading it *for timing* is what let it raise on a non-ASCII header for a week. See [SECURITY.md](SECURITY.md) **S-7**, fixed 2026-08-21. | `read` |
-| **`x-forwarded-for` handling is right on Vercel.** `lib/rate-limit.ts:84-88` takes the first entry, and Vercel's docs state: *"we currently overwrite the X-Forwarded-For header and do not forward external IPs. This restriction is in place to prevent IP spoofing."* So the first entry is the real client. **This becomes spoofable the moment Timbre runs anywhere else** — behind nginx, Caddy, or the Dockerfile — where the header is attacker-controlled and a rotating value defeats the limiter entirely. Conditional on the deployment, not on the code. | `vendor` + `read` |
+| **`x-forwarded-for` handling is right on Vercel.** `lib/rate-limit.ts:84-88` takes the first entry, and Vercel's docs state: *"we currently overwrite the X-Forwarded-For header and do not forward external IPs. This restriction is in place to prevent IP spoofing."* So the first entry is the real client. **This became spoofable the moment Timbre ran anywhere else** — behind nginx, Caddy, or the Dockerfile — where the header is attacker-controlled and a rotating value defeated the limiter entirely. **Fixed 2026-09-13:** `clientKey` reads `x-vercel-forwarded-for`, then `x-real-ip`, and only then falls back to `x-forwarded-for`, so any front end that sets a header it owns is now the deciding one. Vercel is unchanged by this; the Dockerfile's deployment stops being the free case. | `vendor` + `read` |
 | **The art proxy's SSRF control.** HTTPS-only, explicit 13-host allowlist, `image/*` enforced, `nosniff` set. Sound as far as it goes; E-8 is about the redirect hop, not this. | `read` |
 | **No audio ever transits Timbre.** Every player is an embed. Bandwidth is HTML and JSON — which is what makes 100 GB a generous allowance rather than a day's traffic. | `read` |
 | **The sidecar holds nothing at rest.** No credentials, no sessions, no database connection. Compromising it yields access, not data. | `read` |
@@ -604,14 +635,17 @@ from a Vercel address. What is left, ordered by consequence over effort:
 1. **E-1** — decide about donation and sponsor links *before* adding one. This is
    the one that can end the deployment with no technical warning, and it is now
    first because the question E-17 asked has an answer.
-2. **E-14** — flip the CSP from `Report-Only` to enforcing, once a browser has
-   confirmed it breaks nothing. Three pages to check, and it moved up: the browser
-   now holds a Spotify refresh token, so an XSS wins a credential rather than a
-   defacement. See the re-rating on that entry.
+2. **E-14** — **done 2026-09-13**, see the resolution on that entry. The CSP is
+   enforcing, and violations now report to `/api/csp-report`. What is left of it is
+   narrowing `connect-src`, which the reports exist to make measurable.
 3. **E-7** — sign the `u` parameter, so the art proxy has a boundary rather than
-   a bound. The rate limit stops the bleeding; this closes it.
-4. **E-12** — log the sidecar's 401s, so a brute-force attempt stops looking
-   exactly like a misconfigured deploy.
+   a bound. The rate limit stops the bleeding; this closes it. **Narrowed but not
+   closed 2026-09-13** by SECURITY.md **S-20**, which pins the path on the two
+   allowlisted hosts that also answer an API. Note before attempting it: `proxied()`
+   runs in client components and cannot hold a signing key, so closing E-7 means
+   minting artwork URLs server-side, not adding an HMAC where `proxied()` is.
+4. **E-12** — **done 2026-09-13.** The sidecar logs its 401s with method, path and
+   peer, and never the value presented.
 5. **E-6** — done: the inert `revalidate` is gone from the three routes that
    cannot be static, so nothing advertises a cache it does not have.
 6. **E-3 / E-4** — measure before acting. Log upstream status codes for a week;
