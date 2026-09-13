@@ -16,6 +16,7 @@ interface MixcloudWidget {
   play(): Promise<void>;
   togglePlay(): Promise<void>;
   seek(seconds: number): Promise<boolean>;
+  setVolume(level: number): Promise<void>;
   getDuration(): Promise<number>;
   getIsPaused(): Promise<boolean>;
   events: {
@@ -46,10 +47,19 @@ export function MixcloudPlayer({
   artworkUrl?: string | null;
   size?: string;
 }) {
-  const live = useLatest(usePlayerControls());
+  const controls = usePlayerControls();
+  const live = useLatest(controls);
+  const level = controls.muted ? 0 : controls.volume;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<MixcloudWidget | null>(null);
+
+  // The bar renders a volume slider and a mute button for every source. This one honoured
+  // neither: the widget's `setVolume` was simply never called, so dragging moved the control
+  // and nothing else, and Mute silenced nothing at all.
+  useEffect(() => {
+    void widgetRef.current?.setVolume(Math.max(0, Math.min(1, level / 100))).catch(() => undefined);
+  }, [level]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -98,6 +108,10 @@ export function MixcloudPlayer({
           if (cancelled) return;
           clearBlocked();
           widgetRef.current = widget;
+          // The effect above only fires on a change; a widget arriving mid-song needs telling.
+          void widget
+            .setVolume(Math.max(0, Math.min(1, live.current.volume / 100)))
+            .catch(() => undefined);
 
           const { events } = widget;
           events.play.on(() => alive()?.handleStateChange("playing"));
