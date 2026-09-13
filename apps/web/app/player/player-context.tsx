@@ -177,13 +177,27 @@ export function playbackFrom(song: Song, source: string): "queue" | "manual" | "
   return kind === "preview" ? "preview" : "queue";
 }
 
-// Leading with Spotify is only right while Spotify is carrying playback. A free account is the
-// case that cannot be read up front: `spotify-player.tsx` downgrades the SDK to the 30-second
-// embed on `account_error` without telling the ladder, so nothing here would learn it, and every
-// song after would open on a clip the queue cannot advance past. One song falling through with
-// its Spotify rung already spent is that evidence — late, but in time to matter. A reload tries
-// again, which is right when the usual cause is a token that wants reconnecting.
+// Leading with Spotify is only right while Spotify is carrying playback, and whether it is cannot
+// be read up front: a free account looks identical to a Premium one until the Web Playback SDK
+// refuses. `spotify-player.tsx` has the verdict the moment there is one and calls this for the
+// ones that are a property of the browser or the account rather than of a track — the real signal
+// rather than something inferred from a song going wrong. A reload starts over, which is right
+// when the usual cause is a token that wants reconnecting.
 let spotifyCanLead = true;
+
+export function stopLeadingWithSpotify(): void {
+  spotifyCanLead = false;
+}
+
+// Whether the song playing *right now* got here because Spotify led, which is what decides
+// whether a refusal falls through or settles for the embed. Module state rather than a field on
+// the context: it is read inside an SDK callback, never rendered, and a ref read during render is
+// what `react-hooks/refs` exists to stop.
+let leadingWithSpotify = false;
+
+export function spotifyIsLeading(): boolean {
+  return leadingWithSpotify;
+}
 
 function spentKey(chosen: ChosenSource): string {
   return chosen.kind === "spotify" ? `spotify:${chosen.id}` : chosen.kind;
@@ -385,6 +399,7 @@ function usePlayerValue() {
       youtubeFailures.current = { blocked: false, stalled: false, refusals: 0 };
       recorded.current = null;
       steered.current = null;
+      leadingWithSpotify = false;
       setYoutubeTurnedAway(null);
       setPlaying(null);
       writeProgress(0, song.durationMs ? song.durationMs / 1000 : 0);
@@ -403,7 +418,10 @@ function usePlayerValue() {
       // tokens rather than on the source list, and YouTube stays the opening move without them.
       const spotifyFirst =
         spotifyCanLead && getSpotifyTokens() ? chosenSource(song, "spotify") : null;
-      if (spotifyFirst) return start(spotifyFirst);
+      if (spotifyFirst) {
+        leadingWithSpotify = true;
+        return start(spotifyFirst);
+      }
 
       const direct = youtubeIdOf(song);
       if (direct) {
@@ -852,13 +870,6 @@ function usePlayerValue() {
       }
 
       const warn = (message: string) => log("warn", `“${song.title}” ${message}`);
-
-      const spotifyRung = chosenSource(song, "spotify");
-      if (spotifyCanLead && spotifyRung && spent.current.has(spentKey(spotifyRung))) {
-        spotifyCanLead = false;
-        warn("fell through with Spotify already spent — YouTube leads again for this session");
-      }
-
       setState("resolving");
       if (!leftYouTube) {
         try {
