@@ -993,8 +993,20 @@ The canary wraps each detail in inline code, with backticks and runs of whitespa
 (newlines included) collapsed to a space and `|` escaped
 (`scripts/spotify-canary.mts:152,165`).
 
-**Not re-checked: the `.env` leftovers.** `.env` is untracked, so no commit shows
-whether the four keys are gone. This item stays open until someone confirms it.
+**Confirmed present 2026-09-13, and still open.** `.env` is untracked, so no commit
+shows it — read directly instead, key names only. All of the leftovers are there:
+`DATABASE_URL`, `TIMBRE_ENCRYPTION_KEY`, `AUTH_SECRET`, `EMAIL_SERVER` and `EMAIL_FROM`,
+beside the four keys that are actually read. Nothing loads them — `lib/env.ts` parses a
+fixed schema and ignores the rest — so this is not a live path. It is dead credential
+material sitting in a file, and two of those names are secrets rather than settings.
+
+**Not fixed here, deliberately.** Editing `.env` in place is fine; deleting lines from it
+is not reversible from this side, and the values cannot be backed up first — a copy of a
+secrets file beside the original is the worse outcome, and is its own rule. So it is the
+owner's to run, and it is two questions rather than one: remove the five keys, and decide
+whether the Postgres URL, the auth secret and the encryption key are still valid anywhere
+they point. A dead credential that still authenticates is the part that matters; deleting
+the line only stops it being read from here.
 
 - **pnpm 11.10.0** (`packageManager` in `package.json:20`) was inside
   GHSA-c59q-g84q-2gj5 · CVE-2026-82392 (`>=11.0.0 <11.11.0`, high): a crafted
@@ -1219,8 +1231,15 @@ non-root, `--require-hashes`), `.dockerignore` covering `.env*`, SHA-pinned Acti
 `.env` has never been committed — checked with `--diff-filter=A` over all refs.
 
 **Still open:** E-7, narrowed by S-20 but not closed. S-10's Deezer "not found" versus
-"failed". S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. S-19's `.env` leftovers. On the
-CSP, the next step is `connect-src`, which now has reports behind it.
+"failed". S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. S-19's `.env` leftovers, now
+**confirmed present** rather than merely unverified — see that entry for why they were not
+removed here. On the CSP, the next step is `connect-src`, which now has reports behind it.
+
+**Left to another session, not overlooked.** S-10's remaining half lives in
+`apps/web/lib/deezer.ts` and `packages/providers/src/deezer.ts`. A parallel session held
+both uncommitted throughout this pass — B-34's player ladder and the Deezer
+`Accept-Language` fix — so taking them would have meant editing around live work. Theirs to
+land or hand back.
 
 ## Sources
 
