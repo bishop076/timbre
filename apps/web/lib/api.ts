@@ -11,7 +11,7 @@ const globalForApi = globalThis as unknown as {
   __timbreLimiters?: Record<string, ReturnType<typeof createRateLimiter>>;
 };
 
-const PER_MINUTE = { api: 60, pages: 120, artwork: 300, health: 30 };
+const PER_MINUTE = { api: 60, pages: 120, artwork: 300, health: 30, reports: 20 };
 
 export function guard(request: Request, budget: keyof typeof PER_MINUTE = "api"): Response | null {
   const limiters = (globalForApi.__timbreLimiters ??= {});
