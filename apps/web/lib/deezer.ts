@@ -1,5 +1,7 @@
 import "server-only";
 
+import { log, scrub } from "./log.ts";
+
 export interface RawTrack {
   id: number;
   title: string;
@@ -73,12 +75,23 @@ export async function deezerOrFail<T>(path: string, revalidateSeconds = 86_400):
   return null;
 }
 
-/** The forgiving read: any failure reads as "no such thing". */
+/**
+ * The forgiving read: any failure reads as "no such thing".
+ *
+ * It stays forgiving, but it no longer stays quiet. A quota refusal — Deezer error code 4 —
+ * arrives here as `DeezerUnavailable` and left as `null`, which `deezerList` turns into `[]`
+ * and a genre page renders as "nothing fresh in this genre" under fifteen minutes of
+ * `s-maxage`. Nothing anywhere said the deployment had been rate limited. The caller still
+ * gets its `null`; the operator now gets a line saying why.
+ */
 export async function deezer<T>(path: string, revalidateSeconds = 86_400): Promise<T | null> {
   try {
     return await deezerOrFail<T>(path, revalidateSeconds);
   } catch (cause) {
-    if (cause instanceof DeezerUnavailable) return null;
+    if (cause instanceof DeezerUnavailable) {
+      log("warn", "deezer_unavailable", { path, message: scrub(cause.message) });
+      return null;
+    }
     throw cause;
   }
 }

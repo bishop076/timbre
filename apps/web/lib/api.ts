@@ -87,6 +87,19 @@ export function cached<T>(
 /** A body worth caching is one no provider failed to contribute to. */
 export const whole = (body: { failures?: unknown[] }): boolean => !body.failures?.length;
 
+/**
+ * What a reader is allowed to know about a failure: which source, and nothing else.
+ *
+ * The messages are upstream text — `providers/src/deezer.ts` puts Deezer's own `error.message`
+ * straight into one, and the requester's carry hostnames and status codes. Every log path
+ * scrubs through `scrub()` before writing them down, and then the same strings were handed to
+ * the browser verbatim. Nothing on the client has ever read `.message`: the one consumer,
+ * `artist-view.tsx`, tests `failures.length`. So this costs nothing and closes it.
+ */
+export const publicFailures = (
+  failures: readonly { source: string; message: string }[],
+): { source: string }[] => failures.map(({ source }) => ({ source }));
+
 export function json(body: unknown, cacheControl: string): Response {
   return Response.json(body, { headers: { "cache-control": cacheControl } });
 }

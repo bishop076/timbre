@@ -34,7 +34,14 @@ function writeNameCookie(name: string | null): void {
   try {
     const value = encodeURIComponent(name ?? "");
     const age = name ? 31_536_000 : 0;
-    document.cookie = `${NAME_COOKIE}=${value};path=/;max-age=${age};SameSite=Lax;Secure`;
+    // `Secure` is right on https and is why E-15 added it — but a browser silently discards a
+    // Secure cookie set over plain http, and localhost is exempt while a LAN address is not.
+    // Self-hosting over http (which the Dockerfile and RUNNING.md both support) therefore left
+    // `serverName` permanently null, so the heading rendered "Profile" and snapped to the real
+    // name after hydration: exactly the flash the pre-hydration read exists to prevent. Ask the
+    // page how it was served rather than assuming.
+    const secure = window.location.protocol === "https:" ? ";Secure" : "";
+    document.cookie = `${NAME_COOKIE}=${value};path=/;max-age=${age};SameSite=Lax${secure}`;
   } catch {}
 }
 

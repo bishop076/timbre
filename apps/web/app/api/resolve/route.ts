@@ -1,7 +1,7 @@
 import { mergeTracks, resolveUrl } from "@timbre/providers";
 import { z } from "zod";
 
-import { queryRoute, reportFailures } from "@/lib/api";
+import { publicFailures, queryRoute, reportFailures } from "@/lib/api";
 import { getProviderRuntime } from "@/lib/providers";
 import { log } from "@/lib/log";
 
@@ -30,7 +30,7 @@ export const GET = queryRoute(
           error:
             "The service this link belongs to wouldn't answer for it. It may be unavailable, " +
             "blocked where Timbre is running, or just busy — the link itself looks fine.",
-          failures,
+          failures: publicFailures(failures),
         },
         { status: 502, headers: { "cache-control": "no-store" } },
       );

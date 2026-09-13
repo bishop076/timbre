@@ -1123,7 +1123,7 @@ that shape for between two minutes and a day.
 | `/api/lyrics` | `{lyrics: null}` at **200**, which `readAnswer` maps to *"this song has no lyrics"* | LRCLIB timed out |
 | `/api/lyrics?alternatives=1` | a body with no `alternatives` key → `[]` → *"LRCLIB has only this one."* | the same timeout |
 | `/api/search` | the degraded result, cached 120s for every reader of that term | one provider blipped |
-| `/api/charts` | a partial chart frozen for an hour under `force-static` | an upstream hiccup at the revalidation moment |
+| `/api/charts` | a partial chart frozen for an hour under `force-static` | an upstream hiccup at the revalidation moment — **missed by this commit, see B-47** |
 | `/api/resolve` | *"That link isn't from a service Timbre can play."* | SoundCloud was 500ing, and nothing was logged |
 | `spotify-web.ts` | "Spotify retired the searchDesktop query" for 30 minutes | one blip during hash discovery, cached as a result |
 | `/api/spotify` | one track id pinned for the life of the process, under a day of cache-control | a `Map` with no expiry at all |
@@ -1289,3 +1289,45 @@ the running build; it 404'd; `get_song` was then called directly and answered
 which is an environment fact and not a defect — but the *handling* of it was a defect, and it
 would have reached every reader behind any blocked address and every deleted video alike.
 **The environment made a real bug visible; the environment was not the bug.**
+
+---
+
+## B-47 · The four B-41 left behind, including one its own table claimed was fixed `FIXED`
+
+**Severity:** medium — but the first of these is a correction to this log, which is worse
+
+**`/api/charts` was listed in B-41's table and was never touched.** The entry above reads as
+though all eight rows were fixed in `6ac1d0f`. Seven were. The charts route kept
+`force-static` + `revalidate = 3600` + `CACHE_CONTROL_HOUR`, so an Apple 403 or a Deezer blip
+at the revalidation moment still baked a half-empty home page in for an hour with a day of
+stale-while-revalidate behind it. It now uses `cached(…, whole)` and answers `no-store` when
+the result is degraded, which is what `/api/search` and `/api/radio` already did.
+
+**A bug log that overstates is the same defect the log is about.** B-41's whole subject is
+routes whose answer says something that is not so; the entry describing them did it too. Found
+only because someone asked whether everything was fixed and the file was re-read against the
+code rather than against the entry.
+
+**Upstream error text was still reaching the browser.** `reportFailures` scrubs every message
+before it is logged, and then the raw `failures[]` — including `providers/src/deezer.ts`
+putting Deezer's own `error.message` into one, and the requester's hostnames and status codes
+— was serialised straight into the response body of `/api/search`, `/api/charts`, `/api/radio`
+and `/api/resolve`. B-46 fixed this for `/api/health` alone. `publicFailures` now reduces each
+to its `source`. **It costs nothing:** the only client that has ever read `failures` is
+`artist-view.tsx`, and it tests `.length`.
+
+**A Deezer quota refusal was silent in both directions.** B-43 bounded the genre-feed fan-out
+so the quota is harder to trip, and left the other half: `deezer()` forgives every
+`DeezerUnavailable` into `null`, `deezerList` turns that into `[]`, and the page renders as a
+genre with nothing fresh in it. That is still the right behaviour for the reader — but nothing
+anywhere told the operator the deployment had been rate limited. It logs now.
+
+**The display-name cookie was `Secure` unconditionally.** E-15 added that and is right on
+https, but a browser silently discards a `Secure` cookie set over plain http, and localhost is
+exempt where a LAN address is not. Self-hosting over http — which the `Dockerfile` and
+`RUNNING.md` both support — therefore left `serverName` permanently null, so the profile
+heading rendered "Profile" and snapped to the real name after hydration: precisely the flash
+the pre-hydration read exists to prevent. It asks `window.location.protocol` now.
+
+**Still open after this:** B-45 (the Spotify embed's volume slider, which cannot be fixed
+without a UI decision) and S-11 (the browser smoke test in CI, written up but not built).
