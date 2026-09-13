@@ -61,10 +61,13 @@ const REPORT_TO = "/api/csp-report";
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  // React's development build needs `eval` for its debugging features — reconstructing a
-  // callstack from another environment, chiefly — so without this every dev page load logs
-  // a CSP error and the overlay reports an issue. Production never calls `eval`.
-  `script-src 'self' 'unsafe-inline'${IN_PRODUCTION ? "" : " 'unsafe-eval'"} ${PLAYERS} ${SOUNDCLOUD_ASSETS} ${SPOTIFY_EMBED_ASSETS}`,
+  // "Production never calls `eval`" was true of our code and wrong about the page. Spotify's
+  // embed bundle evaluates a string at `iframe-api/src/v1/index.ts`, so with this dev-only it
+  // threw `EvalError` on every Spotify track in production and nowhere else — which is exactly
+  // the shape of bug a dev-only directive produces. React's development build needs it too,
+  // for reconstructing a callstack from another environment. See EXPOSURE E-14: this is a real
+  // loss, kept because the alternative is dropping the embed controller entirely.
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${PLAYERS} ${SOUNDCLOUD_ASSETS} ${SPOTIFY_EMBED_ASSETS}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
