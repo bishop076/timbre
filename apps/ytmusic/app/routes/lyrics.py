@@ -32,15 +32,30 @@ def lyrics(request: LyricsRequest) -> LyricsResponse:
 
 
 def lyrics_page(video_ids: list[str]) -> str | None:
+    """The first of up to three candidates that has a lyrics page.
+
+    Each id is tried in turn, which is the whole point of being handed several — but a failure
+    on the first used to raise straight out of the route, so one region-blocked or transiently
+    failing candidate returned 502 and the panel read "YouTube Music did not answer" while a
+    sibling id had the lyrics all along. Log and carry on, as ``radio.py`` and ``search.py``
+    both already do; only a run where *every* candidate failed is an upstream failure.
+    """
+    failure: Exception | None = None
     for video_id in dict.fromkeys(video_ids):
         try:
             watch = get_client().get_watch_playlist(videoId=video_id, limit=1)
-        except Exception as error:
-            raise upstream_error("lyrics", error) from error
+        except Exception as error:  # noqa: BLE001
+            logger.info("lyrics lookup failed for %s, trying the next: %s", video_id, error)
+            failure = error
+            continue
 
+        failure = None
         browse_id = watch.get("lyrics") if isinstance(watch, dict) else None
         if isinstance(browse_id, str) and browse_id:
             return browse_id
+
+    if failure is not None:
+        raise upstream_error("lyrics", failure) from failure
     return None
 
 

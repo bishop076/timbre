@@ -17,7 +17,18 @@ export function createCache<T>({
       return entries.size;
     },
 
-    async take(key: string, produce: () => Promise<T>): Promise<T> {
+    /**
+     * `keep` decides whether an answer is worth remembering. Without it every resolved value
+     * was stored, including the degraded ones — a search whose first caller happened to catch
+     * a provider mid-blip pinned that provider's absence into the cache and served it to
+     * everyone for the full TTL, long after the provider recovered. A rejection was never
+     * cached; a partial success looked identical to a whole one and was.
+     */
+    async take(
+      key: string,
+      produce: () => Promise<T>,
+      keep: (value: T) => boolean = () => true,
+    ): Promise<T> {
       const hit = entries.get(key);
       if (hit && hit.expiresAt > now()) return hit.value;
       if (hit) entries.delete(key);
@@ -27,6 +38,7 @@ export function createCache<T>({
 
       const call = produce()
         .then((value) => {
+          if (!keep(value)) return value;
           if (entries.size >= max) entries.delete(entries.keys().next().value!);
           entries.set(key, { value, expiresAt: now() + ttlMs });
           return value;

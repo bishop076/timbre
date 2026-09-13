@@ -93,7 +93,7 @@ test("a burst that saturates one source fails that source alone, and the next se
     const next = await searchAll(ctx, "a real reader", 5);
     assert.ok(performance.now() - started < 1_000, "the next search waited out the queue");
     assert.deepEqual(next.failures, [
-      { source: "apple", message: "Apple Music has no free request slot within 6s." },
+      { source: "apple", message: "Apple Music has no free request slot within 3s." },
     ]);
     controller.abort();
     await Promise.all(burst);
