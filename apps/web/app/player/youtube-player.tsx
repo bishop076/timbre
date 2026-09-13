@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { log } from "../logs.ts";
-import { addScript, blockedTimer, findScript, loadOnce, useLatest, useTransport } from "./embed";
+import {
+  addScript,
+  blockedReason,
+  blockedTimer,
+  findScript,
+  loadOnce,
+  useLatest,
+  useTransport,
+} from "./embed";
 import { publishYouTubeRates, speedToApply, useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
 import { stalledAt } from "./youtube-stall.ts";
@@ -65,6 +73,13 @@ const RETRYABLE_ERRORS: Record<number, string> = {
   150: REFUSED,
   153: REFUSED,
 };
+
+// Whether the API script has been judged missing, for the page rather than for one mount. The
+// eight-second timer below runs once per mount of this component, and a song that leaves YouTube
+// unmounts it — so without this the *next* song to reach YouTube waits on a player that will
+// never exist and has no timer left to say so, and sits at "loading" for ever. Cleared if the
+// script does turn up later, so a slow network cannot leave a stale verdict behind.
+let apiBlocked = false;
 
 const loadApi = loadOnce<YTNamespace>((resolve) => {
   if (window.YT?.Player) return resolve(window.YT);
@@ -153,12 +168,19 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
     let cancelled = false;
     let captionTimers: ReturnType<typeof setTimeout>[] = [];
 
-    const clearBlocked = blockedTimer("YouTube", (reason) =>
-      live.current.handleError(reason, false),
-    );
+    // This fires only when the IFrame API script itself never arrived — `clearBlocked` runs the
+    // moment it loads, well before the player is ready. That is a verdict on YouTube entire, not
+    // on this copy: without the script there is no player for `start` to drive, so a second id
+    // would not fail, it would hang at "loading" with nothing left to report. The ladder should
+    // hear a source it can leave, and leave it — SoundCloud, Audius and the rest still play.
+    const clearBlocked = blockedTimer("YouTube", (reason) => {
+      apiBlocked = true;
+      live.current.handleError(reason, true, { blocked: true });
+    });
 
     void loadApi().then((YT) => {
       if (cancelled) return;
+      apiBlocked = false;
       clearBlocked();
 
       const { UNSTARTED, ENDED, PLAYING, PAUSED, BUFFERING, CUED } = YT.PlayerState;
@@ -242,14 +264,21 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!player || !readyRef.current) return;
+    if (!player || !readyRef.current) {
+      // Already judged blocked on an earlier song: say so now rather than wait on a player that
+      // is not coming. `blocked` keeps the ladder off YouTube, so this cannot ask again.
+      if (videoId && apiBlocked) {
+        live.current.handleError(blockedReason("YouTube"), true, { blocked: true });
+      }
+      return;
+    }
     if (videoId) {
       start(videoId);
     } else {
       clearTimeout(stallTimer.current);
       quietly(() => player.stopVideo());
     }
-  }, [videoId, start]);
+  }, [videoId, start, live]);
 
   useTransport({
     toggle: () => {

@@ -787,3 +787,45 @@ would have played; the rescue across sources is still underneath it.
 development shows nothing. Read `playabilityStatus` from the `youtubei/v1/player` response
 under the hosted origin, as B-19 did, and compare the first-party watch page from the same
 exit before touching the player.
+
+---
+
+## B-34 · A blocked player script skipped the ladder built for exactly that `FIXED`
+
+**Severity:** high wherever `youtube.com/iframe_api` is filtered — nothing played at all, though four other sources would have
+
+B-33 taught the ladder to leave YouTube when the *network* turns it away. This is the case
+where YouTube never answers in the first place, and the ladder was never asked.
+
+| | |
+|---|---|
+| **Symptom** | With an ad blocker or a network filter on `youtube.com/iframe_api`, every song stopped after eight seconds on *"Couldn't load YouTube's player. An ad blocker or network filter may be blocking it."* SoundCloud, Audius, Archive, Spotify's embed and the 30-second preview were all reachable and none was tried. |
+| **Cause** | `youtube-player.tsx` reported the blocked-script timer as `handleError(reason, false)`. `worthRetrying: false` is `handleError`'s "give up now" path — it sets `unplayable` and returns before the first rung. So the one failure the fall-through ladder exists to survive was the one failure that bypassed it. `mixcloud-player.tsx` and `spotify-player.tsx` said `false` for the same reason; only `soundcloud-player.tsx` had it right. |
+| **Fix** | All three now report a blocked player as retryable. YouTube additionally reports `{ blocked: true }`, and `whyLeftYouTube` returns `"blocked"` — a verdict on YouTube entire, not on the copy. That distinction is not cosmetic: with no API script there is no player object for `start` to drive, so a second video id does not fail, it hangs at `loading` with nothing left to raise an error. Leaving outright sends the ladder to progressive → SoundCloud → rescue → Spotify → preview, which is where it should have gone at eight seconds. |
+
+**The second half, found by fixing the first.** The eight-second timer runs once per *mount* of
+`YouTubePlayer`, and leaving YouTube unmounts it. So the verdict was reached for one song and
+then thrown away: the next song to reach YouTube found `playerRef.current` still `null`, and the
+effect that drives `videoId` returns silently when there is no player — no timer left, no error,
+`loading` for ever. That was already true before this fix, one song later. `apiBlocked` now holds
+the judgement for the page rather than the mount, and is cleared if the script does arrive late,
+so a slow network cannot strand a stale verdict.
+
+**Why the message changed too.** `youtubeTurnedAway` was a boolean, so the player bar said
+*"YouTube refused this connection"* for both causes. For a blocked script that is B-6's
+mistake again — asserting a cause the app never verified, and one that sends the reader to
+their VPN settings over an extension. It now carries which of the two it was, and the bar and
+the give-up message read from it.
+
+**A third cause, as of the CSP going enforcing.** `next.config.ts` served
+`Content-Security-Policy-Report-Only` until b4c2e73, so nothing it named was ever enforced.
+Now an origin missing from `PLAYERS` is blocked outright and presents exactly as the ad
+blocker does. `https://www.youtube.com` is in `PLAYERS` and `youtube-nocookie.com` in
+`frame-src`, so this ladder is not affected today — but the give-up message names no cause
+for that reason, and `POST /api/csp-report` is what tells the three apart.
+
+**How to see it.** Block `https://www.youtube.com/iframe_api` in the browser's network
+request blocking (DevTools → Network conditions) and play anything with a SoundCloud or
+Audius source. Before: `unplayable` after eight seconds. After: eight seconds of YouTube,
+then it plays from the next source, with *"YouTube's player is blocked here"* in the bar.
+This one does reproduce on `127.0.0.1`, unlike B-19 and B-33.

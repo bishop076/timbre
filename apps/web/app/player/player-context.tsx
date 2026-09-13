@@ -27,7 +27,7 @@ import { forgetFailedSource, pickSource, rememberedSource } from "./source-choic
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import { useTabSync } from "./use-tab-sync";
 import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
-import { turnedAway, type YouTubeFailures } from "./youtube-refusal";
+import { whyLeftYouTube, type LeftYouTube, type YouTubeFailures } from "./youtube-refusal";
 
 const RADIO_POOL = 50;
 const RADIO_PICKS = 25;
@@ -109,8 +109,20 @@ async function findMatches(song: Song, signal: AbortSignal): Promise<Song[]> {
   return data.songs.filter((found) => plausiblySameSong(song, found));
 }
 
-function giveUpReason(youtubeCopies: number, triedProgressive: boolean, turnedAway = false): string {
-  if (turnedAway) return "YouTube refused this connection (a VPN, maybe), and nothing else could play it.";
+// Names no cause, as B-33's three codes do. An extension, a network filter and this site's own
+// Content-Security-Policy all present identically here, and the app cannot tell them apart —
+// `POST /api/csp-report` is what distinguishes the third.
+const GAVE_UP_ON_YOUTUBE: Record<LeftYouTube, string> = {
+  blocked: "YouTube's player never loaded here, and nothing else could play it.",
+  refused: "YouTube refused this connection (a VPN, maybe), and nothing else could play it.",
+};
+
+function giveUpReason(
+  youtubeCopies: number,
+  triedProgressive: boolean,
+  left: LeftYouTube | null = null,
+): string {
+  if (left) return GAVE_UP_ON_YOUTUBE[left];
   if (youtubeCopies > 0 && triedProgressive) {
     return `Nothing here would play — ${youtubeCopies} YouTube ${youtubeCopies === 1 ? "copy" : "copies"} refused, and the other sources failed too.`;
   }
@@ -220,7 +232,7 @@ function usePlayerValue() {
   const [queueOrigin, setQueueOrigin] = useState<QueueOrigin | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState<ChosenSource | null>(null);
-  const [youtubeTurnedAway, setYoutubeTurnedAway] = useState(false);
+  const [youtubeTurnedAway, setYoutubeTurnedAway] = useState<LeftYouTube | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [theater, setTheater] = useState(false);
   const [state, setState] = useState<PlayState>("idle");
@@ -248,7 +260,11 @@ function usePlayerValue() {
   const candidates = useRef<string[]>([]);
   const attempted = useRef<Set<string>>(new Set());
   const spent = useRef<Set<string>>(new Set());
-  const youtubeFailures = useRef<YouTubeFailures>({ stalled: false, refusals: 0 });
+  const youtubeFailures = useRef<YouTubeFailures>({
+    blocked: false,
+    stalled: false,
+    refusals: 0,
+  });
   const rescued = useRef<Set<string>>(new Set());
   const recorded = useRef<string | null>(null);
   const steered = useRef<string | null>(null);
@@ -348,10 +364,10 @@ function usePlayerValue() {
       candidates.current = [];
       attempted.current = new Set();
       spent.current = new Set();
-      youtubeFailures.current = { stalled: false, refusals: 0 };
+      youtubeFailures.current = { blocked: false, stalled: false, refusals: 0 };
       recorded.current = null;
       steered.current = null;
-      setYoutubeTurnedAway(false);
+      setYoutubeTurnedAway(null);
       setPlaying(null);
       writeProgress(0, song.durationMs ? song.durationMs / 1000 : 0);
 
@@ -709,22 +725,28 @@ function usePlayerValue() {
     async (
       reason: string,
       worthRetrying: boolean,
-      options: { stalled?: boolean; refused?: boolean } = {},
+      options: { stalled?: boolean; refused?: boolean; blocked?: boolean } = {},
     ) => {
       const song = songRef.current;
       if (song && steered.current) forgetFailedSource(song, steered.current);
       steered.current = null;
       const failures = youtubeFailures.current;
-      const alreadyLeft = turnedAway(failures);
+      const alreadyLeft = whyLeftYouTube(failures);
+      if (options.blocked) failures.blocked = true;
       if (options.stalled) failures.stalled = true;
       if (options.refused) failures.refusals += 1;
-      const leftYouTube = turnedAway(failures);
+      const leftYouTube = whyLeftYouTube(failures);
       if (leftYouTube && !alreadyLeft) {
+        const why = failures.blocked
+          ? "player never loaded"
+          : failures.stalled
+            ? "stalled"
+            : `${failures.refusals} uploads refused`;
         log(
           "warn",
-          `YouTube turned away the connection on “${song?.title ?? "playback"}” (${failures.stalled ? "stalled" : `${failures.refusals} uploads refused`}) — leaving YouTube`,
+          `YouTube turned away the connection on “${song?.title ?? "playback"}” (${why}) — leaving YouTube`,
         );
-        setYoutubeTurnedAway(true);
+        setYoutubeTurnedAway(leftYouTube);
       }
 
       if (!worthRetrying || !song) {
