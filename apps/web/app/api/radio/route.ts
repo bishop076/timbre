@@ -1,7 +1,7 @@
 import { recommendFrom } from "@timbre/providers";
 import { z } from "zod";
 
-import { CACHE_CONTROL_HOUR, json, queryRoute } from "@/lib/api";
+import { CACHE_CONTROL_HOUR, json, publicFailures, queryRoute } from "@/lib/api";
 import { log } from "@/lib/log";
 import { getProviderRuntime } from "@/lib/providers";
 import { optionalQueryText } from "@/lib/query-text";
@@ -46,7 +46,7 @@ export const GET = queryRoute(
     // stale-while-revalidate. An hour of silent dead-ends bought from one transient blip.
     // Report what failed, and refuse to cache an answer that is empty because something broke.
     const broken = failures.length > 0 && songs.length === 0;
-    return json({ songs, failures }, broken ? "no-store" : CACHE_CONTROL_HOUR);
+    return json({ songs, failures: publicFailures(failures) }, broken ? "no-store" : CACHE_CONTROL_HOUR);
   },
   { issues: true },
 );
