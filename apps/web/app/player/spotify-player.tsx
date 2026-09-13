@@ -133,7 +133,8 @@ export function SpotifyPlayer({
         );
       })
       .catch(() => {
-        if (!cancelled) live.current.handleError(blockedReason("Spotify"), false);
+        // A preview may still be left below Spotify; `spent` holds this track so it cannot repeat.
+        if (!cancelled) live.current.handleError(blockedReason("Spotify"), true);
       });
 
     return () => {

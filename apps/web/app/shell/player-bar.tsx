@@ -21,11 +21,19 @@ import {
 import { PlaybackMenu } from "../player/playback-menu";
 import { usePlayerControls, usePlayerProgress } from "../player/player-context";
 import { Volume } from "../player/volume";
+import type { LeftYouTube } from "../player/youtube-refusal";
 import { Scrub } from "../player/wavy-progress";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { LikeButton } from "../playlists/like-button";
 import { sourceStyle } from "../sources";
 import { SourceLink } from "./source-link";
+
+// Two different things send the ladder away from YouTube, and only one of them is the network.
+// Saying "refused this connection" when an ad blocker ate the script sends people to their VPN.
+const LEFT_YOUTUBE: Record<LeftYouTube, string> = {
+  blocked: "YouTube's player is blocked here",
+  refused: "YouTube refused this connection",
+};
 
 type Variant = "bar" | "sheet";
 
@@ -196,8 +204,8 @@ export function PlayerBar() {
           <span className="shrink-0 text-amber-500">30-second preview</span>
         )}
         {youtubeTurnedAway && state !== "unplayable" && (
-          <span className="min-w-0 truncate text-amber-500" title="YouTube refused this connection">
-            · YouTube refused this connection
+          <span className="min-w-0 truncate text-amber-500" title={LEFT_YOUTUBE[youtubeTurnedAway]}>
+            · {LEFT_YOUTUBE[youtubeTurnedAway]}
           </span>
         )}
       </p>
