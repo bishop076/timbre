@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.0 — 13 September 2026
+
+### Added
+
+- **player** — lead with Spotify when Spotify can carry the queue
+
+### Fixed
+
+- **match** — refuse the versions a title only admits to in its credit
+
 ## 0.16.3 — 13 September 2026
 
 ### Fixed
