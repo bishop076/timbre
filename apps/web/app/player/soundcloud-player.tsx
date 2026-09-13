@@ -160,10 +160,20 @@ export function SoundCloudPlayer({
     };
   }, [live, start]);
 
+  // A track change that lands during the widget's ~0.5–2s handshake used to be dropped: the
+  // guard returned before recording `loadedUrl`, and `readyRef` is a ref, so READY firing a
+  // moment later re-ran nothing and `start(widget)` ran against the *initial* url. The
+  // component is not remounted between two SoundCloud tracks — `load` batches `setPlaying(null)`
+  // and `start(own)` into one commit, so `activeSource` never passes through `null` — so the
+  // previous track kept playing while the bar, artwork and lyrics showed the new one, and its
+  // FINISH advanced the queue from the wrong position. Record the url either way, and let READY
+  // pick up whatever is current by the time it fires.
   useEffect(() => {
-    const widget = widgetRef.current;
-    if (!trackUrl || loadedUrl.current === trackUrl || !readyRef.current || !widget) return;
+    if (!trackUrl || loadedUrl.current === trackUrl) return;
     loadedUrl.current = trackUrl;
+
+    const widget = widgetRef.current;
+    if (!readyRef.current || !widget) return;
     widget.load(trackUrl, { callback: () => start(widget) });
   }, [trackUrl, start]);
 

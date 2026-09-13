@@ -7,7 +7,15 @@ import { hideWhenBroken } from "../artwork";
 import { proxied } from "../artwork-url";
 import { openSpotifyWindow } from "../spotify/preview-mode.ts";
 import { useSpotifyTokens } from "../spotify/token-store.ts";
-import { addScript, blockedReason, findScript, loadOnce, useLatest, useTransport } from "./embed";
+import {
+  addScript,
+  blockedReason,
+  blockedTimer,
+  findScript,
+  loadOnce,
+  useLatest,
+  useTransport,
+} from "./embed";
 import { usePlayerControls } from "./player-context";
 
 const SpotifySdkPlayer = dynamic(() =>
@@ -29,7 +37,34 @@ const PREVIEW_REASONS: Record<string, string> = {
     "Spotify's player never started — an ad blocker or network filter is blocking spclient.spotify.com, which it needs. Allowing this site in your blocker fixes it.",
   refused:
     "Spotify refused to start the track on this device, so this is their 30-second preview.",
+  "not-connected":
+    "Spotify isn't connected, so this is their 30-second preview. Connect Spotify Premium in Profile → Settings to hear the whole song.",
+  "sdk-failed":
+    "Spotify's player could not be started in this browser, so this is their 30-second preview.",
+  playback_error:
+    "Spotify stopped playing this track partway, so this is their 30-second preview instead.",
+  "device-offline":
+    "Spotify's player disconnected — another device may have taken over the session. This is their 30-second preview.",
 };
+
+// Some verdicts are a property of this browser and this session, not of the track: a blocker
+// killing spclient.spotify.com, a free account, a browser that cannot run the SDK at all.
+// Held per track, each of those cost a fresh 10s of spinning before *every* Spotify song —
+// B-35's mistake inverted, session-wide state scoped to a single attempt. The ones that can
+// genuinely differ between tracks (`refused`, `playback_error`, `device-offline`) stay per
+// track, and the verdict is filed against the token it was reached under, so a reconnect
+// retires the ones a reconnect actually fixes.
+const SESSION_WIDE = new Set([
+  "not-connected",
+  "sdk-failed",
+  "blocked",
+  "initialization_error",
+  "authentication_error",
+  "account_error",
+  "stale-scopes",
+]);
+
+let sessionFailure: { token: string | null; reason: string } | null = null;
 
 interface EmbedController {
   play(): void;
@@ -102,7 +137,15 @@ export function SpotifyPlayer({
 }) {
   const tokens = useSpotifyTokens();
   const [sdkFailure, setSdkFailure] = useState<{ trackId: string; reason: string } | null>(null);
-  const sdkFailed = sdkFailure && sdkFailure.trackId === trackId ? sdkFailure.reason : null;
+
+  // A session-wide verdict is filed against the token it was reached under, so reconnecting
+  // Spotify — the fix most of the copy above tells people to apply — retires it without
+  // anything having to clear it. Reading it is pure; the write below always accompanies a
+  // `setSdkFailure`, so the re-render that shows it is already happening.
+  const token = tokens?.accessToken ?? null;
+  const sticky = sessionFailure?.token === token ? sessionFailure.reason : null;
+  const sdkFailed =
+    sticky ?? (sdkFailure?.trackId === trackId ? sdkFailure.reason : null);
   const useSdk = Boolean(tokens) && !sdkFailed;
 
   const controls = usePlayerControls();
@@ -121,9 +164,22 @@ export function SpotifyPlayer({
     const host = document.createElement("div");
     container.replaceChildren(host);
 
+    // `loadApi`'s own deadline covers exactly one thing: `onSpotifyIframeApiReady` firing.
+    // Past that point nothing bounded `createController`'s callback or the first
+    // `playback_update`, so an iframe the browser refuses — a `frame-src` miss, which is
+    // B-38's exact shape, or an extension — left the track on `loading` for ever and the
+    // ladder never advanced to the preview rung below Spotify. The other three embeds all arm
+    // this timer (`youtube-player.tsx`, `soundcloud-player.tsx`, `mixcloud-player.tsx`); this
+    // was the one that didn't. The first `playback_update` is what clears it, because a
+    // controller that exists and never speaks is the failure being guarded against.
+    let clearBlocked = () => {};
+
     loadApi()
       .then((api) => {
         if (cancelled) return;
+        clearBlocked = blockedTimer("Spotify", (reason) =>
+          live.current.handleError(reason, true),
+        );
         api.createController(
           host,
           { uri: `spotify:track:${trackId}`, width: "100%", height: 152 },
@@ -136,6 +192,7 @@ export function SpotifyPlayer({
             controller.addListener("ready", () => controller.play());
 
             controller.addListener("playback_update", ({ data }) => {
+              clearBlocked();
               if (!data) return;
               const { current: song, handleProgress, handleEnded, handleStateChange } =
                 live.current;
@@ -160,11 +217,13 @@ export function SpotifyPlayer({
       })
       .catch(() => {
         // A preview may still be left below Spotify; `spent` holds this track so it cannot repeat.
+        clearBlocked();
         if (!cancelled) live.current.handleError(blockedReason("Spotify"), true);
       });
 
     return () => {
       cancelled = true;
+      clearBlocked();
       controllerRef.current?.destroy();
       controllerRef.current = null;
       container.replaceChildren();
@@ -187,7 +246,11 @@ export function SpotifyPlayer({
         <SpotifySdkPlayer
           trackId={trackId}
           onOutcome={(outcome) => {
-            if (outcome.kind === "unavailable") setSdkFailure({ trackId, reason: outcome.reason });
+            if (outcome.kind !== "unavailable") return;
+            if (SESSION_WIDE.has(outcome.reason)) {
+              sessionFailure = { token, reason: outcome.reason };
+            }
+            setSdkFailure({ trackId, reason: outcome.reason });
           }}
         />
         {controls.current?.artworkUrl && (

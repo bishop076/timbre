@@ -11,6 +11,16 @@ const SDK_SRC = "https://sdk.scdn.co/spotify-player.js";
 
 const READY_MS = 10_000;
 
+// Starting the SDK is four steps — token, script, connect, device — and only the last one had
+// a deadline, armed *after* the three awaits that precede it. `loadSdk` settles on
+// `onSpotifyWebPlaybackSDKReady` or the script tag's `error` event, so an `sdk.scdn.co` that
+// accepts the connection and then stalls settles it neither way: the line arming the timer was
+// never reached, `onOutcome` never fired, the embed fallback never rendered, and the track sat
+// on a spinning play button for ever. `loadOnce` caches that pending promise for the session,
+// so every later Spotify track did the same thing. This bounds the three steps the READY timer
+// cannot see, on the same 8s the other embeds treat as "something is blocking this".
+const HANDSHAKE_MS = 8000;
+
 interface SpotifyPlayerInstance {
   connect(): Promise<boolean>;
   disconnect(): void;
@@ -70,11 +80,22 @@ export function SpotifySdkPlayer({
     let cancelled = false;
     let player: SpotifyPlayerInstance | null = null;
     let readyTimer: ReturnType<typeof setTimeout> | undefined;
-    const unavailable = (reason: string) => live.current.onOutcome({ kind: "unavailable", reason });
+    const unavailable = (reason: string) => {
+      if (!cancelled) live.current.onOutcome({ kind: "unavailable", reason });
+    };
+
+    // Armed before the first await, and cleared the moment `connect()` answers. "blocked" is
+    // the right reason for all three steps it covers: a stalled token refresh, a script that
+    // never runs and a `connect()` that never returns all read as a filter in the way.
+    const handshakeTimer = setTimeout(() => {
+      log("error", "Spotify SDK: nothing answered within 8s of starting — treating it as blocked.");
+      unavailable("blocked");
+    }, HANDSHAKE_MS);
 
     (async () => {
       const token = await accessToken();
       if (!token) {
+        clearTimeout(handshakeTimer);
         log("warn", "Spotify SDK: no usable token — not connected, or the refresh failed.");
         unavailable("not-connected");
         return;
@@ -120,12 +141,23 @@ export function SpotifySdkPlayer({
         setReady(true);
       }) as never);
 
+      // Cleanup sets `cancelled` before it calls `disconnect()`, so the `not_ready` that a
+      // normal teardown provokes is ignored and only a device that drops mid-song gets here.
+      // Without this the device id stayed valid, the play effect had no reason to re-run and
+      // no outcome was reported: audio stopped, state stayed `playing`, progress froze and the
+      // ladder never walked.
       player.addListener("not_ready", (() => {
         log("warn", "Spotify SDK: the device went offline.");
+        if (cancelled || !deviceRef.current) return;
+        deviceRef.current = null;
+        setReady(false);
+        unavailable("device-offline");
       }) as never);
 
       const connected = await player.connect();
+      clearTimeout(handshakeTimer);
       log(connected ? "info" : "error", `Spotify SDK: connect() returned ${connected}.`);
+      if (cancelled) return;
 
       readyTimer = setTimeout(() => {
         if (deviceRef.current) return;
@@ -136,6 +168,7 @@ export function SpotifySdkPlayer({
         unavailable("blocked");
       }, READY_MS);
     })().catch((cause: unknown) => {
+      clearTimeout(handshakeTimer);
       if (cancelled) return;
       log("error", `Spotify SDK failed to start: ${cause instanceof Error ? cause.message : String(cause)}`);
       unavailable("sdk-failed");
@@ -143,6 +176,7 @@ export function SpotifySdkPlayer({
 
     return () => {
       cancelled = true;
+      clearTimeout(handshakeTimer);
       clearTimeout(readyTimer);
       player?.disconnect();
       playerRef.current = null;

@@ -61,6 +61,21 @@ export function ProgressiveAudioPlayer({
     const fallback = src === streamUrl ? nextStreamHost(src) : null;
     let started = false;
 
+    // A media resource that fails to load fires the element's `error` event *and* rejects the
+    // pending `play()` with `NotSupportedError`. The only guard against reporting both was the
+    // `fallback &&` test below, which holds solely while a second host is left to try — never
+    // for archive.org (`stream-url.ts` returns no fallback for it) and never for the last
+    // Audius host. The second report walked the ladder a second time: walk #1 called
+    // `start(soundcloud)`, walk #2 found soundcloud already in `spent` and jumped past it,
+    // which can reach `adoptElsewhere` → `addSourcesToSong` and permanently rewrite the song's
+    // sources inside saved playlists, off one failure counted twice. One load, one verdict.
+    let reported = false;
+    const report = (message: string) => {
+      if (reported) return;
+      reported = true;
+      live.current.handleError(message, true);
+    };
+
     const lifetime = new AbortController();
     const on = (type: string, listener: () => void) =>
       audio.addEventListener(type, listener, { signal: lifetime.signal });
@@ -78,8 +93,13 @@ export function ProgressiveAudioPlayer({
     on("pause", () => live.current.handleStateChange("paused"));
     on("ended", () => live.current.handleEnded());
     on("error", () => {
-      if (fallback && !started) setRetry({ key: streamUrl, url: fallback });
-      else live.current.handleError("That track wouldn't play.", true);
+      if (fallback && !started) {
+        // Taking the fallback is a verdict too, as far as the pending `play()` is concerned.
+        reported = true;
+        setRetry({ key: streamUrl, url: fallback });
+        return;
+      }
+      report("That track wouldn't play.");
     });
 
     audio.play().catch((cause: unknown) => {
@@ -87,7 +107,7 @@ export function ProgressiveAudioPlayer({
       if (lifetime.signal.aborted || name === "AbortError") return;
       if (fallback && name === "NotSupportedError") return;
       if (name === "NotAllowedError") live.current.handleStateChange("paused");
-      else live.current.handleError("That track wouldn't start.", true);
+      else report("That track wouldn't start.");
     });
 
     return () => lifetime.abort();
