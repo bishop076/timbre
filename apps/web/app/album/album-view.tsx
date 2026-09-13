@@ -27,8 +27,10 @@ export function PlayRow({
   const { play, queueOrigin, state, toggle } = usePlayerControls();
   if (songs.length === 0 && !children) return null;
 
-  // Playing *this* list, rather than merely playing something.
-  const mine = origin !== undefined && queueOrigin?.id === origin.id;
+  // Playing *this* list, rather than merely playing something. `kind` matters as well as `id`:
+  // a playlist's uuid and an album's catalogue id come from different namespaces.
+  const mine =
+    origin !== undefined && queueOrigin?.kind === origin.kind && queueOrigin.id === origin.id;
   const playingMine = mine && state === "playing";
 
   return (
@@ -52,6 +54,9 @@ export function PlayRow({
 export function AlbumView({ album }: { album: AlbumDetail }) {
   const { play, current, state } = usePlayerControls();
   const songs = album.songs as unknown as Song[];
+  // The header button had no origin at all, so `mine` was always false: it read Play while the
+  // album was playing, and pressing it restarted from track 1 instead of pausing.
+  const albumOrigin = { kind: "album" as const, id: String(album.id) };
 
   return (
     <Page>
@@ -81,7 +86,7 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
             {album.trackCount} {album.trackCount === 1 ? "track" : "tracks"}
           </span>
         </p>
-        <PlayRow songs={songs}>
+        <PlayRow songs={songs} origin={albumOrigin}>
           {songs.length > 0 && (
             <SaveAsPlaylist key={album.id} name={`${album.title} — ${album.artist}`} songs={songs} />
           )}
@@ -99,7 +104,12 @@ export function AlbumView({ album }: { album: AlbumDetail }) {
                 key={song.id}
                 song={song}
                 onPlay={() =>
-                  play(song, [...songs.slice(position), ...songs.slice(0, position)])
+                  play(
+                    song,
+                    [...songs.slice(position), ...songs.slice(0, position)],
+                    undefined,
+                    albumOrigin,
+                  )
                 }
                 isCurrent={isCurrent}
                 isPlaying={state === "playing"}

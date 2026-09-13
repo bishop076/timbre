@@ -58,9 +58,9 @@ function writeProgress(position: number, duration: number): void {
   ticks.emit();
 }
 
-/** The list a queue was started from — a playlist for now. */
+/** The list a queue was started from. */
 export interface QueueOrigin {
-  kind: "playlist";
+  kind: "playlist" | "album";
   id: string;
 }
 
@@ -986,6 +986,7 @@ function usePlayerValue() {
     repeat,
     hasNext,
     play,
+    goTo,
     enqueue,
     playNext,
     removeAt,
