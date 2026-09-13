@@ -27,7 +27,9 @@ export const GET = queryRoute(
       reportFailures("/api/resolve", failures);
       return Response.json(
         {
-          error: "Timbre couldn't reach the service this link belongs to. Try again shortly.",
+          error:
+            "The service this link belongs to wouldn't answer for it. It may be unavailable, " +
+            "blocked where Timbre is running, or just busy — the link itself looks fine.",
           failures,
         },
         { status: 502, headers: { "cache-control": "no-store" } },

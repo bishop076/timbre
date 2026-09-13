@@ -99,6 +99,17 @@ def resolve(request: ResolveRequest) -> ResolveResponse:
 
     details = song.get("videoDetails") if isinstance(song, dict) else None
     if not isinstance(details, dict):
+        # No videoDetails means YouTube refused rather than that the link was never ours — a
+        # region block, the bot wall, a video taken down. `track=None` travels to the reader as
+        # "That link isn't from a service Timbre can play", which sends them off to check a URL
+        # that is fine. We cannot tell "gone" from "blocked here" apart, and this does not try;
+        # it only stops the refusal being filed as the reader's mistake.
+        playability = song.get("playabilityStatus") if isinstance(song, dict) else None
+        state = playability.get("status") if isinstance(playability, dict) else None
+        if isinstance(state, str) and state.upper() != "OK":
+            reason = playability.get("reason") if isinstance(playability, dict) else None
+            logger.info("resolve refused for %s: %s (%s)", video_id, state, reason)
+            raise upstream_error("lookup", RuntimeError(f"{state}: {reason or 'no reason given'}"))
         return ResolveResponse(track=None)
     found_id = details.get("videoId", video_id)
     if not isinstance(found_id, str) or not VIDEO_ID.fullmatch(found_id):

@@ -1,4 +1,5 @@
 import pytest
+from fastapi import HTTPException
 
 from app.models import ResolveRequest
 from app.routes import search as search_route
@@ -49,10 +50,13 @@ def test_rejects_anything_else(url: str) -> None:
     assert extract_video_id(url) is None
 
 
-def resolve(monkeypatch, details: object) -> dict | None:
+def resolve(monkeypatch, details: object, playability: object | None = None) -> dict | None:
     class StubClient:
         def get_song(self, video_id: str) -> dict:
-            return {"videoDetails": details}
+            song: dict = {"videoDetails": details}
+            if playability is not None:
+                song["playabilityStatus"] = playability
+            return song
 
     monkeypatch.setattr(search_route, "get_client", lambda slot="default": StubClient())
     track = search_route.resolve(ResolveRequest(url=VALID_ID)).track
@@ -86,3 +90,22 @@ def test_odd_upstream_fields_degrade_rather_than_fail(monkeypatch) -> None:
 @pytest.mark.parametrize("found", [f"{VALID_ID}\n", "short", 12345678901])
 def test_an_upstream_id_that_is_not_a_video_id_is_dropped(monkeypatch, found: object) -> None:
     assert resolve(monkeypatch, {**DETAILS, "videoId": found}) is None
+
+
+def test_a_youtube_refusal_is_not_an_unrecognised_link(monkeypatch) -> None:
+    """No videoDetails plus a non-OK playability status means YouTube said no.
+
+    Returned as ``track=None`` it reached the reader as "That link isn't from a service Timbre
+    can play" — sending them off to check a URL that was fine, when the truth was a region
+    block, the bot wall, or a video taken down. Found by pasting a valid YouTube link on a VPN
+    exit YouTube walls.
+    """
+    with pytest.raises(HTTPException) as raised:
+        resolve(monkeypatch, None, {"status": "ERROR", "reason": "Video unavailable"})
+    assert raised.value.status_code == 502
+
+
+def test_a_genuinely_empty_answer_is_still_no_track(monkeypatch) -> None:
+    # OK, but nothing to read: not a refusal, so it stays a plain "nothing found".
+    assert resolve(monkeypatch, None, {"status": "OK"}) is None
+    assert resolve(monkeypatch, None) is None
