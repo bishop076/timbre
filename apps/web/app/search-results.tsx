@@ -11,7 +11,8 @@ import { log } from "./logs.ts";
 import { EYEBROW } from "./page-chrome";
 import { usePlayerControls } from "./player/player-context";
 import { RowSkeletons } from "./row-skeleton";
-import { useSearchQuery } from "./search-store";
+import { setSearchQuery, useSearchQuery } from "./search-store";
+import { readSearchQuery } from "./search-url";
 import { SongActions, SongRow } from "./song-row";
 import { SourceBadges } from "./source-badges";
 import { sourceStyle } from "./sources";
@@ -31,6 +32,14 @@ const ALERT = "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-
 
 export function SearchResults() {
   const query = useSearchQuery();
+
+  // Runs once. On a reload or a link opened cold the store is empty and the URL holds the
+  // query; when arriving by typing, the store already agrees and this is a no-op.
+  useEffect(() => {
+    const fromUrl = readSearchQuery(window.location.search);
+    if (fromUrl) setSearchQuery(fromUrl);
+  }, []);
+
   const [results, setResults] = useState<SongsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
