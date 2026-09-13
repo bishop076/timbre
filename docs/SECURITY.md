@@ -1000,13 +1000,29 @@ beside the four keys that are actually read. Nothing loads them — `lib/env.ts`
 fixed schema and ignores the rest — so this is not a live path. It is dead credential
 material sitting in a file, and two of those names are secrets rather than settings.
 
-**Not fixed here, deliberately.** Editing `.env` in place is fine; deleting lines from it
-is not reversible from this side, and the values cannot be backed up first — a copy of a
-secrets file beside the original is the worse outcome, and is its own rule. So it is the
-owner's to run, and it is two questions rather than one: remove the five keys, and decide
-whether the Postgres URL, the auth secret and the encryption key are still valid anywhere
-they point. A dead credential that still authenticates is the part that matters; deleting
-the line only stops it being read from here.
+**Removed the same day, in place, on the owner's say-so.** `.env` now holds five keys and
+nothing else: the two `YTMUSIC_*`, the two `SOUNDCLOUD_*` and `SOUNDCLOUD_DIRECT_API`. No
+copy was taken — a second file holding the same secrets is worse than the thing being fixed
+— so the edit rewrote the file in place, carrying the live secret across without rendering
+it. Verified after: the file parses to five keys, `YTMUSIC_SERVICE_URL` is a URL, and
+`app.config` boots with one secret configured.
+
+**None of the five needed rotating, which was worth checking rather than assuming.** The
+question this entry asked — whether the dead credentials still authenticate anywhere — has
+a better answer than "unknown" once they have been read. The Postgres URL pointed at
+`localhost` with the default user and password, against a database deleted along with
+accounts; it was never a remote credential. The encryption key and the auth secret were
+generated locally and are not credentials *to* anything: the first decrypts a `connections`
+table that no longer exists, the second signs sessions for auth code that no longer exists.
+The email pair was a Mailpit address on `localhost` and carried no password at all. So what
+was sitting there was five dead values rather than five live ones — but that is a finding,
+not a presumption, and the difference is exactly why they were read before being deleted.
+
+**The live secret is a separate matter, and is open.** `YTMUSIC_SHARED_SECRET` is 64 hex
+characters, comfortably past `MIN_SECRET_LENGTH`, and is the one value in the file that
+authenticates anything. It was disclosed to a transcript on 2026-09-13 and should be
+rotated. The sidecar's comma-separated list exists precisely so that can happen without
+downtime, and the deployed environment has to move with it.
 
 - **pnpm 11.10.0** (`packageManager` in `package.json:20`) was inside
   GHSA-c59q-g84q-2gj5 · CVE-2026-82392 (`>=11.0.0 <11.11.0`, high): a crafted
@@ -1231,15 +1247,21 @@ non-root, `--require-hashes`), `.dockerignore` covering `.env*`, SHA-pinned Acti
 `.env` has never been committed — checked with `--diff-filter=A` over all refs.
 
 **Still open:** E-7, narrowed by S-20 but not closed. S-10's Deezer "not found" versus
-"failed". S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. S-19's `.env` leftovers, now
-**confirmed present** rather than merely unverified — see that entry for why they were not
-removed here. On the CSP, the next step is `connect-src`, which now has reports behind it.
+"failed". S-13's `RELEASE_TOKEN` scope. S-18's boot refusal. On the CSP, the next step is
+`connect-src`, which now has reports behind it. **S-19's `.env` leftovers are closed** —
+read, found dead, and removed in place the same day; what remains under that entry is
+rotating the one live secret.
 
-**Left to another session, not overlooked.** S-10's remaining half lives in
+**Sequenced behind another session, not overlooked.** S-10's remaining half lives in
 `apps/web/lib/deezer.ts` and `packages/providers/src/deezer.ts`. A parallel session held
-both uncommitted throughout this pass — B-34's player ladder and the Deezer
-`Accept-Language` fix — so taking them would have meant editing around live work. Theirs to
-land or hand back.
+both for most of this pass with an `Accept-Language` fix — Deezer localises artist and genre
+names to the country it geolocates the request IP to, which also broke `merge.ts`, whose
+cross-provider dedupe keys on the artist name. They have since moved it to branch
+`fix/deezer-locale` and returned the files. S-10 is queued behind that branch landing rather
+than taken now, because its fix sits in the same function as their hunk: `deezer()` returns
+`null` for both "no such artist" and "the request failed", and `lib/api.ts` caches the
+second as though it were the first. Whichever lands second takes the conflict, and theirs is
+already written.
 
 ## Sources
 
