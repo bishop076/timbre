@@ -85,7 +85,7 @@ test("the tracked-client count stays under the cap", () => {
   assert.ok(limiter.size <= 3, `expected at most 3 tracked clients, got ${limiter.size}`);
 });
 
-test("the client is the first x-forwarded-for entry, then x-real-ip, then a constant", () => {
+test("the client is a proxy-owned header first, then x-forwarded-for, then a constant", () => {
   const key = (headers: Record<string, string>) =>
     clientKey(new Request("https://timbre.example/api/search", { headers }));
 
@@ -93,4 +93,13 @@ test("the client is the first x-forwarded-for entry, then x-real-ip, then a cons
   assert.equal(key(forwarded), "203.0.113.7");
   assert.equal(key({ "x-real-ip": "203.0.113.9" }), "203.0.113.9");
   assert.equal(key({}), "unknown");
+
+  // A caller who forges x-forwarded-for cannot mint a fresh bucket per request while
+  // anything in front is setting a header it owns.
+  assert.equal(key({ ...forwarded, "x-vercel-forwarded-for": "203.0.113.9" }), "203.0.113.9");
+  assert.equal(key({ ...forwarded, "x-real-ip": "203.0.113.9" }), "203.0.113.9");
+  assert.equal(
+    key({ "x-vercel-forwarded-for": "203.0.113.9", "x-real-ip": "198.51.100.4" }),
+    "203.0.113.9",
+  );
 });
