@@ -1,10 +1,18 @@
+/** Covers the whole walk, redirects included — a stalled hop is the failure being bounded. */
+const FETCH_DEADLINE_MS = 6_000;
+
 export const ALLOWED_HOSTS = new Set([
   "i.ytimg.com",
   "i9.ytimg.com",
   "yt3.ggpht.com",
   "yt3.googleusercontent.com",
   "lh3.googleusercontent.com",
-  "music.youtube.com",
+  // `music.youtube.com` was here and is not an image host — it is the YouTube Music web app,
+  // and no provider in this repo ever mints an artwork URL on it (covers come from ytimg,
+  // ggpht and googleusercontent above). Listed with no `ALLOWED_PATHS` entry it accepted any
+  // path, which is precisely the lever the note below this list exists to close. If a cover
+  // ever does turn up on that host it draws the placeholder, which is visible and reversible;
+  // an unbounded app host on an image allowlist is neither.
   "cdn-images.dzcdn.net",
   "e-cdns-images.dzcdn.net",
   "is1-ssl.mzstatic.com",
@@ -104,10 +112,19 @@ export async function fetchAllowed(
   // allowlist cannot become a second.
   const offsite = FOLLOWS_OFFSITE[target.hostname];
 
+  // The only outbound fetch in the app with no deadline of its own — and it runs up to four
+  // times per request. Every other caller bounds itself (`request.ts`, `/api/health`,
+  // `lib/deezer.ts`, `/api/lyrics`, all 6s or less), so an allowlisted CDN that accepts the
+  // connection and then stalls held a server slot until the platform gave up on it, at 300
+  // requests a minute per address.
+  const deadline = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_DEADLINE_MS)])
+    : AbortSignal.timeout(FETCH_DEADLINE_MS);
+
   for (let hop = 0; hop <= MAX_HOPS; hop += 1) {
     const response = await fetch(current, {
       headers: { accept: "image/*" },
-      signal,
+      signal: deadline,
       cache: "no-store",
       redirect: "manual",
     });

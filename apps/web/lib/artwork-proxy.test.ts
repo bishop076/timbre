@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { after, test } from "node:test";
 
-import { allowed, capped, fetchAllowed, MAX_BYTES } from "./artwork-proxy.ts";
+import {
+  allowed,
+  ALLOWED_HOSTS,
+  ALLOWED_PATHS,
+  capped,
+  fetchAllowed,
+  MAX_BYTES,
+} from "./artwork-proxy.ts";
 
 const routes: Record<string, [number, http.OutgoingHttpHeaders?, string?]> = {
   "/image": [200, { "content-type": "image/png" }, "png bytes"],
@@ -133,4 +140,39 @@ test("no other host gets that latitude", async () => {
     await followsTo(new URL("https://archive.org/services/img/x"), `https://v.monophonic.digital${COVER}`),
     false,
   );
+});
+
+// The hosts this app treats as *pages* — `song-shape.ts`'s SOURCE_HOSTS, plus the players.
+// A page host on an image allowlist with no path bound is a lever for pointing the server at
+// someone else's API, which is exactly what `music.youtube.com` was until it was dropped.
+const PAGE_HOSTS = [
+  "music.youtube.com",
+  "www.youtube.com",
+  "youtube.com",
+  "m.youtube.com",
+  "youtu.be",
+  "soundcloud.com",
+  "m.soundcloud.com",
+  "audius.co",
+  "api.audius.co",
+  "www.mixcloud.com",
+  "mixcloud.com",
+  "archive.org",
+  "open.spotify.com",
+  "www.deezer.com",
+  "deezer.com",
+  "music.apple.com",
+  "itunes.apple.com",
+];
+
+test("a page host is never relayed unbounded", () => {
+  assert.equal(allowed(new URL("https://music.youtube.com/anything")), false);
+
+  for (const host of PAGE_HOSTS) {
+    if (!ALLOWED_HOSTS.has(host)) continue;
+    assert.ok(
+      host in ALLOWED_PATHS,
+      `${host} serves pages as well as images, so it needs a path pattern`,
+    );
+  }
 });

@@ -539,9 +539,12 @@ function usePlayerValue() {
         if (fromEnd) setState("idle");
         return;
       }
+      // Where the appended block starts, read before the append rather than from the render's
+      // own `queue` — which the async radio fetch may already have grown past.
+      const landing = queueRef.current.length;
       writeQueue((queued) => [...queued, ...fresh]);
       setRadio([]);
-      goTo(queue.length);
+      goTo(landing);
     },
     [
       continueWithRadio,
@@ -549,7 +552,6 @@ function usePlayerValue() {
       goTo,
       index,
       nextIndex,
-      queue,
       radio,
       restart,
       unqueued,
@@ -613,35 +615,44 @@ function usePlayerValue() {
     [load, stop, writeQueue],
   );
 
+  // These three compute a whole replacement array and hand it to `writeQueue`, so they have to
+  // read the queue the same way it does — from the ref. Reading the render's `queue` instead
+  // is the mistake B-31 fixed for `enqueue` and left standing here: the radio append at the
+  // bottom of this file lands asynchronously through `writeQueue`, so a click on ×, ↑ or ↓ in
+  // the same tick replayed a snapshot taken before it and silently wiped the appended block —
+  // or brought back a song that had just been removed.
   const removeAt = useCallback(
     (position: number) => {
-      const song = queue[position];
+      const song = queueRef.current[position];
       if (song) shuffled.current.delete(song.id);
-      applyEdit(removeFromQueue(queue, index, position));
+      applyEdit(removeFromQueue(queueRef.current, indexRef.current, position));
     },
-    [applyEdit, index, queue],
+    [applyEdit],
   );
 
   const move = useCallback(
-    (from: number, to: number) => applyEdit(moveWithin(queue, index, from, to)),
-    [applyEdit, index, queue],
+    (from: number, to: number) =>
+      applyEdit(moveWithin(queueRef.current, indexRef.current, from, to)),
+    [applyEdit],
   );
 
   const playNext = useCallback(
     (songs: Song[]) => {
-      const at = songs.length === 1 ? queue.findIndex((queued) => sameTrack(queued, songs[0])) : -1;
-      if (at === -1) applyEdit(insertAfter(queueRef.current, index, notQueued(songs)));
-      else if (at !== index && at !== index + 1) {
-        applyEdit(moveWithin(queue, index, at, at < index ? index : index + 1));
+      const queued = queueRef.current;
+      const at = songs.length === 1 ? queued.findIndex((entry) => sameTrack(entry, songs[0])) : -1;
+      const here = indexRef.current;
+      if (at === -1) applyEdit(insertAfter(queued, here, notQueued(songs)));
+      else if (at !== here && at !== here + 1) {
+        applyEdit(moveWithin(queued, here, at, at < here ? here : here + 1));
       }
     },
-    [applyEdit, index, notQueued, queue],
+    [applyEdit, notQueued],
   );
 
   const clearQueue = useCallback(() => {
     setQueueOrigin(null);
-    writeQueue((queued) => queued.slice(0, index + 1));
-  }, [index, writeQueue]);
+    writeQueue((queued) => queued.slice(0, indexRef.current + 1));
+  }, [writeQueue]);
 
   useEffect(() => {
     const song = queue[index];
