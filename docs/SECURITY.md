@@ -1089,6 +1089,20 @@ window and why it was unavoidable are in DEPLOY.md.
 
 # S-21 · A live search draws covers from hosts nobody vetted `FIXED`
 
+**Followed up 2026-09-13: `proxied` now fails closed.** S-21 fixed the provider that was
+minting unvetted hosts; `proxied` itself still handed an unlisted host back unchanged, so
+the browser fetched the cover straight from it — the exact leak, one layer further out, and
+waiting for the next provider to forget. It returns `null` now, and callers already render
+the note-icon placeholder for that, which is what they show for a song with no artwork.
+
+**Confirmed harmless before landing, rather than assumed.** 609 artwork URLs were collected
+from eight live production endpoints — search, charts, artist, spotify, genre-feed, radio,
+taste — and resolved to seven distinct hosts, every one allowlisted: none would have been
+dropped. Then checked in the browser against a dev server: on `/` and `/explore` every image
+request went to `/api/art` on our own origin, all 200, no direct third-party image fetch and
+no placeholder where a cover belonged. `data:` avatars are unaffected — `Avatar` sets a CSS
+`background-image` and never calls `proxied`.
+
 **OWASP:** A01:2025 Broken Access Control, as a privacy boundary rather than an authorisation
 one — and the mirror of S-20: that one was what the route *accepts*, this is what the browser
 *fetches* without ever reaching the route.
