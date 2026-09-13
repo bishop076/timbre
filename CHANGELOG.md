@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.10 — 14 September 2026
+
+### Fixed
+
+- **player** — put playback back on when a source stops it and nobody asked
+
+2 further changes under the hood — refactoring, docs and tests.
+
 ## 0.17.9 — 14 September 2026
 
 ### Fixed
