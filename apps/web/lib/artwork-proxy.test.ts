@@ -82,3 +82,55 @@ test("a body within the cap passes through whole", async () => {
   const body = await new Response(capped(small, MAX_BYTES)).arrayBuffer();
   assert.equal(body.byteLength, 1024);
 });
+
+// Drives `fetchAllowed` with a stubbed network: the first request answers a redirect to
+// `location`, the second (if it is taken) answers an image. Returns whether the hop was
+// followed. `isAllowed` says no to everything, so only the offsite rule can permit it.
+async function followsTo(target: URL, location: string): Promise<boolean> {
+  const real = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response(null, { status: 307, headers: { location } })
+      : new Response("png bytes", { status: 200, headers: { "content-type": "image/png" } });
+  }) as typeof fetch;
+  try {
+    return (await fetchAllowed(target, { isAllowed: () => false })) !== null;
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+const COVER = "/content/01K89BHY42CWNRSKG6VHTDYCB0/150x150.jpg";
+
+test("an Audius cover follows its directory's hop off the allowlist", async () => {
+  // api.audius.co is a directory, not a CDN: verified live, it answers 307 to a community
+  // node such as v.monophonic.digital, a set that cannot be allowlisted.
+  const audius = new URL(`https://api.audius.co${COVER}`);
+  assert.equal(await followsTo(audius, `https://v.monophonic.digital${COVER}`), true);
+  assert.equal(await followsTo(audius, `https://cn1.mainnet.audiusindex.org${COVER}`), true);
+});
+
+test("the hop is bounded by the path, the scheme, and the address", async () => {
+  const audius = new URL(`https://api.audius.co${COVER}`);
+  // Still has to be asking for the same cover.
+  assert.equal(await followsTo(audius, "https://v.monophonic.digital/etc/passwd"), false);
+  assert.equal(await followsTo(audius, "https://v.monophonic.digital/v1/users"), false);
+  // And cannot be pointed at what only the server can reach.
+  for (const host of ["127.0.0.1", "localhost", "192.168.1.10", "169.254.169.254", "172.16.0.5", "10.0.0.1"]) {
+    assert.equal(await followsTo(audius, `https://${host}${COVER}`), false, host);
+  }
+  assert.equal(await followsTo(audius, `http://v.monophonic.digital${COVER}`), false);
+});
+
+test("no other host gets that latitude", async () => {
+  assert.equal(
+    await followsTo(new URL(`https://i.scdn.co${COVER}`), `https://v.monophonic.digital${COVER}`),
+    false,
+  );
+  assert.equal(
+    await followsTo(new URL("https://archive.org/services/img/x"), `https://v.monophonic.digital${COVER}`),
+    false,
+  );
+});
