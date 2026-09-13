@@ -1,4 +1,4 @@
-![Timbre — all your music, one search](docs/assets/readme-banner.png)
+![Timbre](docs/assets/readme-banner.png)
 
 # Timbre
 
@@ -16,13 +16,39 @@ artists are paid exactly as they would be otherwise.
 
 ## What it does
 
-- **Search** one box → YouTube Music and Audius, merged with availability on Deezer and Apple
-- **Play** a continuous queue that resolves a playable copy at play time, and falls through
-  to another upload when one refuses to embed
-- **Explore** charts fused across Deezer and Apple, plus genres, radios and editorial lists
-- **Lyrics** from LRCLIB or YouTube Music, **playlists**, **liked songs**, **listening stats**
-  and **a profile** — saved in your browser, no account, and backed up to a file whenever you like
-- **Open** a pasted Spotify or YouTube playlist, and save any list or album as your own
+**Find it**
+
+- One search box → YouTube Music and Audius at once, merged into one row per song instead
+  of four near-duplicates, with availability shown on Deezer and Apple
+- Suggestions as you type, and the query lives in the URL — a search reloads and shares
+- Charts fused across Deezer and Apple, plus genres, radios, editorial lists and genre mixes
+- Artist and album pages, and a similar-songs panel off whatever is playing
+- Paste a Spotify, YouTube or SoundCloud link and it just plays
+- Live concert tapes from the Archive suggested alongside a band that allows taping
+- SoundCloud catalogue search too, when the operator supplies a `client_id`
+
+**Play it**
+
+- A continuous queue that resolves a playable copy *at play time*, and falls through to
+  another upload when one refuses to embed
+- Radio carries on when the queue runs dry; reorder it, queue a song next, search within it
+- Synced lyrics from LRCLIB or YouTube Music, scrolling in time
+- Playback speed, a sleep timer, volume memory and keyboard transport keys
+- A second tab becomes a remote for the tab that is playing, rather than fighting it
+- Connect Spotify Premium and Spotify tracks play in full through its own SDK
+
+**Keep it**
+
+- Playlists, liked songs and history — no account, saved in your browser
+- Listening stats: top songs and artists, totals, first and last play, by day and weekday
+- Save someone else’s playlist or an album as your own
+- Export a playlist to CSV, or back the whole profile up to one JSON file and restore it
+
+**Make it yours**
+
+- A theme that takes its colour from the album art, plus a pastel set and a custom one
+- A profile name, avatar and banner — resized in the browser, never uploaded
+- Installs as a PWA, works on a phone, and has no sign-up, no telemetry and no database
 
 ## What it deliberately doesn't do
 
