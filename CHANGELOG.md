@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.16.3 — 13 September 2026
+
+### Fixed
+
+- **csp** — allow unsafe-eval, which Spotify's embed bundle needs to run at all
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.16.2 — 13 September 2026
 
 ### Fixed
