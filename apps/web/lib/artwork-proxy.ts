@@ -51,6 +51,17 @@ export const ALLOWED_PATHS: Record<string, RegExp> = {
   "archive.org": /^\/services\/img\/[^/]+$/,
 };
 
+// A path pattern bounds *segments*, and `new URL` leaves `%2f` and `%5c` encoded rather than
+// decoding them — so `[^/]+` happily matched `x%2f..%2f..%2fmetadata%2fy`, a value carrying the
+// separator the pattern exists to exclude. Whether the host then decodes it back into one is
+// the host's business: archive.org answers 404 today, which is a behaviour and not a promise.
+// Refuse the encoded forms here so each pattern bounds what it reads as bounding.
+const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
+
+function matchesPath(pathname: string, pattern: RegExp): boolean {
+  return !ENCODED_SEPARATOR.test(pathname) && pattern.test(pathname);
+}
+
 // `api.audius.co` is a directory, not a CDN: asked for a cover it answers 307 to whichever
 // community node happens to hold it — v.monophonic.digital, cn1.mainnet.audiusindex.org, a
 // set nobody can enumerate and so nobody can allowlist. Refusing that hop, which is the right
@@ -67,12 +78,25 @@ const FOLLOWS_OFFSITE: Record<string, RegExp> = {
 };
 
 // Belt and braces on the hop above: a redirect must not be able to point the server at
-// something only the server can reach.
+// something only the server can reach. `\[` covers every IPv6 literal at once, brackets and
+// all, which is how `URL` reports one — `::1` and `::ffff:127.0.0.1` included.
+//
+// Be clear about the shape of this control, because it is easy to read as more than it is:
+// it filters *literal addresses*, so it cannot catch a hostname that resolves into private
+// space, nor the alternate encodings of one (`https://2130706433/`). What actually carries
+// the weight is the company it keeps — https, so a TLS handshake with a metadata service or
+// a bare address fails on the certificate; the path pin, so the request can only ever ask for
+// a cover; and `/api/art` returning nothing that is not a raster image. This list is the
+// cheap half of that, not the load-bearing half.
 const PRIVATE_HOST =
-  /^(?:localhost|\[|0\.0\.0\.0$|127\.|10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.)/i;
+  /^(?:localhost|\[|0\.|127\.|10\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/i;
 
 function followableOffsite(next: URL, path: RegExp): boolean {
-  return next.protocol === "https:" && !PRIVATE_HOST.test(next.hostname) && path.test(next.pathname);
+  return (
+    next.protocol === "https:" &&
+    !PRIVATE_HOST.test(next.hostname) &&
+    matchesPath(next.pathname, path)
+  );
 }
 
 export const MAX_BYTES = 8 * 1024 * 1024;
@@ -82,7 +106,7 @@ const MAX_HOPS = 3;
 export function allowed(url: URL): boolean {
   if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname)) return false;
   const path = ALLOWED_PATHS[url.hostname];
-  return path === undefined || path.test(url.pathname);
+  return path === undefined || matchesPath(url.pathname, path);
 }
 
 export function capped(
@@ -108,9 +132,16 @@ export async function fetchAllowed(
   { signal, isAllowed = allowed }: { signal?: AbortSignal; isAllowed?: (url: URL) => boolean } = {},
 ): Promise<Response | null> {
   let current = target;
-  // Keyed on where the request started, not on where it has got to, so one hop off the
-  // allowlist cannot become a second.
-  const offsite = FOLLOWS_OFFSITE[target.hostname];
+  // Keyed on where the request started, not on where it has got to — and *spent the first time
+  // it is used*, which is the half that was missing. Keying alone left this truthy for every
+  // iteration, so a node that redirected to a second node redirected to a third was followed
+  // all the way to MAX_HOPS: three hops off the allowlist, not the one this comment claimed.
+  // The tests did not catch it because every case stubbed a single redirect.
+  //
+  // `api.audius.co` may hand the walk to the node holding the cover. That node may hand it
+  // back to an allowlisted host — `isAllowed` still says yes below — but it may not hand it
+  // onward to another unvetted one.
+  let offsite: RegExp | undefined = FOLLOWS_OFFSITE[target.hostname];
 
   // The only outbound fetch in the app with no deadline of its own — and it runs up to four
   // times per request. Every other caller bounds itself (`request.ts`, `/api/health`,
@@ -136,7 +167,10 @@ export async function fetchAllowed(
     const location = response.headers.get("location");
     const next = location ? URL.parse(location, current) : null;
     if (!next) return null;
-    if (!isAllowed(next) && !(offsite && followableOffsite(next, offsite))) return null;
+    if (!isAllowed(next)) {
+      if (!offsite || !followableOffsite(next, offsite)) return null;
+      offsite = undefined;
+    }
     current = next;
   }
 
