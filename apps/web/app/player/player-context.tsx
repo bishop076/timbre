@@ -27,6 +27,7 @@ import { clearSpotifyLeading, markSpotifyLeading, spotifyShouldLead } from "./sp
 import { plausiblySameSong, rankMatches, sameTrack } from "./song-match";
 import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
+import { describeVerdict, judgePause, RESUME_DELAY_MS } from "./unasked-pause";
 import { useTabSync } from "./use-tab-sync";
 import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
 import { whyLeftYouTube, type LeftYouTube, type YouTubeFailures } from "./youtube-refusal";
@@ -58,6 +59,15 @@ function writeProgress(position: number, duration: number): void {
   progressSnapshot = { position, duration };
   ticks.emit();
 }
+
+// The state behind the unasked-pause rescue below. Module-scoped for the same reason
+// `progressSnapshot` is — there is one player to a tab — and because it has to be: the compiler
+// will not let a ref be written from inside one hook and read from another, and seeding a ref
+// with `Date.now()` is calling an impure function during render. `lastInteraction` is seeded in
+// the effect that maintains it, which is both pure and the right moment.
+let lastInteraction = 0;
+let unaskedResumes = 0;
+let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** The list a queue was started from. */
 export interface QueueOrigin {
@@ -378,6 +388,10 @@ function usePlayerValue() {
       youtubeFailures.current = { blocked: false, stalled: false, refusals: 0 };
       recorded.current = null;
       steered.current = null;
+      // Scoped to the track, like the rest of this: a new song gets its own allowance of
+      // resumes, and any resume still pending for the old one is no longer wanted.
+      unaskedResumes = 0;
+      clearTimeout(resumeTimer);
       clearSpotifyLeading();
       setYoutubeTurnedAway(null);
       setPlaying(null);
@@ -771,7 +785,36 @@ function usePlayerValue() {
     asked.current = Date.now();
     toggleRef.current?.();
   }, []);
+
   const seek = useCallback((seconds: number) => seekRef.current?.(seconds), []);
+
+  // When anything was last touched. A press inside a cross-origin embed never reaches this
+  // document as a click, but it does take the focus, so `blur` landing on an iframe counts as
+  // one — that is what tells a listener pressing pause in YouTube's own chrome apart from
+  // YouTube stopping an embed nobody has touched for an hour.
+  useEffect(() => {
+    const mark = () => {
+      lastInteraction = Date.now();
+    };
+    // Seeded here rather than at the declaration, where `Date.now()` would be an impure call
+    // during render. It matters that it is seeded at all: a pause in the first moments after a
+    // load is the shape of a browser refusing to autoplay, not of a queue left alone.
+    mark();
+
+    const onBlur = () => {
+      if (document.activeElement instanceof HTMLIFrameElement) mark();
+    };
+    // Capture, so a handler that stops propagation cannot hide the interaction from this.
+    document.addEventListener("pointerdown", mark, { capture: true, passive: true });
+    document.addEventListener("keydown", mark, { capture: true, passive: true });
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("pointerdown", mark, { capture: true });
+      document.removeEventListener("keydown", mark, { capture: true });
+      window.removeEventListener("blur", onBlur);
+      clearTimeout(resumeTimer);
+    };
+  }, []);
 
   const togglePanel = useCallback(() => {
     setPanelOpen((open) => {
@@ -794,14 +837,40 @@ function usePlayerValue() {
       setState(next);
 
       // The log recorded which source refused and what it fell back to, but never that playback
-      // simply stopped — the one thing it could not account for afterwards.
-      if (next === "paused" && was === "playing" && Date.now() - asked.current > 1000) {
-        log(
-          "warn",
-          `Playback paused on its own (${activeSource ?? "no source"})${
-            current ? ` during “${current.title}”` : ""
-          } — nothing here asked it to.`,
-        );
+      // simply stopped — the one thing it could not account for afterwards. Now it also does
+      // something about it: a queue left alone is the case this exists for, and stopping dead
+      // halfway through a playlist is not a state anyone asked for.
+      if (next === "paused" && was === "playing") {
+        const { position, duration } = progressSnapshot;
+        const verdict = judgePause({
+          now: Date.now(),
+          askedAt: asked.current,
+          interactedAt: lastInteraction,
+          position,
+          duration,
+          resumes: unaskedResumes,
+        });
+
+        if (verdict !== "asked") {
+          log(
+            "warn",
+            `Playback paused on its own (${activeSource ?? "no source"})${
+              current ? ` during “${current.title}”` : ""
+            } — ${describeVerdict(verdict, unaskedResumes)}.`,
+          );
+        }
+
+        if (verdict === "resume") {
+          unaskedResumes += 1;
+          const songId = current?.id ?? null;
+          clearTimeout(resumeTimer);
+          resumeTimer = setTimeout(() => {
+            // Everything may have moved on in the meantime — the listener came back and pressed
+            // play, or the queue advanced. Only put back on the thing that stopped.
+            if (stateRef.current !== "paused" || (songRef.current?.id ?? null) !== songId) return;
+            toggleRef.current?.();
+          }, RESUME_DELAY_MS);
+        }
       }
 
       if (next !== "playing" || !current || recorded.current === current.id) return;
