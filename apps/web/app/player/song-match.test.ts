@@ -214,10 +214,9 @@ test("the live and cover words the old list missed", () => {
 
 test("a seed that is itself a live cut still matches live copies of itself", () => {
   const seed = song("Wish You Were Here (Live at Wembley)", "Pink Floyd", 320_000);
-  assert.equal(
-    plausiblySameSong(seed, song("Wish You Were Here - Live at Wembley", "Pink Floyd", 320_000)),
-    true,
-  );
+  const found = song("Wish You Were Here - Live at Wembley", "Pink Floyd", 320_000);
+
+  assert.equal(plausiblySameSong(seed, found), true);
 });
 
 test("ranking puts the studio recording ahead of the live take that outranked it", () => {
@@ -244,10 +243,8 @@ test("ranking puts the credited artist ahead of somebody else's upload", () => {
 
 test("ranking keeps the search's own order when nothing separates two results", () => {
   const seed = song("Everlong", "Foo Fighters", 250_000);
-  const first = song("Everlong", "Foo Fighters", 250_000);
-  const second = song("Everlong", "Foo Fighters", 250_000);
-  first.id = "first";
-  second.id = "second";
+  const first = { ...song("Everlong", "Foo Fighters", 250_000), id: "first" };
+  const second = { ...song("Everlong", "Foo Fighters", 250_000), id: "second" };
 
   assert.deepEqual(
     rankMatches(seed, [first, second]).map((found) => found.id),
