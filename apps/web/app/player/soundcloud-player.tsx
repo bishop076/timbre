@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import { hideWhenBroken } from "../artwork";
+import { proxied } from "../artwork-url";
 import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
 
@@ -188,7 +189,7 @@ export function SoundCloudPlayer({
         <div className="flex min-h-0 flex-1 items-center justify-center p-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={artworkUrl}
+            src={proxied(artworkUrl) ?? undefined}
             alt=""
             aria-hidden
             {...hideWhenBroken}
