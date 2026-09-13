@@ -1,4 +1,4 @@
-import { dedupeParts, durationsMatch } from "@timbre/core";
+import { dedupeParts, durationsMatch, normalizeIsrc } from "@timbre/core";
 
 import { PLAYBACK_RANK, type Song, type SourceTrack } from "./types.ts";
 
@@ -15,8 +15,11 @@ function creditsAgree(a: string[], b: string[]): boolean {
   return a.every((name) => b.includes(name)) || b.every((name) => a.includes(name));
 }
 
-function matches(group: Group, track: SourceTrack, parts: Parts): boolean {
-  if (group.isrc && track.isrc) return group.isrc === track.isrc;
+function matches(group: Group, track: SourceTrack, parts: Parts, isrc: string | null): boolean {
+  // Two tracks that each carry an ISRC, and carry different ones, are different recordings —
+  // the title fallback below must not overrule that. It is only sound because the ISRCs being
+  // compared are canonical: see `normalizeIsrc`.
+  if (group.isrc && isrc) return group.isrc === isrc;
   return (
     group.parts.base === parts.base &&
     group.parts.variants.join("+") === parts.variants.join("+") &&
@@ -34,18 +37,19 @@ export function mergeTracks(tracks: SourceTrack[]): Song[] {
 
   for (const track of tracks) {
     const parts = dedupeParts(track.title, track.artists);
+    const isrc = normalizeIsrc(track.isrc);
     const existing =
-      (track.isrc ? groups.find((group) => group.isrc === track.isrc) : undefined) ??
-      groups.find((group) => matches(group, track, parts));
+      (isrc ? groups.find((group) => group.isrc === isrc) : undefined) ??
+      groups.find((group) => matches(group, track, parts, isrc));
 
     if (!existing) {
-      groups.push({ parts, isrc: track.isrc, tracks: [track] });
+      groups.push({ parts, isrc, tracks: [track] });
       continue;
     }
     if (!existing.tracks.some((candidate) => candidate.source === track.source)) {
       existing.tracks.push(track);
     }
-    existing.isrc ??= track.isrc;
+    existing.isrc ??= isrc;
   }
 
   return groups.map(({ parts, isrc, tracks: grouped }) => {
