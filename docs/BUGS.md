@@ -973,3 +973,319 @@ only from `www.youtube.com`, and SoundCloud's two were already named by E-14 off
 or seeing a player's API change, means doing this read again** — `curl` the API
 URL and grep it for origins; a constant in `app/player/*` is where a script host
 starts, not the set of them.
+
+---
+
+# The 2026-09-13 audit
+
+A deliberate sweep across every feature, rather than an investigation into one symptom.
+B-1 … B-38 above were all `FIXED` before it started, so none of what follows is a re-report.
+
+**The baseline is the point.** Before a line was read: `pnpm test` 514 pass / 0 fail,
+`pnpm typecheck` clean, `pnpm lint` clean, `pnpm build` clean. Every defect below was sitting
+under all four. That is not an accusation against the tests — it is the same fact B-37 and
+B-38 recorded, that the gaps this repo actually ships are in *what the app says when
+something goes wrong*, and nothing in CI ever asks it.
+
+Three defects (B-46) were found only by building with `NODE_ENV=production`, serving it and
+reading the console and network panels. One of those three was a regression introduced by the
+fix two commits earlier, which 510 passing tests walked straight over. **S-11 in
+`SUGGESTIONS.md` is the standing recommendation that comes out of this.**
+
+Four are marked `UNCONFIRMED` where reproducing them needs live playback: this machine's VPN
+exit gets YouTube's "not a bot" wall (`get_song` answers `playabilityStatus: ERROR`), so they
+are read from the code path rather than watched.
+
+---
+
+## B-39 · Five ways a track could stall for ever with nothing said `FIXED`
+
+**Severity:** critical — two of the five ended playback permanently, in silence
+**Fixed in:** `08fea30`
+
+| | |
+|---|---|
+| **Symptom** | A Spotify track on a spinning play button that never resolves, and every Spotify track after it the same. A queue that simply stops at its last song with Next greyed out. A SoundCloud track playing under another song's name. |
+| **Cause** | Five separate missing deadlines and retries — below. |
+| **Fix** | Arm each watchdog before the awaits it is meant to cover, and release state a failure was holding. |
+
+**B-39a — the SDK watchdog was armed behind three awaits.** `spotify-sdk-player.tsx` set its
+10s "no device" timer at the *end* of the effect, after `await accessToken()`,
+`await loadSdk()` and `await player.connect()`. `loadSdk` settles only on
+`onSpotifyWebPlaybackSDKReady` or the script tag's `error` event, so an `sdk.scdn.co` that
+accepts the connection and then stalls settles it **neither way** — the line arming the timer
+is never reached, `onOutcome` never fires, the embed fallback never renders. `loadOnce` then
+caches that forever-pending promise for the session, so every later Spotify track dies the
+same way. Note this contradicts the `NOT-A-BUG` entry claiming the SDK "arms a ten-second
+device timeout … because the failure is silence": that timer only ever covered
+connect-succeeded-but-no-device.
+
+**B-39b — the embed bounded the loader and nothing after it.** `loadApi`'s 8s timer guards
+`onSpotifyIframeApiReady` only. Past that, nothing bounded `createController`'s callback or
+the first `playback_update`, so an iframe the browser refuses — a `frame-src` miss, which is
+**B-38 recurring** — sat at `loading` and the ladder never reached the preview rung. The other
+three embeds all arm `blockedTimer`; this was the one that did not.
+
+**B-39c — a failed radio fetch was final.** `seededFor` is claimed *before* the fetch, and
+every failure path left it claimed: the `!response.ok` branch turned a 429 into `null` and a
+bare `.catch(() => {})` swallowed the rest. Only `dropRadio()` releases it, and `load` calls
+that solely when the song **id** changes. So one bad answer on the last song of a queue meant
+`radio` stayed `[]`, `hasNext` went false, `advance` fell to `setState("idle")` — playback
+stopped with no message, no retry and a dead Next button. The headline "radio carries on when
+the queue runs dry" failing silently on a single blip.
+
+**B-39d — a SoundCloud track change during the handshake was dropped.** `UNCONFIRMED`. The
+guard returned before recording `loadedUrl.current`, and `readyRef` is a ref, so READY firing
+later re-ran nothing and `start(widget)` ran against the *initial* url. The component is not
+remounted between two SoundCloud tracks — `load` batches `setPlaying(null)` and `start(own)`
+into one commit, so `activeSource` never passes through `null`. Pressing Next inside the
+~0.5–2s handshake played the **previous** track while the bar, artwork and lyrics showed the
+new one, and its FINISH advanced the queue from the wrong position.
+
+**B-39e — one failure counted twice skipped a ladder rung.** `UNCONFIRMED`. A failed media
+load fires the element's `error` event *and* rejects the pending `play()` with
+`NotSupportedError`. The dedupe held only while a fallback host existed — never for
+archive.org, never for the last Audius host. Walk #1 called `start(soundcloud)`; walk #2 found
+soundcloud already in `spent` and jumped past it. **The phantom walk can reach
+`addSourcesToSong` and permanently rewrite a song's sources inside saved playlists**, off a
+failure that happened once.
+
+**Also fixed here, same file, same class.** The SDK's ready timer could outlive its own
+cleanup and file its verdict against the *next* track; `not_ready` only logged, so a device
+dropping mid-song froze playback with state still `playing`; a browser-wide verdict
+(`blocked`, `account_error`) was cached per track, costing 10s of spinning before *every*
+Spotify song — B-35 inverted; and four reasons the SDK emits had no `PREVIEW_REASONS` entry
+and fell through to advice about cross-site cookies that did not apply to any of them.
+
+---
+
+## B-40 · The playlist store lost, duplicated and reordered songs `FIXED`
+
+**Severity:** high — two of these are unrecoverable data loss
+**Fixed in:** `b84acf9`
+
+| | |
+|---|---|
+| **Symptom** | Clicking track 5 of a playlist played it, then tracks 1–4. Saving a song twice stored it twice. Importing a backup twice doubled the library. A backup carried to a new browser arrived with no listening history at all. |
+| **Cause** | Nine defects across saving, exporting and restoring — below. |
+| **Fix** | Mostly: reuse the idiom the same codebase already had three files away. |
+
+**"Back up everything" was not.** The v2 file was
+`{format, version, exportedAt, playlists, profile?, liked?}` — never `timbre:plays`, never
+`timbre:history`, which between them are the *only* data behind `/stats`, Recently played, the
+search suggestions and the entire For-you system. The menu item reads "Back up everything …
+For this browser or your next one". Anyone who migrated on that promise lost every play count,
+silently. The file is `version: 3` and carries both; `importPlaylists` still reads v2, where
+the keys are simply absent.
+
+**Re-importing doubled everything, with no undo.** `importPlaylists` minted a fresh
+`crypto.randomUUID()` for every incoming playlist and prepended it, so nothing could ever
+recognise a playlist it already had. The asymmetry that made this a surprise: liked songs in
+the very same file **are** de-duped. Ids now survive the round trip and a match merges.
+
+**The crash screen's rescue button was broken twice over.** `global-error.tsx` — the "Timbre
+couldn't start" page, whose own copy calls that file *the only way back* before a reset —
+never appended its anchor to the document and revoked the blob URL in the same tick. In
+Firefox it therefore did nothing at all. And the shape it wrote, raw localStorage keyed by
+name, is one both `importPlaylists` and `readProfileExport` reject, so even when it did
+download nothing could read it back. `playlists/export-menu.tsx` has had the correct idiom —
+`document.body.append(link)`, `setTimeout(revoke, 0)` — the entire time.
+
+**Clicking a track played the playlist in the wrong order.** `play(song, songs)` builds
+`[song, ...rest.filter(id !== song.id)]`, so track 5 of 10 queued 1–4 *after* it. The rotation
+idiom sat three files away in `liked/liked-view.tsx` and was not used. The same rows carry
+up/down arrows whose whole purpose this defeated. Albums had it too, and additionally passed
+no `origin`, so the sidebar's "playing from this playlist" highlight never lit.
+
+**And four smaller ones.** A playlist could collect unlimited copies of one song, where
+`likes-store` has always guarded with `isLikedIn` — the cover collage then drew the same art
+four times and the sidebar emitted duplicate React keys, lighting both copies as playing. A
+filter could outlive the field that clears it (filter an 11-song list, delete down to nine,
+the field unmounts with the term still set), stranding the survivors behind "nothing matches"
+with no control anywhere to clear it. Row keys carried the index, so every reorder remounted
+both rows and dropped focus from the button just clicked. And a partial profile restore
+announced itself as a replace.
+
+---
+
+## B-41 · Every route that could fail reported the failure as an answer `FIXED`
+
+**Severity:** high — and each one cached the lie
+**Fixed in:** `6ac1d0f`
+
+**This is one mistake in eight places, which is why it is one entry.** In every case something
+broke and the shape the route returned said it had not — and in most of them a cache then held
+that shape for between two minutes and a day.
+
+| Route | What it said | What had happened |
+|---|---|---|
+| `/api/radio` | `{songs: [], failures: []}`, 1h `s-maxage`, 24h SWR | every radio provider was down |
+| `/api/lyrics` | `{lyrics: null}` at **200**, which `readAnswer` maps to *"this song has no lyrics"* | LRCLIB timed out |
+| `/api/lyrics?alternatives=1` | a body with no `alternatives` key → `[]` → *"LRCLIB has only this one."* | the same timeout |
+| `/api/search` | the degraded result, cached 120s for every reader of that term | one provider blipped |
+| `/api/charts` | a partial chart frozen for an hour under `force-static` | an upstream hiccup at the revalidation moment |
+| `/api/resolve` | *"That link isn't from a service Timbre can play."* | SoundCloud was 500ing, and nothing was logged |
+| `spotify-web.ts` | "Spotify retired the searchDesktop query" for 30 minutes | one blip during hash discovery, cached as a result |
+| `/api/spotify` | one track id pinned for the life of the process, under a day of cache-control | a `Map` with no expiry at all |
+
+**`cached()` now takes a predicate**, and a body with a non-empty `failures[]` is returned to
+its caller and not stored. That is the general form of half this table: **a result missing a
+provider is not the answer to the query, it is the best that could be had at that moment, and
+nobody else should inherit it.**
+
+**Two more in the same commit.** The sidecar's lyrics route raised on the *first* of three
+candidate video ids, so one region-blocked upload returned 502 while a sibling had the lyrics
+— `radio.py` and `search.py` have both log-and-continued all along. And the per-provider
+deadline clock started *before* the limiter wait, with the limiter allowed to spend the whole
+budget: a 5.9s queue out of 6s was admitted, spent the bucket's token, and handed the fetch a
+signal that aborted on arrival — reported as *"`<provider>` did not answer within 6s"* for a
+request that never went out. Under Apple's 0.3/s refill that is the steady state under load,
+so the logs and `/api/search`'s `failures[]` were routinely accusing a healthy provider.
+
+---
+
+## B-42 · An ISRC spelled two ways was two recordings `FIXED`
+
+**Severity:** medium in appearance, and it quietly broke deduplication — B-36's shape exactly
+**Fixed in:** `2789a7b`
+
+| | |
+|---|---|
+| **Symptom** | One song appearing twice in a result list, each row holding half its sources. |
+| **Cause** | `merge.ts` compared ISRCs byte for byte, and a mismatch **hard-blocked** the title fallback beneath it rather than falling through. Nothing anywhere trimmed hyphens or folded case. The standard is written `CC-XXX-YY-NNNNN`: Deezer emits it bare, while SoundCloud's `publisher_metadata.isrc` and Audius's `raw.isrc` are typed by the uploader. So `gb-aaw-95-00189` and `GBAAW9500189` were different recordings. |
+| **Fix** | `normalizeIsrc` in `packages/core`, applied where tracks enter the merge. |
+
+**The consequence is the one B-36 had, and is why this is a bug and not tidiness:** a song
+split across two rows has its sources split too, so **a song with a playable copy can present
+as one without.** The hard block is kept and is correct — two tracks that each carry an ISRC
+and carry *different* ones are different recordings — but it is only sound once the values
+being compared are canonical.
+
+**`normalizeIsrc` also refuses anything that is not an ISRC**, which matters more than it
+looks: that value is both the merge key *and* the song's `id`. A free-text field containing
+`none` or `n/a` would otherwise merge two unrelated songs and then become the identity of
+whichever won.
+
+**Also in this commit.** `/api/art` was the only outbound fetch in the app with no deadline of
+its own, running up to four hops per request while every other caller bounds itself at 6s or
+less. `music.youtube.com` sat on that image allowlist with no path pattern, against the
+invariant the comment above the list states — it is the web app, not an image host, and no
+provider here mints a cover on it. And `removeAt`, `move` and `playNext` each computed a whole
+replacement array from the render's `queue` while `writeQueue` and `insertAfter` read
+`queueRef` — the mistake B-31 fixed for `enqueue`, left standing in three places, with the
+asynchronous radio append as the collision partner.
+
+---
+
+## B-43 · Clicking Up Next threw away everything before it `FIXED`
+
+**Severity:** medium
+**Fixed in:** `9a6b641`
+
+| | |
+|---|---|
+| **Symptom** | Pick the third song in Up Next: Previous greys out permanently, the play history is gone, and the playlist it came from stops showing as active. |
+| **Cause** | `play(song, upcoming)` rebuilds the queue as `[song, ...rest]` and sets the index to 0. `goTo(at)` is the operation that belongs there, and `at` was already computed two lines above. The absent fourth argument also cleared `queueOrigin`. |
+| **Fix** | A row already in the queue seeks; rows past it are blend picks with no index, so those still start a queue. |
+
+**Also here.** The album header's `PlayRow` was given no `origin` at all, so its "playing this
+list" test could never be true — the button read **Play** while the album was playing, and
+pressing it restarted from track 1 instead of pausing. `QueueOrigin` now admits albums, and
+both places that compare one check `kind` as well as `id`, because a playlist's uuid and a
+catalogue id come from different namespaces.
+
+The lyrics panel's `following` and `fixing` were per-tab, not per song (B-35's class again):
+scrolling the lyrics away and letting the track change inside the 6s resume window opened the
+next song already unfollowed, and the "Wrong lyrics?" drawer stayed open and fetched
+alternatives for a song nobody had questioned.
+
+A genre page fanned out into twenty-odd **unqueued** Deezer lookups at once, and a quota
+refusal reads as "no such thing" all the way up — so tripping the quota rendered an empty
+genre page under fifteen minutes of `s-maxage`, indistinguishable from a genre with nothing
+fresh in it. `mapPool` bounds the fan-out.
+
+And the MusicBrainz pacer advanced its global slot by a full 1.1s gap **even when the caller
+aborted**, so six concurrent lookups pushed everyone behind them past the 6s deadline, where
+they timed out and gave their slots away in turn — an outage feeding itself on requests that
+were never sent.
+
+---
+
+## B-44 · A failed picture save deleted the picture you already had `FIXED`
+
+**Severity:** medium — silent, and it fed a decision made without asking
+**Fixed in:** `bba093e`
+
+| | |
+|---|---|
+| **Symptom** | A picture that fails to save takes the *existing* picture's thumbnail with it: "Remove picture" disappears and the avatar stops being painted before hydration. |
+| **Cause** | `setLocalImage` wrote the thumbnail first and put the blob in IndexedDB second, so the failure path ran `dropThumb` — removing the thumbnail belonging to the picture the reader still had and had not replaced. |
+| **Fix** | IndexedDB first. It holds the picture; the thumbnail is only a painting of it. A failed save now changes nothing at all. |
+
+**The part worth noticing is downstream.** Until the next full page load regenerated it,
+`hasLocalImage()` returned false — and so `hasLocalProfile()` under-reported, which is the
+exact flag `library-view.tsx` uses to decide whether an imported profile **overwrites the
+local one without asking**. A cosmetic-looking failure two files away was feeding a decision
+about someone else's data.
+
+`writeThumb` also swallowed its own `QuotaExceededError` in a bare `catch {}`, which is the
+error it is most likely to throw.
+
+**And the Mixcloud volume slider did nothing.** The widget API has `setVolume`; it was simply
+never called, so dragging moved the control and Mute silenced nothing.
+
+---
+
+## B-45 · The Spotify embed's volume slider moves and does nothing `OPEN`
+
+**Severity:** low — cosmetic, but it is the UI stating something untrue
+
+Spotify's `EmbedController` exposes no volume or mute method. `player-bar.tsx` renders
+`<Volume />` for every source regardless, so on a Spotify embed track the slider drags, the
+mute button toggles, and the audio does neither. Every other player honours both — B-44 fixed
+the last one that did not.
+
+Fixing it means either hiding the control for that source or showing it disabled with a
+reason, and both change what the player bar looks like. That is a decision to take
+deliberately rather than fold into a bug sweep. **Recorded so the next reader does not spend
+an hour looking for a `setVolume` call that was never possible.**
+
+---
+
+## B-46 · Three misreports that only a running production build could show `FIXED`
+
+**Severity:** high — and one of the three was introduced by B-41's own fix
+**Fixed in:** `68b963f`
+
+**Found by building with `NODE_ENV=production`, serving it, and reading the console and
+network panels.** Nothing else in this audit found them, and 510 passing tests, a clean
+typecheck, a clean lint and a clean build all held while they were live.
+
+**`/api/art` turned every upstream refusal into 404 "Not an image."** Watched happening: a
+dozen concurrent covers on `/explore` made Deezer start refusing, all twelve came back 404,
+and `<Artwork>` drew the placeholder it draws for a song with no cover. **That is B-37's
+symptom exactly, from an entirely different cause** — and a reload a moment later served all
+twelve. A refusal is now `502` with `no-store`, which matters because the success path beside
+it is `immutable` for a year: a refusal must never be cached as an answer.
+
+**`resolveUrl` counted every throw as an outage — which B-41 had just made it do.** The
+ytmusic sidecar 400s every link it does not recognise, and it is asked about every link, so
+being honest about failures made `/api/resolve` answer **502 for ordinary unsupported URLs**.
+Only `transient` and `rate_limited` count now: the two kinds that mean the provider might have
+claimed the link on a better day. **This was a regression of the audit's own making, caught by
+pasting a link at a running server** — the tests were green across it, because no test
+anywhere asks what happens to a link that no provider wants.
+
+**The sidecar reported YouTube's refusal as the reader's mistake.** `resolve` returned
+`track=None` whenever `videoDetails` was absent, so a region block, the bot wall or a
+taken-down video all arrived as *"That link isn't from a service Timbre can play"* — sending
+someone off to check a URL that was perfectly fine. It raises now when `playabilityStatus` is
+not `OK`, and the web route's copy no longer claims to know which of unavailable, blocked or
+busy it was, because it cannot.
+
+**How the third was found is the whole argument for S-11.** A valid YouTube link was pasted at
+the running build; it 404'd; `get_song` was then called directly and answered
+`playabilityStatus: ERROR — Video unavailable`. That is this machine's VPN exit being walled,
+which is an environment fact and not a defect — but the *handling* of it was a defect, and it
+would have reached every reader behind any blocked address and every deleted video alike.
+**The environment made a real bug visible; the environment was not the bug.**

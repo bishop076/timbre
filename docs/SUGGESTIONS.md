@@ -327,3 +327,46 @@ sampled once. Do **not** build dynamic node discovery from `/health_check`: thos
 
 **Why it is a suggestion and not a fix:** one measurement is not an uptime study,
 and a fallback list that is itself stale is worse than none.
+
+---
+
+## S-11 · A browser smoke test in CI, because that is where this repo's bugs live `PROMISING`
+
+**The evidence is B-37, B-38 and B-46.** Every one of them was live in production while
+`pnpm typecheck`, `pnpm lint`, the full test suite and `pnpm build` were all green. Every one
+of them was found by opening the app and reading the console or the network panel. That is now
+three separate occasions, and the last of them — B-46 — included a regression introduced by a
+fix written the same hour, which 510 passing tests walked straight over.
+
+CI builds the app and never loads a page. That single gap is the difference.
+
+**The coverage already exists and is not in the repo.** There are roughly ninety ad-hoc
+Playwright scripts in a temp directory on the author's machine (`smoke-*.mjs`, `csp-sweep.mjs`,
+`probe150.mjs`, `ladder.mjs`, and so on), written one at a time to chase individual bugs.
+They are untracked, uncommitted, and one `/tmp` clear away from not existing.
+
+**The proposal.** Promote a handful into `apps/web/e2e/` and add a CI job that builds with
+`NODE_ENV=production`, serves it, and asserts four things across `/`, `/explore`, `/library`,
+`/search?q=…`, an artist page and a collection page:
+
+1. **No CSP violations on the console.** This is B-38 exactly, and it is the one that cannot
+   be checked in development, because the dev server grants `'unsafe-eval'` and renders a
+   different header. A `script-src` change must be verified against a production build or the
+   next dev-only branch of that policy does the same thing again.
+2. **No failed same-origin requests.** This is B-37 and the first half of B-46 — both were
+   `/api/art` answering 4xx while the page rendered a placeholder and said nothing.
+3. **Every page renders its primary list non-empty.** Catches a provider wired up wrongly,
+   and the empty-genre-page failure mode in B-43.
+4. **`/api/resolve` answers 404 for a link nobody supports and 2xx for one that is
+   supported.** This is the second half of B-46 verbatim, and it is two assertions.
+
+**What it costs.** One CI job, a Playwright install, and a sidecar in the job — the `ytmusic`
+job already builds its container, so the machinery is present. It needs the network, so it
+will be the flakiest job in the file; running it on `main` and on pull requests that touch
+`app/`, `lib/` or `next.config.ts`, rather than on every push, is the obvious first shape.
+
+**Why it is a suggestion and not already done.** Choosing which assertions are stable enough
+to gate a merge on is a judgement about how much upstream flakiness the author wants to be
+interrupted by, and that is not a call to make inside a bug sweep. **But note the asymmetry:
+the three bugs above were all in production. A flaky job that catches those is cheaper than
+three more of them.**
