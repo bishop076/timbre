@@ -829,3 +829,23 @@ request blocking (DevTools → Network conditions) and play anything with a Soun
 Audius source. Before: `unplayable` after eight seconds. After: eight seconds of YouTube,
 then it plays from the next source, with *"YouTube's player is blocked here"* in the bar.
 This one does reproduce on `127.0.0.1`, unlike B-19 and B-33.
+
+---
+
+## B-35 · Two guards outlived their attempt `FIXED`
+
+**Severity:** low each, and both found by reading the ladder rather than by hitting them
+
+Both are state that should have been scoped to one attempt at one song and instead lived for
+the tab. Neither is a new mistake — `load` already resets six other refs beside them.
+
+| | |
+|---|---|
+| **Symptom** | A song rescued onto another source once was never rescued again: meeting it a second time, it fell to Spotify's embed, a 30-second preview, or nothing. And a queue playing two Apple or Deezer songs in a row fetched radio for the first only. |
+| **Cause** | `rescued` guards `adoptElsewhere` so that a rescue whose own source then fails cannot rescue again and loop — a guard for the *walk*, left standing for the session. `merge.ts:57` makes `id` the ISRC where there is one, so the same song found again in a later search carries the same id and its original broken sources, and the rescue that repaired them once declined to run. Separately, the radio effect listed six values all derived from `playing`, and a subscription embed is identified by none of them — `subscriptionTrack` was not in the list, so nothing changed between two Apple songs and `seededFor` stayed on the first. |
+| **Fix** | `load` clears `rescued` with the rest. The walk-scoped guard still holds: `adoptElsewhere` sets it before `start`, so a rescued source that fails cannot rescue a second time. The radio effect depends on `playing` itself rather than on six things read out of it — one dependency cannot fall out of step with its own derivations, which is exactly how the subscription case was missed. |
+
+**Why the radio one was nearly invisible.** Deezer and Apple report no end of track
+(`STOPS_AFTER_ONE`, 0.14.5), so a queue on one does not advance by itself and their picks are
+never made sticky — reaching two in a row takes deliberate pressing. The missing seed was real
+but almost unreachable, which is why it survived.
