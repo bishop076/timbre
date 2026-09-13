@@ -2,7 +2,7 @@ import "server-only";
 
 import { normalizeLoose } from "@timbre/core";
 
-import { deezer, deezerList, newestFirst, type RawTrack } from "./deezer";
+import { deezerList, deezerOrFail, newestFirst, type RawTrack } from "./deezer";
 import type { LinkedSong } from "./discover";
 
 export interface Release {
@@ -93,7 +93,9 @@ export async function fetchDiscography(
 export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
   if (!/^\d+$/.test(id)) return null;
 
-  const album = await deezer<DeezerAlbumDetail>(`/album/${id}`);
+  // Strict: the caller turns null into notFound() on a force-static page, so a timeout must
+  // not read as "no such album" and get cached as one.
+  const album = await deezerOrFail<DeezerAlbumDetail>(`/album/${id}`);
   if (!album) return null;
 
   const artist = album.artist?.name ?? "";
