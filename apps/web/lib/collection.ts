@@ -8,7 +8,7 @@ import {
 } from "@timbre/providers";
 
 import { cached } from "./api";
-import { deezer, deezerList, fetchChartTracks, type RawTrack } from "./deezer";
+import { deezerList, deezerOrFail, fetchChartTracks, type RawTrack } from "./deezer";
 import { coversOf, fetchGenres, toTrackByOrder, type ChartTrack } from "./discover";
 import { drawStation, drawStations, fetchFresh } from "./genre-feed";
 import { listNames } from "./genre-tally";
@@ -79,7 +79,7 @@ function joined(...parts: (string | null)[]): string {
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
-  const raw = await deezer<{
+  const raw = await deezerOrFail<{
     title: string;
     nb_tracks?: number;
     picture_big?: string;
@@ -188,7 +188,7 @@ async function fromRadio(id: string): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
   const [meta, onAir, genre] = await Promise.all([
-    deezer<{ title?: string; picture_big?: string }>(`/radio/${id}`),
+    deezerOrFail<{ title?: string; picture_big?: string }>(`/radio/${id}`),
     drawStation(Number(id)),
     genreOfStation(Number(id)),
   ]);
@@ -258,9 +258,10 @@ async function fromYouTube(id: string): Promise<Collection | null> {
   const provider = listProviders().find(isYtMusicProvider);
   if (!provider) return null;
 
-  const found = await cached(`ytmusic-playlist:${id}`, () =>
-    provider.playlist(runtime, id, 100),
-  ).catch(() => null);
+  // No catch: `playlist` softens a real 404 to null and throws for anything else, which is
+  // the distinction this page needs. Swallowing it cached "no such playlist" for a sidecar
+  // that was merely down.
+  const found = await cached(`ytmusic-playlist:${id}`, () => provider.playlist(runtime, id, 100));
   if (!found) return null;
 
   const seen = new Set<string>();
