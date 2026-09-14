@@ -23,7 +23,6 @@ import { usePlayerControls, usePlayerProgress } from "../player/player-context";
 import { Volume } from "../player/volume";
 import type { LeftYouTube } from "../player/youtube-refusal";
 import { Scrub } from "../player/wavy-progress";
-import { AddToPlaylist } from "../playlists/add-to-playlist";
 import { LikeButton } from "../playlists/like-button";
 import { sourceStyle } from "../sources";
 import { SourceLink } from "./source-link";
@@ -243,8 +242,6 @@ export function PlayerBar() {
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {artwork}
           {meta}
-          <LikeButton song={current} />
-          <AddToPlaylist song={current} className="shrink-0" />
         </div>
 
         <div className="flex shrink-0 items-center justify-center">
@@ -252,6 +249,7 @@ export function PlayerBar() {
             <ModeButton mode="shuffle" variant="bar" />
             <Transport variant="bar" />
             <ModeButton mode="repeat" variant="bar" />
+            <LikeButton song={current} />
           </div>
         </div>
 
