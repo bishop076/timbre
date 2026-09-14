@@ -85,6 +85,7 @@ export function CollectionView({ collection }: { collection: Collection }) {
             key={`${collection.kind}:${collection.id}`}
             name={collection.title}
             songs={tracks}
+            coverUrl={collection.coverUrl}
           />
         </div>
 

@@ -3,8 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { MoreIcon, PencilIcon, TrashIcon } from "../icons";
+import { CameraIcon, MoreIcon, PencilIcon, TrashIcon } from "../icons";
 import { EYEBROW } from "../page-chrome";
+import { ACCEPTED } from "../profile/image-resize";
+import { useFilePicker } from "../profile/image-picker";
+import { clearPlaylistImage, setPlaylistImage, usePlaylistImages } from "./playlist-image";
 import { deletePlaylist, renamePlaylist } from "./store";
 import { useAnchoredMenu } from "./use-anchored-menu";
 
@@ -24,6 +27,15 @@ export function PlaylistActions({
   const [mode, setMode] = useState<"menu" | "rename" | "confirm">("menu");
   const [draft, setDraft] = useState(name);
   const { open, setOpen, close, root, trigger, menu, style } = useAnchoredMenu(mode);
+  const uploaded = usePlaylistImages();
+  const picture = useFilePicker(
+    ACCEPTED.playlist.join(","),
+    "Couldn't use that picture.",
+    async (file) => {
+      await setPlaylistImage(id, file);
+      close();
+    },
+  );
 
   function toggle() {
     if (!open) {
@@ -45,6 +57,9 @@ export function PlaylistActions({
   }
 
   function confirmDelete() {
+    // The picture goes with the list. Left behind it is a blob in IndexedDB that nothing can
+    // reach or remove, since the only handle on it was the id that just stopped existing.
+    clearPlaylistImage(id);
     deletePlaylist(id);
     close();
     if (onDeletedGoTo) router.push(onDeletedGoTo);
@@ -58,6 +73,7 @@ export function PlaylistActions({
   // above its cover. A caller that positions this owns the positioning.
   return (
     <div ref={root} className={className ?? "relative"}>
+      {picture.input}
       <button
         ref={trigger}
         type="button"
@@ -90,12 +106,42 @@ export function PlaylistActions({
               <button
                 type="button"
                 role="menuitem"
+                onClick={picture.open}
+                disabled={picture.busy}
+                className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-left text-[13px] font-medium hover:bg-[var(--surface-2)] disabled:opacity-50"
+              >
+                <CameraIcon className="size-4 shrink-0 text-[var(--fg-dim)]" />
+                {picture.busy ? "Saving…" : uploaded[id] ? "Change picture" : "Choose a picture"}
+              </button>
+              {uploaded[id] && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    clearPlaylistImage(id);
+                    close();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-left text-[13px] font-medium hover:bg-[var(--surface-2)]"
+                >
+                  <TrashIcon className="size-4 shrink-0 text-[var(--fg-dim)]" />
+                  Remove picture
+                </button>
+              )}
+              <button
+                type="button"
+                role="menuitem"
                 onClick={() => setMode("confirm")}
                 className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-left text-[13px] font-medium text-red-400 hover:bg-[var(--surface-2)]"
               >
                 <TrashIcon className="size-4 shrink-0" />
                 Delete playlist
               </button>
+
+              {picture.error && (
+                <p role="alert" className="px-2.5 pb-1 pt-1.5 text-[11px] leading-relaxed text-red-400">
+                  {picture.error}
+                </p>
+              )}
             </div>
           )}
 
