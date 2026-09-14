@@ -10,6 +10,13 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.19.0 — 14 September 2026
+
+### Added
+
+- **playlists** — a playlist can have a picture
+- **ui** — a tile is a hover box now, not an outlined square
+
 ## 0.18.1 — 14 September 2026
 
 ### Fixed
