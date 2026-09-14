@@ -1,7 +1,53 @@
 # How we work in Timbre
 
-**One search across free music. Nothing stored, nothing hosted.** Any change that starts
-storing or hosting audio is an architecture question, not a slice — bring it to me.
+**A music player for people who don't pay for streaming.** One search box, one queue,
+free sources only, nothing stored on a server.
+
+## Goals and non-goals
+
+Timbre is **a shell around other services' own players. It hosts nothing.** Audio streams
+from the service it belongs to, through that service's player, so ads run and artists are
+paid exactly as they would be otherwise. Anything that proxies, caches, downloads or
+re-hosts audio is not a slice — it's a question for me.
+
+The README's **"What it deliberately doesn't do"** is the list, and it is binding: no
+background playback on mobile, no audio-only YouTube, no downloading or caching, no gapless
+cross-source handoff, no accounts, no server-side data. *These are rules Timbre respects
+rather than features it is missing.* Don't implement one because it looks easy.
+
+## The rules
+
+- **KISS.** The simplest thing that satisfies the slice. No abstraction layer for one
+  caller, no config option nobody sets, no plugin system for two providers.
+- **YAGNI.** Build the slice, not the slice's future. When a second caller shows up,
+  generalise then — with the second caller in hand.
+- **DRY on the third occurrence.** Two similar blocks are a coincidence; three are a
+  pattern. Deduplicating early produces the wrong abstraction, and a bad abstraction is
+  harder to undo than the duplication was.
+- **Parse at the boundary.** Every provider response goes through zod before anything
+  touches it. Inside that line the types are trusted; outside it nothing is.
+- **Fail honestly.** The defects this repo ships are in *what the app says when something
+  goes wrong*. An upstream refusal is a 502, not a 404. A failure is `no-store`, not cached.
+  Never blame the user's input for a provider's refusal.
+- **No new dependency without asking.** The web app ships `next`, `react`, `zod`,
+  `server-only`, tailwind and two workspace packages. That short list is a feature, not an
+  accident. Adding to it is an architecture gate.
+- **Delete, don't flag.** Dead code comes out. No commented-out blocks, no `// TODO: remove`,
+  no feature flag for something that isn't actually switched.
+
+## The stack, and what it isn't
+
+- **pnpm workspaces** — not npm, not yarn
+- **Next.js 16 App Router + React 19**, server components by default; `server-only` keeps
+  server code off the client
+- **Tailwind v4** — no component library: no shadcn, no MUI, no Radix
+- **zod** at every boundary — no hand-rolled validators
+- **`node --test`** — not vitest, not jest
+- **eslint** — *never* prettier; it rewraps whole files to 80 columns and buries the change
+- **tsgo** locally for speed, **tsc** in CI as the gate
+- **Browser storage** — no database, no accounts, no telemetry
+- **FastAPI + uv + ruff + pytest** for the `apps/ytmusic` sidecar — not a Node reimplementation
+- **Vercel Hobby**, two projects on one repo — Cloudflare Pages was ruled out
 
 ## The deal
 
@@ -10,9 +56,9 @@ Then I execute the whole slice without check-ins and hand you a review note. No 
 
 ## You own (rarely, high leverage)
 
-- Goals and non-goals
+- Goals and non-goals — everything above this line
 - Architecture gates: provider boundaries (`packages/providers`), what lives in `apps/web`
-  vs `packages/core`, the sidecar's surface, route shapes, caching policy
+  vs `packages/core`, the sidecar's surface, route shapes, caching policy, new dependencies
 - Accept or reject the slice contract before I touch code
 - **Anything visual.** See the UI rule below — it is the one place autonomy stops.
 
@@ -48,8 +94,7 @@ Every slice, in order. "It compiles" is not done.
 
 1. `pnpm typecheck:fast` — tsgo, ~6s. **CI gates on `pnpm typecheck` (tsc)**, so that one
    runs before I push.
-2. `pnpm lint` — eslint is the gate. **Never run prettier here**; it rewraps whole files to 80
-   columns and buries the change.
+2. `pnpm lint` — eslint is the gate. Never prettier.
 3. `pnpm test`
 4. `pnpm build`
 5. **A production browser run** — if the slice touched `app/`, `lib/`, an API route, or
@@ -65,9 +110,8 @@ Every slice, in order. "It compiles" is not done.
    different CSP. That build makes typegen rewrite `apps/web/tsconfig.json` with `.next-prod`
    includes — revert that before committing.
 
-The bugs this repo actually ships are in *what the app says when something goes wrong* — error
-shapes, cache-control on failures, misattributed blame. Unit tests assert the happy path.
-Step 5 is the one that catches them.
+CI runs typecheck, lint, ~510 tests and a build, and **never loads a page**. Three
+production-breaking bugs were green on all four gates. Step 5 is the one that catches them.
 
 ## The UI carve-out
 
@@ -89,7 +133,8 @@ Autonomy stops at anything you can see.
   contract, not a bigger diff.
 - **Stage by explicit path.** Never `git add -A`, `git stash`, or `--autostash` — other sessions
   are live in this tree. I survey their dirty files before I start, not just before I stage.
-- Commits are backdated in `+0700` with the silent types; build and push via a throwaway worktree.
+- Commits are backdated in `+0700`; release-silent types are `docs`, `chore`, `refactor`, `test`,
+  `ci`, `build`, `style`, `revert` — `feat`, `fix` and `perf` cut a release.
 - `.githooks/pre-commit` runs `scripts/check-staged-imports.mts`. If it fires, I fix the import,
   not the hook.
 - Verify against prod, not the dev server — dev-only config hides prod-only bugs.
