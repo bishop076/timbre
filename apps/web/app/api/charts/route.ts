@@ -1,6 +1,6 @@
 import { chartAll, mergeTracks } from "@timbre/providers";
 
-import { cached, CACHE_CONTROL_HOUR, json, publicFailures, reportFailures, whole } from "@/lib/api";
+import { cached, CACHE_CONTROL_HOUR, guard, json, publicFailures, reportFailures, whole } from "@/lib/api";
 import { getProviderRuntime } from "@/lib/providers";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,13 @@ export const dynamic = "force-dynamic";
 // window expired. `chartAll` allSettles, so a degraded run is a 200 like any other. This is
 // the same shape `/api/search` and `/api/radio` now use: serve the caller the best that could
 // be had, do not remember it, and do not let the CDN remember it either.
-export async function GET() {
+export async function GET(request: Request) {
+  // Taking no query parameters is why this route never grew a guard, but it is not a
+  // reason to go without one: a cache miss here fans out to every provider at once, so
+  // an unbudgeted caller costs the most on exactly the requests the cache cannot absorb.
+  const refusal = guard(request);
+  if (refusal) return refusal;
+
   const body = await cached(
     "charts:24",
     async () => {
