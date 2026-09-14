@@ -50,8 +50,14 @@ export function PlaylistActions({
     if (onDeletedGoTo) router.push(onDeletedGoTo);
   }
 
+  // The menu below is `fixed` and placed from `root`'s viewport rect, so nothing here needs a
+  // positioned ancestor — and hard-coding one cost the library grid its alignment. Tailwind
+  // resolves `relative absolute` by stylesheet order, not by the order written in the
+  // attribute, and `relative` is emitted last: the tile's `absolute right-3 top-3` lost, the
+  // button stayed in flow, and every playlist tile sat 36px below the Liked one with a gap
+  // above its cover. A caller that positions this owns the positioning.
   return (
-    <div ref={root} className={`relative ${className ?? ""}`}>
+    <div ref={root} className={className ?? "relative"}>
       <button
         ref={trigger}
         type="button"
