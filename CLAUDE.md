@@ -128,6 +128,8 @@ Autonomy stops at anything you can see.
   is the recommendation.
 - A fix already sitting on another branch is not evidence you want it live. "Already written and
   tested" says nothing about whether it looks right.
+- This **delays** the push; it doesn't cancel it. Once you've seen the change and said yes, I commit
+  and push as the last step of the slice — I don't ask a second time.
 
 ## Stop at the boundary
 
@@ -142,6 +144,21 @@ Autonomy stops at anything you can see.
 - Verify against prod, not the dev server — dev-only config hides prod-only bugs.
 - Two dev servers corrupt `.next` and every page 500s with a Turbopack CSS error. One server.
 
+## Pushing `main` publishes
+
+Finishing a slice means commit, push, and leave local and remote in sync. I don't ask for that.
+But here a push is not just a sync:
+
+- `.github/workflows/release.yml` runs on every push to `main`. A `feat`, `fix` or `perf` commit
+  bumps the version, commits the changelog, tags it, and creates a **GitHub Release**.
+- Vercel deploys both projects off the same push. There is no local deploy script — the push *is*
+  the deploy; `scripts/vercel-ignore.sh` only decides which of the two builds.
+- The release-silent types deploy without publishing a release.
+
+So **the commit type is the decision point, not the push.** Choosing `fix:` over `refactor:` is
+choosing to cut a release, and that choice belongs in the slice contract where you can veto it.
+The answer to "this will publish something" is never to leave finished work sitting unpushed.
+
 ## Known traps that are not bugs
 
 - **YouTube playback breaks per PIA exit IP** — probe with `/tmp/pw/probe150.mjs` before touching
@@ -149,6 +166,13 @@ Autonomy stops at anything you can see.
 - **Deezer localises by IP** — a Tokyo exit returns Japanese names and genres.
 - **Spotify never plays in full without an account**; prod lacks SoundCloud search, local has it.
 - Art and chart caches hide upstream outages. A cold build is the honest test.
+- **`.env` can't be rebuilt from `.env.example`.** The live file carries SoundCloud credentials the
+  example only shows commented out, so `RUNNING.md`'s copy step is first-clone-only. Edit it in
+  place: never copy over it, and never copy *from* it.
+- **`gh workflow run spotify-canary.yml` writes to the issue tracker.** Its second job opens, labels
+  and comments on a `spotify-breakage` issue — `gh issue create` through another door, so it needs a
+  specific yes. The nightly cron is already yours. `pnpm spotify:canary` locally is fine: it calls
+  Spotify but sends nothing of yours outward.
 
 ## Parallel agents
 

@@ -27,7 +27,9 @@ pnpm install
 # commit whose files import something git does not have — see below.
 git config core.hooksPath .githooks
 
-cp .env.example .env
+# First clone only. An existing .env holds values the example only shows commented out —
+# SoundCloud's among them — so copying over it drops them silently.
+[ -f .env ] || cp .env.example .env
 # then set YTMUSIC_SHARED_SECRET — see below
 
 cd apps/ytmusic
