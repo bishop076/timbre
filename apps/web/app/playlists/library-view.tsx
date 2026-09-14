@@ -54,7 +54,7 @@ export function PlaylistGrid({
           >
             <PlaylistCover
               covers={playlist.covers}
-              className="slab aspect-square w-full rounded-[var(--r-md)]"
+              className="aspect-square w-full rounded-[var(--r-md)]"
             />
             <span className="mt-2.5 block truncate text-sm font-semibold">{playlist.name}</span>
             <span className="block text-xs text-[var(--fg-dim)]">

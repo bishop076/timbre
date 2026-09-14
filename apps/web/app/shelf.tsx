@@ -95,7 +95,9 @@ export function Shelf({
         </div>
       </SectionHeader>
 
-      <div ref={row} className="shelf flex gap-3 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-4">
+      {/* Tighter than it looks: each tile now carries its own padding, so the space between
+          two covers is this gap plus 2 × that padding — the same air as before. */}
+      <div ref={row} className="shelf flex gap-1 overflow-x-auto scroll-pl-1 px-1 pb-1 sm:gap-2">
         {children}
       </div>
     </section>
