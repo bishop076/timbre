@@ -37,7 +37,7 @@ export function LikedTile() {
         className="block rounded-[var(--r-lg)] p-1.5 transition hover:bg-[var(--surface-2)] sm:p-2.5"
       >
         <LikedCover
-          className="slab aspect-square w-full rounded-[var(--r-md)]"
+          className="aspect-square w-full rounded-[var(--r-md)]"
           iconClassName="size-1/3"
         />
         <span className="mt-2.5 block truncate text-sm font-semibold">Liked songs</span>
