@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.20.0 — 15 September 2026
+
+### Added
+
+- **meta** — redraw the README banner, and keep the source this time
+
 ## 0.19.0 — 14 September 2026
 
 ### Added
