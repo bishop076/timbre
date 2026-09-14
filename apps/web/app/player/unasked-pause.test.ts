@@ -22,6 +22,7 @@ const ALONE: PauseFacts = {
   startedAt: NOW - 30_000,
   position: 30,
   duration: 240,
+  readingAt: NOW,
   resumes: 0,
 };
 
@@ -68,6 +69,33 @@ test("a track on its last seconds is left for the queue to advance", () => {
   assert.equal(judgePause(facts({ position: 239, duration: 240 })), "ending");
   assert.equal(judgePause(facts({ position: 238, duration: 240 })), "ending");
   assert.equal(judgePause(facts({ position: 237, duration: 240 })), "resume");
+});
+
+test("a track ending in a background tab is recognised from a stale reading", () => {
+  // The bug this exists for, in the shape it actually arrives in: a four-minute track really is
+  // at its end, but the tab has been in the background and the progress poll — clamped there to
+  // once a minute — last spoke fifty seconds ago at 3:08. Judged on that number alone the track
+  // has nearly a minute left, the end reads as the source giving up, and the rescue's toggle
+  // lands on the next track's startup. Judged on when the reading was *taken*, it is an ending.
+  const stale = { position: 188, duration: 240, readingAt: NOW - 50_000 };
+  assert.equal(judgePause(facts(stale)), "ending");
+  // Same numbers, fresh off the poll: 55 seconds left really is 55 seconds left.
+  assert.equal(judgePause(facts({ ...stale, readingAt: NOW })), "resume");
+});
+
+test("a stale reading does not mute a rescue in the middle of a track", () => {
+  // The other half of the bargain. A minute of clamped poll is the most the estimate can run
+  // ahead, so a source that gave up halfway through a long track is still far enough from the
+  // end to be put back on — the case that would otherwise have been traded away for the one
+  // above.
+  assert.equal(judgePause(facts({ position: 100, duration: 240, readingAt: NOW - 60_000 })), "resume");
+});
+
+test("a position never reported is not read as time served", () => {
+  // `readingAt` of 0 means no source has ever said anything, so `position` is 0 for want of
+  // news. Ageing that from the epoch would make every such pause an "ending" and switch the
+  // rescue off entirely.
+  assert.equal(judgePause(facts({ position: 0, duration: 240, readingAt: 0 })), "resume");
 });
 
 test("a source reporting no duration is still put back on", () => {
