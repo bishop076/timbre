@@ -7,16 +7,19 @@ import {
   judgePause,
   MAX_RESUMES,
   QUIET_MS,
+  SETTLING_MS,
   type PauseFacts,
 } from "./unasked-pause.ts";
 
 const NOW = 1_000_000;
 
-// Walked away: a long track, well past any press, nobody here for an hour.
+// Walked away: a long track, well past any press, playing for half a minute, nobody here for
+// an hour.
 const ALONE: PauseFacts = {
   now: NOW,
   askedAt: NOW - 60 * 60_000,
   interactedAt: NOW - 60 * 60_000,
+  startedAt: NOW - 30_000,
   position: 30,
   duration: 240,
   resumes: 0,
@@ -47,6 +50,20 @@ test("a pause with someone still at the keyboard is theirs", () => {
   assert.equal(judgePause(facts({ interactedAt: NOW - QUIET_MS - 1 })), "resume");
 });
 
+test("a source still starting its track is left to start", () => {
+  // What a queue left alone actually hits: a track ends, the next one loads, and the new
+  // source's own startup flicker arrives with the twenty-second grace long since lapsed. Read
+  // as an unasked pause it was fought with a toggle, which is how playback ended up off.
+  assert.equal(judgePause(facts({ startedAt: NOW, position: 0, duration: 1885 })), "starting");
+  assert.equal(judgePause(facts({ startedAt: NOW - SETTLING_MS })), "starting");
+  assert.equal(judgePause(facts({ startedAt: NOW - SETTLING_MS - 1 })), "resume");
+});
+
+test("someone at the keyboard still outranks a source that is starting", () => {
+  assert.equal(judgePause(facts({ startedAt: NOW, interactedAt: NOW })), "user");
+  assert.equal(judgePause(facts({ startedAt: NOW, askedAt: NOW })), "asked");
+});
+
 test("a track on its last seconds is left for the queue to advance", () => {
   assert.equal(judgePause(facts({ position: 239, duration: 240 })), "ending");
   assert.equal(judgePause(facts({ position: 238, duration: 240 })), "ending");
@@ -72,7 +89,7 @@ test("a press here outranks everything, so nothing fights the listener", () => {
 });
 
 test("every verdict says something, so the log never reads as a blank", () => {
-  for (const verdict of ["asked", "user", "ending", "exhausted", "resume"] as const) {
+  for (const verdict of ["asked", "user", "starting", "ending", "exhausted", "resume"] as const) {
     assert.match(describeVerdict(verdict, 0), /\S/);
   }
 });
