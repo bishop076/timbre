@@ -58,21 +58,55 @@ export interface PauseFacts {
   startedAt: number;
   position: number;
   duration: number;
+  /**
+   * When the source last reported that position — not when the number last changed. A hidden
+   * tab clamps the progress poll to once a minute, so the two are very different things there.
+   */
+  readingAt: number;
   /** How many times this track has already been put back on. */
   resumes: number;
 }
 
 export type PauseVerdict = "asked" | "user" | "starting" | "ending" | "exhausted" | "resume";
 
+/**
+ * How far into the track the source actually is, which is not what it last said.
+ *
+ * The reading comes from a `setInterval` in each embed's player, and a tab in the background
+ * has that clamped to once a minute — so at the moment a track ends, `position` can be most of
+ * a minute short and "the track is ending" does not hold. That is the whole failure: a natural
+ * end read as the source giving up, a rescue armed against it, and the toggle landing on the
+ * *next* track's startup instead. Two toggles inside a second and playback is off.
+ *
+ * Playback was running right up to this pause — that is what `was === "playing"` means at the
+ * only call site — so every millisecond since the reading was taken is a millisecond the track
+ * advanced by. Adding it back is not a guess about the future, it is arithmetic about the past.
+ *
+ * Left uncapped: a reading stale enough to carry the estimate past `duration` only makes the
+ * "ending" test truer, which is the direction this is allowed to be wrong in. Skipped entirely
+ * when nothing has ever been reported, where `position` is 0 for want of news rather than
+ * because the track is at its start.
+ *
+ * The bound on how wrong this can be is the poll itself: a background tab still reports once a
+ * minute, so the estimate runs at most that far ahead. A source stalled in the middle of a long
+ * track stays far enough from its end to be rescued, which is what the rest of this is for.
+ */
+function playedBy(now: number, position: number, readingAt: number): number {
+  if (readingAt <= 0) return position;
+  return position + Math.max(0, now - readingAt) / 1000;
+}
+
 export function judgePause(facts: PauseFacts): PauseVerdict {
-  const { now, askedAt, interactedAt, startedAt, position, duration, resumes } = facts;
+  const { now, askedAt, interactedAt, startedAt, position, duration, readingAt, resumes } = facts;
 
   if (now - askedAt <= ASKED_MS) return "asked";
   if (now - interactedAt <= QUIET_MS) return "user";
   if (now - startedAt <= SETTLING_MS) return "starting";
   // Guard the subtraction as well as the comparison: a duration of 0 means the source never
   // reported one, and `0 - position` would read as "ending" for every such track.
-  if (duration > 0 && duration - position <= ENDING_SECONDS) return "ending";
+  if (duration > 0 && duration - playedBy(now, position, readingAt) <= ENDING_SECONDS) {
+    return "ending";
+  }
   if (resumes >= MAX_RESUMES) return "exhausted";
   return "resume";
 }
