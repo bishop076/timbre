@@ -1,21 +1,31 @@
 import type { ImageKind } from "./local-images";
 
-const SIZES: Record<ImageKind, [number, number]> = { avatar: [512, 512], banner: [1600, 500] };
+/** Everything this redraws: the two profile pictures, and a playlist cover. */
+export type PictureKind = ImageKind | "playlist";
 
-export const ACCEPTED: Record<ImageKind, string[]> = {
-  avatar: ["image/png", "image/jpeg", "image/webp", "image/gif"],
-  banner: ["image/png", "image/jpeg", "image/webp"],
+const SIZES: Record<PictureKind, [number, number]> = {
+  avatar: [512, 512],
+  banner: [1600, 500],
+  playlist: [640, 640],
 };
 
-export async function redraw(file: File, kind: ImageKind): Promise<Blob> {
+export const ACCEPTED: Record<PictureKind, string[]> = {
+  avatar: ["image/png", "image/jpeg", "image/webp", "image/gif"],
+  banner: ["image/png", "image/jpeg", "image/webp"],
+  // No GIF: a cover is drawn at 40px in the sidebar and tiled a dozen to a row, and an animated
+  // one is kept whole rather than redrawn — see the avatar branch below.
+  playlist: ["image/png", "image/jpeg", "image/webp"],
+};
+
+export async function redraw(file: File, kind: PictureKind): Promise<Blob> {
   if (file.size > 25 * 1024 * 1024) {
     throw new Error("That picture is too large for this browser to keep.");
   }
 
   if (!ACCEPTED[kind].includes(file.type)) {
     throw new Error(
-      file.type === "image/gif"
-        ? "Banners have to be a still picture — try a PNG, JPEG or WebP. GIFs work on your profile picture."
+      file.type === "image/gif" && kind !== "avatar"
+        ? `${kind === "banner" ? "Banners" : "Playlist covers"} have to be a still picture — try a PNG, JPEG or WebP. GIFs work on your profile picture.`
         : "That has to be a PNG, JPEG or WebP.",
     );
   }

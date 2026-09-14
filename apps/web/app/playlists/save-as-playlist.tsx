@@ -8,7 +8,15 @@ import type { Song } from "../types";
 import { saveAsPlaylist } from "./save-collection";
 import { usePlaylists } from "./store";
 
-export function SaveAsPlaylist({ name, songs }: { name: string; songs: readonly Song[] }) {
+export function SaveAsPlaylist({
+  name,
+  songs,
+  coverUrl,
+}: {
+  name: string;
+  songs: readonly Song[];
+  coverUrl?: string | null;
+}) {
   const [saved, setSaved] = useState<ReturnType<typeof saveAsPlaylist>>();
   const { error } = usePlaylists();
 
@@ -16,7 +24,7 @@ export function SaveAsPlaylist({ name, songs }: { name: string; songs: readonly 
     <>
       <button
         type="button"
-        onClick={() => setSaved(saveAsPlaylist(name, songs))}
+        onClick={() => setSaved(saveAsPlaylist(name, songs, coverUrl))}
         disabled={songs.length === 0 || Boolean(saved)}
         className="slab-sm press flex items-center gap-2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-4 py-2 text-[13px] font-semibold text-[var(--fg-dim)] transition hover:text-[var(--fg)] disabled:opacity-40"
       >
