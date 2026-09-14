@@ -4,7 +4,6 @@ import { ArtistLink } from "./artist-link";
 import { Artwork } from "./artwork";
 import { CheckIcon, PlusIcon } from "./icons";
 import { usePlayerControls } from "./player/player-context";
-import { useSongMenu } from "./player/song-menu";
 import { sameTrack } from "./player/song-match";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { PlayGlyph } from "./tile-cards";
@@ -25,10 +24,12 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
   const isCurrent = current?.id === song.id;
   const isPlaying = isCurrent && state === "playing";
   const isQueued = playerQueue.some((queued) => sameTrack(queued, song));
-  const { onContextMenu, menu } = useSongMenu(song);
 
+  // No right-click menu here, deliberately. A tile is big enough to carry its own controls —
+  // the queue and playlist buttons appear on the artwork on hover — so the menu belongs to the
+  // list rows, where a song is a line of text beside a thumbnail and there is nowhere to put them.
   return (
-    <div onContextMenu={onContextMenu} className="group relative w-full text-left">
+    <div className="group relative w-full text-left">
       <div className="relative">
         <div className="absolute right-2 top-2 z-30 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
           <AddToPlaylist song={song} />
@@ -97,8 +98,6 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
           <ArtistLink artists={song.artists} />
         </p>
       </button>
-
-      {menu}
     </div>
   );
 }
