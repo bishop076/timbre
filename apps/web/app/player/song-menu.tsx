@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { CheckIcon, HeartFilledIcon, HeartIcon, NextIcon, PlayIcon, QueueAddIcon } from "../icons";
+import {
+  CheckIcon,
+  ChevronIcon,
+  HeartFilledIcon,
+  HeartIcon,
+  NextIcon,
+  PlaylistAddIcon,
+  PlayIcon,
+  QueueAddIcon,
+} from "../icons";
+import { PlaylistPicker } from "../playlists/add-to-playlist";
+import { getPlaylistsState, addSongToPlaylist } from "../playlists/store";
 import { likeSong, unlikeSong, useIsLiked } from "../playlists/likes-store";
 import type { Song } from "../types";
 import { usePlayerControls } from "./player-context";
@@ -41,11 +52,21 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
   const { play, enqueue, playNext, queue, current } = usePlayerControls();
   const menu = useRef<HTMLDivElement>(null);
   const [placed, setPlaced] = useState<{ left: number; top: number } | null>(null);
+  // The playlist picker takes the panel over rather than hanging off it: a second floating layer
+  // anchored to a menu that is itself anchored to the pointer has two ways to land off-screen.
+  const [picking, setPicking] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const queued = queue.some((entry) => sameTrack(entry, song));
   const playing = current !== null && sameTrack(current, song);
   const liked = useIsLiked(song);
 
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
+
+  // Re-placed when the view changes as well as when the pointer does: the picker is much taller
+  // than the four actions, and a menu opened near the bottom of the window would otherwise grow
+  // straight off it.
   useLayoutEffect(() => {
     const height = menu.current?.offsetHeight ?? 0;
     const left = Math.min(at.x, window.innerWidth - MENU_WIDTH - MARGIN);
@@ -56,7 +77,7 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
       left: Math.max(MARGIN, left),
       top: Math.min(Math.max(MARGIN, wantTop), maxTop),
     });
-  }, [at]);
+  }, [at, picking]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -82,6 +103,16 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
     if (placed) menu.current?.focus();
   }, [placed]);
 
+  // Saving keeps the menu up for a beat so the tick beside the list is seen, and holds it open
+  // for good if the write failed — the alert the picker renders is the only notice of that.
+  function save(playlistId: string) {
+    addSongToPlaylist(playlistId, song);
+    if (getPlaylistsState().error) return setSaved(null);
+    setSaved(playlistId);
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(onClose, 700);
+  }
+
   const items = [
     { label: "Play now", icon: <PlayIcon className="size-4" />, action: () => play(song) },
     {
@@ -95,6 +126,15 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
       icon: queued ? <CheckIcon className="size-4" /> : <QueueAddIcon className="size-4" />,
       action: () => enqueue([song]),
       hint: queued ? "Queued" : undefined,
+    },
+    {
+      label: "Add to playlist",
+      icon: <PlaylistAddIcon className="size-4" />,
+      // The one item that opens something rather than doing something, so it is the one that
+      // does not close the menu.
+      action: () => setPicking(true),
+      keepOpen: true,
+      more: true,
     },
     {
       label: liked ? "Unlike" : "Like",
@@ -118,25 +158,42 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
           ? { left: placed.left, top: placed.top }
           : { left: 0, top: 0, visibility: "hidden" }
       }
-      className="slab fixed z-[100] w-52 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] p-1.5 shadow-[var(--drop-lg)] outline-none"
+      className={`slab fixed z-[100] w-52 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)] outline-none ${
+        picking ? "" : "p-1.5"
+      }`}
     >
-      {items.map(({ label, icon, action, hint }) => (
-        <button
-          key={label}
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            action();
-            onClose();
-          }}
-          disabled={hint !== undefined}
-          className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)] disabled:cursor-default disabled:text-[var(--fg-dim)] disabled:hover:bg-transparent"
-        >
-          <span className="shrink-0 text-[var(--fg-dim)]">{icon}</span>
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          {hint && <span className="shrink-0 text-[11px] text-[var(--fg-faint)]">{hint}</span>}
-        </button>
-      ))}
+      {picking ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setPicking(false)}
+            className="flex w-full items-center gap-2 border-b-[length:var(--edge)] border-[var(--ink)] px-2.5 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)]"
+          >
+            <ChevronIcon className="size-4 shrink-0 rotate-90 text-[var(--fg-dim)]" />
+            <span className="min-w-0 flex-1 truncate">Add to playlist</span>
+          </button>
+          <PlaylistPicker song={song} saved={saved} onSave={save} />
+        </>
+      ) : (
+        items.map(({ label, icon, action, hint, keepOpen, more }) => (
+          <button
+            key={label}
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              action();
+              if (!keepOpen) onClose();
+            }}
+            disabled={hint !== undefined}
+            className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)] disabled:cursor-default disabled:text-[var(--fg-dim)] disabled:hover:bg-transparent"
+          >
+            <span className="shrink-0 text-[var(--fg-dim)]">{icon}</span>
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {hint && <span className="shrink-0 text-[11px] text-[var(--fg-faint)]">{hint}</span>}
+            {more && <ChevronIcon className="size-4 shrink-0 -rotate-90 text-[var(--fg-faint)]" />}
+          </button>
+        ))
+      )}
     </div>,
     document.body,
   );
