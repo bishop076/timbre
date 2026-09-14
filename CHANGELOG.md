@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.13 — 14 September 2026
+
+### Fixed
+
+- **api** — give /api/charts the rate-limit budget every other route has
+
+3 further changes under the hood — refactoring, docs and tests.
+
 ## 0.17.12 — 14 September 2026
 
 ### Fixed
