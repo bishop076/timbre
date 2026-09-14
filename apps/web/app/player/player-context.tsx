@@ -66,6 +66,7 @@ function writeProgress(position: number, duration: number): void {
 // with `Date.now()` is calling an impure function during render. `lastInteraction` is seeded in
 // the effect that maintains it, which is both pure and the right moment.
 let lastInteraction = 0;
+let sourceStartedAt = 0;
 let unaskedResumes = 0;
 let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -340,6 +341,10 @@ function usePlayerValue() {
   const start = useCallback((chosen: ChosenSource) => {
     if (chosen.kind === "ytmusic") attempted.current.add(chosen.id);
     else spent.current.add(spentKey(chosen));
+    // Every route to a playing source comes through here, which makes it the one place that
+    // knows when the thing about to report pauses was handed its track. `judgePause` needs that
+    // to tell a source starting up from a source giving up.
+    sourceStartedAt = Date.now();
     setPlaying(chosen);
     setProblem(problemFor(chosen));
     writeState(chosen.kind === "subscription" ? "paused" : "loading");
@@ -878,6 +883,7 @@ function usePlayerValue() {
           now: Date.now(),
           askedAt: asked.current,
           interactedAt: lastInteraction,
+          startedAt: sourceStartedAt,
           position,
           duration,
           resumes: unaskedResumes,
