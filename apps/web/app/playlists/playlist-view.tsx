@@ -14,6 +14,7 @@ import { SongRow } from "../song-row";
 import { SourceBadges } from "../source-badges";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
+import { usePlaylistImages } from "./playlist-image";
 import { loadPlaylists, moveSong, removeSongAt, usePlaylist, usePlaylists } from "./store";
 
 /** Below this a playlist is short enough to scan, so the filter field stays out of the way. */
@@ -24,6 +25,7 @@ export function PlaylistView({ id }: { id: string }) {
   const { play, current, state } = usePlayerControls();
   const { settled, error } = usePlaylists();
   const playlist = usePlaylist(id);
+  const uploaded = usePlaylistImages();
 
   useEffect(() => {
     loadPlaylists();
@@ -89,6 +91,8 @@ export function PlaylistView({ id }: { id: string }) {
         art={
           <PlaylistCover
             covers={songs.flatMap((song) => song.artworkUrl || [])}
+            coverUrl={playlist.coverUrl}
+            uploaded={uploaded[playlist.id]}
             className="slab size-28 shrink-0 rounded-[var(--r-lg)] sm:size-40"
             iconClassName="size-10"
             eager

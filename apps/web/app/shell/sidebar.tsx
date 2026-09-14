@@ -11,6 +11,7 @@ import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { LikedRow } from "../playlists/liked-tile";
 import { PlaylistCover } from "../playlists/playlist-cover";
+import { usePlaylistImages } from "../playlists/playlist-image";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
 import { Avatar } from "../profile/avatar";
 import { useLocalImages } from "../profile/local-images";
@@ -244,6 +245,7 @@ function PlaylistRows({
   settled: boolean;
 }) {
   const { queueOrigin, state } = usePlayerControls();
+  const uploaded = usePlaylistImages();
   if (!settled || playlists === null) {
     return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
   }
@@ -275,6 +277,8 @@ function PlaylistRows({
           >
             <PlaylistCover
               covers={playlist.covers}
+              coverUrl={playlist.coverUrl}
+              uploaded={uploaded[playlist.id]}
               className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
               iconClassName="size-4"
             />

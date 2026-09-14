@@ -17,6 +17,7 @@ import { importLikedSongs } from "./likes-store";
 import { LikedTile } from "./liked-tile";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
+import { usePlaylistImages } from "./playlist-image";
 import { createPlaylist, importPlaylists, loadPlaylists, usePlaylists } from "./store";
 import type { PlaylistSummary } from "./store";
 
@@ -34,6 +35,8 @@ export function PlaylistGrid({
   className?: string;
   children?: ReactNode;
 }) {
+  const uploaded = usePlaylistImages();
+
   return (
     <ul className={`${className} ${PLAYLIST_GRID}`.trim()}>
       {children}
@@ -54,6 +57,8 @@ export function PlaylistGrid({
           >
             <PlaylistCover
               covers={playlist.covers}
+              coverUrl={playlist.coverUrl}
+              uploaded={uploaded[playlist.id]}
               className="aspect-square w-full rounded-[var(--r-md)]"
             />
             <span className="mt-2.5 block truncate text-sm font-semibold">{playlist.name}</span>
