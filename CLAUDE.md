@@ -95,7 +95,9 @@ Every slice, in order. "It compiles" is not done.
 1. `pnpm typecheck:fast` — tsgo, ~6s. **CI gates on `pnpm typecheck` (tsc)**, so that one
    runs before I push.
 2. `pnpm lint` — eslint is the gate. Never prettier.
-3. `pnpm test`
+3. `pnpm test` — and if the slice touched timers, abort signals or anything version-sensitive,
+   again under **`npx -y node@22`**. This machine is Node 26; every workflow pins 22, and a
+   test has already passed here and failed CI for exactly that reason.
 4. `pnpm build`
 5. **A production browser run** — if the slice touched `app/`, `lib/`, an API route, or
    `next.config.ts`, gates 1–4 do not count as verification:
