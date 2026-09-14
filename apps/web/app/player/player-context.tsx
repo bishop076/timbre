@@ -53,8 +53,15 @@ type PlayerControls = ReturnType<typeof usePlayerValue>;
 const ZERO_PROGRESS = { position: 0, duration: 0 };
 const ticks = createNotifier();
 let progressSnapshot = ZERO_PROGRESS;
+let progressAt = 0;
 
 function writeProgress(position: number, duration: number): void {
+  // Stamped before the early return, and so counting every report rather than every *change*.
+  // `judgePause` needs to know when the source last spoke: a stalled source still reporting the
+  // same second is current news, while a background tab's clamped poll is a minute out of date,
+  // and the difference between those two is the difference between rescuing playback and
+  // fighting it.
+  progressAt = Date.now();
   if (position === progressSnapshot.position && duration === progressSnapshot.duration) return;
   progressSnapshot = { position, duration };
   ticks.emit();
@@ -886,6 +893,7 @@ function usePlayerValue() {
           startedAt: sourceStartedAt,
           position,
           duration,
+          readingAt: progressAt,
           resumes: unaskedResumes,
         });
 
