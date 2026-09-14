@@ -10,6 +10,14 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.17.12 — 14 September 2026
+
+### Fixed
+
+- **player** — don't fight a source that is still starting the track
+
+1 further change under the hood — refactoring, docs and tests.
+
 ## 0.17.11 — 14 September 2026
 
 ### Fixed
