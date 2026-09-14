@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.18.0 — 14 September 2026
+
+### Added
+
+- **player** — add to playlist moves into the right-click menu
+
+### Fixed
+
+- **icons** — tell add to playlist apart from add to queue
+
 ## 0.17.13 — 14 September 2026
 
 ### Fixed
