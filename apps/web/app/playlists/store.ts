@@ -2,7 +2,7 @@
 
 import { createLocalStore, readJson, useLocalStore, writeJson } from "../local-store.ts";
 import { readProfileExport, type ProfileExport } from "../profile/profile-file.ts";
-import { usableSongs } from "../song-shape.ts";
+import { usableArtwork, usableSongs } from "../song-shape.ts";
 import type { Song } from "../types";
 
 interface LocalPlaylist {
@@ -10,6 +10,13 @@ interface LocalPlaylist {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * A picture the list came with — Spotify's own playlist art, kept when the list is saved from
+   * a Spotify collection. Held to `usableArtwork`, the same rule as a song's cover, so it can
+   * only ever be a URL `/api/art` will proxy. An uploaded picture is not this: that lives in
+   * IndexedDB under `playlist-image.ts` and wins over it.
+   */
+  coverUrl?: string | null;
   songs: Song[];
 }
 
@@ -18,6 +25,7 @@ export interface PlaylistSummary {
   name: string;
   trackCount: number;
   covers: string[];
+  coverUrl: string | null;
   updatedAt: string;
 }
 
@@ -39,6 +47,7 @@ function summarise(playlist: LocalPlaylist): PlaylistSummary {
     name: playlist.name,
     trackCount: playlist.songs.length,
     covers: playlist.songs.flatMap((song) => song.artworkUrl || []).slice(0, 4),
+    coverUrl: playlist.coverUrl ?? null,
     updatedAt: playlist.updatedAt,
   };
 }
@@ -67,6 +76,7 @@ const store = createLocalStore<PlaylistsState>({
           ...playlist,
           createdAt,
           updatedAt: text(playlist.updatedAt, createdAt),
+          coverUrl: usableArtwork(playlist.coverUrl),
           songs: usableSongs(playlist.songs),
         };
       });
@@ -107,13 +117,14 @@ function update(id: string, change: (playlist: LocalPlaylist) => Partial<LocalPl
   persist();
 }
 
-export function createPlaylist(name: string): PlaylistSummary {
+export function createPlaylist(name: string, coverUrl?: string | null): PlaylistSummary {
   const now = new Date().toISOString();
   const playlist: LocalPlaylist = {
     id: crypto.randomUUID(),
     name: name.trim(),
     createdAt: now,
     updatedAt: now,
+    coverUrl: usableArtwork(coverUrl),
     songs: [],
   };
   all = [playlist, ...held()];
@@ -123,6 +134,11 @@ export function createPlaylist(name: string): PlaylistSummary {
 
 export function renamePlaylist(id: string, name: string): void {
   update(id, () => ({ name: name.trim() }));
+}
+
+/** The picture a list arrived with. `null` drops it and hands the cover back to the collage. */
+export function setPlaylistCoverUrl(id: string, coverUrl: string | null): void {
+  update(id, () => ({ coverUrl: usableArtwork(coverUrl) }));
 }
 
 export function deletePlaylist(id: string): void {
