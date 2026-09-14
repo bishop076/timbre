@@ -10,6 +10,12 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.18.1 — 14 September 2026
+
+### Fixed
+
+- **player** — stop a queue dying at the end of every track in a background tab
+
 ## 0.18.0 — 14 September 2026
 
 ### Added

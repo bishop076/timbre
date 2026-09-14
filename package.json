@@ -1,6 +1,6 @@
 {
   "name": "timbre",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "private": true,
   "description": "One search across free music. Nothing stored, nothing hosted.",
   "scripts": {
