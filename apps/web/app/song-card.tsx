@@ -9,7 +9,16 @@ import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { PlayGlyph } from "./tile-cards";
 import type { Song } from "./types";
 
-export const TILE = "w-[7rem] shrink-0 snap-start sm:w-[10.5rem]";
+export const TILE = "w-[8rem] shrink-0 snap-start sm:w-[11.5rem]";
+
+/**
+ * The box a tile lives in: nothing at rest, a soft panel under the whole tile — artwork, title
+ * and subtitle together — on hover. The padding is what the panel needs to read as a container
+ * rather than a highlight, and `TILE` is wider by exactly that much, so the artwork is the size
+ * it always was. Shared so a shelf of songs, artists and releases behaves as one thing.
+ */
+export const TILE_BOX =
+  "block rounded-[var(--r-lg)] p-2 transition duration-200 ease-[var(--ease)] hover:bg-[var(--surface-2)]";
 
 export function SongTiles({ songs, queue = songs }: { songs: Song[]; queue?: Song[] }) {
   return songs.map((song) => (
@@ -29,13 +38,13 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
   // the queue and playlist buttons appear on the artwork on hover — so the menu belongs to the
   // list rows, where a song is a line of text beside a thumbnail and there is nowhere to put them.
   return (
-    <div className="group relative w-full text-left">
+    <div className={`group relative w-full text-left ${TILE_BOX}`}>
       <div className="relative">
         <div className="absolute right-2 top-2 z-30 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
           <AddToPlaylist song={song} />
         </div>
 
-        <div className="slab press relative aspect-square overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-2)]">
+        <div className="press relative aspect-square overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)]">
           <Artwork
             src={song.artworkUrl}
             className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
@@ -85,7 +94,7 @@ export function SongCard({ song, queue }: { song: Song; queue: Song[] }) {
         type="button"
         onClick={() => play(song, queue)}
         tabIndex={-1}
-        className="block w-full px-0.5 pb-0.5 text-left focus:outline-none"
+        className="block w-full text-left focus:outline-none"
       >
         <p
           className={`tint mt-2.5 truncate text-[13px] font-bold sm:mt-3 sm:text-[14px] ${

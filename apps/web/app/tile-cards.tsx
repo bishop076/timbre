@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Artwork } from "./artwork";
 import { Equalizer } from "./equalizer";
 import { PlayIcon } from "./icons";
+import { TILE_BOX } from "./song-card";
 
 export function ReleaseCard({
   href,
@@ -18,16 +19,16 @@ export function ReleaseCard({
   subtitle: string;
 }) {
   return (
-    <Link href={href} className="group block w-full">
-      <div className="slab press overflow-hidden rounded-[var(--r-lg)]">
+    <Link href={href} className={`group w-full ${TILE_BOX}`}>
+      <div className="press overflow-hidden rounded-[var(--r-md)]">
         <Artwork
           src={coverUrl}
           className="aspect-square w-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
           iconClassName="size-7"
         />
       </div>
-      <span className="mt-2.5 block truncate px-0.5 text-[13px] font-bold sm:mt-3 sm:text-[14px]">{title}</span>
-      <span className="mt-0.5 block truncate px-0.5 pb-0.5 text-xs text-[var(--fg-dim)]">{subtitle}</span>
+      <span className="mt-2.5 block truncate text-[13px] font-bold sm:mt-3 sm:text-[14px]">{title}</span>
+      <span className="mt-0.5 block truncate text-xs text-[var(--fg-dim)]">{subtitle}</span>
     </Link>
   );
 }
@@ -48,10 +49,10 @@ export function ArtistCard({
   playing?: boolean;
 }) {
   return (
-    <div className="group relative w-full">
+    <div className={`group relative w-full ${TILE_BOX}`}>
       <div className="relative">
         <Link href={href} className="block focus:outline-none" aria-label={name}>
-          <div className="slab press aspect-square overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
+          <div className="press aspect-square overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
             <Artwork
               src={imageUrl}
               className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
@@ -79,8 +80,8 @@ export function ArtistCard({
       </div>
 
       <Link href={href} tabIndex={-1} className="block focus:outline-none">
-        <span className="mt-2.5 block truncate px-0.5 text-[13px] font-bold sm:mt-3 sm:text-[14px]">{name}</span>
-        <span className="mt-0.5 block truncate px-0.5 pb-0.5 text-xs text-[var(--fg-dim)]">{subtitle}</span>
+        <span className="mt-2.5 block truncate text-[13px] font-bold sm:mt-3 sm:text-[14px]">{name}</span>
+        <span className="mt-0.5 block truncate text-xs text-[var(--fg-dim)]">{subtitle}</span>
       </Link>
     </div>
   );
