@@ -140,9 +140,13 @@ export const PencilIcon = stroked(
 
 export const CheckIcon = stroked(<path d="m5 13 4 4 10-10" strokeWidth={2.5} />);
 
+// A note rather than a stack of lines, because `QueueAddIcon` above is already lines-and-a-plus
+// and the two sit side by side on every song row: 4/12/17 against 6/12/18 and a plus half a unit
+// over is not a difference anybody can see at 18px, so the two buttons read as one thing twice.
 export const PlaylistAddIcon = stroked(
-  <path d="M4 7h12M4 12h12M4 17h7" />,
-  <path d="M18 15v6M15 18h6" />,
+  <circle cx="6.5" cy="16.5" r="3" />,
+  <path d="M9.5 16.5V4.5l6 2" />,
+  <path d="M17.5 14.5v6M14.5 17.5h6" />,
 );
 
 export const CompassIcon = stroked(
