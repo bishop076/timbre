@@ -25,8 +25,8 @@ function set(session: MediaSession, action: MediaSessionAction, handler: MediaSe
 }
 
 export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): void {
-  const { current, hasNext, next, previous, playingPreview } = usePlayerControls();
-  const actions = useLatest({ next, previous });
+  const { current, hasNext, next, previous, playingPreview, toggle } = usePlayerControls();
+  const actions = useLatest({ next, previous, toggle });
 
   useEffect(() => {
     if (!("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return;
@@ -52,8 +52,19 @@ export function useMediaSession(audioRef: RefObject<HTMLAudioElement | null>): v
     const session = navigator.mediaSession;
     const audio = () => audioRef.current;
 
-    set(session, "play", () => void audio()?.play().catch(() => undefined));
-    set(session, "pause", () => audio()?.pause());
+    // Through the player's own `toggle`, not straight at the element. These two are how you
+    // pause a tab you are not looking at — a media key, or the browser's media hub — and going
+    // round the transport meant the pause was never stamped as one anybody asked for. A moment
+    // later the unasked-pause rescue read it as the source stopping by itself and put playback
+    // back on, so pausing from outside the page did not stick. `toggle` does the same work and
+    // leaves the stamp; the `paused` guards keep an action that arrives in the wrong state
+    // from inverting it.
+    set(session, "play", () => {
+      if (audio()?.paused !== false) actions.current.toggle();
+    });
+    set(session, "pause", () => {
+      if (audio()?.paused === false) actions.current.toggle();
+    });
     set(session, "previoustrack", () => actions.current.previous());
     set(session, "seekto", (details) => {
       const element = audio();

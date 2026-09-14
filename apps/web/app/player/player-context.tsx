@@ -69,6 +69,12 @@ let lastInteraction = 0;
 let unaskedResumes = 0;
 let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** Drop a rescue that is no longer wanted, and hand the next track a fresh allowance. */
+function cancelResume(): void {
+  unaskedResumes = 0;
+  clearTimeout(resumeTimer);
+}
+
 /** The list a queue was started from. */
 export interface QueueOrigin {
   kind: "playlist" | "album";
@@ -259,10 +265,6 @@ function usePlayerValue() {
   const queueRef = useRef<Song[]>([]);
   const stateRef = useRef<PlayState>("idle");
   const indexRef = useRef(index);
-  useEffect(() => {
-    stateRef.current = state;
-    indexRef.current = index;
-  }, [state, index]);
 
   const shuffled = useRef<Set<string>>(new Set());
   const toggleRef = useRef<(() => void) | null>(null);
@@ -305,6 +307,29 @@ function usePlayerValue() {
     setQueue(value);
   }, []);
 
+  // The position the queue is *at*, as opposed to the one the last render drew. `indexRef` used
+  // to be caught up in an effect, which is a paint too late for anything driven by a press: two
+  // clicks on Next inside one frame both read the render's `index`, both computed the same
+  // target, and the second landed on the song the first had just started — `openSong` saw the
+  // same id and restarted it instead of skipping. Four presses moved two songs; three presses of
+  // Previous moved one. The queue-editing helpers below already read this ref believing it
+  // current, so they were wrong in the same window. Kept in step the way `queueRef` is.
+  const writeIndex = useCallback((position: number) => {
+    indexRef.current = position;
+    setIndex(position);
+  }, []);
+
+  // What the player is doing, as opposed to what the last render drew — the same distinction
+  // `writeIndex` draws, and for the same reason. Three places read this ref to decide whether to
+  // touch the transport, and the riskiest is the unasked-pause rescue, which fires a *toggle*:
+  // catching the ref up in an effect left a window in which a source that had already started
+  // playing again still read as paused, and the rescue meant to put playback back on took it
+  // off instead. Written where the report arrives, so there is no window.
+  const writeState = useCallback((next: PlayState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   const dropRadio = useCallback(() => {
     radioRequest.current?.abort();
     seededFor.current = null;
@@ -317,8 +342,8 @@ function usePlayerValue() {
     else spent.current.add(spentKey(chosen));
     setPlaying(chosen);
     setProblem(problemFor(chosen));
-    setState(chosen.kind === "subscription" ? "paused" : "loading");
-  }, []);
+    writeState(chosen.kind === "subscription" ? "paused" : "loading");
+  }, [writeState]);
 
   const matchesFor = useCallback((song: Song, signal: AbortSignal): Promise<Song[]> => {
     const early = warmed.current.get(song.id);
@@ -390,8 +415,7 @@ function usePlayerValue() {
       steered.current = null;
       // Scoped to the track, like the rest of this: a new song gets its own allowance of
       // resumes, and any resume still pending for the old one is no longer wanted.
-      unaskedResumes = 0;
-      clearTimeout(resumeTimer);
+      cancelResume();
       clearSpotifyLeading();
       setYoutubeTurnedAway(null);
       setPlaying(null);
@@ -432,7 +456,7 @@ function usePlayerValue() {
       if (own) return start(own);
 
       const spotify = chosenSource(song, "spotify");
-      setState("resolving");
+      writeState("resolving");
       setProblem(null);
 
       try {
@@ -449,16 +473,16 @@ function usePlayerValue() {
         if (preview) return start(preview);
 
         setPlaying(null);
-        setState("unplayable");
+        writeState("unplayable");
         setProblem("No copy of this song exists on YouTube Music.");
       } catch (cause) {
         if (isAbort(cause)) return;
         setPlaying(null);
-        setState("unplayable");
+        writeState("unplayable");
         setProblem("Couldn't find a playable copy.");
       }
     },
-    [adoptElsewhere, dropRadio, matchesFor, start],
+    [adoptElsewhere, dropRadio, matchesFor, start, writeState],
   );
 
   const restart = useCallback((ended: boolean) => {
@@ -481,23 +505,23 @@ function usePlayerValue() {
       const switchingSource = prefer && rest.length === 0 && songRef.current?.id === song.id;
       if (!switchingSource) {
         writeQueue([song, ...rest.filter((candidate) => candidate.id !== song.id)]);
-        setIndex(0);
+        writeIndex(0);
         // Only a fresh queue changes where playback came from; swapping a song's source does not.
         setQueueOrigin(origin ?? null);
       }
       openSong(song, prefer);
     },
-    [openSong, writeQueue],
+    [openSong, writeIndex, writeQueue],
   );
 
   const goTo = useCallback(
     (position: number) => {
       const target = queueRef.current[position];
       if (!target) return;
-      setIndex(position);
+      writeIndex(position);
       openSong(target);
     },
-    [openSong],
+    [openSong, writeIndex],
   );
 
   const unqueued = useCallback(
@@ -506,49 +530,57 @@ function usePlayerValue() {
     [queue],
   );
 
+  // Both of these take the position to reckon from rather than closing over `index`: what the
+  // last render drew is the right answer for `hasNext`, and the wrong one for a press, which
+  // has to reckon from wherever the queue already is.
   const unplayed = useCallback(
-    () =>
+    (from: number) =>
       queue.flatMap((song, position) =>
-        position === index || shuffled.current.has(song.id) ? [] : [position],
+        position === from || shuffled.current.has(song.id) ? [] : [position],
       ),
-    [queue, index],
+    [queue],
   );
 
-  const nextIndex = useCallback((): number | null => {
-    if (queue.length === 0) return null;
-    if (shuffle) {
-      const pool = unplayed();
-      if (pool.length > 0) return pool[Math.floor(Math.random() * pool.length)];
-      if (repeat !== "all") return null;
-      shuffled.current = new Set();
-      return queue.length > 1 ? (index + 1) % queue.length : index;
-    }
-    if (index + 1 < queue.length) return index + 1;
-    return repeat === "all" ? 0 : null;
-  }, [queue, index, shuffle, repeat, unplayed]);
+  const nextIndex = useCallback(
+    (from: number): number | null => {
+      if (queue.length === 0) return null;
+      if (shuffle) {
+        const pool = unplayed(from);
+        if (pool.length > 0) return pool[Math.floor(Math.random() * pool.length)];
+        if (repeat !== "all") return null;
+        shuffled.current = new Set();
+        return queue.length > 1 ? (from + 1) % queue.length : from;
+      }
+      if (from + 1 < queue.length) return from + 1;
+      return repeat === "all" ? 0 : null;
+    },
+    [queue, shuffle, repeat, unplayed],
+  );
 
   const hasNext = useMemo(() => {
     if (queue.length === 0) return false;
     if (repeat === "all") return true;
     // eslint-disable-next-line react-hooks/refs
-    if (shuffle ? unplayed().length > 0 : index + 1 < queue.length) return true;
+    if (shuffle ? unplayed(index).length > 0 : index + 1 < queue.length) return true;
     return continueWithRadio && unqueued(radio).length > 0;
   }, [continueWithRadio, index, queue, radio, repeat, shuffle, unplayed, unqueued]);
 
   const advance = useCallback(
     (fromEnd: boolean) => {
-      if (current) shuffled.current.add(current.id);
+      const here = indexRef.current;
+      const playing = queueRef.current[here];
+      if (playing) shuffled.current.add(playing.id);
 
-      const target = nextIndex();
+      const target = nextIndex(here);
       if (target !== null) {
-        if (target === index && fromEnd) restart(true);
+        if (target === here && fromEnd) restart(true);
         else goTo(target);
         return;
       }
 
       const fresh = continueWithRadio ? unqueued(radio) : [];
       if (fresh.length === 0) {
-        if (fromEnd) setState("idle");
+        if (fromEnd) writeState("idle");
         return;
       }
       // Where the appended block starts, read before the append rather than from the render's
@@ -558,27 +590,26 @@ function usePlayerValue() {
       setRadio([]);
       goTo(landing);
     },
-    [
-      continueWithRadio,
-      current,
-      goTo,
-      index,
-      nextIndex,
-      radio,
-      restart,
-      unqueued,
-      writeQueue,
-    ],
+    [continueWithRadio, goTo, nextIndex, radio, restart, unqueued, writeQueue, writeState],
   );
 
   const next = useCallback(() => advance(false), [advance]);
-  const previous = useCallback(() => goTo(Math.max(0, index - 1)), [goTo, index]);
+  const previous = useCallback(() => goTo(Math.max(0, indexRef.current - 1)), [goTo]);
 
   const handleEnded = useCallback(() => {
-    if (takeTrackEndStop()) setState("paused");
+    // Every source reports the last second of a track as a pause and then as an end, a couple
+    // of hundred milliseconds apart, so `handleStateChange` has already judged that pause —
+    // and it judges it from `progressSnapshot`, which for every embedded source is refreshed
+    // by a `setInterval` a background tab clamps to once a minute. Away from the tab the
+    // reading is minutes stale, "the track is ending" does not hold, and a natural end is read
+    // as the source stopping by itself: a rescue is armed against the song that just finished.
+    // `load` used to be the only thing that took it back, which made this a race it happened to
+    // win. A track that ended is never a pause worth fighting, whichever way `advance` goes.
+    cancelResume();
+    if (takeTrackEndStop()) writeState("paused");
     else if (repeat === "one") restart(true);
     else advance(true);
-  }, [advance, repeat, restart]);
+  }, [advance, repeat, restart, writeState]);
 
   const toggleShuffle = useCallback(() => {
     const modes = modeStore.getSnapshot();
@@ -589,12 +620,13 @@ function usePlayerValue() {
   const stop = useCallback(() => {
     resolving.current?.abort();
     dropRadio();
+    cancelResume();
     songRef.current = null;
     setPlaying(null);
-    setState("idle");
+    writeState("idle");
     setProblem(null);
     writeProgress(0, 0);
-  }, [dropRadio]);
+  }, [dropRadio, writeState]);
 
   const notQueued = useCallback((additions: Song[]) => {
     const fresh: Song[] = [];
@@ -610,21 +642,21 @@ function usePlayerValue() {
       if (fresh.length === 0) return;
       if (queueRef.current.length > 0) return writeQueue((queued) => [...queued, ...fresh]);
       writeQueue(fresh);
-      setIndex(0);
+      writeIndex(0);
       void load(fresh[0]);
     },
-    [load, notQueued, writeQueue],
+    [load, notQueued, writeIndex, writeQueue],
   );
 
   const applyEdit = useCallback(
     (edit: QueueEdit | null) => {
       if (!edit) return;
       writeQueue(edit.queue);
-      setIndex(edit.index);
+      writeIndex(edit.index);
       if (edit.queue.length === 0) stop();
       else if (edit.play) void load(edit.play);
     },
-    [load, stop, writeQueue],
+    [load, stop, writeIndex, writeQueue],
   );
 
   // These three compute a whole replacement array and hand it to `writeQueue`, so they have to
@@ -682,7 +714,7 @@ function usePlayerValue() {
     // claimed: the `!response.ok` branch turned a 429 into `null` and a bare `.catch` swallowed
     // the rest. Only `dropRadio()` releases it, and `load` calls that solely when the song *id*
     // changes — so one bad answer for the last song in a queue was final. `radio` stayed empty,
-    // `hasNext` went false, `advance` fell through to `setState("idle")`, and playback stopped
+    // `hasNext` went false, `advance` fell through to `writeState("idle")`, and playback stopped
     // with no message, no retry and a greyed-out Next button: the "radio carries on when the
     // queue runs dry" promise failing silently on a single blip. Retry, and on giving up
     // release the claim so a later attempt at the same song can seed it again.
@@ -834,7 +866,7 @@ function usePlayerValue() {
   const handleStateChange = useCallback(
     (next: PlayState) => {
       const was = stateRef.current;
-      setState(next);
+      writeState(next);
 
       // The log recorded which source refused and what it fell back to, but never that playback
       // simply stopped — the one thing it could not account for afterwards. Now it also does
@@ -880,7 +912,7 @@ function usePlayerValue() {
       const handle = playedHandle(current, activeSource, videoId);
       recordPlay({ id, title, artists, artworkUrl, from, videoId, url: null, ...handle });
     },
-    [current, videoId, activeSource],
+    [activeSource, current, videoId, writeState],
   );
 
   const handleError = useCallback(
@@ -913,13 +945,13 @@ function usePlayerValue() {
 
       if (!worthRetrying || !song) {
         log("error", `Gave up on ${song ? `“${song.title}”` : "playback"}: ${reason}`);
-        setState("unplayable");
+        writeState("unplayable");
         setProblem(reason);
         return;
       }
 
       const warn = (message: string) => log("warn", `“${song.title}” ${message}`);
-      setState("resolving");
+      writeState("resolving");
       if (!leftYouTube) {
         try {
           // The id the song shipped with is one a provider asserted *is* this recording. Asking
@@ -991,10 +1023,10 @@ function usePlayerValue() {
         "error",
         `“${song.title}” is unplayable — ${attempted.current.size} YouTube copies tried, progressive ${triedProgressive ? "tried" : "absent"}`,
       );
-      setState("unplayable");
+      writeState("unplayable");
       setProblem(giveUpReason(attempted.current.size, triedProgressive, leftYouTube));
     },
-    [adoptElsewhere, start],
+    [adoptElsewhere, start, writeState],
   );
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
