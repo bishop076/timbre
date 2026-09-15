@@ -50,6 +50,21 @@ export const PANEL_MIN = 288;
  * The width is not written when this fires, so reopening restores the size last chosen rather
  * than the sliver the pointer was released at on the way past.
  */
+export const PANEL_RAIL = 28;
+
+/**
+ * What the panel should PAINT for a given drag, as opposed to what it will commit to.
+ *
+ * Past the minimum it returns the rail's width rather than the pointer's, so the panel snaps shut
+ * under your hand and stays shut while you keep dragging. Returning the raw width there is what
+ * made it feel like dragging into an abyss: the panel kept shrinking past anything usable,
+ * following the pointer into a size it was never going to keep, and only became a rail when you
+ * let go.
+ */
+export function panelPaintWidth(raw: number, ceiling: number): number {
+  return panelCollapsesAt(raw) ? PANEL_RAIL : resolvePanelWidth(raw, ceiling);
+}
+
 export function panelCollapsesAt(width: number): boolean {
   return Number.isFinite(width) && width < PANEL_MIN;
 }

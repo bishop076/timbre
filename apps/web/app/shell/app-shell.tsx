@@ -19,6 +19,7 @@ import {
   PANEL_DEFAULT,
   PANEL_MAX,
   PANEL_MIN,
+  panelPaintWidth,
   panelCollapsesAt,
   resolvePanelWidth,
   roomFor,
@@ -185,7 +186,7 @@ function PanelEdge() {
         max={ceiling}
         reset={PANEL_DEFAULT}
         direction={-1}
-        resolve={(raw) => (panelCollapsesAt(raw) ? raw : resolvePanelWidth(raw, ceiling))}
+        resolve={(raw) => panelPaintWidth(raw, ceiling)}
         onCommit={(next) => {
           if (panelCollapsesAt(next)) {
             if (panelOpen) togglePanel();
