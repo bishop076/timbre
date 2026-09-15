@@ -134,6 +134,29 @@ test("every ramp's body text clears AA against the surface it sits on", () => {
   }
 });
 
+test("muted text clears AA on the busiest surface it is used on", () => {
+  // --fg-faint is the caption/eyebrow/track-count colour and it is used at
+  // 10-12px, so it is never exempt as large text. It was failing AA in all
+  // three static themes when this was measured (2.62-3.24 against --surface-3);
+  // the generated ramp has to hold the line the static tokens now hold.
+  for (const theme of ALL) {
+    const palette = buildPalette(COVER, theme);
+    for (const surface of ["--surface-1", "--surface-2", "--surface-3"]) {
+      const s = parts(palette, surface);
+      const hex =
+        "#" +
+        oklchToRgb(s.L, s.C, s.H)
+          .map((c) => Math.round(c * 255).toString(16).padStart(2, "0"))
+          .join("");
+      const ratio = ratioAgainstHex(palette, "--fg-faint", hex);
+      assert.ok(
+        ratio >= 4.5,
+        `${theme.mode}: --fg-faint on ${surface} is ${ratio.toFixed(2)}:1, needs 4.5`,
+      );
+    }
+  }
+});
+
 test("accent text is derived from the accent, so it can never fail AA", () => {
   // This is the regression that mattered: --accent-fg used to be authored on its
   // own ramp, independent of --accent, so an artwork-driven accent could drift

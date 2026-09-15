@@ -60,7 +60,17 @@
 @property --fg-faint {
   syntax: "<color>";
   inherits: true;
-  initial-value: #8c8c99;
+  initial-value: #666670;
+}
+@property --danger {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #b3261e;
+}
+@property --warn {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #7a4f00;
 }
 @property --line {
   syntax: "<color>";
@@ -85,8 +95,11 @@
   --surface-3: #e6e6ec;
   --fg: #101014;
   --fg-dim: #5d5d69;
-  --fg-faint: #8c8c99;
+  --fg-faint: #666670;
   --line: rgb(0 0 0 / 0.08);
+
+  --danger: #b3261e;
+  --warn: #7a4f00;
 
   --accent: #5b3fd6;
   --accent-fg: #ffffff;
@@ -161,8 +174,11 @@
     --surface-3: #23232b;
     --fg: #f2f2f5;
     --fg-dim: #a8a8b4;
-    --fg-faint: #71717e;
+    --fg-faint: #898994;
     --line: rgb(255 255 255 / 0.09);
+
+    --danger: #ff9f9f;
+    --warn: #ffd27a;
 
     --accent: #8f74ff;
     --accent-fg: #0b0a14;
@@ -183,8 +199,11 @@
   --surface-3: #23232b;
   --fg: #f2f2f5;
   --fg-dim: #a8a8b4;
-  --fg-faint: #71717e;
+  --fg-faint: #898994;
   --line: rgb(255 255 255 / 0.09);
+
+  --danger: #ff9f9f;
+  --warn: #ffd27a;
 
   --accent: #8f74ff;
   --accent-fg: #0b0a14;
@@ -212,12 +231,15 @@
   --surface-3: #eae1f5;
   --fg: #241d2e;
   --fg-dim: #635a72;
-  --fg-faint: #918a9d;
+  --fg-faint: #686371;
   --line: rgb(90 60 130 / 0.12);
 
-  --accent: #7c5cf6;
+  --danger: #b3261e;
+  --warn: #7a4f00;
+
+  --accent: #7356e5;
   --accent-fg: #ffffff;
-  --accent-wash: rgb(124 92 246 / 0.14);
+  --accent-wash: rgb(115 86 229 / 0.14);
 
   --ink: rgb(90 60 130 / 0.12);
 
@@ -554,5 +576,53 @@ input[type="search"]::-webkit-search-results-decoration {
   }
   .animate-spin {
     animation-duration: 3s;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Focus ring, continued — the two gaps the accessibility pass measured.
+   --------------------------------------------------------------------------- */
+
+/* `.press:active` sets a box-shadow at specificity 0,3,0; the ring selector is
+   0,1,0 because :where() zeroes it. Holding Space on a focused button therefore
+   blanked its own focus ring — the one moment a keyboard user most needs it. */
+.press:active:not(:disabled):focus-visible {
+  box-shadow:
+    0 0 0 2px var(--ring-inner, #fff),
+    0 0 0 4px var(--ring-outer, #0a0a0c);
+}
+
+/* For controls that fill an `overflow: hidden` box — a card's cover art, say.
+   The outer ring is drawn beyond the border box and gets clipped away entirely,
+   which left tile cards with no visible focus at all. Inset instead. */
+.focus-ring-inset:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 2px var(--ring-inner, #fff),
+    inset 0 0 0 4px var(--ring-outer, #0a0a0c);
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion, for real this time.
+
+   The block further up names specific classes, which covers what this file
+   animates and nothing else. Components animate with Tailwind utilities —
+   `transition`, `duration-500`, `group-hover:scale-[1.04]` — and none of those
+   were reached. Someone who asked their OS to stop animations was still getting
+   most of them.
+
+   A blanket rule is the accepted approach here (it is what the WCAG techniques
+   and every major framework use) precisely because it cannot miss a utility
+   added later. Not `0s`: a zero duration skips transitionend/animationend, and
+   code that waits for those would hang.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
