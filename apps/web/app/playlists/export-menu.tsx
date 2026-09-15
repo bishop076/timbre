@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 import { getHistorySnapshot } from "../player/history-store";
 import { exportProfile } from "../profile/profile-backup";
@@ -73,7 +74,11 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
         Export
       </button>
 
-      {open && (
+      {/* Portalled, not nested: the menu is `fixed` at coordinates read from the trigger's
+          viewport rect, and the library page wrapper is an `@container`, which makes it the
+          containing block for fixed descendants. Left in place the menu would land a page
+          box's width and height away from the button. */}
+      {open && createPortal(
         <div
           ref={menu}
           role="menu"
@@ -105,7 +110,8 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
               To read or sort elsewhere. Timbre can&rsquo;t import it back.
             </span>
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

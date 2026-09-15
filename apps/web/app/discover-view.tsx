@@ -34,33 +34,35 @@ export function DiscoverView({
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4">
       <h1 className="mb-4 px-1 text-xl font-extrabold tracking-tight sm:mb-6 sm:text-2xl">Explore</h1>
 
-      <div className="min-h-[calc(100dvh-9rem)]">
-        <ExploreForYou genres={initial.genres} />
+      {/* No reserved height here. `100dvh - 9rem` was a guess at the chrome above and below,
+          and on a short window it reserved most of the screen for content that already fills
+          it — the For-you shelves render skeletons at their final height while they load, so
+          nothing below them moves. */}
+      <ExploreForYou genres={initial.genres} />
 
-        <Featured data={initial} />
+      <Featured data={initial} />
 
-        <PillSection
-          title="Genres"
-          pills={yoursFirst(
-            initial.genres.filter((entry) => entry.id !== 0),
-            (entry) => entry.id,
-            yours,
-          ).map((entry) => ({
-            label: entry.name,
-            href: `/collection/genre/${entry.id}`,
-            yours: yours.includes(entry.id),
-          }))}
-        />
+      <PillSection
+        title="Genres"
+        pills={yoursFirst(
+          initial.genres.filter((entry) => entry.id !== 0),
+          (entry) => entry.id,
+          yours,
+        ).map((entry) => ({
+          label: entry.name,
+          href: `/collection/genre/${entry.id}`,
+          yours: yours.includes(entry.id),
+        }))}
+      />
 
-        <PillSection
-          title="Stations"
-          pills={interleave(radios, rotation, yours).map((radio) => ({
-            label: radio.title,
-            href: `/collection/radio/${radio.id}`,
-            yours: yours.includes(radio.genreId),
-          }))}
-        />
-      </div>
+      <PillSection
+        title="Stations"
+        pills={interleave(radios, rotation, yours).map((radio) => ({
+          label: radio.title,
+          href: `/collection/radio/${radio.id}`,
+          yours: yours.includes(radio.genreId),
+        }))}
+      />
 
       <div className="mt-10 border-t border-[var(--line)] pt-8 sm:mt-12 sm:pt-10">{rankings}</div>
     </div>
