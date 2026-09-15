@@ -56,6 +56,17 @@ test("no lines, or only blank ones, is no lyrics", () => {
   assert.equal(toYtMusicLyrics({ synced: false, lines: [line("  ", null)], attribution: null }), null);
 });
 
+test("a line with no words in it is skipped, not walked into a TypeError", () => {
+  // `lines` was checked for being an array; the lines inside it were not, so one entry with no
+  // `text` threw `Cannot read properties of undefined (reading 'trim')` — a raw TypeError out
+  // of a provider whose every other failure is a typed one.
+  const raw = { synced: false, lines: [{}, { start_ms: 0 }, line("la la", null)], attribution: 7 };
+  const lyrics = toYtMusicLyrics(raw as never);
+  assert.equal(lyrics?.plain, "la la");
+  assert.equal(lyrics?.attribution, null, "a credit that is not text is no credit");
+  assert.equal(toYtMusicLyrics({ synced: false, lines: [{}], attribution: null } as never), null);
+});
+
 test("the lookup posts the song to the sidecar's /lyrics with the shared secret", async () => {
   const answer = Response.json({ source: "ytmusic", synced: false, lines: [line("la la", null)], attribution: CREDIT });
   await withFetch(answer, async (calls) => {
