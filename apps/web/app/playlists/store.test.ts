@@ -245,3 +245,47 @@ test("a write before any read keeps the playlists already saved", async () => {
   assert.deepEqual(lists.map((list: { name: string }) => list.name).sort(), ["Kept", "New"]);
   assert.equal(lists.find((list: { name: string }) => list.name === "New").songs.length, 2);
 });
+
+test("a backup returns the cover the list was saved with", async () => {
+  const cover = "https://i.ytimg.com/vi/cover/hq.jpg";
+  const source = await fresh();
+  source.store.createPlaylist("From Spotify", cover);
+  const file = source.store.exportPlaylists();
+  assert.equal(file.playlists[0]!.coverUrl, cover, "the export carries it");
+
+  // The import dropped `coverUrl` on the floor, so a list saved from a collection came back
+  // from its own backup wearing a four-song collage, with nothing able to put the art back.
+  const next = await fresh();
+  next.store.importPlaylists(file);
+  assert.equal(next.store.exportPlaylists().playlists[0]!.coverUrl, cover);
+  assert.equal(JSON.parse(next.backing[KEY]!)[0].coverUrl, cover);
+});
+
+test("a merge takes the cover it is missing and keeps the one it has", async () => {
+  const mine = "https://i.ytimg.com/vi/mine/hq.jpg";
+  const theirs = "https://i.ytimg.com/vi/theirs/hq.jpg";
+  const { store } = await fresh();
+  const bare = store.createPlaylist("Bare");
+  const owned = store.createPlaylist("Owned", mine);
+
+  store.importPlaylists(
+    exportFile([
+      { id: bare.id, name: "Bare", songs: [] },
+      { id: owned.id, name: "Owned", coverUrl: theirs, songs: [] },
+    ]),
+  );
+  assert.equal(store.exportPlaylists().playlists.find((p: { id: string }) => p.id === bare.id)!.coverUrl, null);
+
+  store.importPlaylists(exportFile([{ id: bare.id, name: "Bare", coverUrl: theirs, songs: [] }]));
+  const after = store.exportPlaylists().playlists;
+  assert.equal(after.find((p: { id: string }) => p.id === bare.id)!.coverUrl, theirs, "takes what it lacked");
+  assert.equal(after.find((p: { id: string }) => p.id === owned.id)!.coverUrl, mine, "keeps what it had");
+});
+
+test("a hostile cover in a file is no more usable than a hostile one in storage", async () => {
+  const { store } = await fresh();
+  store.importPlaylists(
+    exportFile([{ name: "pwn", coverUrl: "https://tracker.invalid/pixel.gif", songs: [] }]),
+  );
+  assert.equal(store.exportPlaylists().playlists[0]!.coverUrl, null);
+});

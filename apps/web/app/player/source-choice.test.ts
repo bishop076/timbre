@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MAX_ENTRIES, afterFailure, afterPick, choiceKey, type SourceChoices } from "./source-choice.ts";
+import {
+  MAX_ENTRIES,
+  afterFailure,
+  afterPick,
+  choiceKey,
+  readChoices,
+  type SourceChoices,
+} from "./source-choice.ts";
 
 const key = choiceKey({ title: "Delilah (pull me out of this)", artists: ["Fred again.."] });
 
@@ -67,4 +74,27 @@ test("the map is bounded, and a fresh pick counts as recent", () => {
   assert.equal(choices["song 0"], "audius");
   assert.equal("song 1" in choices, false);
   assert.equal(choices["one more"], "audius");
+});
+
+test("the stored picks are held to their size on the way in, not only on the way out", () => {
+  const stored: Record<string, string> = {};
+  for (let index = 0; index < 400; index += 1) stored[`song-${index}`] = "soundcloud";
+
+  const choices = readChoices(stored);
+
+  // `afterPick` trims to MAX_ENTRIES on write and the read took whatever it found, so a value
+  // left longer by an older build or a hand edit came back whole and stayed that way.
+  assert.equal(Object.keys(choices).length, MAX_ENTRIES);
+  assert.equal(choices["song-399"], "soundcloud", "the most recent pick survives");
+  assert.equal(choices["song-0"], undefined, "the oldest goes, as the write path drops it");
+});
+
+test("only a string names a source, and a list names nothing at all", () => {
+  assert.deepEqual(readChoices({ a: "audius", b: 7, c: null, d: { source: "x" } }), {
+    a: "audius",
+  });
+  // `Object.entries` of an array used to make every index a choice key.
+  assert.deepEqual(readChoices(["audius", "spotify"]), {});
+  assert.deepEqual(readChoices(null), {});
+  assert.deepEqual(readChoices("audius"), {});
 });

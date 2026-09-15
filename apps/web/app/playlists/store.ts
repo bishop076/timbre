@@ -1,6 +1,6 @@
 "use client";
 
-import { createLocalStore, readJson, useLocalStore, writeJson } from "../local-store.ts";
+import { createLocalStore, newId, readJson, useLocalStore, writeJson } from "../local-store.ts";
 import { forgetPlaylistImage } from "./playlist-image.ts";
 import { readProfileExport, type ProfileExport } from "../profile/profile-file.ts";
 import { usableArtwork, usableSongs } from "../song-shape.ts";
@@ -121,7 +121,7 @@ function update(id: string, change: (playlist: LocalPlaylist) => Partial<LocalPl
 export function createPlaylist(name: string, coverUrl?: string | null): PlaylistSummary {
   const now = new Date().toISOString();
   const playlist: LocalPlaylist = {
-    id: crypto.randomUUID(),
+    id: newId(),
     name: name.trim(),
     createdAt: now,
     updatedAt: now,
@@ -296,6 +296,12 @@ export function importPlaylists(data: unknown): number {
     const id = typeof playlist.id === "string" && playlist.id ? playlist.id.slice(0, 120) : null;
     const name = playlist.name.trim().slice(0, 120) || "Imported playlist";
     const songs = usableSongs(playlist.songs);
+    // `exportPlaylists` writes `all` out whole, `coverUrl` included, and the import dropped it
+    // on the floor: a list saved from a Spotify collection came back from a backup with the
+    // four-song collage in place of its own art, and nothing anywhere could put it back —
+    // `coverUrl` is only ever set when a collection is saved. A round trip that quietly returns
+    // less than it was given is the one thing a backup may not do.
+    const coverUrl = usableArtwork(playlist.coverUrl);
 
     const match = (id && byId.get(id)) || byName.get(name.toLowerCase());
     if (match) {
@@ -310,14 +316,17 @@ export function importPlaylists(data: unknown): number {
         match.songs = [...match.songs, ...fresh];
         match.updatedAt = now;
       }
+      // Never over a picture this browser already has: the merge adds what is missing.
+      if (coverUrl && !match.coverUrl) match.coverUrl = coverUrl;
       continue;
     }
 
     const made: LocalPlaylist = {
-      id: id && !byId.has(id) ? id : crypto.randomUUID(),
+      id: id && !byId.has(id) ? id : newId(),
       name,
       createdAt: text(playlist.createdAt, now),
       updatedAt: now,
+      coverUrl,
       songs,
     };
     byId.set(made.id, made);
