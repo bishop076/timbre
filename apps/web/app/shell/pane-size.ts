@@ -53,20 +53,31 @@ export const PANEL_MIN = 288;
 export const PANEL_RAIL = 28;
 
 /**
- * What the panel should PAINT for a given drag, as opposed to what it will commit to.
+ * How far past the minimum you have to keep dragging before the panel gives up and collapses.
  *
- * Past the minimum it returns the rail's width rather than the pointer's, so the panel snaps shut
- * under your hand and stays shut while you keep dragging. Returning the raw width there is what
- * made it feel like dragging into an abyss: the panel kept shrinking past anything usable,
- * following the pointer into a size it was never going to keep, and only became a rail when you
- * let go.
+ * Without it the panel hit its minimum and vanished in the same pixel — you were still pulling
+ * and it was already gone, with no moment to stop at the smallest size you were allowed. This is
+ * a detent: the panel sticks at PANEL_MIN through this much further travel, so reaching the limit
+ * is something you feel before it becomes something you did.
  */
-export function panelPaintWidth(raw: number, ceiling: number): number {
-  return panelCollapsesAt(raw) ? PANEL_RAIL : resolvePanelWidth(raw, ceiling);
+export const PANEL_RESIST = 56;
+
+/** Whether a drag that ended at `width` means "collapse to the rail". */
+export function panelCollapsesAt(width: number): boolean {
+  return Number.isFinite(width) && width < PANEL_MIN - PANEL_RESIST;
 }
 
-export function panelCollapsesAt(width: number): boolean {
-  return Number.isFinite(width) && width < PANEL_MIN;
+/**
+ * What the panel should PAINT for a given drag, as opposed to what it will commit to.
+ *
+ * Three bands. Above the minimum it follows the pointer. Through the resistance band it holds at
+ * the minimum — the pointer keeps moving, the panel does not. Past that it is the rail, and stays
+ * the rail however much further you drag, so the gesture resolves under your hand rather than
+ * following you into a size nothing was ever going to keep.
+ */
+export function panelPaintWidth(raw: number, ceiling: number): number {
+  if (panelCollapsesAt(raw)) return PANEL_RAIL;
+  return resolvePanelWidth(raw, ceiling);
 }
 /** 35rem. */
 export const PANEL_MAX = 560;
