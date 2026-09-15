@@ -34,6 +34,7 @@ import { applyFont, type FontId } from "./fonts.ts";
 import {
   prefersDark,
   prefersReducedMotion,
+  setColorScheme,
   setFlag,
   setTextScale,
   setVars,
@@ -159,6 +160,21 @@ function apply(theme: Theme): void {
   if (typeof document === "undefined") return;
 
   const light = resolveGround(theme, prefersDark()) === "light";
+
+  // The ground attribute, written by the module that owns the ground.
+  //
+  // It used to be written only by player/use-artwork-accent.ts, which is a *player* hook: the
+  // one line that decides whether globals.css serves the light rules or the dark ones was set,
+  // as a side effect, by the thing that samples album covers. So `setGround("light")` did not
+  // make the page light. It saved the choice, the store published, React re-rendered, that
+  // hook's effect happened to re-run because its key includes the legacy `customLight` mirror,
+  // and *then* the page turned. Anywhere that hook is not mounted — and any change it does not
+  // key on — left the attribute saying one thing while the store said another, which is the
+  // half-applied light theme people kept reporting. Both writers derive it from the same
+  // resolved ground, so they cannot now disagree; this one just gets there first.
+  setFlag("theme", light ? "light" : "dark");
+  setColorScheme(light);
+
   setVars(themeVars(theme, liveSeed, light));
   setFlag("contrast", theme.contrast === "high" ? "high" : null);
   setFlag("tint", theme.tintSurfaces ? null : "off");
