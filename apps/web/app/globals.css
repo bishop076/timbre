@@ -444,9 +444,22 @@ input[type="search"]::-webkit-search-results-decoration {
   position: absolute;
   inset-inline: 0;
   top: 0;
-  height: 21rem;
-  background-color: var(--accent);
-  background-image: linear-gradient(to bottom, rgb(0 0 0 / 0.62) 0%, var(--bg) 100%);
+  height: 24rem;
+  /* Ends at transparent, not at var(--bg).
+     Spotify can finish its gradient on the page colour because the gradient IS the page
+     background. This is an overlay sitting on top of one, so ending on an opaque --bg painted a
+     band of --bg over whatever was actually behind — and where the element stopped, that band
+     stopped dead. That hard horizontal line partway down the page was this.
+     Fading to transparent cannot seam, whatever is underneath. The extra stops are an eased
+     ramp: a straight two-stop fade over 24rem bands visibly. */
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--accent) 42%, transparent) 0%,
+    color-mix(in oklab, var(--accent) 27%, transparent) 24%,
+    color-mix(in oklab, var(--accent) 14%, transparent) 48%,
+    color-mix(in oklab, var(--accent) 5%, transparent) 72%,
+    transparent 100%
+  );
   pointer-events: none;
   transition:
     background-color var(--tint-ms) var(--ease),
@@ -456,12 +469,12 @@ input[type="search"]::-webkit-search-results-decoration {
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) .ambient::before {
-    background-image: linear-gradient(to bottom, rgb(255 255 255 / 0.58) 0%, var(--bg) 100%);
+    opacity: 0.55;
   }
 }
 
 :root[data-theme="light"] .ambient::before {
-  background-image: linear-gradient(to bottom, rgb(255 255 255 / 0.58) 0%, var(--bg) 100%);
+  opacity: 0.55;
 }
 
 :root[data-neutral="true"] .ambient::before {

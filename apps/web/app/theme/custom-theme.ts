@@ -51,6 +51,8 @@ export interface FontChoice {
 }
 
 export interface Theme extends ThemeState {
+  /** The stored shape's version — see THEME_VERSION. */
+  v: number;
   ground: Ground;
   accentSource: AccentSource;
   /** The seed, #rrggbb. Everything colourful is derived from this one value. */
@@ -126,7 +128,20 @@ export const PRESETS: { name: string; hex: string }[] = [
  */
 export const DEFAULT_BACKGROUND: BackgroundPrefs = { fit: "cover", dim: 0.6, blur: 8 };
 
+/**
+ * The stored shape's version.
+ *
+ * Bumped to 2 when the app's colour became pink. Everything written before that carries the old
+ * violet default, and a default only reaches somebody who has never stored anything — so without
+ * this, changing the default changed nothing for anyone who had already opened the app once. The
+ * migration is deliberately narrow: it resets the accent and the accent source, which are the two
+ * fields the redesign redefined, and keeps ground, contrast, scale, background and font, which
+ * are choices the reader made about something else.
+ */
+const THEME_VERSION = 2;
+
 export const DEFAULT_THEME: Theme = {
+  v: THEME_VERSION,
   ground: "dark",
 
   /**
@@ -264,6 +279,7 @@ const number = (value: unknown, fallback: number) =>
  * `Partial<Theme>` would be a claim about it that nothing has checked yet.
  */
 interface StoredTheme {
+  v?: unknown;
   mode?: unknown;
   customHue?: unknown;
   customLight?: unknown;
@@ -286,16 +302,26 @@ export function parseTheme(stored: unknown): Theme {
   if (!stored || typeof stored !== "object") return DEFAULT_THEME;
   const value = stored as StoredTheme;
 
+  // Neutral is exempt. Somebody who asked for no colour asked for a reduced-colour interface,
+  // not for violet, and repainting them pink would be overriding an accessibility choice with a
+  // branding one.
+  const stale = number(value.v, 1) < THEME_VERSION && value.customNeutral !== true;
+
   const legacy = legacyDefaults(value);
-  const accent = (typeof value.accent === "string" && normaliseHex(value.accent)) || legacy.accent;
+  const accent = stale
+    ? DEFAULT_ACCENT
+    : (typeof value.accent === "string" && normaliseHex(value.accent)) || legacy.accent;
   const background = value.background ?? {};
   const font = value.font ?? {};
   const id = isFontId(font.id) ? font.id : "default";
 
   return withMirror({
     ...DEFAULT_THEME,
+    v: THEME_VERSION,
     ground: one(value.ground, GROUNDS, legacy.ground),
-    accentSource: one(value.accentSource, SOURCES, legacy.accentSource),
+    accentSource: stale
+      ? DEFAULT_THEME.accentSource
+      : one(value.accentSource, SOURCES, legacy.accentSource),
     accent,
     contrast: one(value.contrast, CONTRASTS, "normal"),
     tintSurfaces: typeof value.tintSurfaces === "boolean" ? value.tintSurfaces : legacy.tintSurfaces,
