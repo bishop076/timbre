@@ -84,7 +84,7 @@ try {
     return v && v.length <= 700000 && PICTURE.test(v) ? "url(" + JSON.stringify(v) + ")" : null;
   };
 
-  var PALETTE = " --bg --surface-1 --surface-2 --surface-3 --fg --fg-dim --fg-faint --ink --line --accent --accent-fg --accent-wash --drop --drop-sm --drop-lg ";
+  var PALETTE = " --accent-text --bg --surface-1 --surface-2 --surface-3 --fg --fg-dim --fg-faint --ink --line --accent --accent-fg --accent-wash --drop --drop-sm --drop-lg ";
 
   // A denylist of dangerous substrings was wrong in both directions. It rejected the real
   // --profile-wash, which reads var(--surface-1) and is built that way in profile-view.tsx,

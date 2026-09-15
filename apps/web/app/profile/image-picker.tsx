@@ -59,7 +59,7 @@ export function ImagePicker({
   const icon = overlay ? "size-5" : "size-4";
   const button = overlay
     ? "press flex size-8 items-center justify-center rounded-[var(--r-full)] text-white hover:bg-white/20"
-    : "slab-sm press flex size-8 items-center justify-center rounded-[var(--r-full)] bg-black/45 text-white backdrop-blur";
+    : "slab-sm press flex size-8 items-center justify-center rounded-[var(--r-full)] bg-black/45 text-white backdrop-blur transition hover:bg-black/60";
 
   return (
     <>
@@ -96,7 +96,10 @@ export function ImagePicker({
             }}
             aria-label={`Remove ${label}`}
             title={`Remove ${label}`}
-            className={`${button} hover:text-red-300`}
+            // Not var(--danger): both variants of this button sit on a black scrim whatever
+            // the theme, and --danger is a deep red in the light themes — dark on near-black.
+            // A fixed light red is the honest choice for a control that is always on black.
+            className={`${button} hover:text-[#ffb4ab]`}
           >
             <TrashIcon className="size-4" />
           </button>
@@ -106,7 +109,10 @@ export function ImagePicker({
       {picker.error && (
         <p
           role="alert"
-          className={`absolute top-full z-30 mt-2 w-56 rounded-[var(--r-sm)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] leading-relaxed text-red-400 shadow-[var(--drop-lg)] ${
+          // text-red-400 here measured 2.68:1 on --surface-1 in the light themes, which is
+          // below AA for any size — an error message you have to hunt for. --danger is the
+          // token that tracks the surface: 6.06:1 light, 9.53:1 dark.
+          className={`absolute top-full z-30 mt-2 w-60 rounded-[var(--r-md)] bg-[var(--surface-1)] px-3 py-2 text-[var(--text-meta)] leading-relaxed text-[var(--danger)] shadow-[var(--drop-lg)] ${
             overlay ? "left-0" : "right-0"
           }`}
         >

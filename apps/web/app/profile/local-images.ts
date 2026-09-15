@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 
+import { isReplayableImage } from "../customise/replay.ts";
 import { createNotifier, readItem, writeItem } from "../local-store.ts";
 import { log } from "../logs.ts";
 import { openImageStore } from "./image-store.ts";
@@ -90,9 +91,26 @@ function onStorage(event: StorageEvent): void {
   void (loading ? loading.then(reload) : reload());
 }
 
+/**
+ * The stored thumbnail, but only if it is the kind of value the pre-paint script would also
+ * have replayed.
+ *
+ * This used to be `raw?.startsWith("data:image/")`, which is a check on the first eleven
+ * characters of a string whose *last* characters are the dangerous ones. It let through
+ * `data:image/svg+xml;…` — an SVG is a document, not a raster — and, worse, anything at all
+ * after the prefix, including a `") , url("`. That matters because this value is spliced into
+ * CSS twice: `paintThumbVariables` puts it in `--avatar-thumb`, and `<Avatar>` puts it in a
+ * `background-image`. A planted `data:image/png;base64,AA") , url("https://…` closed the first
+ * `url()` and opened a second, so a string in localStorage became an outbound request that
+ * fires before paint on every load, with nothing in the UI to notice it.
+ *
+ * `isReplayableImage` is the rule the boot script in layout.tsx already enforces, and sharing
+ * it is the point: the hydrated path was accepting values the pre-paint path refused, which is
+ * precisely the divergence that makes a hardened boot script stop being worth anything.
+ */
 function readThumb(kind: ImageKind): string | null {
   const raw = readItem(THUMB_KEY[kind]);
-  return raw?.startsWith("data:image/") ? raw : null;
+  return isReplayableImage(raw) ? raw : null;
 }
 
 function getSnapshot(): LocalImages {
