@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { fetchGenreShelf } from "./genre-shelf";
 import { useHydrated } from "./hydrated";
+import { EmptyNotice, SectionHeader } from "./page-chrome";
 import { Shelf } from "./shelf";
 import { SongTiles, TILE } from "./song-card";
 import { useTaste } from "./taste-store";
@@ -64,25 +66,44 @@ export function ExploreForYou({ genres }: { genres: Genre[] }) {
 
 function GenreShelf({ pick }: { pick: Pick }) {
   const [songs, setSongs] = useState<Song[] | null>(null);
+  const [refused, setRefused] = useState(false);
 
   useEffect(() => {
     const aborter = new AbortController();
-    fetch(`/api/genre-feed?id=${pick.id}`, { signal: aborter.signal })
-      .then((response) => (response.ok ? (response.json() as Promise<{ songs: Song[] }>) : null))
-      .then((data) => {
-        setSongs(seededShuffle(data?.songs ?? [], Math.random() * 2 ** 32).slice(0, 16));
+    fetchGenreShelf(pick.id, aborter.signal)
+      .then((found) => {
+        setRefused(found === null);
+        setSongs(seededShuffle(found ?? [], Math.random() * 2 ** 32).slice(0, 16));
       })
       .catch((cause: unknown) => {
-        if (!(cause instanceof DOMException && cause.name === "AbortError")) setSongs([]);
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setRefused(true);
+        setSongs([]);
       });
     return () => aborter.abort();
   }, [pick.id]);
+
+  const title = pick.because ? `${pick.name} for you` : `Fresh in ${pick.name}`;
+
+  // A genre Deezer had nothing new in is a shelf worth nobody's screen space. A genre Deezer
+  // would not talk about is not the same thing, and taking the shelf away says it was.
+  if (refused) {
+    return (
+      <section aria-label={title} className="mb-6 @xl:mb-9">
+        <SectionHeader title={title}>{null}</SectionHeader>
+        <EmptyNotice>
+          Deezer wouldn&rsquo;t answer for {pick.name} just now, so this shelf is missing rather
+          than empty. It fills itself the next time you open Explore.
+        </EmptyNotice>
+      </section>
+    );
+  }
 
   if (songs !== null && songs.length === 0) return null;
 
   return (
     <Shelf
-      title={pick.because ? `${pick.name} for you` : `Fresh in ${pick.name}`}
+      title={title}
       caption={
         pick.because ? `Because you play ${listNames(pick.because.slice(0, 2))}` : undefined
       }
