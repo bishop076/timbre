@@ -49,6 +49,18 @@ interface DeezerArtist {
   link?: string;
 }
 
+/**
+ * The strict list read. `deezerList` turns any failure into `[]`, which is the right forgiveness
+ * for a shelf of related artists and the wrong one for the search that decides whether this
+ * artist exists at all: the page is `force-static` with an hour's `revalidate`, so a timeout
+ * read as "no such artist" is served as one for the rest of that hour. Throwing instead reaches
+ * `artist/[name]/error.tsx` — "None of the sources answered for this artist. Try again" — which
+ * is both true and not cached.
+ */
+async function deezerListOrFail<T>(path: string): Promise<T[]> {
+  return (await deezerOrFail<{ data?: T[] }>(path))?.data ?? [];
+}
+
 export function deezerIdFrom(url: string | null | undefined): string | null {
   const match = url ? /deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/.exec(url) : null;
   return match ? match[1]! : null;
@@ -148,7 +160,7 @@ export async function findArtist(name: string) {
   const query = name.trim();
   if (!query) return null;
 
-  const results = await deezerList<DeezerArtist>(
+  const results = await deezerListOrFail<DeezerArtist>(
     `/search/artist?q=${encodeURIComponent(query)}&limit=25`,
   );
   if (results.length === 0) return null;

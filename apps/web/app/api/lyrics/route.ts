@@ -106,6 +106,18 @@ async function lookup(path: string, params?: Record<string, string | undefined>)
   return body && typeof body === "object" ? (body as LrcLibTrack) : null;
 }
 
+/**
+ * LRCLIB's `albumName` is not always an album. Some rows carry the literal four-letter string
+ * `"undefined"` — a JavaScript value stringified somewhere upstream of us — and `?? null` only
+ * catches the absent case, so that word went straight into the Other-versions line and rendered
+ * between the artist and the duration. Empty and whitespace-only names are the same kind of
+ * non-answer, and the line already drops nulls.
+ */
+function albumOf(name: string | undefined): string | null {
+  const trimmed = name?.trim();
+  return !trimmed || trimmed === "undefined" || trimmed === "null" ? null : trimmed;
+}
+
 async function search(track: string, artist: string): Promise<LrcLibTrack[]> {
   const response = answeredOrFail(
     await lrclib("search", { track_name: track, artist_name: artist }),
@@ -152,7 +164,7 @@ export const GET = queryRoute(
             id: item.id,
             trackName: item.trackName,
             artistName: item.artistName,
-            albumName: item.albumName ?? null,
+            albumName: albumOf(item.albumName),
             duration: item.duration ?? null,
             synced: Boolean(item.syncedLyrics),
           })),
@@ -172,7 +184,11 @@ export const GET = queryRoute(
             plain: track.plainLyrics,
             matchedTitle: track.trackName,
             matchedArtist: track.artistName,
-            id,
+            // LRCLIB's id for the track that answered, not the `id` the query asked with — which
+            // is absent on every automatic match, so `lyrics.id` arrived `undefined` and the tick
+            // in Other versions (`lyrics.id === option.id`) could never be true for the version
+            // actually playing. Asked for a specific id, the two are the same number anyway.
+            id: track.id,
           },
         },
         CACHE_CONTROL_DAY,

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 
 import {
+  canCorroborate,
   enwikiTitleFrom,
   findBiography,
   pickArtist,
@@ -105,4 +106,69 @@ test("the URL is rebuilt when absent, slashes escaped", () => {
 test("without a Deezer profile there is nothing to corroborate, so no lookup happens", async () => {
   assert.equal(await findBiography({ name: "Radiohead", deezerId: null, releaseTitles: [] }), null);
   assert.equal(await findBiography({ name: "Radiohead", deezerId: "../399", releaseTitles: [] }), null);
+});
+
+test("a discography of nothing, or of nothing but the artist's own name, corroborates nothing", () => {
+  assert.equal(canCorroborate({ name: "Sade", deezerId: "1", releaseTitles: [] }), false);
+  assert.equal(canCorroborate({ name: "Sade", deezerId: "1", releaseTitles: ["Sade"] }), false);
+  assert.equal(canCorroborate({ name: "Sade", deezerId: "1", releaseTitles: ["Promise"] }), true);
+});
+
+const globalForBiography = globalThis as unknown as {
+  __timbreBiographyCache?: unknown;
+  __timbreMusicBrainzNextSlot?: number;
+};
+
+const real = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = real;
+  delete globalForBiography.__timbreBiographyCache;
+  globalForBiography.__timbreMusicBrainzNextSlot = 0;
+});
+
+// Wikidata knows of nobody holding this Deezer id, and MusicBrainz knows of nobody by the name:
+// every lookup below ends in `null`, and what is being asserted is which requests were spent
+// reaching it — and whether that `null` was worth remembering.
+function asking(): string[] {
+  const asked: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input);
+    asked.push(url);
+    const body = url.includes("musicbrainz.org") ? { artists: [] } : { query: { search: [] } };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  return asked;
+}
+
+const musicBrainz = (url: string) => url.includes("musicbrainz.org");
+
+test("with no releases to match on, MusicBrainz is not asked and the empty answer is not kept", async () => {
+  delete globalForBiography.__timbreBiographyCache;
+  globalForBiography.__timbreMusicBrainzNextSlot = 0;
+  const asked = asking();
+
+  // Deezer was rate limiting when this page rendered, so the discography arrived empty. The name
+  // path cannot answer without one, and every MusicBrainz call takes a slot in a 1.1s queue that
+  // real lookups are waiting in.
+  assert.equal(await findBiography({ name: "Radiohead", deezerId: "399", releaseTitles: [] }), null);
+  assert.equal(asked.filter(musicBrainz).length, 0);
+
+  // And the nothing it found is not a fact about Radiohead, so the next request — by which time
+  // the discography is back — looks again rather than being served a day of the outage.
+  assert.equal(
+    await findBiography({ name: "Radiohead", deezerId: "399", releaseTitles: ["Kid A"] }),
+    null,
+  );
+  assert.ok(asked.some(musicBrainz));
+
+  // That one *is* a fact: it was corroborable, it was looked up, and it is cached as before.
+  const spent = asked.length;
+  assert.equal(
+    await findBiography({ name: "Radiohead", deezerId: "399", releaseTitles: ["Kid A"] }),
+    null,
+  );
+  assert.equal(asked.length, spent);
 });

@@ -94,6 +94,7 @@ const PRIVATE_HOST =
 function followableOffsite(next: URL, path: RegExp): boolean {
   return (
     next.protocol === "https:" &&
+    next.port === "" &&
     !PRIVATE_HOST.test(next.hostname) &&
     matchesPath(next.pathname, path)
   );
@@ -103,8 +104,19 @@ export const MAX_BYTES = 8 * 1024 * 1024;
 
 const MAX_HOPS = 3;
 
+/**
+ * A host is a name *and* a port, and only the name was ever read. `i.ytimg.com:8443` passed
+ * every check here — the hostname is on the list, the scheme is https, the path matches — so
+ * `/api/art?url=https://i.ytimg.com:8443/x.jpg` had the server open a connection to a port no
+ * CDN on this list serves covers from. Nothing comes back (the route returns 404 unless the
+ * reply is a raster) and the name still has to be allowlisted, so the reach is small; it is
+ * simply a dimension of the target that nothing bounded.
+ *
+ * `URL` drops the default, so `https://i.ytimg.com:443/x.jpg` arrives here with an empty port
+ * and is still allowed. Every artwork URL the providers mint is a plain https URL.
+ */
 export function allowed(url: URL): boolean {
-  if (url.protocol !== "https:" || !ALLOWED_HOSTS.has(url.hostname)) return false;
+  if (url.protocol !== "https:" || url.port !== "" || !ALLOWED_HOSTS.has(url.hostname)) return false;
   const path = ALLOWED_PATHS[url.hostname];
   return path === undefined || matchesPath(url.pathname, path);
 }

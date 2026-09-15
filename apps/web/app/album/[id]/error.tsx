@@ -1,16 +1,19 @@
 "use client";
 
-import { EmptyNotice, Page } from "@/app/page-chrome";
+import { ErrorPanel } from "@/app/failure-panel";
 
-export default function AlbumError({ retry }: { retry: () => void }) {
+export default function AlbumError({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string };
+  retry: () => void;
+}) {
   return (
-    <Page>
-      <EmptyNotice>
-        Deezer didn&apos;t answer for this album.{" "}
-        <button type="button" onClick={retry} className="font-semibold text-[var(--fg)] underline">
-          Try again
-        </button>
-      </EmptyNotice>
-    </Page>
+    <ErrorPanel where="The album page" title="Deezer didn’t answer for this album." error={error} retry={retry}>
+      The tracklist for a release comes from Deezer, and this request came back empty or not at
+      all. It is almost always momentary — the page is cached for an hour once it loads, so a
+      retry that works, stays working.
+    </ErrorPanel>
   );
 }

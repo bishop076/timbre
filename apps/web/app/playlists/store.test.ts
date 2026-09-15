@@ -178,6 +178,62 @@ test("a playlist refuses a song it already holds", async () => {
   assert.deepEqual([...store.playlistsHolding("zz")], []);
 });
 
+/**
+ * The smallest IndexedDB that `profile/image-store.ts` will talk to, recording the keys deleted
+ * through it. Real enough for this one path: open resolves with a database, a transaction hands
+ * back a store, and each request settles on its own turn the way the browser's does.
+ */
+function recordingImageStore(): string[] {
+  const deleted: string[] = [];
+
+  const settle = <T,>(result?: T) => {
+    const request = {} as IDBRequest<T>;
+    queueMicrotask(() => request.onsuccess?.(new Event("success") as Event & { target: unknown }));
+    if (result !== undefined) Object.assign(request, { result });
+    return request;
+  };
+
+  const objectStore = {
+    delete(key: IDBValidKey) {
+      deleted.push(String(key));
+      return settle<undefined>();
+    },
+  };
+
+  const database = {
+    objectStoreNames: { contains: () => true },
+    transaction: () => ({ objectStore: () => objectStore }),
+  };
+
+  const indexedDB = {
+    open() {
+      const request = settle(database);
+      return request;
+    },
+  };
+
+  (globalThis as unknown as { indexedDB: unknown }).indexedDB = indexedDB;
+  return deleted;
+}
+
+async function settled(): Promise<void> {
+  for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+}
+
+test("deleting a playlist deletes the cover it had uploaded", async () => {
+  const { store } = await fresh();
+  const deleted = recordingImageStore();
+
+  const made = store.createPlaylist("Gone by morning");
+  store.deletePlaylist(made.id);
+  await settled();
+
+  // An uploaded cover is kept under `playlist:<id>` in IndexedDB rather than in the playlist
+  // record, so deleting the record on its own left a few hundred kilobytes behind for ever,
+  // under an id nothing in the app can name again.
+  assert.deepEqual(deleted, [`playlist:${made.id}`]);
+});
+
 test("a write before any read keeps the playlists already saved", async () => {
   const saved = { id: "p1", name: "Kept", createdAt: "2026-01-01", updatedAt: "2026-01-01", songs: [song("a")] };
   const { store, backing } = await fresh({ [KEY]: JSON.stringify([saved]) });
