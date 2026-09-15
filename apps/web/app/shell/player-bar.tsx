@@ -5,7 +5,6 @@ import { Artwork } from "../artwork";
 import { formatElapsed } from "../duration";
 import { Equalizer } from "../equalizer";
 import {
-  CollapseIcon,
   ExpandIcon,
   NextIcon,
   PauseIcon,
@@ -128,30 +127,6 @@ export function Transport({ variant }: { variant: Variant }) {
   );
 }
 
-/**
- * A pane with its right column ruled off — the thing the button actually opens.
- *
- * It was a video camera, and a crossed-out video camera when closed, for a button that shows the
- * queue, the credits and the lyrics. Video is involved only when the source happens to be a
- * YouTube embed. A control should look like its effect.
- */
-function QueuePanelIcon({ className, open }: { className?: string; open: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
-      <rect x="3" y="4.5" width="18" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M15 4.5v15" stroke="currentColor" strokeWidth="1.8" />
-      {open ? (
-        <path
-          d="M17.2 9.6h1.6M17.2 12h1.6M17.2 14.4h1.6"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      ) : null}
-    </svg>
-  );
-}
-
 function Elapsed() {
   const { position, duration } = usePlayerProgress();
 
@@ -173,14 +148,10 @@ export function PlayerBar() {
     activeSource,
     subscriptionTrack,
     streamUrl,
-    panelOpen,
-    theater,
-    togglePanel,
     toggleTheater,
   } = usePlayerControls();
 
   if (!current) return null;
-
 
   const artwork = (
     <Artwork src={current.artworkUrl} eager className="slab-sm size-11 shrink-0 rounded-[var(--r-md)]" />
