@@ -83,31 +83,30 @@ export const BANNER = {
 } as const;
 
 /**
- * The app's own palette is pink, not the banner's violet.
+ * The grounds and the accent the app wears, taken from the banner.
  *
- * The banner is a dusk scene and reads violet; the interface it introduces is blush. Keeping the
- * banner's colours here as BANNER is still right — they are the mark's colours and they are
- * offered as presets — but the default the app wears is this.
+ * This briefly went pink, off a set of reference screenshots. The references were about the
+ * *look* — soft, outlined, generously rounded — and the colour instruction had already been
+ * given and was the banner's violet. Keeping the two apart is the lesson: a reference can be
+ * right about shape and say nothing about hue.
  */
-export const BLUSH = {
-  hot: "#ff6fa8",
-  light: "#ff8fc0",
-  soft: "#ff8ab8",
-  ink: "#1f1218",
-  page: "#f9eef2",
-  void: "#120810",
+export const SKIN = {
+  accent: BANNER.violet,
+  accentDark: BANNER.lilac,
+  ink: "#1b1630",
+  page: "#f6f4fc",
+  void: "#0b0814",
 } as const;
 
-export const DEFAULT_ACCENT = BLUSH.hot;
+export const DEFAULT_ACCENT = SKIN.accent;
 
 /** The grounds contrast is measured against. Mirrors --bg in globals.css for each theme. */
-export const GROUND = { light: BLUSH.page, dark: BLUSH.void } as const;
+export const GROUND = { light: SKIN.page, dark: SKIN.void } as const;
 
 /** Offered as one-tap starting points. Any colour at all is reachable past these. */
 export const PRESETS: { name: string; hex: string }[] = [
-  { name: "Blush", hex: BLUSH.hot },
-  { name: "Bubblegum", hex: BLUSH.light },
   { name: "Timbre violet", hex: BANNER.violet },
+  { name: "Blush", hex: "#ff6fa8" },
   { name: "Lilac", hex: BANNER.lilac },
   { name: "Midnight", hex: BANNER.sky },
   { name: "Peach", hex: BANNER.sun },
@@ -131,14 +130,14 @@ export const DEFAULT_BACKGROUND: BackgroundPrefs = { fit: "cover", dim: 0.6, blu
 /**
  * The stored shape's version.
  *
- * Bumped to 2 when the app's colour became pink. Everything written before that carries the old
+ * Bumped to 3. Version 2 was a brief pink; before that, the original violet. Everything written before that carries the old
  * violet default, and a default only reaches somebody who has never stored anything — so without
  * this, changing the default changed nothing for anyone who had already opened the app once. The
  * migration is deliberately narrow: it resets the accent and the accent source, which are the two
  * fields the redesign redefined, and keeps ground, contrast, scale, background and font, which
  * are choices the reader made about something else.
  */
-const THEME_VERSION = 2;
+const THEME_VERSION = 3;
 
 export const DEFAULT_THEME: Theme = {
   v: THEME_VERSION,

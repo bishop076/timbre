@@ -372,7 +372,7 @@ test("the reader's picture and scale are on the root before React exists", () =>
   assert.equal(properties["--app-bg-repeat"], "repeat");
   assert.equal(properties["--app-bg-dim"], "0.8");
   assert.equal(properties["--app-bg-blur"], "12px");
-  assert.equal(properties["--app-bg-scrim"], "#120810", "the dark ground, because that is the ground");
+  assert.equal(properties["--app-bg-scrim"], "#0b0814", "the dark ground, because that is the ground");
   assert.equal(properties["--ui-scale"], "1.25");
   assert.equal(properties["font-size"], "125%");
   assert.equal(dataset.bgImage, "true");
@@ -383,7 +383,7 @@ test("the scrim follows the ground the page actually lands on", () => {
     [THEME_KEY]: JSON.stringify({ mode: "pastel" }),
     [BG_KEY]: BANNER,
   });
-  assert.equal(properties["--app-bg-scrim"], "#f9eef2");
+  assert.equal(properties["--app-bg-scrim"], "#f6f4fc");
 });
 
 test("the dimming that keeps text readable cannot be turned off from storage", () => {
