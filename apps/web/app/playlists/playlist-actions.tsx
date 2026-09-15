@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { CameraIcon, MoreIcon, PencilIcon, TrashIcon } from "../icons";
 import { EYEBROW } from "../page-chrome";
@@ -65,12 +66,17 @@ export function PlaylistActions({
     if (onDeletedGoTo) router.push(onDeletedGoTo);
   }
 
-  // The menu below is `fixed` and placed from `root`'s viewport rect, so nothing here needs a
-  // positioned ancestor — and hard-coding one cost the library grid its alignment. Tailwind
-  // resolves `relative absolute` by stylesheet order, not by the order written in the
-  // attribute, and `relative` is emitted last: the tile's `absolute right-3 top-3` lost, the
-  // button stayed in flow, and every playlist tile sat 36px below the Liked one with a gap
-  // above its cover. A caller that positions this owns the positioning.
+  // The menu below is `fixed` and placed from `root`'s viewport rect, so it has to reach the
+  // body: `@container` on the library and playlist page wrappers makes every ancestor between
+  // here and there a containing block for fixed descendants, which would re-base those viewport
+  // coordinates on the page box and throw the menu down and to the right. The portal is the fix,
+  // the same one `song-menu` and `add-to-playlist` already use.
+  //
+  // Nothing here needs a positioned ancestor either — and hard-coding one cost the library
+  // grid its alignment. Tailwind resolves `relative absolute` by stylesheet order, not by the
+  // order written in the attribute, and `relative` is emitted last: the tile's `absolute
+  // right-3 top-3` lost, the button stayed in flow, and every playlist tile sat 36px below the
+  // Liked one with a gap above its cover. A caller that positions this owns the positioning.
   return (
     <div ref={root} className={className ?? "relative"}>
       {picture.input}
@@ -85,7 +91,7 @@ export function PlaylistActions({
         <MoreIcon className="size-5" />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           ref={menu}
           role="menu"
@@ -203,7 +209,8 @@ export function PlaylistActions({
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

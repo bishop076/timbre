@@ -31,7 +31,7 @@ export function StatsView() {
   const stats = useMemo(() => listeningStats(playsFrom(log, history)), [log, history]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6">
+    <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6">
       <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your listening</h1>
       <Caption className="mt-1.5">Counted in this browser only, from what it has played.</Caption>
 
@@ -67,7 +67,10 @@ function Stats({ stats, capped }: { stats: ListeningStats; capped: boolean }) {
         {stats.days > 0 && <Figure unit="day" value={stats.days} />}
       </dl>
 
-      <div className="mt-8 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
+      {/* Two columns when *this column of the page* is wide enough, not when the window is.
+          The panel these live in is squeezed by the sidebar and again by the now-playing dock,
+          so `lg:` split a 648px main into two 290px columns with a bar chart in each. */}
+      <div className="mt-8 grid items-start gap-8 @3xl:grid-cols-2 @3xl:gap-10">
         <div className="flex min-w-0 flex-col gap-10">
           <TopArtists stats={stats} />
           {stats.dated > 0 && <Weekdays stats={stats} />}
@@ -222,7 +225,7 @@ function Pending() {
           <div key={index} className={pulse("h-12 w-16")} />
         ))}
       </div>
-      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:gap-10">
+      <div className="mt-8 grid gap-8 @3xl:grid-cols-2 @3xl:gap-10">
         {Array.from({ length: 2 }, (_, column) => (
           <div key={column} className="flex flex-col gap-2">
             <div className={pulse("mb-2 h-6 w-32")} />
