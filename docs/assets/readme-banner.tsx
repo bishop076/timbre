@@ -11,6 +11,8 @@
 //
 // Step 4 is not tidying. Left in place this is a public endpoint on the deployment, and the
 // stale route validator Next leaves in .next/dev/types fails typecheck until it is regenerated.
+// Pick a free port and a TIMBRE_DIST_DIR nobody else is using — another session drawing the
+// link card runs the same dance, and two dev servers sharing a dist dir corrupt it.
 //
 // The font paths below are relative to step 1's destination, not to this file — it only ever runs
 // from there. It has to run inside Next at all because `next/og` is Satori plus resvg wired
@@ -18,18 +20,32 @@
 // found the hard way: a component or fragment returning <svg> children renders as nothing, and
 // `url(#id)` gradient references do not resolve. So every shape is inline and every fill is flat.
 //
-// app/opengraph-image.tsx draws the same lockup at 1200x630 for link previews. If the wordmark
-// changes here, change it there too.
+// app/opengraph-image.tsx draws this same scene at 1200x630 for link previews. If the wordmark
+// or the palette changes here, change it there too — only the height differs between them, so
+// the sky takes the extra room there and the horizon stays low.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { ImageResponse } from "next/og";
 
-// Read rather than fetched: this runs on the Node runtime, where `fetch` of a file: URL is
-// "not implemented... yet". The URL form is still what Next traces for bundling.
-const font = (file: string) =>
-  readFileSync(fileURLToPath(new URL(`../brand-fonts/${file}`, import.meta.url)));
+// One literal `new URL(...)` per face, not `new URL(`../brand-fonts/${file}`, ...)` behind a
+// helper. Turbopack rewrites `new URL` + `import.meta.url` into a reference to a traced asset,
+// and it can only do that statically: given a template literal it emits a SINGLE asset — the
+// first face it saw — and every call then returns those same bytes. It does not warn. The
+// symptom is a render where all three families come out in whichever font won, because Satori
+// falls back per glyph rather than erroring. Verified by printing the resolved paths: all three
+// came back as .next-banner/dev/server/assets/DeliciousHandrawn.<hash>.woff.
+//
+// Read rather than fetched because this runs on the Node runtime, where `fetch` of a file: URL
+// is "not implemented... yet".
+const FONTS = {
+  head: new URL("../brand-fonts/DeliciousHandrawn.woff", import.meta.url),
+  gluten: new URL("../brand-fonts/Gluten.woff", import.meta.url),
+  outfit: new URL("../brand-fonts/Outfit.woff", import.meta.url),
+};
+
+const font = (url: URL) => readFileSync(fileURLToPath(url));
 
 // The palm, inlined rather than imported from app/shell/brand so this file resolves wherever it
 // sits. If the mark changes there, copy the path across.
@@ -47,16 +63,21 @@ function TimbreMark(props: { width: number; height: number; style: Record<string
 const W = 1200;
 const H = 400;
 
-const INK = "#0c0b10";
 const CREAM = "#f3efe4";
-const VIOLET = "#7c5cf6";
-const PALM = "#2f6b46";
+const SUN = "#ffd9a8";
+const SEA = "#1b1140";
+const SEA_LINE_1 = "#4a34a8";
+const SEA_LINE_2 = "#3d2a90";
 
 // "tim" is Delicious Handrawn, "bre" is Gluten at 0.94x. Both numbers are measured off the
 // rendered pixels rather than judged: Delicious sits high on its line, so without the drop the
 // "bre" hangs 13px above the foot of the "m". 0.209 puts the feet level, with the round b and e
 // 2px past it — the overshoot round letters are supposed to have. Change the scale and the drop
 // has to move with it; the relationship is linear at about 11px per 0.1 at this size.
+//
+// alignItems is "flex-start" with a marginTop, not "baseline" with a marginBottom. Satori
+// ignores marginBottom under baseline alignment — rendering at drop 0 and at drop 0.2 gives
+// pixel-identical output — so the obvious spelling of this silently does nothing.
 const HEAD_TRACK = -0.02;
 const BRE_SCALE = 0.94;
 const BRE_DROP = 0.209;
@@ -89,36 +110,77 @@ function Lockup({ size, color, mark }: { size: number; color: string; mark: stri
   );
 }
 
-// The palm growing straight out of the record: the mark and the medium as one object, rather
-// than a logo placed next to a picture of a turntable.
-export function GET() {
-  const head = font("DeliciousHandrawn.woff");
-  const gluten = font("Gluten.woff");
-  const outfit = font("Outfit.woff");
+function Caption({ text, top }: { text: string; top: number }) {
+  return (
+    <span
+      style={{
+        fontFamily: "Outfit",
+        fontSize: 22,
+        letterSpacing: 1,
+        color: "#e7dcff",
+        position: "absolute",
+        left: 98,
+        top,
+      }}
+    >
+      {text}
+    </span>
+  );
+}
 
-  const grooves = [150, 134, 118, 102];
+// Four rows of ripples in two violets, so the sea reads as water rather than a flat block. They
+// run the full width, including behind the wordmark, which is what makes the horizon a horizon.
+const RIPPLES = [
+  { x: 120, y: 316, w: 240, alt: false },
+  { x: 420, y: 316, w: 160, alt: false },
+  { x: 640, y: 316, w: 200, alt: false },
+  { x: 60, y: 334, w: 300, alt: true },
+  { x: 420, y: 334, w: 180, alt: true },
+  { x: 660, y: 334, w: 260, alt: true },
+  { x: 160, y: 354, w: 220, alt: false },
+  { x: 440, y: 354, w: 300, alt: false },
+  { x: 800, y: 354, w: 240, alt: false },
+  { x: 80, y: 376, w: 340, alt: true },
+  { x: 480, y: 376, w: 280, alt: true },
+  { x: 820, y: 376, w: 300, alt: true },
+];
+
+// The shore at dusk: a violet sky, the sun going down behind a flat dark sea, and the mark
+// standing in it as the palm it already is — the logo is the picture, not a logo placed beside
+// one. The sun sits behind the palm rather than beside it so the two read as one silhouette.
+export function GET() {
+  const head = font(FONTS.head);
+  const gluten = font(FONTS.gluten);
+  const outfit = font(FONTS.outfit);
+
+  const size = 126;
 
   return new ImageResponse(
     (
-      <div style={{ display: "flex", width: W, height: H, background: CREAM, position: "relative", overflow: "hidden" }}>
+      <div
+        style={{
+          display: "flex",
+          width: W,
+          height: H,
+          position: "relative",
+          overflow: "hidden",
+          background: "linear-gradient(180deg, #2a1a5c 0%, #5b3fd6 58%, #8f74ff 100%)",
+        }}
+      >
         <svg width={W} height={H} viewBox="0 0 1200 400" style={{ position: "absolute", left: 0, top: 0 }}>
-          <circle cx="856" cy="330" r="172" fill={INK} />
-          {grooves.map((r) => (
-            <circle key={r} cx="856" cy="330" r={r} fill="none" stroke="#2b2539" strokeWidth="2" />
+          <circle cx="900" cy="236" r="132" fill={SUN} />
+          <rect x="0" y="278" width="1200" height="122" fill={SEA} />
+          <rect x="0" y="278" width="1200" height="2" fill="#6247c9" opacity="0.6" />
+          {RIPPLES.map((l, i) => (
+            <rect key={i} x={l.x} y={l.y} width={l.w} height="4" rx="2" fill={l.alt ? SEA_LINE_2 : SEA_LINE_1} />
           ))}
-          <circle cx="856" cy="330" r="56" fill={VIOLET} />
-          <circle cx="856" cy="330" r="6" fill={INK} />
-          <rect x="620" y="96" width="9" height="34" rx="4" fill={VIOLET} opacity="0.5" />
-          <rect x="666" y="74" width="9" height="56" rx="4" fill={VIOLET} opacity="0.7" />
-          <rect x="712" y="102" width="9" height="28" rx="4" fill={VIOLET} opacity="0.45" />
         </svg>
-        <TimbreMark width={176} height={201} style={{ color: PALM, position: "absolute", left: 768, top: 128 }} />
-        <div style={{ display: "flex", position: "absolute", left: 96, top: 120 }}>
-          <Lockup size={110} color={INK} mark={VIOLET} />
+        <TimbreMark width={126} height={144} style={{ color: SEA, position: "absolute", left: 836, top: 138 }} />
+        <div style={{ display: "flex", position: "absolute", left: 96, top: 96 }}>
+          <Lockup size={size} color={CREAM} mark={SUN} />
         </div>
-        <span style={{ fontFamily: "Outfit", fontSize: 21, letterSpacing: 3, color: "#5d5674", position: "absolute", left: 98, top: 252 }}>
-          one search box, one queue
-        </span>
+        <Caption text="a music player for people" top={238} />
+        <Caption text="who don&apos;t pay for streaming" top={268} />
       </div>
     ),
     {
