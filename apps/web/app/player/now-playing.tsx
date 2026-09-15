@@ -214,6 +214,7 @@ export function NowPlayingPanel() {
     subscriptionTrack,
     mixcloudKey,
     panelOpen,
+    togglePanel,
     theater,
     toggleTheater,
     queue,
@@ -295,10 +296,24 @@ export function NowPlayingPanel() {
   // opening bracket, and two lines costs ~22px against knowing what is playing.
   const heading = (variant: "docked" | "theater") => (
     <div
-      className={`shrink-0 border-b-[length:var(--edge)] border-[var(--ink)] px-3.5 pb-2.5 ${
+      className={`relative shrink-0 border-b-[length:var(--edge)] border-[var(--ink)] px-3.5 pb-2.5 ${
         variant === "docked" ? "pt-3" : "pt-3.5"
       }`}
     >
+      {/* The panel's own way out. Dragging the edge away works and is the nicer gesture, but a
+          gesture is not discoverable and cannot be reached from a keyboard without knowing the
+          handle is there. The player bar's button only ever opens now, so this is the close. */}
+      {variant === "docked" ? (
+        <button
+          type="button"
+          onClick={togglePanel}
+          aria-label="Hide now playing"
+          title="Hide now playing"
+          className="press absolute right-2 top-2 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+        >
+          <ChevronIcon className="size-4 -rotate-90" />
+        </button>
+      ) : null}
       <p
         className={`line-clamp-2 font-bold tracking-[var(--track-title)] ${
           variant === "docked"
@@ -308,9 +323,14 @@ export function NowPlayingPanel() {
       >
         {current?.title ?? "Nothing playing"}
       </p>
-      <p className="truncate text-[length:var(--text-meta)] text-[var(--fg-dim)]">
-        <ArtistLink artists={current?.artists ?? []} />
-      </p>
+      {/* Only when there is a track. ArtistLink's own empty fallback is "Unknown artist", which
+          is the right thing to say about a song whose credits are missing and the wrong thing to
+          say about no song at all — the pair read "Nothing playing / Unknown artist". */}
+      {current ? (
+        <p className="truncate text-[length:var(--text-meta)] text-[var(--fg-dim)]">
+          <ArtistLink artists={current.artists} />
+        </p>
+      ) : null}
     </div>
   );
 
@@ -513,9 +533,12 @@ export function NowPlayingPanel() {
                       <Credit label="ISRC" value={current.isrc} mono />
                       <Credit
                         label="Available on"
-                        value={current.sources
-                          .map((item) => sourceStyle(item.source).short)
-                          .join(", ")}
+                        // Deduped by service: two copies of a track from one source would
+                        // otherwise read "SoundCloud, SoundCloud". The CSV export already does
+                        // this; this was the one place that did not.
+                        value={[
+                          ...new Set(current.sources.map((item) => sourceStyle(item.source).short)),
+                        ].join(", ")}
                       />
                     </dl>
                   </section>

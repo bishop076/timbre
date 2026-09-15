@@ -181,18 +181,21 @@ export function PlayerBar() {
 
   if (!current) return null;
 
-  const panelButton = (
+  // Only the "show" version. When the panel is open there is nothing for this to do that the
+  // panel's own edge does not already do better — you drag it away — and a second control that
+  // flips between two meanings in the corner of the bar was the "too many buttons" complaint.
+  // Closed, it is one button with one job.
+  const panelButton = panelOpen ? null : (
     <button
       type="button"
       onClick={togglePanel}
-      aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
-      aria-pressed={panelOpen}
-      className={`slab-sm press size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)] ${
+      aria-label="Show now playing"
+      title="Show now playing"
+      className={`slab-sm press size-8 items-center justify-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg)] ${
         streamUrl ? "hidden xl:flex" : "flex"
       }`}
-      style={{ background: panelOpen ? "var(--accent)" : "var(--surface-2)" }}
     >
-      <QueuePanelIcon className="size-[18px]" open={panelOpen} />
+      <QueuePanelIcon className="size-[18px]" open={false} />
     </button>
   );
 
