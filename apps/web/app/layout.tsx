@@ -71,6 +71,22 @@ try {
     return v && v.indexOf("data:image/") === 0 ? "url(" + JSON.stringify(v) + ")" : null;
   };
 
+  var PALETTE = " --bg --surface-1 --surface-2 --surface-3 --fg --fg-dim --fg-faint --ink --line --accent --accent-fg --accent-wash --drop --drop-sm --drop-lg ";
+  var BAD = ["url(", "image", "element(", "var(", "attr(", "expression", ";", "{", "}"];
+  var paint = function (name, value) {
+    if (PALETTE.indexOf(" " + name + " ") < 0) return;
+    if (typeof value !== "string" || value.length > 120) return;
+    var low = value.toLowerCase();
+    for (var i = 0; i < BAD.length; i++) if (low.indexOf(BAD[i]) >= 0) return;
+    r.style.setProperty(name, value);
+  };
+  var tint = function (name, value) {
+    if (typeof value !== "string" || value.length > 240) return;
+    var low = value.toLowerCase();
+    for (var i = 0; i < BAD.length; i++) if (low.indexOf(BAD[i]) >= 0) return;
+    r.style.setProperty(name, value);
+  };
+
   var a = thumb("timbre:thumb-avatar");
   if (a) {
     r.style.setProperty("--avatar-thumb", a);
@@ -82,7 +98,7 @@ try {
 
   var mono = read("timbre:avatar-mono");
   if (mono) {
-    if (mono.fill) r.style.setProperty("--avatar-fill", mono.fill);
+    if (mono.fill) tint("--avatar-fill", mono.fill);
     if (mono.initial) r.style.setProperty("--avatar-initial", JSON.stringify(mono.initial));
   }
 
@@ -101,7 +117,7 @@ try {
 
   var p = read("timbre:palette");
   if (p && p.vars) {
-    for (var k in p.vars) if (k.indexOf("--") === 0) r.style.setProperty(k, p.vars[k]);
+    for (var k in p.vars) paint(k, p.vars[k]);
     if (p.theme) r.dataset.theme = p.theme;
     if (p.mode) r.dataset.mode = p.mode;
     r.dataset.neutral = String(p.neutral === true);
@@ -110,7 +126,7 @@ try {
   var w = read("timbre:profile-wash");
   if (w) {
     var v = r.dataset.theme === "light" ? w.light : w.dark;
-    if (v) r.style.setProperty("--profile-wash", v);
+    if (v) tint("--profile-wash", v);
   }
 } catch (e) {}
 `.trim();
