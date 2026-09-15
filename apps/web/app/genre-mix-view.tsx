@@ -27,6 +27,8 @@ export function GenreMixView({ mix }: { mix: GenreMix[] }) {
         }))}
         segments={RANK_BANDS}
         unit="song"
+        rowLabel="Genre"
+        caption="How many of each genre's songs reached the ranking, and where they landed"
       />
 
       <Caption className="mt-5 max-w-2xl">

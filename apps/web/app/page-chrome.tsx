@@ -26,7 +26,7 @@ export function PageHeader({
       {art}
       <div className="min-w-0 flex-1">
         <p className={EYEBROW}>{eyebrow}</p>
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight sm:mt-1.5 sm:text-3xl @lg:text-4xl">
+        <h1 className="mt-1 text-[length:var(--text-display)] font-extrabold tracking-[var(--track-display)] sm:mt-1.5">
           {title}
         </h1>
         {children}
@@ -36,7 +36,7 @@ export function PageHeader({
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-lg font-extrabold tracking-tight sm:text-xl">{children}</h2>;
+  return <h2 className="text-[length:var(--text-section)] font-extrabold tracking-[var(--track-title)]">{children}</h2>;
 }
 
 export function SectionHeader({ title, children }: { title: string; children: ReactNode }) {
@@ -57,5 +57,5 @@ function textBlock(base: string) {
 export const Notice = textBlock("text-sm leading-relaxed text-[var(--fg-dim)]");
 export const Caption = textBlock("text-xs leading-relaxed text-[var(--fg-faint)]");
 export const EmptyNotice = textBlock(
-  "rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]",
+  "slab-sm rounded-[var(--r-lg)] bg-[var(--surface-2)] px-5 py-8 text-center text-sm leading-relaxed text-[var(--fg-dim)]",
 );

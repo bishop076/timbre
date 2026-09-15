@@ -289,3 +289,32 @@ test("a hostile cover in a file is no more usable than a hostile one in storage"
   );
   assert.equal(store.exportPlaylists().playlists[0]!.coverUrl, null);
 });
+
+test("an unreadable file refuses in the app's own voice, not V8's", async () => {
+  const { store } = await fresh();
+
+  // The message is shown to the reader verbatim by `useFilePicker`, so what matters is that it
+  // is a sentence about their file rather than a parser's account of where it gave up. Picking
+  // a .txt renamed to .json used to answer `Unexpected token 'h', "this is not"... is not valid
+  // JSON` on the library page.
+  for (const text of ["this is not json at all", "", "{oops", "<html></html>"]) {
+    assert.throws(
+      () => store.readBackupFile(text),
+      (error: Error) => {
+        assert.equal(error.message, "That file isn't JSON. Pick the .json file Timbre exported.");
+        assert.doesNotMatch(error.message, /Unexpected|JSON\.parse|token/);
+        return true;
+      },
+      `refused ${JSON.stringify(text)} plainly`,
+    );
+  }
+});
+
+test("a readable file still parses through to the importer", async () => {
+  const { store } = await fresh();
+  const file = exportFile([{ name: "From a file", songs: [] }]);
+
+  assert.deepEqual(store.readBackupFile(JSON.stringify(file)), file);
+  assert.equal(store.importPlaylists(store.readBackupFile(JSON.stringify(file))), 1);
+  assert.equal(store.readBackupFile("null"), null);
+});

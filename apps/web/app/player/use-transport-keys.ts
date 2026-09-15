@@ -3,23 +3,15 @@
 import { useEffect } from "react";
 
 import { usePlayerControls } from "./player-context";
-import { actionFor, VOLUME_STEP } from "./transport-keys";
+import { runTransport } from "./transport-keys";
 
 export function useTransportKeys(): void {
   const { toggle, next, previous, setVolume, volume, current } = usePlayerControls();
 
   useEffect(() => {
-    const transport = { toggle, next, previous };
+    const transport = current ? { toggle, next, previous, setVolume, volume } : null;
     const onKeyDown = (event: KeyboardEvent) => {
-      const action = actionFor(event);
-      if (!action || !current) return;
-
-      if (action === "volume-up") setVolume(volume + VOLUME_STEP);
-      else if (action === "volume-down") setVolume(volume - VOLUME_STEP);
-      else {
-        event.preventDefault();
-        transport[action]();
-      }
+      if (runTransport(event, transport)) event.preventDefault();
     };
 
     window.addEventListener("keydown", onKeyDown, true);

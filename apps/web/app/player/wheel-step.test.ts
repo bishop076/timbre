@@ -43,3 +43,29 @@ test("the two directions are symmetric, and a partial step never rounds away fro
 test("nudging back and forth returns to where it started", () => {
   assert.deepEqual(spend([30, -30, 30, -30, 20, -20]), { spent: 0, carried: 0 });
 });
+
+test("no single event is worth more than a notch, however it reports its distance", () => {
+  // `deltaMode` 2 is a whole page. Measured on the real control, one of those events took the
+  // volume from 100% to 55% — where the same flick of a pixel-reporting mouse moves it 10%.
+  const notch = pixelDelta(100, 0);
+  for (const [deltaY, deltaMode] of [[1, 2], [40, 1], [4000, 0]] as const) {
+    assert.equal(
+      wheelSteps(pixelDelta(deltaY, deltaMode)).steps,
+      wheelSteps(notch).steps,
+      `deltaY ${deltaY} in mode ${deltaMode} should be worth one notch at most`,
+    );
+  }
+  assert.equal(pixelDelta(-1, 2), -notch, "and the same going the other way");
+});
+
+test("the surplus of an oversized event is dropped, not owed to the next one", () => {
+  assert.equal(spend([pixelDelta(1, 2), pixelDelta(1, 2)]).spent, 4, "two pages, two notches");
+});
+
+test("a delta that is not a measurement leaves the volume where it is", () => {
+  // And, more to the point, does not poison the carried remainder for the rest of the session.
+  for (const delta of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    assert.equal(pixelDelta(delta, 0), 0, String(delta));
+  }
+  assert.deepEqual(spend([pixelDelta(Number.NaN, 0), 60]), { spent: 1, carried: 10 });
+});

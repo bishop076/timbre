@@ -13,7 +13,8 @@
     "typecheck": "pnpm -r typecheck && tsc -p scripts",
     "typecheck:fast": "pnpm -r --parallel typecheck:fast && tsgo -p scripts",
     "test": "pnpm -r --parallel test && node --test \"scripts/*.test.mts\"",
-    "spotify:canary": "node scripts/spotify-canary.mts"
+    "spotify:canary": "node scripts/spotify-canary.mts",
+    "smoke": "node apps/web/e2e/smoke.mjs"
   },
   "engines": {
     "node": ">=22.18"

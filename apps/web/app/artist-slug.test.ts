@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fromArtistSlug, toArtistSlug } from "./artist-slug.ts";
+import { fromArtistSlug, isSameArtist, toArtistSlug } from "./artist-slug.ts";
 
 test("a slug round-trips back to a readable name", () => {
   assert.equal(fromArtistSlug(toArtistSlug("Tame Impala")), "tame impala");
@@ -23,4 +23,21 @@ test("a lone percent is a name, not a broken escape", () => {
   }
   assert.equal(fromArtistSlug("100%"), "100%");
   assert.equal(fromArtistSlug("%E6%9D%B1"), "東");
+});
+
+test("an artist is only the artist that was asked for", () => {
+  assert.ok(isSameArtist("Radiohead", "Radiohead"));
+  assert.ok(isSameArtist("the marias", "The Marías"), "slug-equal is equal");
+  assert.ok(isSameArtist("  Tame Impala  ", "Tame Impala"), "surrounding space is not a name");
+  assert.ok(isSameArtist("AC/DC", "AC-DC"));
+
+  // Both of these came back from /api/artist for a real SoundCloud uploader, and the
+  // now-playing panel drew them as "About the artist" with the wrong band's photo.
+  assert.equal(isSameArtist("Pump Glock", "Black Pumas"), false);
+  assert.equal(isSameArtist("Praise Stones", "Stoned in Paradise"), false);
+  assert.equal(isSameArtist("xXAaronXx", "Aaron"), false);
+
+  // An empty ask can never match, or every blank name would agree with every other.
+  assert.equal(isSameArtist("", ""), false);
+  assert.equal(isSameArtist("   ", "Radiohead"), false);
 });
