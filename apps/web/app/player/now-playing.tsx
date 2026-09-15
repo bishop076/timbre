@@ -498,7 +498,9 @@ export function NowPlayingPanel() {
                   that actually continues. */}
               <div
                 ref={panelScroll}
-                data-above={panelEdges.above || undefined}
+                // Bottom only. The top fade dissolved whatever heading happened to be under it,
+                // which reads as a clipped card rather than as a scroll hint — and the top edge
+                // of a scroller is already obvious, because the thing above it is the header.
                 data-below={panelEdges.below || undefined}
                 className="scroller-quiet edge-fade min-h-0 flex-1 space-y-3 overflow-y-auto px-3 pb-5 pt-3"
               >
@@ -531,6 +533,12 @@ export function NowPlayingPanel() {
                   </section>
                 )}
 
+
+                {/* Who you are listening to comes before the metadata about the recording. It
+                    was under Credits and the Spotify panel, so on a short window you had to
+                    scroll past an ISRC to find out whose song this is. */}
+                <ArtistCard name={current?.artists[0] ?? null} />
+
                 {current && (
                   <section className="slab-sm rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2.5">
                     <h3 className={`${EYEBROW} mb-1.5`}>Credits</h3>
@@ -558,8 +566,6 @@ export function NowPlayingPanel() {
                 )}
 
                 <SpotifyPanel song={current} />
-
-                <ArtistCard name={current?.artists[0] ?? null} />
 
                 <SimilarSongs />
               </div>

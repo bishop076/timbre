@@ -181,21 +181,27 @@ export function PlayerBar() {
 
   if (!current) return null;
 
-  // Only the "show" version. When the panel is open there is nothing for this to do that the
-  // panel's own edge does not already do better — you drag it away — and a second control that
-  // flips between two meanings in the corner of the bar was the "too many buttons" complaint.
-  // Closed, it is one button with one job.
-  const panelButton = panelOpen ? null : (
+  // A persistent toggle, which is how Spotify's now-playing-view button behaves: it is always
+  // there, in the same place, and it shows whether the panel is up rather than disappearing when
+  // it is. I had it render only while closed, so the control moved depending on state — you could
+  // open the panel and then have nothing in the corner to close it with.
+  const panelButton = (
     <button
       type="button"
       onClick={togglePanel}
-      aria-label="Show now playing"
-      title="Show now playing"
-      className={`slab-sm press size-8 items-center justify-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg)] ${
-        streamUrl ? "hidden xl:flex" : "flex"
-      }`}
+      aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
+      aria-pressed={panelOpen}
+      title={panelOpen ? "Hide now playing" : "Show now playing"}
+      className={`press relative size-8 items-center justify-center rounded-[var(--r-md)] ${
+        panelOpen ? "text-[var(--accent-text)]" : "text-[var(--fg-dim)] hover:text-[var(--fg)]"
+      } ${streamUrl ? "hidden xl:flex" : "flex"}`}
     >
-      <QueuePanelIcon className="size-[18px]" open={false} />
+      <QueuePanelIcon className="size-[18px]" open={panelOpen} />
+      {/* The dot under an active control, same as Spotify marks its toggles. Colour alone would
+          not carry it. */}
+      {panelOpen ? (
+        <span className="absolute -bottom-0.5 size-1 rounded-full bg-[var(--accent-text)]" />
+      ) : null}
     </button>
   );
 
@@ -303,13 +309,10 @@ export function PlayerBar() {
               What is left is the two things you read (elapsed, volume) and the one that opens the
               panel. */}
           <Elapsed />
-          <Volume />
-          {/* Beside the volume, which is where it was and where it belongs — speed is a playback
-              control, and this is the row of playback controls. It came out of here once to
-              answer "too many buttons", which was the wrong thing to remove: what made the corner
-              crowded was the theater toggle and a panel button that flipped between two meanings,
-              both of which are gone. */}
+          {/* Before the volume, not after it. Speed and the sleep timer belong with the transport
+              side of this cluster; the volume control ends it. */}
           <PlaybackMenu variant="bar" />
+          <Volume />
           {panelButton}
         </div>
       </footer>
