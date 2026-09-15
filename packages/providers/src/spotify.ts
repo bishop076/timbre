@@ -1,5 +1,7 @@
+import { ProviderError } from "@timbre/core";
+
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
-import { createRequester, deadlineSignal, takeSlot } from "./request.ts";
+import { createRequester, deadlineSignal, fetchOrFail, readCapped, takeSlot } from "./request.ts";
 import { spotifyEmbedState, spotifySourceTrack } from "./spotify-web.ts";
 
 const TRACK_PATH = /^(?:\/intl-[a-z]{2,5})?(?:\/embed)?\/track\/([A-Za-z0-9]{22})\/?$/;
@@ -19,11 +21,22 @@ interface MusicBrainzRecording {
   relations?: { url?: { resource?: string } }[];
 }
 
+/**
+ * A lookup that answers `null` rather than failing.
+ *
+ * `report` is the difference between the two kinds of caller. The MusicBrainz and ListenBrainz
+ * lookups are enrichment: they are asked on the off-chance, and a service that is down means the
+ * ISRC path simply does not help this time. `resolve` is not enrichment — the reader has pasted
+ * a Spotify link and is owed an answer about it. Swallowing there told `resolveUrl` that no
+ * provider claimed the link, which is the sentence the reader sees: their link was the problem.
+ * A 404 still means null on both paths, because that is Spotify saying it has no such track.
+ */
 async function quietly<T>(
   ctx: SearchContext,
   url: string,
   read: (response: Response) => Promise<T>,
   headers?: HeadersInit,
+  report = false,
 ): Promise<T | null> {
   const musicBrainz = url.startsWith("https://musicbrainz.org/");
   try {
@@ -32,12 +45,22 @@ async function quietly<T>(
         await takeSlot(ctx, "spotify", "MusicBrainz", { key: "musicbrainz", policy: MUSICBRAINZ_POLICY });
       }
       await takeSlot(ctx, "spotify", "Spotify");
-      const response = await fetch(url, { signal: deadlineSignal(ctx.signal), cache: "no-store", headers });
+      const init = { signal: deadlineSignal(ctx.signal), cache: "no-store" as const, headers };
+      const response = await fetchOrFail(url, init, "spotify", "Spotify");
       if (response.ok) return await read(response);
-      if (!musicBrainz || attempt > 0 || response.status !== 503) return null;
+      if (!musicBrainz || attempt > 0 || response.status !== 503) {
+        if (report && response.status !== 404) {
+          const kind = response.status === 429 ? "rate_limited" : "transient";
+          throw new ProviderError("spotify", kind, `Spotify answered ${response.status}.`, {
+            status: response.status,
+          });
+        }
+        return null;
+      }
     }
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    if (report) throw cause;
     return null;
   }
 }
@@ -63,7 +86,8 @@ async function labsTrackId(ctx: SearchContext, path: string): Promise<string | n
   const rows = await quietly(
     ctx,
     `https://labs.api.listenbrainz.org${path}`,
-    (response) => response.json() as Promise<{ spotify_track_ids?: string[] }[]>,
+    async (response) =>
+      JSON.parse(await readCapped(response, "spotify", "ListenBrainz")) as { spotify_track_ids?: string[] }[],
   );
   return rows?.[0]?.spotify_track_ids?.[0] ?? null;
 }
@@ -73,7 +97,10 @@ async function isrcLookup(ctx: SearchContext, isrc: string): Promise<{ mbid: str
     ctx,
     `https://musicbrainz.org/ws/2/isrc/${encodeURIComponent(isrc)}?inc=url-rels&fmt=json`,
     async (response) => {
-      const recordings = ((await response.json()) as { recordings?: MusicBrainzRecording[] }).recordings ?? [];
+      const body = JSON.parse(await readCapped(response, "spotify", "MusicBrainz")) as {
+        recordings?: MusicBrainzRecording[];
+      };
+      const recordings = body.recordings ?? [];
       const spotifyId = recordings
         .flatMap((recording) => recording.relations ?? [])
         .map((relation) => SPOTIFY_TRACK_URL.exec(relation.url?.resource ?? "")?.[1])
@@ -123,10 +150,16 @@ export function createSpotifyProvider(): SearchProvider {
       const id = spotifyTrackId(url);
       if (!id) return null;
 
-      const entity = await quietly(ctx, `https://open.spotify.com/embed/track/${id}`, async (response) => {
-        const state = spotifyEmbedState<{ data?: { entity?: SpotifyEntity } }>(await response.text());
-        return state?.data?.entity ?? null;
-      });
+      const entity = await quietly(
+        ctx,
+        `https://open.spotify.com/embed/track/${id}`,
+        async (response) => {
+          const html = await readCapped(response, "spotify", "Spotify");
+          return spotifyEmbedState<{ data?: { entity?: SpotifyEntity } }>(html)?.data?.entity ?? null;
+        },
+        undefined,
+        true,
+      );
       const fallback = entity?.title
         ? null
         : await oEmbed<{ title?: string; thumbnail_url?: string }>(

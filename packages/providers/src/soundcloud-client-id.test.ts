@@ -23,7 +23,10 @@ test("reads the client_id out of a minified bundle, never a short value", () => 
   assert.equal(clientIdFrom(`no id here at all`), null);
 });
 
-const ok = (text: string) => ({ ok: true, status: 200, text: async () => text });
+// A real `Response`, not an object shaped like one: the crawl reads the body as a stream so it
+// can stop at the cap, and a double with only `text()` would have been tested against a read
+// nothing in the app performs.
+const ok = (text: string) => new Response(text, { status: 200 });
 
 function stubFetch(
   t: TestContext,
@@ -72,7 +75,7 @@ test("the homepage's own hydration blob is read, and no bundle is fetched", asyn
 });
 
 test("a refused crawl is not retried by every later search", async (t) => {
-  const fetches = stubFetch(t, async () => ({ ok: false, status: 403, text: async () => "" }));
+  const fetches = stubFetch(t, async () => new Response("", { status: 403 }));
   const resolve = createClientIdResolver("UA", 5_000);
   for (let i = 0; i < 5; i += 1) assert.equal(await resolve(), null);
   assert.equal(fetches.callCount(), 1, "one attempt, then the back-off holds");
