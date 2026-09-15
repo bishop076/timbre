@@ -16,8 +16,11 @@ function lrclibBackoff(): Backoff {
 }
 
 class LrclibBusy extends Error {
-  constructor(readonly retryAfterSeconds: number) {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
     super("LRCLIB is rate limiting this deployment.");
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -78,15 +81,35 @@ async function lrclib(path: string, params: Record<string, string | undefined> =
   return response;
 }
 
+/**
+ * LRCLIB answering 404 is an answer: it holds nothing matching that track. Every other refusal
+ * is the service failing, and both used to flatten into the same `null` and `[]` — so a 500, a
+ * 502, or a gateway's HTML left this route as `{ lyrics: null }` at 200, which `readAnswer`
+ * maps to `none` and the panel states as "no lyrics for this song". The `catch` below has
+ * always turned a *thrown* failure into an honest 502; a non-ok response never reached it.
+ */
+class LrclibUnavailable extends Error {
+  constructor(status: number) {
+    super(`LRCLIB answered ${status}.`);
+  }
+}
+
+function answeredOrFail(response: Response): Response {
+  if (!response.ok && response.status !== 404) throw new LrclibUnavailable(response.status);
+  return response;
+}
+
 async function lookup(path: string, params?: Record<string, string | undefined>) {
-  const response = await lrclib(path, params);
+  const response = answeredOrFail(await lrclib(path, params));
   if (!response.ok) return null;
   const body = (await response.json()) as unknown;
   return body && typeof body === "object" ? (body as LrcLibTrack) : null;
 }
 
 async function search(track: string, artist: string): Promise<LrcLibTrack[]> {
-  const response = await lrclib("search", { track_name: track, artist_name: artist });
+  const response = answeredOrFail(
+    await lrclib("search", { track_name: track, artist_name: artist }),
+  );
   return response.ok ? ((await response.json()) as LrcLibTrack[]) : [];
 }
 

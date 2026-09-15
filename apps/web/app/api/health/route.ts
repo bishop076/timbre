@@ -25,7 +25,23 @@ export async function GET(request: Request) {
   const refusal = guard(request, "health");
   if (refusal) return refusal;
 
-  const env = getEnv();
+  // `getEnv()` throws on a deployment whose variables do not parse, and an unhandled throw
+  // makes this a 500 carrying whatever the platform decides to say — from the one route whose
+  // whole job is to answer when the rest of the app cannot. A misconfigured deployment is
+  // exactly when somebody curls it. Its message names every variable that failed, which is a
+  // thing for the log and not for an unauthenticated caller, so it goes through `describeError`
+  // like every other failure here.
+  let env: ReturnType<typeof getEnv>;
+  try {
+    env = getEnv();
+  } catch (error) {
+    log("error", "health_env_invalid", { ...describeError(error) });
+    return Response.json(
+      { status: "error", services: {}, configured: {}, detail: "configuration invalid" },
+      { status: 503 },
+    );
+  }
+
   const ytmusic = await checkYtMusic(env.YTMUSIC_SERVICE_URL);
   const healthy = ytmusic.status === "ok";
   return Response.json(
