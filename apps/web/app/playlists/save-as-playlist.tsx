@@ -36,7 +36,7 @@ export function SaveAsPlaylist({
         {saved && error ? (
           <span className="text-[var(--danger)]">{error}</span>
         ) : saved ? (
-          <span className="text-[var(--accent)]">
+          <span className="text-[var(--accent-text)]">
             Saved {saved.saved} {saved.saved === 1 ? "song" : "songs"} to{" "}
             <Link href={`/playlist/${saved.playlist.id}`} className="font-semibold underline underline-offset-2">
               {saved.playlist.name}

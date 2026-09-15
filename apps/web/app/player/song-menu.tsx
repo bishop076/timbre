@@ -16,6 +16,7 @@ import {
 import { PlaylistPicker } from "../playlists/add-to-playlist";
 import { getPlaylistsState, addSongToPlaylist } from "../playlists/store";
 import { likeSong, unlikeSong, useIsLiked } from "../playlists/likes-store";
+import { useMenuKeyboard } from "../playlists/use-anchored-menu";
 import type { Song } from "../types";
 import { usePlayerControls } from "./player-context";
 import { sameTrack } from "./song-match";
@@ -99,9 +100,15 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
     return () => listeners.abort();
   }, [onClose]);
 
+  // Guarded, unlike the bare focus() it replaces: the hook below has already put focus on the
+  // first item by the time this runs, and taking it back to the panel would undo that.
   useEffect(() => {
-    if (placed) menu.current?.focus();
+    if (placed && !menu.current?.contains(document.activeElement)) menu.current?.focus();
   }, [placed]);
+
+  // Always open — this component only exists while the menu does — and the only menu in the
+  // app with no trigger to return focus to, since a right-click is what raised it.
+  useMenuKeyboard(menu, true, { returnFocus: true });
 
   // Saving keeps the menu up for a beat so the tick beside the list is seen, and holds it open
   // for good if the write failed — the alert the picker renders is the only notice of that.
@@ -139,7 +146,7 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
     {
       label: liked ? "Unlike" : "Like",
       icon: liked ? (
-        <HeartFilledIcon className="size-4 text-[var(--accent)]" />
+        <HeartFilledIcon className="size-4 text-[var(--accent-text)]" />
       ) : (
         <HeartIcon className="size-4" />
       ),
@@ -164,10 +171,15 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
     >
       {picking ? (
         <>
+          {/* Full-bleed inside a panel that is `overflow-hidden` and drops its padding in this
+              mode, so an outer focus ring drawn beyond the border box is clipped off on three
+              sides. `focus-ring-inset` is the utility for exactly that. */}
           <button
             type="button"
+            role="menuitem"
+            tabIndex={-1}
             onClick={() => setPicking(false)}
-            className="flex w-full items-center gap-2 border-b-[length:var(--edge)] border-[var(--ink)] px-2.5 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)]"
+            className="focus-ring-inset flex w-full items-center gap-2 border-b-[length:var(--edge)] border-[var(--ink)] px-2.5 py-2 text-left text-[13px] font-medium text-[var(--fg)] hover:bg-[var(--surface-2)]"
           >
             <ChevronIcon className="size-4 shrink-0 rotate-90 text-[var(--fg-dim)]" />
             <span className="min-w-0 flex-1 truncate">Add to playlist</span>
@@ -180,6 +192,7 @@ function SongMenu({ song, at, onClose }: { song: Song; at: Point; onClose: () =>
             key={label}
             type="button"
             role="menuitem"
+            tabIndex={-1}
             onClick={() => {
               action();
               if (!keepOpen) onClose();

@@ -88,7 +88,7 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
           sheet
             ? "h-11 min-w-11 rounded-[var(--r-full)] px-2 transition"
             : "slab-sm h-8 min-w-8 rounded-[var(--r-md)] px-1.5"
-        } ${changed || sleeping ? "tint text-[var(--accent)]" : sheet ? "text-[var(--fg-faint)]" : "text-[var(--fg)]"}`}
+        } ${changed || sleeping ? "tint text-[var(--accent-text)]" : sheet ? "text-[var(--fg-faint)]" : "text-[var(--fg)]"}`}
         style={sheet ? undefined : { background: "var(--surface-2)" }}
       >
         {changed && (
@@ -121,7 +121,7 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
                   onClick={() => writeSpeed(NORMAL_SPEED)}
                   disabled={!changed}
                   aria-label="Reset speed to 1×"
-                  className="rounded-[var(--r-sm)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--surface-2)] disabled:text-[var(--fg-faint)] disabled:hover:bg-transparent"
+                  className="rounded-[var(--r-sm)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--accent-text)] hover:bg-[var(--surface-2)] disabled:text-[var(--fg-faint)] disabled:hover:bg-transparent"
                 >
                   Reset
                 </button>
@@ -187,7 +187,7 @@ export function PlaybackMenu({ variant }: { variant: "bar" | "sheet" }) {
               {status && (
                 <div className="mt-2.5 flex items-center gap-2">
                   <p className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-medium tabular-nums">
-                    <MoonIcon className="size-3.5 shrink-0 text-[var(--accent)]" />
+                    <MoonIcon className="size-3.5 shrink-0 text-[var(--accent-text)]" />
                     <span className="truncate">
                       {status}
                       {timer.kind === "track-end" && <TrackLeft rate={playingAt} />}

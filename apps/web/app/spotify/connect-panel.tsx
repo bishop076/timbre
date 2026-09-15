@@ -195,7 +195,7 @@ function List({
         {items.map((item) => (
           <li key={item} className="flex gap-2">
             {ticked ? (
-              <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent)]" />
+              <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-text)]" />
             ) : (
               <span aria-hidden="true" className="shrink-0 text-[var(--fg-faint)]">
                 —
