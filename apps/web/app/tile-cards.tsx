@@ -32,7 +32,7 @@ export function ReleaseCard({
         <Artwork
           src={coverUrl}
           eager={eager}
-          className="aspect-square w-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
+          className="aspect-square w-full transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.04]"
           surfaceClassName={COVER_EMPTY}
           noteClassName={COVER_NOTE}
           iconClassName="size-8"
@@ -79,7 +79,7 @@ export function ArtistCard({
               <Artwork
                 src={imageUrl}
                 eager={eager}
-                className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
+                className="size-full transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.04]"
                 surfaceClassName={COVER_EMPTY}
                 noteClassName={COVER_NOTE}
                 iconClassName="size-8"
