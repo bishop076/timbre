@@ -1,0 +1,73 @@
+# The only gate in this repo that loads a page.
+#
+# Called by ci.yml (branches and pull requests) and by release.yml (main, before anything is
+# tagged or published), so the build that reaches production is the one that was opened in a
+# browser. Three bugs reached production while every other gate here was green, because none
+# of the others opens a page. See the header of apps/web/e2e/smoke.mjs for what it does and does
+# not assert.
+name: Smoke
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Production build, real browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Write a placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          YTMUSIC_SERVICE_URL=http://127.0.0.1:8787
+          YTMUSIC_SHARED_SECRET=ci-placeholder
+          EOF
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # NODE_ENV is set per step below rather than on the job: exported here it would make pnpm
+      # skip devDependencies, and playwright-core is one of them.
+      - run: pnpm install --frozen-lockfile
+
+      # `.next-prod`, not `.next`, for the same reason a human runs it that way — see
+      # RUNNING.md. It costs nothing here and keeps the two recipes identical.
+      - name: Build it the way production is built
+        env:
+          NODE_ENV: production
+          TIMBRE_DIST_DIR: .next-prod
+        run: pnpm --filter @timbre/web build
+
+      - name: Serve it, and open every page
+        env:
+          NODE_ENV: production
+          TIMBRE_DIST_DIR: .next-prod
+          SMOKE_BASE_URL: http://127.0.0.1:3100
+          # `next start` reads PORT itself. Passing `-p` through pnpm does not work: pnpm
+          # forwards the `--` separator as an argument, and `next start -- -p 3100` reads the
+          # `--` as the project directory and stops.
+          PORT: "3100"
+        run: |
+          pnpm --filter @timbre/web start > "$RUNNER_TEMP/next.log" 2>&1 &
+
+          for _ in $(seq 1 60); do
+            curl -s -o /dev/null "$SMOKE_BASE_URL/" && break
+            sleep 1
+          done
+
+          if ! node apps/web/e2e/smoke.mjs; then
+            echo "::group::next start"
+            cat "$RUNNER_TEMP/next.log"
+            echo "::endgroup::"
+            exit 1
+          fi

@@ -1,18 +1,29 @@
 name: CI
 
+# `main` is deliberately absent. Release.yml already runs typecheck, lint, test, build and the
+# smoke gate on every push to it, so listing `**` here meant every commit on main ran the same
+# four commands twice — 25 of the last 25 runs, about a minute of duplicated work each. What
+# main needs and this file used to add on top of that is the dependency audit, which has moved
+# into release.yml's verify job rather than being dropped.
 on:
   push:
-    branches: ["**"]
+    branches-ignore: [main]
   pull_request:
 
 permissions:
   contents: read
 
+# `head_ref` on a pull request is the source branch; `ref_name` on a push is the same string.
+# Naming them that way puts a branch push and the pull request built from it in one group, so
+# the second to arrive cancels the first instead of both running. `github.ref` did not: it is
+# `refs/heads/x` for one event and `refs/pull/N/merge` for the other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
+  # Named exactly as branch protection expects them: "Web (typecheck, test, build)" and
+  # "Sidecar (lint, tests)". Renaming either breaks every future pull request.
   web:
     name: Web (typecheck, test, build)
     runs-on: ubuntu-latest
@@ -78,3 +89,6 @@ jobs:
           uv export --frozen --extra dev --no-emit-project \
             --format requirements-txt -o "$RUNNER_TEMP/audit.txt"
           uv run pip-audit --requirement "$RUNNER_TEMP/audit.txt" --progress-spinner off
+
+  smoke:
+    uses: ./.github/workflows/smoke.yml

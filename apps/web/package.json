@@ -7,7 +7,7 @@
     "build": "dotenv -e ../../.env -- next build",
     "start": "dotenv -e ../../.env -- next start",
     "lint": "eslint",
-    "test": "node --import ./test-hooks.mjs --test \"app/**/*.test.ts\" \"lib/**/*.test.ts\"",
+    "test": "node --import ./test-hooks.mjs --test \"app/**/*.test.{ts,tsx}\" \"lib/**/*.test.{ts,tsx}\"",
     "typecheck": "next typegen && tsc --noEmit && tsc -p sw",
     "typecheck:fast": "next typegen && tsgo --noEmit && tsgo -p sw"
   },
