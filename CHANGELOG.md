@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.22.0 — 15 September 2026
+
+### Added
+
+- **brand** — draw the README banner as the shore at dusk
+
+### Fixed
+
+- **security** — stop the pre-paint script writing arbitrary CSS from storage
+
 ## 0.21.1 — 15 September 2026
 
 ### Fixed
