@@ -195,10 +195,10 @@ export async function setLocalImage(kind: ImageKind, file: File): Promise<void> 
 
   // IndexedDB first, because it holds the picture and the thumbnail is only a painting of it.
   // The other way round, a failed put ran `dropThumb`, which removed the thumbnail belonging
-  // to the picture the reader still had and had not replaced. Until the next full page load
-  // regenerated it `hasLocalImage()` was false, so "Remove picture" disappeared — and
-  // `hasLocalProfile()` under-reported, which is the flag deciding whether an imported profile
-  // overwrites the local one *without asking*. A failed save now changes nothing at all.
+  // to the picture the reader still had and had not replaced, so "Remove picture" disappeared
+  // until the next full page load regenerated it. A failed save now changes nothing at all.
+  // Nothing asks the thumbnail whether a picture exists any more either — `hasLocalProfile()`
+  // asks IndexedDB, because a thumbnail can be refused while the picture beside it is safe.
   try {
     await run("readwrite", (store) => store.put(blob, kind));
   } catch (cause) {
@@ -219,10 +219,6 @@ export async function readLocalImage(kind: ImageKind): Promise<Blob | null> {
   } catch {
     return null;
   }
-}
-
-export function hasLocalImage(kind: ImageKind): boolean {
-  return readThumb(kind) !== null;
 }
 
 export function clearLocalImage(kind: ImageKind): void {

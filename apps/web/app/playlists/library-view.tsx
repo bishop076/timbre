@@ -113,7 +113,7 @@ export function LibraryView() {
       .join(", ");
     const incoming = readProfileExport(data.profile);
 
-    if (incoming && !hasLocalProfile()) {
+    if (incoming && !(await hasLocalProfile())) {
       await applyProfile(incoming);
       setNotice(
         added > 0 || likes > 0 || played > 0
