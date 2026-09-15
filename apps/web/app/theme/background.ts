@@ -84,9 +84,21 @@ function publish(blob: Blob | null): void {
   emit();
 }
 
-/** Points the background layer at whatever is current. Called on every change, and on boot. */
+/**
+ * Points the background layer at whatever is current. Called on every change, and on boot.
+ *
+ * `getBackground()`, not the bare `snapshot`. On boot this runs from `theme-store.apply()`,
+ * which is the first thing that happens after hydration — and at that moment nothing has read
+ * storage yet, so `snapshot` is still null. Painting null does not mean "leave it alone": it
+ * removes --app-bg-image and the data-bg-image flag that the pre-paint script in layout.tsx had
+ * already put on <html>. The reader's picture was therefore drawn before the first frame and
+ * wiped a few milliseconds later, on every single load, and only came back if you happened to
+ * open Appearance — the one place that calls `getBackground()`. Reading through the getter
+ * seeds the snapshot from the stored thumbnail first and starts the full picture loading, so
+ * the boot paint is the same picture the boot script drew.
+ */
 export function paint(): void {
-  const url = snapshot;
+  const url = getBackground();
   setVars({ "--app-bg-image": url ? `url(${JSON.stringify(url)})` : null });
   setFlag("bgImage", url ? "true" : null);
 }
