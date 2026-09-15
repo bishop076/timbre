@@ -10,7 +10,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 // The banner violet, and --accent in globals.css.
-const ACCENT = "#5b3fd6";
+const ACCENT = "#ff6fa8";
 
 const DESCRIPTION = "Search YouTube Music, SoundCloud and more from one place.";
 

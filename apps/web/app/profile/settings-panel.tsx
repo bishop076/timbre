@@ -145,7 +145,7 @@ function Shortcuts() {
 /**
  * The level tones are the two new tokens, not Tailwind’s palette.
  *
- * `warn` was `text-amber-500` and `error` was `text-red-400`, both measured against the
+ * `warn` was `text-[var(--warn)]` and `error` was `text-[var(--danger)]`, both measured against the
  * white the list sits on in the blush theme: 1.82:1 and 2.46:1. A warning nobody can read is
  * worse than no warning, because the panel still looks like it is doing its job. --warn and
  * --danger are defined per theme and come out at 6.06:1 and 5.56:1 light, 12.17:1 and 8.83:1

@@ -21,7 +21,7 @@ export function LikeButton({ song, className = "size-8" }: { song: Song; classNa
       title={error ?? (liked ? "Remove from Liked songs" : "Save to Liked songs")}
       className={`press flex shrink-0 items-center justify-center rounded-[var(--r-full)] hover:bg-[var(--surface-1)] ${className} ${
         error
-          ? "text-amber-500"
+          ? "text-[var(--warn)]"
           : liked
             ? "tint text-[var(--accent)]"
             : "text-[var(--fg-dim)] hover:text-[var(--fg)]"
