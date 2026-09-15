@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { moveBetweenItems } from "../a11y/arrow-nav";
 import { SearchField } from "../search-field";
 import type { Song, SongsResponse } from "../types";
 import { AddToQueue } from "./add-to-queue";
@@ -59,7 +60,7 @@ export function QueueSearch({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div className="shrink-0 px-3 pb-1 pt-3">
+      <div className="shrink-0 px-2.5 pb-1 pt-2.5">
         <SearchField
           value={query}
           onChange={setQuery}
@@ -73,7 +74,7 @@ export function QueueSearch({ children }: { children: ReactNode }) {
       </div>
 
       {trimmed ? (
-        <div className="scroller-quiet min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <div className="scroller-quiet min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
           {failed ? (
             <p className="px-2 py-4 text-xs leading-relaxed text-[var(--fg-faint)]">
               That search didn&apos;t come back. The connection dropped, or the services are
@@ -87,7 +88,12 @@ export function QueueSearch({ children }: { children: ReactNode }) {
             results && (
               <ul className="flex flex-col gap-0.5">
                 {results.map((song) => (
-                  <li key={song.id}>
+                  <li
+                    key={song.id}
+                    onKeyDown={(event) =>
+                      moveBetweenItems(event, event.currentTarget.parentElement, "vertical")
+                    }
+                  >
                     <QueueRow
                       song={song}
                       onPlay={() => enqueue([song])}

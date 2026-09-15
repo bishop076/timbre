@@ -23,9 +23,9 @@ export function ArtistCard({ name }: { name: string | null }) {
   return (
     <Link
       href={`/artist/${toArtistSlug(artist.name)}`}
-      className="slab-sm press block overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] transition hover:bg-[var(--surface-3)]"
+      className="slab-sm press-soft press group/artist block overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)] transition-colors hover:bg-[var(--surface-3)]"
     >
-      <div className="relative h-28">
+      <div className="relative h-24">
         {artist.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -37,22 +37,24 @@ export function ArtistCard({ name }: { name: string | null }) {
         ) : (
           <div className="size-full bg-[var(--surface-3)]" />
         )}
-        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 pb-2 pt-6 text-[11px] font-bold uppercase tracking-wider text-white">
+        <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-1.5 pt-6 text-[11px] font-bold uppercase tracking-wider text-white">
           About the artist
         </span>
       </div>
 
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <div className="flex items-center gap-2 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold">{artist.name}</p>
+          <p className="truncate text-[length:var(--text-meta)] font-bold tracking-[var(--track-body)]">
+            {artist.name}
+          </p>
           {artist.followers !== null && (
             <p className="text-[11px] text-[var(--fg-dim)]">
               {artist.followers.toLocaleString()} followers on Deezer
             </p>
           )}
         </div>
-        <span className="slab-sm shrink-0 rounded-[var(--r-full)] bg-[var(--surface-1)] px-2 py-1 text-[11px] font-bold text-[var(--fg-dim)]">
-          <ChevronIcon className="size-3 -rotate-90" />
+        <span className="slab-sm flex size-6 shrink-0 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-1)] text-[var(--fg-dim)] transition-colors group-hover/artist:text-[var(--fg)]">
+          <ChevronIcon className="size-3.5 -rotate-90" />
         </span>
       </div>
     </Link>
