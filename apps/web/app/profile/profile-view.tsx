@@ -104,7 +104,11 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
   return (
     <div className="@container w-full pb-16 sm:pb-20">
       <div
-        className="group/banner relative isolate flex min-h-[14rem] w-full items-end transition-[background-image] duration-300 sm:min-h-[19rem] @lg:min-h-[21rem]"
+        // The `min(…, 40dvh)` is slack control, not a clamp: a min-height can only ever add
+        // space above what the avatar and name already need, and on a short window every pixel
+        // of that slack is a pixel the playlists below do not get. On anything taller than
+        // about 840px the first term wins and the banner is the size it always was.
+        className="group/banner relative isolate flex min-h-[min(14rem,40dvh)] w-full items-end transition-[background-image] duration-300 sm:min-h-[min(19rem,40dvh)] @lg:min-h-[min(21rem,40dvh)]"
         style={
           local.banner
             ? undefined

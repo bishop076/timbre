@@ -29,7 +29,7 @@ export default function SpotifyCallback() {
   }, []);
 
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-md flex-col justify-center gap-3 px-6 text-center">
+    <main className="mx-auto flex min-h-[60dvh] max-w-md flex-col justify-center gap-3 px-6 text-center">
       <h1 className="text-lg font-semibold text-[var(--fg)]">
         {!outcome
           ? "Connecting to Spotify…"
