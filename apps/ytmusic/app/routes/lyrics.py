@@ -84,9 +84,11 @@ def _match_key(text: str) -> str:
 
 def _fetch_lyrics(browse_id: str) -> object:
     with _mobile_lock:
-        client = get_client("lyrics")
+        # `get_client` builds the YTMusic object on first use, and building one reaches
+        # YouTube for a visitor id. Sitting outside the try, that reach was the one call in
+        # any route that escaped as a bare 500 with a traceback instead of a typed 502.
         try:
-            found = client.get_lyrics(browse_id, timestamps=True)
+            found = get_client("lyrics").get_lyrics(browse_id, timestamps=True)
         except Exception as error:  # noqa: BLE001
             logger.info("timed lyrics failed, trying the plain page: %s", error)
             found = None
@@ -94,7 +96,7 @@ def _fetch_lyrics(browse_id: str) -> object:
             return found
 
         try:
-            return client.get_lyrics(browse_id)
+            return get_client("lyrics").get_lyrics(browse_id)
         except Exception as error:
             raise upstream_error("lyrics", error) from error
 
