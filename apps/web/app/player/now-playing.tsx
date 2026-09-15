@@ -298,26 +298,10 @@ export function NowPlayingPanel() {
   // opening bracket, and two lines costs ~22px against knowing what is playing.
   const heading = (variant: "docked" | "theater") => (
     <div
-      // pr-11 on the docked header: the close control is absolutely positioned in that corner,
-      // and without the reserve a long title runs straight under it.
       className={`relative shrink-0 border-b-[length:var(--edge)] border-[var(--ink)] px-3.5 pb-2.5 ${
-        variant === "docked" ? "pr-11 pt-3" : "pt-3.5"
+        variant === "docked" ? "pt-3" : "pt-3.5"
       }`}
     >
-      {/* The panel's own way out. Dragging the edge away works and is the nicer gesture, but a
-          gesture is not discoverable and cannot be reached from a keyboard without knowing the
-          handle is there. The player bar's button only ever opens now, so this is the close. */}
-      {variant === "docked" ? (
-        <button
-          type="button"
-          onClick={togglePanel}
-          aria-label="Hide now playing"
-          title="Hide now playing"
-          className="press absolute right-2 top-2 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
-        >
-          <ChevronIcon className="size-4 -rotate-90" />
-        </button>
-      ) : null}
       <p
         className={`line-clamp-2 font-bold tracking-[var(--track-title)] ${
           variant === "docked"
@@ -337,6 +321,33 @@ export function NowPlayingPanel() {
       ) : null}
     </div>
   );
+
+  // Collapsed. Not gone, and not a compact panel either: a rail the width of a scrollbar with one
+  // arrow on it. The drag is what puts it here — shrink the panel to its limit and it becomes
+  // this — and the arrow is what brings it back, so neither direction needs a button in the
+  // player bar. `xl:` only, because below that the panel is already a floating card rather than a
+  // column, and there is no column for a rail to sit in.
+  if (current && !panelOpen && !theater) {
+    return (
+      <aside
+        id={NOW_PLAYING_ID}
+        aria-label="Now playing"
+        className="hidden shrink-0 py-2 pr-2 xl:block"
+      >
+        <button
+          type="button"
+          onClick={togglePanel}
+          aria-label="Show now playing"
+          aria-expanded={false}
+          aria-controls={NOW_PLAYING_ID}
+          title="Show now playing"
+          className="group/rail slab-sm flex h-full w-3 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-1)] text-[var(--fg-faint)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+        >
+          <ChevronIcon className="size-3 rotate-90" />
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside
