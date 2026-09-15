@@ -10,7 +10,16 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 const DESCRIPTION = "Search YouTube Music, SoundCloud and more from one place.";
-const SHARED = { title: "All your music, one search", description: DESCRIPTION };
+
+// The card a pasted link unfurls into needs to say which site it is. Cut to "All your music, one
+// search" the title read as a slogan from nowhere — the name only appeared in the artwork, which
+// a reader skims past and a screen reader never sees. Convention for a link preview is name first,
+// then what it does, which is what this is.
+const SHARED = {
+  title: "Timbre — all your music, one search",
+  description: DESCRIPTION,
+  siteName: "Timbre",
+};
 
 export const metadata: Metadata = {
   title: "Timbre",
