@@ -7,6 +7,7 @@ import {
   accentForeground,
   artworkSeed,
   BANNER,
+  BLUSH,
   clampBlur,
   clampDim,
   clampScale,
@@ -34,27 +35,50 @@ import {
 
 const theme = (patch: Partial<Theme> = {}): Theme => withMirror({ ...DEFAULT_THEME, ...patch });
 
-test("nobody choosing anything means the banner violet, on dark, led by the cover", () => {
-  assert.equal(DEFAULT_ACCENT, "#5b3fd6");
-  assert.equal(DEFAULT_ACCENT, BANNER.violet);
-  assert.equal(DEFAULT_THEME.accent, "#5b3fd6");
+test("nobody choosing anything means blush pink, on dark, and the app keeps its own colour", () => {
+  assert.equal(DEFAULT_ACCENT, "#ff6fa8");
+  assert.equal(DEFAULT_ACCENT, BLUSH.hot);
+  assert.equal(DEFAULT_THEME.accent, "#ff6fa8");
   assert.equal(DEFAULT_THEME.ground, "dark");
-  assert.equal(DEFAULT_THEME.accentSource, "artwork");
+  assert.equal(
+    DEFAULT_THEME.accentSource,
+    "fixed",
+    "the brand colour shows until someone opts into artwork tinting",
+  );
   assert.equal(DEFAULT_THEME.contrast, "normal");
   assert.equal(DEFAULT_THEME.textScale, 1);
-  assert.equal(parseTheme(null).accent, "#5b3fd6");
-  assert.equal(parseTheme(undefined).accent, "#5b3fd6");
-  assert.equal(parseTheme("nonsense").accent, "#5b3fd6");
+  assert.equal(parseTheme(null).accent, "#ff6fa8");
+  assert.equal(parseTheme(undefined).accent, "#ff6fa8");
+  assert.equal(parseTheme("nonsense").accent, "#ff6fa8");
   assert.equal(parseTheme(42).ground, "dark");
 });
 
-test("the default seed lands on the banner's two violets, one per ground", () => {
-  // #5b3fd6 on light and #8f74ff on dark are what the banner and globals.css already carry;
-  // deriving them from one seed is the whole point, so this is the check that it does.
-  assert.equal(accentFor(DEFAULT_ACCENT, "light", "normal"), "#5b3fd6");
+test("the banner's colours are still reachable, they are just not the default", () => {
+  // The mark is a dusk scene and reads violet; the interface it introduces is blush. Both sets
+  // live here, and the banner's are offered as presets — this pins that they were kept.
+  assert.equal(BANNER.violet, "#5b3fd6");
+  assert.ok(
+    PRESETS.some((preset) => preset.hex === BANNER.violet),
+    "the banner violet is still one tap away",
+  );
+});
+
+test("the seed is darkened on the light ground, because hot pink cannot carry text", () => {
+  // #ff6fa8 against the blush page is 2.2:1 — fine as a fill with black on it, nowhere near
+  // readable as text. accentFor walks it down OKLCH lightness until it clears AA, which is why
+  // the light ground gets a deeper rose than the colour that was chosen.
+  const light = accentFor(DEFAULT_ACCENT, "light", "normal");
+  assert.notEqual(light, DEFAULT_ACCENT, "an uncorrected hot pink would fail on the page");
+  assert.ok(
+    contrastRatio(light, GROUND.light) >= 4.5,
+    `${light} on ${GROUND.light} is ${contrastRatio(light, GROUND.light).toFixed(2)}`,
+  );
+  assert.ok(Math.abs(hslHue(light) - hslHue(DEFAULT_ACCENT)) <= 8, "the hue is held while it darkens");
+
+  // The dark ground needs no such rescue: the seed already clears it.
   const dark = accentFor(DEFAULT_ACCENT, "dark", "normal");
-  assert.ok(Math.abs(hslHue(dark) - hslHue("#8f74ff")) <= 6, `${dark} is not the banner lilac`);
   assert.ok(contrastRatio(dark, GROUND.dark) >= 4.5);
+  assert.ok(Math.abs(hslHue(dark) - hslHue(DEFAULT_ACCENT)) <= 8);
 });
 
 test("every offered colour, on every ground, at every contrast, is readable", () => {
@@ -134,7 +158,9 @@ test("storage is not trusted: everything out of range is pulled back", () => {
   });
 
   assert.equal(junk.ground, "dark");
-  assert.equal(junk.accentSource, "artwork");
+  // The default, not a hardcoded copy of it — this test is about junk falling back, not about
+  // which source is currently default.
+  assert.equal(junk.accentSource, DEFAULT_THEME.accentSource);
   assert.equal(junk.accent, DEFAULT_ACCENT);
   assert.equal(junk.contrast, "normal");
   assert.equal(junk.tintSurfaces, true);
