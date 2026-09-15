@@ -20,6 +20,7 @@ import { usePlayerControls, usePlayerProgress } from "../player/player-context";
 import { Volume } from "../player/volume";
 import type { LeftYouTube } from "../player/youtube-refusal";
 import { Scrub } from "../player/wavy-progress";
+import { PlaybackMenu } from "../player/playback-menu";
 import { LikeButton } from "../playlists/like-button";
 import { sourceStyle } from "../sources";
 import { SourceLink } from "./source-link";
@@ -303,6 +304,12 @@ export function PlayerBar() {
               panel. */}
           <Elapsed />
           <Volume />
+          {/* Beside the volume, which is where it was and where it belongs — speed is a playback
+              control, and this is the row of playback controls. It came out of here once to
+              answer "too many buttons", which was the wrong thing to remove: what made the corner
+              crowded was the theater toggle and a panel button that flipped between two meanings,
+              both of which are gone. */}
+          <PlaybackMenu variant="bar" />
           {panelButton}
         </div>
       </footer>
