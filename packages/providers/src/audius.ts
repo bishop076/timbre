@@ -83,6 +83,12 @@ const request = createRequester({ id: "audius", label: "Audius", init: cachePoli
 
 function hostFault(error: unknown): "none" | "fast" | "slow" {
   if (!(error instanceof ProviderError)) return "none";
+  // A refused slot is Timbre's own bucket for Audius, which `takeSlot` keys on the provider and
+  // not on the host: no request left the process, so it is not evidence about this host, and the
+  // next host would be turned away by the very same bucket. Counted as a fault it walked the
+  // whole pool and cooled every host for a minute — which erased the pool's memory of the one
+  // host that really was broken, so the search after a burst went straight back to it.
+  if (error.kind === "rate_limited") return "none";
   if (error.status !== undefined && error.status < 500) return "none";
   const cause = error.cause;
   return cause instanceof DOMException && cause.name === "TimeoutError" ? "slow" : "fast";

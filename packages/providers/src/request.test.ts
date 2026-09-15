@@ -229,17 +229,29 @@ test("the wait for a slot counts against the deadline, and is blamed on the queu
     },
   ));
 
-test("a caller that aborts while waiting for a slot leaves at once, without a request", () =>
-  withFetch(
+// Real time is what made this flaky, the same way it did in `limiter.test.ts`. The drained
+// bucket makes the limiter sleep a real 125ms, and this test used to sleep a real 5ms of its
+// own before aborting — so any stall longer than the limiter's wait (a loaded machine running
+// the suites in parallel, a GC pause) let the slot come round first: the request went out,
+// `waiting` resolved, and both assertions below failed. Mocking `setTimeout` takes elapsed time
+// out of it, so the wait cannot end unless this test ends it, and the abort always wins.
+test("a caller that aborts while waiting for a slot leaves at once, without a request", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await withFetch(
     async () => json({}),
     async (calls) => {
       const limiter = new RateLimiter(new MemoryBucketStore(), () => 0);
       await drained(limiter);
       const controller = new AbortController();
       const waiting = requester()({ limiter, signal: controller.signal }, CHART);
-      await sleep(5);
+
+      // `acquire` serialises through several awaits before it reaches its wait; let those
+      // microtasks settle. With the timer mocked there is nothing this can drain too far.
+      for (let turn = 0; turn < 4; turn++) await new Promise((resolve) => setImmediate(resolve));
       controller.abort();
+
       await assert.rejects(waiting, isAbortError);
       assert.equal(calls.length, DEFAULT_POLICIES.deezer.capacity);
     },
-  ));
+  );
+});
