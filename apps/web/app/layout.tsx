@@ -9,6 +9,9 @@ import { AppShell } from "./shell/app-shell";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
+// The banner violet, and --accent in globals.css.
+const ACCENT = "#5b3fd6";
+
 const DESCRIPTION = "Search YouTube Music, SoundCloud and more from one place.";
 
 // The card a pasted link unfurls into needs to say which site it is. Cut to "All your music, one
@@ -37,9 +40,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  // Both entries are the brand violet, not one per scheme. This is what a link card colours its
+  // strip with, and every unfurler I can see ignores the media attribute and takes the first tag —
+  // so a light-scheme near-white here means a near-white strip on half of them.
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0f0f14" },
-    { media: "(prefers-color-scheme: light)", color: "#eceaf4" },
+    { media: "(prefers-color-scheme: dark)", color: ACCENT },
+    { media: "(prefers-color-scheme: light)", color: ACCENT },
   ],
   viewportFit: "cover",
   width: "device-width",
