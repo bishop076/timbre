@@ -37,22 +37,49 @@ export interface SpotifyTokens {
   expiresAt: number;
 }
 
+/**
+ * What the token endpoint said, as a code rather than as prose.
+ *
+ * `error_description` is a sentence Spotify writes and Timbre used to render verbatim, which is
+ * the same hole `completeConnect` already closes for the `error` parameter on the redirect: the
+ * screen a reader trusts should never show text Timbre did not author. `code` is an OAuth 2
+ * identifier from a small closed set, so it can be mapped to a fixed sentence instead.
+ *
+ * `network` is reserved for a request that never got an answer at all — the caller has to tell
+ * that apart from a refusal, because only one of the two means a stored token is dead.
+ */
+export class SpotifyAuthError extends Error {
+  // Written out rather than declared as a constructor parameter property: Node runs these files
+  // by stripping types, and a parameter property is syntax it would have to emit code for.
+  readonly code: string;
+
+  constructor(code: string) {
+    super(`Spotify token endpoint: ${code}`);
+    this.name = "SpotifyAuthError";
+    this.code = code;
+  }
+}
+
 async function post(body: Record<string, string>): Promise<SpotifyTokens> {
-  const response = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body),
+    });
+  } catch {
+    throw new SpotifyAuthError("network");
+  }
 
   const data = (await response.json().catch(() => ({}))) as {
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
     error?: string;
-    error_description?: string;
   };
   if (!response.ok || !data.access_token) {
-    throw new Error(data.error_description || data.error || `Spotify answered ${response.status}`);
+    throw new SpotifyAuthError(data.error || `http_${response.status}`);
   }
 
   return {

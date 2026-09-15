@@ -2,6 +2,7 @@
 
 import type { Song } from "../types";
 import { accessToken } from "./connection.ts";
+import { refusalFor, refusalLine } from "./failures.ts";
 
 interface SpotifyTrack {
   id?: string;
@@ -11,13 +12,9 @@ interface SpotifyTrack {
   external_urls?: { spotify?: string };
   artists?: { name?: string }[];
   album?: { name?: string; images?: { url?: string }[] };
+  /** Only present when the request named a market; false means "in the catalogue, not for you". */
+  is_playable?: boolean;
 }
-
-const REFUSALS: Record<number, string> = {
-  401: "Spotify signed this browser out. Connect again.",
-  403: "This Spotify app has not granted your account access. Development-mode apps allow five users.",
-  429: "Spotify is rate-limiting this app. Try again shortly.",
-};
 
 function toSong(track: SpotifyTrack): Song | null {
   if (!track.id || !track.name) return null;
@@ -58,7 +55,16 @@ export async function searchSpotify(query: string, signal?: AbortSignal): Promis
   const token = await accessToken();
   if (!token) return { kind: "off" };
 
-  const params = new URLSearchParams({ q: query, type: "track", limit: "10" });
+  // `market=from_token` is the difference between a result list and an honest one: without it
+  // Spotify returns tracks it has no licence to play to this account, which then fail at the
+  // player with nothing to say for themselves. With it, a region-restricted track is simply not
+  // offered, and `is_playable` marks anything left that the market still will not serve.
+  const params = new URLSearchParams({
+    q: query,
+    type: "track",
+    limit: "10",
+    market: "from_token",
+  });
   let response: Response;
   try {
     response = await fetch(`https://api.spotify.com/v1/search?${params}`, {
@@ -67,15 +73,14 @@ export async function searchSpotify(query: string, signal?: AbortSignal): Promis
     });
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
-    return { kind: "error", message: "Could not reach Spotify." };
+    return { kind: "error", message: refusalLine("unreachable") };
   }
 
-  if (!response.ok) {
-    const message = REFUSALS[response.status] ?? `Spotify answered ${response.status}.`;
-    return { kind: "error", message };
-  }
+  if (!response.ok) return { kind: "error", message: refusalLine(refusalFor(response.status, "search")) };
 
   const body = (await response.json()) as { tracks?: { items?: SpotifyTrack[] } };
-  const songs = (body.tracks?.items ?? []).flatMap((track) => toSong(track) ?? []);
+  const songs = (body.tracks?.items ?? [])
+    .filter((track) => track.is_playable !== false)
+    .flatMap((track) => toSong(track) ?? []);
   return { kind: "ok", songs, from: "account" };
 }
