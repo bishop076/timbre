@@ -67,3 +67,24 @@ for (const [name, arrange] of failures) {
     assert.equal(await deezer("/album/1"), null);
   });
 }
+
+// Nothing in this suite read the request, so the one header that keeps Deezer answering in
+// English could have been deleted without a single test noticing. It is the whole of the fix
+// for the deployment that rendered "Fresh in ダンス" and billed Tame Impala as テーム・インパラ,
+// and the merge keys on the artist name, so losing it costs more than cosmetics.
+test("every read pins the language, whatever the exit IP geolocates to", async () => {
+  const seen: (Headers | undefined)[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push(new Headers(init?.headers));
+    return new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  await deezerOrFail("/chart/0?limit=2");
+  await deezer("/search/playlist?q=sleep&limit=10");
+
+  assert.equal(seen.length, 2);
+  for (const headers of seen) assert.equal(headers?.get("accept-language"), "en-US,en;q=0.9");
+});
