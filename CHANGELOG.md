@@ -10,6 +10,13 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.21.1 — 15 September 2026
+
+### Fixed
+
+- **meta** — a link card's strip is the brand violet, not the page background
+- **meta** — the link card is the sunset banner, and every face loads
+
 ## 0.21.0 — 15 September 2026
 
 ### Added
