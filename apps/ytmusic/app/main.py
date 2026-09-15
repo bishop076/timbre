@@ -5,12 +5,16 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .client import UpstreamBudget
 from .routes import lyrics, playlist, radio, search
 from .security import RequireSharedSecret
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+# The last one added is the outermost, so the secret is still checked before anything else
+# runs and a 401 never opens a budget it will not spend.
+app.add_middleware(UpstreamBudget)
 app.add_middleware(RequireSharedSecret)
 
 
