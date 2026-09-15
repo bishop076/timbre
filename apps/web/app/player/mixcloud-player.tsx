@@ -75,6 +75,9 @@ export function MixcloudPlayer({
     );
 
     const host = Object.assign(document.createElement("iframe"), {
+      // A frame with no title is announced as "frame" and nothing else. This one is a
+      // whole embedded player, so it is a real stop on the way through the page.
+      title: "Mixcloud player",
       width: "100%",
       height: "60",
       frameBorder: "0",

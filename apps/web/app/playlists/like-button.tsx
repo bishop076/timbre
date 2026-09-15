@@ -23,7 +23,7 @@ export function LikeButton({ song, className = "size-8" }: { song: Song; classNa
         error
           ? "text-[var(--warn)]"
           : liked
-            ? "tint text-[var(--accent)]"
+            ? "tint text-[var(--accent-text)]"
             : "text-[var(--fg-dim)] hover:text-[var(--fg)]"
       }`}
     >
