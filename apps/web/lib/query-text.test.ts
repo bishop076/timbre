@@ -32,3 +32,37 @@ test("a flag is only on when it says so", () => {
   for (const value of ["0", "false", undefined]) assert.equal(queryFlag.parse(value), false);
   assert.equal(queryFlag.safeParse("yes").success, false);
 });
+
+test("a query of nothing but invisible characters is blank, not a search", () => {
+  // Each of these is what a paste leaves behind: a soft hyphen off a hyphenated web page, a
+  // zero-width space off a lyrics site, a left-to-right mark off an Arabic or Hebrew title.
+  // None is whitespace, so none of them is trimmed, and `/api/search?q=%C2%AD` really did
+  // reach all six providers.
+  for (const q of ["­", "​", "‎", "⁠", "​ ​"]) {
+    assert.equal(required.safeParse({ q }).success, false, JSON.stringify(q));
+  }
+});
+
+test("invisible characters inside a query are dropped rather than searched for", () => {
+  assert.equal(required.parse({ q: "daft​punk" }).q, "daftpunk");
+  assert.equal(required.parse({ q: "sigur rós" }).q, "sigur rós");
+});
+
+test("interior whitespace collapses, so one question is one cache entry", () => {
+  // `/api/search` keys its response cache on this exact string.
+  assert.equal(required.parse({ q: "daft   punk" }).q, "daft punk");
+  assert.equal(required.parse({ q: "daft\tpunk\npunk" }).q, "daft punk punk");
+});
+
+test("a name is the same name however it was composed", () => {
+  // "Björk" as Deezer sends it (one code point) and as macOS pastes it (o + combining
+  // diaeresis) reached the providers as two different queries.
+  assert.equal(required.parse({ q: "Björk" }).q, required.parse({ q: "Björk" }).q);
+  // Full-width Latin is what a Japanese IME types without being asked for half-width.
+  assert.equal(required.parse({ q: "Ｄａｆｔ Ｐｕｎｋ" }).q, "Daft Punk");
+});
+
+test("an optional parameter is cleaned the same way", () => {
+  assert.equal(optional.parse({ artist: "​" }).artist, undefined);
+  assert.equal(optional.parse({ artist: "the  beatles " }).artist, "the beatles");
+});

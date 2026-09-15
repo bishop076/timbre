@@ -162,11 +162,35 @@ async function fromGenre(id: string): Promise<Collection | null> {
   };
 }
 
+/**
+ * Which of Deezer's answers a mood actually wants.
+ *
+ * Deezer ranks `/search/playlist` by relevance and this used to throw that ranking away
+ * wholesale, taking whichever result was longest. Length is not relevance, and on live data it
+ * was not even close: `/collection/mood/sleep` served "Berceuses 2.0 Pour Endormir Bébé" — 473
+ * tracks of French lullabies for babies — over the editorial "Sleep Sequence"; `focus` served
+ * "Calm Piano" over "Focus"; `party` served "Afro House" over "Party Hits".
+ *
+ * Length was only ever standing in for "not a stub", so that is all it decides now: take the
+ * first playlist Deezer ranked that is long enough to be a mood, and fall back to its longest
+ * answer only when none of them is.
+ */
+const MOOD_MINIMUM_TRACKS = 15;
+
+export function pickMoodPlaylist<T extends { nb_tracks?: number }>(
+  candidates: readonly T[],
+): T | undefined {
+  return (
+    candidates.find((entry) => (entry.nb_tracks ?? 0) >= MOOD_MINIMUM_TRACKS) ??
+    candidates.toSorted((a, b) => (b.nb_tracks ?? 0) - (a.nb_tracks ?? 0))[0]
+  );
+}
+
 async function fromMood(term: string): Promise<Collection | null> {
   const found = await deezerList<{ id: number; nb_tracks?: number }>(
     `/search/playlist?q=${encodeURIComponent(term)}&limit=10`,
   );
-  const best = found.toSorted((a, b) => (b.nb_tracks ?? 0) - (a.nb_tracks ?? 0))[0];
+  const best = pickMoodPlaylist(found);
   if (!best) return null;
 
   const collection = await fromPlaylist(String(best.id), "mood");
