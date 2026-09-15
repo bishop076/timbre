@@ -93,7 +93,13 @@ test("neither pane may eat the main column", () => {
   // 1536x690 with the icon rail: the panel can have its full range.
   assert.equal(roomFor(1536, RAIL_ICONS, { max: PANEL_MAX, floor: PANEL_MIN }), PANEL_MAX);
   // A shorter window with the rail dragged wide: the panel loses the difference.
-  assert.equal(roomFor(1400, RAIL_MAX, { max: PANEL_MAX, floor: PANEL_MIN }), 1400 - RAIL_MAX - MAIN_MIN);
+  // Whichever binds first — the room left over, or the pane's own ceiling. Writing only the
+  // subtraction here made the test quietly assume the room was always the tighter of the two,
+  // so lowering PANEL_MAX broke a test that was about something else entirely.
+  assert.equal(
+    roomFor(1400, RAIL_MAX, { max: PANEL_MAX, floor: PANEL_MIN }),
+    Math.min(PANEL_MAX, 1400 - RAIL_MAX - MAIN_MIN),
+  );
   // A narrow laptop with a wide panel: the rail is held to what is left.
   assert.equal(roomFor(1280, 480, { max: RAIL_MAX, floor: RAIL_ICONS }), 1280 - 480 - MAIN_MIN);
   // And when there is nothing left, the floor holds rather than going negative.
