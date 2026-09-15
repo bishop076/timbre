@@ -248,6 +248,11 @@ export function receive(model: SyncModel, message: Message, local: Local, now: n
         model: {
           ...model,
           claim: wasOwner ? null : model.claim,
+          // A yield is owed to whoever holds the claim, and to nobody else. Dropping the claim
+          // without dropping the debt left this tab pausing itself the moment its load landed,
+          // to make room for a tab that had closed — an unasked pause with no other tab playing,
+          // and no way to tell it from the bug `unasked-pause.ts` exists to rescue.
+          yieldOnPlay: wasOwner ? false : model.yieldOnPlay,
           remote: null,
           asked: model.asked === message.from ? null : model.asked,
         },
@@ -307,7 +312,15 @@ export function tick(model: SyncModel, now: number): { model: SyncModel; ping: b
   const silent = now - model.heardAt;
   if (silent > STALE_AFTER_MS) {
     return {
-      model: { ...model, claim: other ? null : model.claim, remote: null, asked: null },
+      model: {
+        ...model,
+        claim: other ? null : model.claim,
+        // Same debt as `gone` cancels, cancelled for the same reason: a tab that fell silent
+        // rather than saying goodbye — killed, crashed, asleep — is no more owed the speakers.
+        yieldOnPlay: other ? false : model.yieldOnPlay,
+        remote: null,
+        asked: null,
+      },
       ping: false,
     };
   }

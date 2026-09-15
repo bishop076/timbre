@@ -299,3 +299,24 @@ test("a tab ignores its own messages", () => {
   const model = owner("a", 100);
   assert.equal(receive(model, { type: "claim", from: "a", at: 900 }, PLAYING, 900).model, model);
 });
+
+test("a yield owed to a tab that closes is cancelled, not paid to nobody", () => {
+  const owed = deposedMidLoad();
+  assert.ok(owed.yieldOnPlay, "b claimed while this tab was loading");
+
+  const alone = receive(owed, { type: "gone", from: "b" }, LOADING, 250).model;
+  assert.equal(alone.claim, null);
+
+  const landed = localState(alone, "playing", 300);
+  assert.equal(landed.pause, false, "nothing else is playing, so nothing to make room for");
+  assert.equal(landed.message?.type, "claim");
+});
+
+test("a yield owed to a tab that falls silent is cancelled too", () => {
+  const owed = receive(initialModel("a"), CLAIM_B, LOADING, 1000).model;
+  assert.ok(owed.yieldOnPlay);
+
+  const letGo = tick(owed, 1000 + STALE_AFTER_MS + 1).model;
+  assert.equal(letGo.claim, null);
+  assert.equal(localState(letGo, "playing", 1100).pause, false);
+});
