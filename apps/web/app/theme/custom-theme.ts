@@ -80,13 +80,31 @@ export const BANNER = {
   cream: "#f3efe4",
 } as const;
 
-export const DEFAULT_ACCENT = BANNER.violet;
+/**
+ * The app's own palette is pink, not the banner's violet.
+ *
+ * The banner is a dusk scene and reads violet; the interface it introduces is blush. Keeping the
+ * banner's colours here as BANNER is still right — they are the mark's colours and they are
+ * offered as presets — but the default the app wears is this.
+ */
+export const BLUSH = {
+  hot: "#ff6fa8",
+  light: "#ff8fc0",
+  soft: "#ff8ab8",
+  ink: "#1f1218",
+  page: "#f9eef2",
+  void: "#120810",
+} as const;
+
+export const DEFAULT_ACCENT = BLUSH.hot;
 
 /** The grounds contrast is measured against. Mirrors --bg in globals.css for each theme. */
-export const GROUND = { light: "#eef0f6", dark: "#08080a" } as const;
+export const GROUND = { light: BLUSH.page, dark: BLUSH.void } as const;
 
 /** Offered as one-tap starting points. Any colour at all is reachable past these. */
 export const PRESETS: { name: string; hex: string }[] = [
+  { name: "Blush", hex: BLUSH.hot },
+  { name: "Bubblegum", hex: BLUSH.light },
   { name: "Timbre violet", hex: BANNER.violet },
   { name: "Lilac", hex: BANNER.lilac },
   { name: "Midnight", hex: BANNER.sky },
@@ -110,7 +128,18 @@ export const DEFAULT_BACKGROUND: BackgroundPrefs = { fit: "cover", dim: 0.6, blu
 
 export const DEFAULT_THEME: Theme = {
   ground: "dark",
-  accentSource: "artwork",
+
+  /**
+   * The app wears its own colour until someone says otherwise.
+   *
+   * This was "artwork", which meant the interface repainted itself to whatever cover was playing
+   * and the brand was never actually seen — open the app with an orange album on and the whole
+   * thing is orange. That is a lovely option and a bad default: a product that has no colour of
+   * its own has no identity, and "pink by default" stops being true the moment music starts.
+   * Artwork tinting is one tap away in Appearance, and the ambient glow behind the art still
+   * follows the cover regardless of this setting.
+   */
+  accentSource: "fixed",
   accent: DEFAULT_ACCENT,
   contrast: "normal",
   tintSurfaces: true,
@@ -120,7 +149,7 @@ export const DEFAULT_THEME: Theme = {
 
   // The legacy mirror, kept in the same object so nothing that reads a ThemeState has to know
   // any of the above exists. `legacyMirror` recomputes these on every save.
-  mode: "album",
+  mode: "custom",
   customHue: hslHue(DEFAULT_ACCENT),
   customLight: false,
   customNeutral: false,
