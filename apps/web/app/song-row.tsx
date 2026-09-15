@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { moveBetweenItems } from "./a11y/arrow-nav";
 import { ArtistLink } from "./artist-link";
 import { Artwork } from "./artwork";
 import { sized } from "./artwork-url";
@@ -16,27 +17,27 @@ import type { Song } from "./types";
 const MEDIUM = {
   row: "gap-3 sm:gap-4",
   play: "gap-2.5 py-2 sm:gap-4 sm:py-3",
-  rank: "text-xs",
+  rank: "text-[length:var(--text-meta)]",
   thumb: "size-10 sm:size-12",
   note: "size-5",
   icon: "size-4",
-  title: "text-[15px]",
-  subtitle: "text-sm",
+  title: "text-[length:var(--text-body)]",
+  subtitle: "text-[length:var(--text-meta)]",
 };
 
 const SCALE = {
   sm: {
     row: "gap-2.5 sm:gap-3",
     play: "gap-2.5 py-2 sm:gap-3 sm:py-2.5",
-    rank: "text-[13px] font-bold",
+    rank: "text-[length:var(--text-meta)] font-bold",
     thumb: "size-10 sm:size-11",
     note: "size-4",
     icon: "size-4",
-    title: "text-[14px]",
+    title: "text-[length:var(--text-meta)]",
     subtitle: "text-[12px]",
   },
   md: MEDIUM,
-  lg: { ...MEDIUM, play: "gap-3 py-3 sm:gap-4", thumb: "size-14", icon: "size-5" },
+  lg: { ...MEDIUM, play: "gap-3 py-3 sm:gap-4", thumb: "size-12", icon: "size-5" },
 };
 
 export function SongRow({
@@ -73,20 +74,32 @@ export function SongRow({
       </span>
     );
 
+  // The play target used to be a <button> wrapping the whole line, artist link and all — and an
+  // artist link inside a button is a link no screen reader can reach. ARIA calls a button's
+  // contents presentational: the role="link" is discarded and its text is read out as part of the
+  // button's own name. So the button stops wrapping and starts covering instead. It sits behind
+  // the line at inset-0, the text above it ignores the pointer, and anything that is genuinely
+  // its own control — the artist link, the trailing buttons — opts back in. Same click target,
+  // same picture, one less lie in the tree.
   return (
     <li
       onContextMenu={onContextMenu}
-      className={`group relative isolate flex items-center px-2 ${scale.row} before:absolute before:inset-0 before:-z-10 before:rounded-lg before:transition ${
+      onKeyDown={(event) => moveBetweenItems(event, event.currentTarget.parentElement, "vertical")}
+      className={`group relative isolate flex items-center px-2 ${scale.row} before:absolute before:inset-0 before:-z-10 before:rounded-[var(--r-md)] before:transition ${
         isCurrent ? "before:bg-[var(--accent-wash)]" : "hover:before:bg-[var(--surface-2)]"
       }`}
     >
-      {rankPlays ? null : gutter}
-
       <button
         type="button"
         onClick={onPlay}
-        className={`flex min-w-0 flex-1 items-center text-left focus:outline-none ${scale.play}`}
         aria-label={`Play ${song.title}`}
+        className="absolute inset-0 z-0 rounded-[var(--r-md)]"
+      />
+
+      {rankPlays ? null : gutter}
+
+      <div
+        className={`pointer-events-none relative z-10 flex min-w-0 flex-1 items-center text-left ${scale.play}`}
       >
         {rankPlays ? gutter : null}
 
@@ -94,13 +107,13 @@ export function SongRow({
           <span className={`relative shrink-0 ${scale.thumb}`}>
             <Artwork
               src={sized(song.artworkUrl, 112)}
-              className="size-full rounded-md"
+              className="slab-sm size-full rounded-[var(--r-sm)]"
               iconClassName={scale.note}
               surfaceClassName="bg-[var(--surface-1)]"
               noteClassName="text-[var(--fg-dim)]"
             />
             <span
-              className={`absolute inset-0 flex items-center justify-center rounded-md bg-black/55 transition ${
+              className={`absolute inset-0 flex items-center justify-center rounded-[var(--r-sm)] bg-black/55 transition ${
                 showing
                   ? "opacity-100"
                   : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -113,17 +126,19 @@ export function SongRow({
 
         <span className="min-w-0 flex-1">
           <span
-            className={`block truncate font-medium ${scale.title} ${
-              isCurrent ? "text-[var(--accent)]" : ""
+            className={`block truncate font-medium tracking-[var(--track-body)] ${scale.title} ${
+              isCurrent ? "text-[var(--accent-text)]" : ""
             }`}
           >
             {song.title}
           </span>
           <span className={`block truncate text-[var(--fg-dim)] ${scale.subtitle}`}>{subtitle}</span>
         </span>
-      </button>
+      </div>
 
-      {trailing}
+      {trailing && (
+        <span className={`relative z-10 flex shrink-0 items-center ${scale.row}`}>{trailing}</span>
+      )}
       {menu}
     </li>
   );
@@ -179,7 +194,7 @@ export function SongActions({
   return (
     <>
       <span
-        className={`hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block ${durationClassName}`}
+        className={`hidden w-12 shrink-0 text-right font-mono text-[length:var(--text-meta)] tabular-nums text-[var(--fg-dim)] @md:block ${durationClassName}`}
       >
         {formatDuration(song.durationMs)}
       </span>

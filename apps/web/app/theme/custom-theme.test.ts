@@ -122,22 +122,48 @@ test("the foreground on the accent is derived, never authored", () => {
   }
 });
 
-test("a reader's saved template becomes the same look in the new words", () => {
+test("a saved template keeps its ground, and is reset onto the app's own colour", () => {
+  // Two things are happening here and they are deliberately different.
+  //
+  // Ground, scale, background and font are choices about something the redesign did not
+  // redefine, so a stored template keeps them: "album" was always a dark theme and stays one.
+  //
+  // The accent and where it comes from ARE what the redesign redefined. A version-1 store was
+  // written when the app was violet and drove its colour from the artwork, so leaving those
+  // alone would mean the new default never reached anybody who had opened the app even once —
+  // which is exactly what happened, and looked like the default simply not working.
   const album = parseTheme({ mode: "album", customHue: 258, customLight: false, customNeutral: false });
-  assert.equal(album.ground, "dark");
-  assert.equal(album.accentSource, "artwork");
-  assert.equal(album.mode, "album", "and the mirror still says album");
+  assert.equal(album.ground, "dark", "the ground a template implied is kept");
+  assert.equal(album.accentSource, "fixed", "but it wears the app's colour until asked otherwise");
+  assert.equal(album.accent, DEFAULT_ACCENT);
 
   const pastel = parseTheme({ mode: "pastel", customHue: 258, customLight: false, customNeutral: false });
   assert.equal(pastel.ground, "light");
-  assert.equal(pastel.accentSource, "artwork");
-  assert.equal(pastel.mode, "pastel");
+  assert.equal(pastel.accentSource, "fixed");
 
   const custom = parseTheme({ mode: "custom", customHue: 120, customLight: true, customNeutral: false });
   assert.equal(custom.ground, "light");
   assert.equal(custom.accentSource, "fixed");
-  assert.ok(Math.abs(hslHue(custom.accent) - 120) <= 8, `${custom.accent} lost the chosen hue`);
   assert.equal(custom.mode, "custom");
+});
+
+test("a store already on this version is left exactly as the reader left it", () => {
+  // The migration must be a one-off, not a rule. Once v is current, a chosen colour and a
+  // chosen source survive every read — otherwise nobody could ever pick anything again.
+  const chosen = parseTheme({
+    v: 2,
+    ground: "light",
+    accentSource: "artwork",
+    accent: "#2f6fe0",
+    contrast: "high",
+    textScale: 1.25,
+  });
+  assert.equal(chosen.accentSource, "artwork");
+  assert.equal(chosen.accent, "#2f6fe0");
+  assert.equal(chosen.ground, "light");
+  assert.equal(chosen.contrast, "high");
+  assert.equal(chosen.textScale, 1.25);
+  assert.equal(parseTheme(chosen).accent, "#2f6fe0", "and a round trip does not migrate it again");
 
   const neutral = parseTheme({ mode: "custom", customHue: 200, customLight: false, customNeutral: true });
   assert.ok(isNeutralSeed(neutral.accent), "a neutral theme stays grey");

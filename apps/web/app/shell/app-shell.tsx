@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { ChevronIcon, CloseIcon, SearchIcon } from "../icons";
+import { CloseIcon, SearchIcon } from "../icons";
 import { NowPlayingPanel } from "../player/now-playing";
 import { usePlayerControls } from "../player/player-context";
 import { RemoteBar } from "../player/remote-bar";
@@ -15,30 +15,12 @@ import { setSearchQuery, useSearchQuery } from "../search-store";
 import { SearchSuggestions } from "../search-suggestions";
 import { searchPath } from "../search-url";
 import { PlayerBar } from "./player-bar";
-import { BottomNav, ProfileButton, Sidebar, toggleRail, useRailCollapsed } from "./sidebar";
+import { BottomNav, ProfileButton, Sidebar } from "./sidebar";
 
 let movedOnce = false;
 
 // icons.tsx is not ours to grow, and nothing in it means "the rail". A panel with its first
 // column ruled off is the glyph both Spotify and the Music app use for this.
-function RailIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <rect x="3" y="4.5" width="18" height="15" rx="3" />
-      <path d="M9.5 4.5v15" />
-    </svg>
-  );
-}
-
 const SUGGESTIONS_ID = "search-suggestions";
 const SEARCH_HINT_ID = "search-hint";
 
@@ -48,13 +30,12 @@ const barButton =
 /** The one bar that outlives the page under it: history, search and your profile, reachable
  * from every route. Search used to live on three of them and vanish on the rest, so getting
  * back to it from an album meant navigating away first. */
-function ShellBar({ canGoBack }: { canGoBack: boolean }) {
+function ShellBar() {
   const router = useRouter();
   const pathname = usePathname();
   const query = useSearchQuery();
   const input = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
-  const collapsed = useRailCollapsed();
 
   useEffect(() => {
     const early = input.current?.value;
@@ -90,45 +71,13 @@ function ShellBar({ canGoBack }: { canGoBack: boolean }) {
 
   const showSuggestions = focused && !query.trim();
 
-  // Three columns, not a flex row. In a row the search box sits wherever the buttons to its left
-  // happen to end, so it drifts left and moves whenever a control appears or disappears. A grid
-  // with equal outer columns puts it on the bar's true centre line and keeps it there — the same
-  // fix the player transport got.
+  // The bar is the search box. History and profile are small and sit at the ends; everything
+  // between them belongs to the field, so it grows with the window instead of being pinned to a
+  // fixed width with dead space either side.
   return (
-    <header className="sticky top-0 z-30 grid h-12 shrink-0 grid-cols-[1fr_minmax(0,48rem)_1fr] items-center gap-2 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--surface-1)_86%,transparent)] px-2.5 backdrop-blur-md sm:px-4">
-      <div className="flex min-w-0 items-center gap-1">
-      <button
-        type="button"
-        onClick={toggleRail}
-        aria-label={collapsed ? "Show the sidebar" : "Collapse the sidebar"}
-        aria-pressed={!collapsed}
-        className={`${barButton} mr-0.5 hidden xl:flex ${collapsed ? "" : "text-[var(--fg)]"}`}
-      >
-        <RailIcon className="size-[18px]" />
-      </button>
-
-      <button
-        type="button"
-        onClick={() => router.back()}
-        disabled={!canGoBack}
-        aria-label="Back"
-        className={`${barButton} hidden sm:flex`}
-      >
-        <ChevronIcon className="size-[18px] rotate-90" />
-      </button>
-      <button
-        type="button"
-        onClick={() => router.forward()}
-        aria-label="Forward"
-        className={`${barButton} mr-1 hidden sm:flex`}
-      >
-        <ChevronIcon className="size-[18px] -rotate-90" />
-      </button>
-
-      </div>
-
+    <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-1.5 border-b border-[var(--line)] bg-[color-mix(in_oklab,var(--surface-1)_86%,transparent)] px-2.5 backdrop-blur-md sm:px-4">
       <div
-        className="relative min-w-0"
+        className="relative min-w-0 flex-1"
         onFocus={() => setFocused(true)}
         // The chips live inside this wrapper now, so arrowing into one is still focus staying
         // put. Only focus leaving the whole box closes it.
@@ -258,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           }`}
         >
           <div className="relative z-10">
-            <ShellBar canGoBack={navigated} />
+            <ShellBar />
             <div key={pathname} className={navigated ? "page-in" : undefined}>
               {children}
             </div>

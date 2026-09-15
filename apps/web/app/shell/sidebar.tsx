@@ -32,7 +32,7 @@ type Filter = (typeof FILTERS)[number];
 // Whether the rail is shrunk to icons is a decision you make once, so it outlives the tab —
 // same `timbre:` prefix and the same JSON store every other preference here uses, which also
 // means the crash screen's export carries it out with the rest.
-const railStore = createJsonStore("timbre:rail-collapsed", false, (stored) => stored === true);
+const railStore = createJsonStore("timbre:rail-collapsed", true, (stored) => stored !== false);
 
 export function useRailCollapsed(): boolean {
   return useLocalStore(railStore);
@@ -77,6 +77,23 @@ const ICONS: RailStyle = {
   row: "justify-center",
   pad: "px-1",
 };
+
+/** A panel with its first column ruled off — the rail, shown opening or closing. */
+function ExpandRailIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M9 4v16" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="m14.5 9.5 2.5 2.5-2.5 2.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function NavLinks({ rail }: { rail?: RailStyle }) {
   const pathname = usePathname();
@@ -123,7 +140,11 @@ export function Sidebar() {
   const collapsed = useRailCollapsed();
   const [filter, setFilter] = useState<Filter>("Queue");
   const [drawer, setDrawer] = useState(false);
-  const style = collapsed ? ICONS : AUTO;
+
+  // Icons by default — the labelled rail spent 16.75rem repeating five words the icons already
+  // say. But it expands, and the control for that lives in the rail rather than in the top bar,
+  // which is the only place it makes sense: it is the thing it acts on.
+  const style = collapsed ? ICONS : LABELLED;
 
   useEffect(() => {
     void loadPlaylists();
@@ -132,9 +153,7 @@ export function Sidebar() {
   return (
     <>
       <aside
-        className={`hidden shrink-0 flex-col p-2 pb-1.5 lg:flex ${
-          collapsed ? "w-24" : "w-24 xl:w-[16.75rem]"
-        }`}
+        className={`hidden shrink-0 flex-col p-2 pb-1.5 lg:flex ${collapsed ? "w-[4.5rem]" : "w-[15rem]"}`}
       >
         {/* One rail, one edge. The brand, the nav and the library used to be three separate
             bordered cards stacked with a gap, which at icon width read as a column of unrelated
@@ -165,6 +184,20 @@ export function Sidebar() {
             onFilter={setFilter}
             onExpand={() => setDrawer(true)}
           />
+
+          <button
+            type="button"
+            onClick={toggleRail}
+            aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+            aria-pressed={!collapsed}
+            title={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
+            className={`press mt-auto flex h-9 shrink-0 items-center gap-3 rounded-[var(--r-md)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)] ${style.row} ${style.pad}`}
+          >
+            <ExpandRailIcon
+              className={`size-[18px] shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`}
+            />
+            <span className={`text-sm font-semibold ${style.label}`}>Collapse</span>
+          </button>
         </div>
       </aside>
 
@@ -214,19 +247,22 @@ function LibraryCard({
         </span>
       </Link>
 
-      {/* Icon width has no room for the filters, and none for a list that scrolls past four
-          rows either, so the icon rail hands the whole card to a drawer instead of shrinking
-          it further. */}
-      <button
-        type="button"
-        onClick={onExpand}
-        aria-haspopup="dialog"
+      {/* Icon width has no room for the filters or a scrolling list, so it goes to the library
+          page. It used to open a drawer over the top layer, which meant clicking your library
+          from a playlist floated a translucent panel across the page you were reading instead of
+          taking you anywhere. A library is a place; navigate to it. */}
+      <Link
+        href="/library"
+        onClick={() => {
+          exitTheater();
+          onNavigate?.();
+        }}
         aria-label="Your library"
         title="Your library"
         className={`press ${style.narrow} shrink-0 items-center justify-center px-2 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
       >
         <LibraryIcon className="size-[18px] shrink-0" />
-      </button>
+      </Link>
 
       <div className={`${style.wide} gap-1.5 px-3 pb-2.5`} role="group" aria-label="Library filter">
         {FILTERS.map((name) => {
