@@ -189,6 +189,15 @@ function PanelEdge() {
         resolve={(raw) => panelPaintWidth(raw, ceiling)}
         onCommit={(next) => {
           if (panelCollapsesAt(next)) {
+            // Undo the imperative paint by hand.
+            //
+            // The handle writes --np-w straight to the DOM during a drag and relies on React
+            // taking ownership back at the next commit. That works when the width is saved,
+            // because the store changes and React renders a different value. A collapse
+            // deliberately does NOT save — so React's own value is unchanged, its diff sees
+            // nothing to do, and the rail-sized width it painted mid-drag stays on the element.
+            // Reopening then gave you a 28px panel with the text squeezed out of it.
+            document.getElementById(NOW_PLAYING_ID)?.style.setProperty("--np-w", `${width}px`);
             if (panelOpen) togglePanel();
             return;
           }
