@@ -1,5 +1,4 @@
 import os
-import warnings
 
 MIN_SECRET_LENGTH = 32
 
@@ -16,10 +15,16 @@ def require_secrets(name: str) -> tuple[str, ...]:
     if not values:
         raise ConfigError(f"{name} is set but contains no usable secret.")
     if any(len(value) < MIN_SECRET_LENGTH for value in values):
-        warnings.warn(
+        # A warning is the wrong answer to a guessable credential. There is no rate limit in
+        # front of this service and no alert on a run of 401s, so a short secret is a door
+        # left open quietly rather than a defect anyone would notice in a log. Refusing to
+        # start makes it a deploy that fails loudly instead. Nothing ships a short one: both
+        # Vercel projects hold freshly generated 64-character values, the two placeholders in
+        # CI (`ci-placeholder`, `build-placeholder`) are the web app's and never reach this
+        # module, and DEPLOY.md and RUNNING.md both say `openssl rand -hex 32`.
+        raise ConfigError(
             f"{name} holds a secret shorter than {MIN_SECRET_LENGTH} characters. "
-            "Replace it with one from openssl rand -hex 32.",
-            stacklevel=2,
+            "Replace it with one from openssl rand -hex 32."
         )
     return values
 

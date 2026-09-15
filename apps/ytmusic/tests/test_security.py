@@ -43,22 +43,27 @@ def test_anything_else_is_refused_rather_than_raising(monkeypatch):
         assert not security.matches(presented), presented
 
 
-@pytest.mark.parametrize("value", ["x" * 31, f"{NEW},dummy"])
-def test_a_weak_secret_boots_with_a_warning(monkeypatch, value):
-    with pytest.warns(UserWarning, match="shorter than 32"):
-        load(monkeypatch, value, "app.config")
-
-
 @pytest.mark.parametrize(
     ("value", "message"),
     [
         (None, "refuses to start"),
         (" , , ", "no usable secret"),
+        # A short secret used to warn and carry on. Nothing is watching this log and nothing
+        # rate-limits the door it guards, so it refuses to boot now — including when only one
+        # entry of a rotation pair is short, which is how a rotation goes wrong in practice.
+        ("x" * 31, "shorter than 32"),
+        (f"{NEW},dummy", "shorter than 32"),
+        (f"dummy,{NEW}", "shorter than 32"),
     ],
 )
 def test_an_unusable_secret_refuses_to_boot(monkeypatch, value, message):
     with pytest.raises(Exception, match=message):
         load(monkeypatch, value, "app.config")
+
+
+@pytest.mark.parametrize("value", ["x" * 32, f"{OLD},{NEW}"])
+def test_a_long_enough_secret_boots(monkeypatch, value):
+    assert load(monkeypatch, value, "app.config").SHARED_SECRETS
 
 
 def call(app, headers: dict[str, str], chunks: list[bytes]) -> tuple[int, int]:
