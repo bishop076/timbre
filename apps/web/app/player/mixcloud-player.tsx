@@ -168,7 +168,7 @@ export function MixcloudPlayer({
           alt=""
           aria-hidden
           {...hideWhenBroken}
-          className="min-h-0 w-full flex-1 rounded-[var(--r-sm)] object-cover"
+          className="min-h-0 max-w-full flex-1 self-center rounded-[var(--r-sm)] object-contain"
         />
       ) : (
         <div className="min-h-0 flex-1 rounded-[var(--r-sm)] bg-[var(--surface-3)]" />

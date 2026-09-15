@@ -404,58 +404,52 @@ input[type="search"]::-webkit-search-results-decoration {
   overflow-x: hidden;
 }
 
+/* ---------------------------------------------------------------------------
+   The colour wash behind a page — built the way Spotify's actually is.
+
+   It is not a translucent tint over the page. It is a flat block of the colour
+   with a gradient to the page background laid on top:
+
+     background-color: <the colour>
+     background-image: linear-gradient(rgb(0 0 0 / .6) 0, var(--background-base) 100%)
+
+   So the top is the colour knocked back by black, and the bottom IS the page
+   background, which is why there is never a seam where the wash ends. Compose it
+   the other way — a transparent accent fading out over the page — and the top is
+   washed out and the join is visible, which is what was here before, on top of a
+   radial blob anchored above the viewport and a cover blurred at 120px and
+   scaled 1.4. That was the smear.
+
+   The light grounds lighten instead of darkening, because 60% black over a
+   colour on a blush page is a bruise.
+   --------------------------------------------------------------------------- */
 .ambient::before {
   content: "";
   position: absolute;
-  inset-inline: -20%;
-  top: -30%;
-  height: 60%;
-  background: radial-gradient(45% 50% at 50% 50%, var(--accent-wash), transparent 72%);
-  pointer-events: none;
-  transition: background 0.8s var(--ease);
-  z-index: 0;
-}
-
-.ambient::after {
-  content: "";
-  position: absolute;
-  inset-inline: -10%;
-  top: 8%;
-  height: 48%;
-  background-image: var(--artwork-img, none);
-  background-position: 50% 45%;
-  background-size: cover;
-  background-repeat: no-repeat;
-  filter: blur(120px) saturate(1.35) brightness(0.5);
-  opacity: 0.36;
-  transform: scale(1.4);
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%);
+  inset-inline: 0;
+  top: 0;
+  height: 21rem;
+  background-color: var(--accent);
+  background-image: linear-gradient(to bottom, rgb(0 0 0 / 0.62) 0%, var(--bg) 100%);
   pointer-events: none;
   transition:
-    opacity 0.8s var(--ease),
-    background-image 0.8s var(--ease);
+    background-color var(--tint-ms) var(--ease),
+    background-image var(--tint-ms) var(--ease);
   z-index: 0;
 }
 
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .ambient::after {
-    filter: blur(120px) saturate(1.9) brightness(1.3);
-    opacity: 0.45;
+  :root:not([data-theme="dark"]) .ambient::before {
+    background-image: linear-gradient(to bottom, rgb(255 255 255 / 0.58) 0%, var(--bg) 100%);
   }
 }
 
-:root[data-theme="light"] .ambient::after {
-  filter: blur(120px) saturate(1.9) brightness(1.3);
-  opacity: 0.45;
+:root[data-theme="light"] .ambient::before {
+  background-image: linear-gradient(to bottom, rgb(255 255 255 / 0.58) 0%, var(--bg) 100%);
 }
 
-:root[data-neutral="true"] .ambient::after {
+:root[data-neutral="true"] .ambient::before {
   display: none;
-}
-
-:root[data-theme="light"][data-mode="pastel"] .ambient::after {
-  filter: blur(140px) saturate(1.35) brightness(1.45);
-  opacity: 0.3;
 }
 
 .replay:empty::after {
@@ -587,8 +581,7 @@ input[type="search"]::-webkit-search-results-decoration {
     transform: scaleY(0.6);
   }
   .tint,
-  .ambient::before,
-  .ambient::after {
+  .ambient::before {
     transition: none;
   }
   .animate-pulse {

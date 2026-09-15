@@ -151,7 +151,11 @@ export function ProgressiveAudioPlayer({
           src={cover}
           alt=""
           aria-hidden
-          className="h-full w-full object-cover"
+          // Fit, not fill, and never upscaled. `object-cover` stretched a 500px cover to fill
+          // whatever the panel had grown to, which is where the blur came from — an image
+          // enlarged past its own pixels cannot be sharp. max-* with no width/height lets it
+          // render at its natural size and only shrink when the box is smaller than the art.
+          className="max-h-full max-w-full object-contain"
           onError={() =>
             setSkipped((previous) => ({
               key: coverKey,
