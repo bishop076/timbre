@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { moveBetweenItems } from "../a11y/arrow-nav";
 import { PlusIcon } from "../icons";
 import { Caption, Notice } from "../page-chrome";
 import { importHistory } from "../player/history-store";
@@ -36,9 +37,17 @@ export function PlaylistGrid({
   children?: ReactNode;
 }) {
   const uploaded = usePlaylistImages();
+  const grid = useRef<HTMLUListElement>(null);
 
+  // Arrows walk the grid the way it looks rather than the way it is written: Down goes down a
+  // row, not to the next tile in source order, and how many tiles that is depends on how wide the
+  // panel currently is. Tab is untouched, so the per-tile actions button stays reachable.
   return (
-    <ul className={`${className} ${PLAYLIST_GRID}`.trim()}>
+    <ul
+      ref={grid}
+      onKeyDown={(event) => moveBetweenItems(event, grid.current, "grid")}
+      className={`${className} ${PLAYLIST_GRID}`.trim()}
+    >
       {children}
       {playlists.map((playlist) => (
         <li key={playlist.id} className={editable ? "group relative" : undefined}>
@@ -143,8 +152,12 @@ export function LibraryView() {
     }
   }
 
+  // No `min-h` on the column below. It re-derived the scrolling panel's own height from
+  // `100dvh` and `--chrome-b`, then had to undo itself with `lg:min-h-0` because `--chrome-b`
+  // counts a bottom nav that `lg:` hides. Nothing here stretches to fill it, so all it bought
+  // was a second copy of the shell's arithmetic that had to stay in step with the shell.
   return (
-    <div className="@container mx-auto flex min-h-[calc(100dvh-var(--safe-t)-var(--chrome-b))] w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6 lg:min-h-0">
+    <div className="@container mx-auto flex w-full max-w-6xl flex-col px-4 pb-16 pt-9 sm:px-7 sm:pb-20 sm:pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Your library</h1>
 

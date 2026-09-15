@@ -12,33 +12,8 @@ import { AddToQueue } from "./player/add-to-queue";
 import { usePlayerControls } from "./player/player-context";
 import { useSongMenu } from "./player/song-menu";
 import { AddToPlaylist } from "./playlists/add-to-playlist";
+import { SCALE } from "./row-scale.ts";
 import type { Song } from "./types";
-
-const MEDIUM = {
-  row: "gap-3 sm:gap-4",
-  play: "gap-2.5 py-2 sm:gap-4 sm:py-3",
-  rank: "text-[length:var(--text-meta)]",
-  thumb: "size-10 sm:size-12",
-  note: "size-5",
-  icon: "size-4",
-  title: "text-[length:var(--text-body)]",
-  subtitle: "text-[length:var(--text-meta)]",
-};
-
-const SCALE = {
-  sm: {
-    row: "gap-2.5 sm:gap-3",
-    play: "gap-2.5 py-2 sm:gap-3 sm:py-2.5",
-    rank: "text-[length:var(--text-meta)] font-bold",
-    thumb: "size-10 sm:size-11",
-    note: "size-4",
-    icon: "size-4",
-    title: "text-[length:var(--text-meta)]",
-    subtitle: "text-[12px]",
-  },
-  md: MEDIUM,
-  lg: { ...MEDIUM, play: "gap-3 py-3 sm:gap-4", thumb: "size-12", icon: "size-5" },
-};
 
 export function SongRow({
   song,

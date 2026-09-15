@@ -120,10 +120,6 @@ export function clearPlaylistImage(id: string): void {
   void run("readwrite", (store) => store.delete(key(id))).catch(() => {});
 }
 
-export function hasPlaylistImage(id: string): boolean {
-  return snapshot[id] !== undefined;
-}
-
 /** Deleting a list should not leave its picture behind taking up room for ever. */
 export function forgetPlaylistImage(id: string): void {
   clearPlaylistImage(id);

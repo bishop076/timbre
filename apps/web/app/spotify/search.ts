@@ -3,6 +3,7 @@
 import type { Song } from "../types";
 import { accessToken } from "./connection.ts";
 import { refusalFor, refusalLine } from "./failures.ts";
+import { relevantTo } from "./relevance.ts";
 
 interface SpotifyTrack {
   id?: string;
@@ -48,7 +49,7 @@ export async function searchSpotifyCatalogue(query: string, signal?: AbortSignal
   const response = await fetch(`/api/spotify/search?q=${encodeURIComponent(query)}`, { signal });
   const body = (await response.json().catch(() => null)) as { songs?: Song[]; error?: string } | null;
   if (!response.ok || !body?.songs) throw new Error(body?.error ?? `Spotify search failed (${response.status}).`);
-  return body.songs;
+  return relevantTo(query, body.songs);
 }
 
 export async function searchSpotify(query: string, signal?: AbortSignal): Promise<SpotifySearchResult> {
@@ -79,8 +80,11 @@ export async function searchSpotify(query: string, signal?: AbortSignal): Promis
   if (!response.ok) return { kind: "error", message: refusalLine(refusalFor(response.status, "search")) };
 
   const body = (await response.json()) as { tracks?: { items?: SpotifyTrack[] } };
-  const songs = (body.tracks?.items ?? [])
-    .filter((track) => track.is_playable !== false)
-    .flatMap((track) => toSong(track) ?? []);
+  const songs = relevantTo(
+    query,
+    (body.tracks?.items ?? [])
+      .filter((track) => track.is_playable !== false)
+      .flatMap((track) => toSong(track) ?? []),
+  );
   return { kind: "ok", songs, from: "account" };
 }

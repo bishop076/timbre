@@ -74,3 +74,63 @@ test("a found track is still served", async () => {
   const body = (await response.json()) as { lyrics: { synced: { at: number; text: string }[] } };
   assert.deepEqual(body.lyrics.synced, [{ at: 1.5, text: "a line" }]);
 });
+
+test("an automatic match reports the id of the track that answered, not the one asked for", async () => {
+  const response = await withUpstream(
+    () =>
+      Response.json({
+        id: 7,
+        trackName: "Ghost",
+        artistName: "Halsey",
+        instrumental: false,
+        plainLyrics: "a line",
+        syncedLyrics: null,
+      }),
+    () => ask("title=Ghost&artist=Halsey"),
+  );
+
+  // Nothing named an id, so returning the query's own left `lyrics.id` undefined — and the tick
+  // beside the version in use, which compares it to each alternative's id, could never be true.
+  const body = (await response.json()) as { lyrics: { id: number } };
+  assert.equal(body.lyrics.id, 7);
+});
+
+test("a chosen id still comes back as itself", async () => {
+  const response = await withUpstream(
+    (url) => {
+      assert.ok(url.pathname.endsWith("/get/42"), "a chosen id is looked up directly");
+      return Response.json({
+        id: 42,
+        trackName: "Ghost",
+        artistName: "Halsey",
+        instrumental: false,
+        plainLyrics: "a line",
+        syncedLyrics: null,
+      });
+    },
+    () => ask("title=Ghost&artist=Halsey&id=42"),
+  );
+
+  const body = (await response.json()) as { lyrics: { id: number } };
+  assert.equal(body.lyrics.id, 42);
+});
+
+test("LRCLIB's literal 'undefined' album is not an album", async () => {
+  const response = await withUpstream(
+    () =>
+      Response.json([
+        { id: 1, trackName: "Ghost", artistName: "Halsey", albumName: "undefined", instrumental: false, plainLyrics: "x", syncedLyrics: null },
+        { id: 2, trackName: "Ghost", artistName: "Halsey", albumName: "   ", instrumental: false, plainLyrics: "x", syncedLyrics: null },
+        { id: 3, trackName: "Ghost", artistName: "Halsey", albumName: " Badlands ", instrumental: false, plainLyrics: "x", syncedLyrics: null },
+      ]),
+    () => ask("title=Ghost&artist=Halsey&alternatives=1"),
+  );
+
+  // The Other-versions line joins whatever is truthy with a dot, so the word "undefined" read as
+  // the album's name. Only a real name survives, and it arrives trimmed.
+  const body = (await response.json()) as { alternatives: { albumName: string | null }[] };
+  assert.deepEqual(
+    body.alternatives.map((option) => option.albumName),
+    [null, null, "Badlands"],
+  );
+});

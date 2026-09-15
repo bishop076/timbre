@@ -42,6 +42,17 @@ test("the allowlist refuses anything that is not https", () => {
   assert.equal(allowed(new URL("https://i.ytimg.com.evil.example/x.png")), false);
 });
 
+test("an allowlisted name on another port is another host", () => {
+  // The allowlist read the name and nothing else, so this was accepted and the server opened a
+  // connection to a port no CDN on the list serves covers from.
+  assert.equal(allowed(new URL("https://i.ytimg.com:8443/x.jpg")), false);
+  assert.equal(allowed(new URL("https://archive.org:8080/services/img/some-identifier")), false);
+
+  // The default port is not a port: `URL` drops it, and every URL the providers mint looks
+  // like this one.
+  assert.equal(allowed(new URL("https://i.ytimg.com:443/vi/x/hq.jpg")), true);
+});
+
 test("a host that also answers an API is pinned to its cover paths", () => {
   // The shapes archive.ts and song-shape.ts actually mint.
   assert.equal(allowed(new URL("https://archive.org/services/img/some-identifier")), true);

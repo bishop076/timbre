@@ -1,14 +1,24 @@
 "use client";
 
+import {
+  AlbumCell,
+  DETAIL_ART,
+  DetailHeader,
+  Dot,
+  PlayRow,
+  TAIL_TWO,
+  TimeCell,
+  TrackHead,
+  totalTime,
+} from "./album/detail-chrome";
 import { Artwork } from "./artwork";
 import { sized } from "./artwork-url";
 import { describeAge, movementOf, useChartSnapshot } from "./chart-memory";
 import { Collage } from "./collage";
-import { PlayIcon, ShuffleIcon } from "./icons";
 import { Movement } from "./movement";
-import { Page, PageHeader, SectionTitle } from "./page-chrome";
+import { Page, SectionTitle } from "./page-chrome";
 import { useHistory } from "./player/history-store";
-import { usePlayerControls } from "./player/player-context";
+import { collectionOrigin } from "./player/queue-origin.ts";
 import { SaveAsPlaylist } from "./playlists/save-as-playlist";
 import { songFromHistory } from "./home-shelves";
 import { Shelf } from "./shelf";
@@ -17,7 +27,6 @@ import { RankedList } from "./song-row";
 import { ROW_BADGES, SourceBadges } from "./source-badges";
 import { useTaste } from "./taste-store";
 import type { Collection, CollectionKind } from "@/lib/collection";
-import { seededShuffle } from "@/lib/rotation";
 
 const EYEBROWS: Partial<Record<CollectionKind, string>> = {
   genre: "Genre",
@@ -27,7 +36,6 @@ const EYEBROWS: Partial<Record<CollectionKind, string>> = {
 };
 
 export function CollectionView({ collection }: { collection: Collection }) {
-  const { play } = usePlayerControls();
   const { tracks } = collection;
 
   const chart = collection.sections.find((section) => section.ranked);
@@ -35,74 +43,64 @@ export function CollectionView({ collection }: { collection: Collection }) {
     chart && collection.kind === "genre" ? Number(collection.id) : null,
     chart?.tracks ?? [],
   );
-
-  function playAll(shuffled = false) {
-    const queue = shuffled ? seededShuffle(tracks, Math.random() * 2 ** 32) : tracks;
-    if (queue[0]) play(queue[0], queue);
-  }
+  const length = totalTime(tracks);
 
   return (
     <Page>
-      <PageHeader
+      <DetailHeader
         art={
           collection.coverUrl ? (
             <Artwork
               src={sized(collection.coverUrl, 400)}
               eager
               iconClassName="size-7"
-              className="slab size-28 shrink-0 rounded-[var(--r-lg)] sm:size-44"
+              className={DETAIL_ART}
             />
           ) : (
-            <Collage covers={collection.covers} className="slab size-28 shrink-0 sm:size-44" />
+            <Collage covers={collection.covers} className={DETAIL_ART} rounded="" />
           )
         }
         eyebrow={eyebrowOf(collection)}
         title={collection.title}
+        meta={
+          <>
+            <span>{collection.subtitle}</span>
+            {length && <Dot />}
+            {length && <span>{length}</span>}
+          </>
+        }
+        note={
+          <>
+            Assembled from {collection.from} and kept nowhere.{" "}
+            {collection.from === "YouTube Music"
+              ? "Each song plays the upload the playlist holds; if YouTube will not embed one, another copy of the same recording plays instead."
+              : "Playing a song searches for a copy Timbre can actually play, so an occasional match is a different upload of the same recording."}
+            {/* The sentence is server-rendered whenever this collection *has* a ranked section;
+                only the age of the snapshot has to wait for storage. It used to appear whole on
+                hydration, growing the note by a line and pushing the tracklist down under the
+                reader's pointer. `noteLines` holds the taller shape from the first paint. */}
+            {chart && (
+              <>
+                {" "}
+                Movement is against the last time you opened this chart
+                {snapshot ? ` — ${describeAge(snapshot.at)}` : ""}, on this device.
+              </>
+            )}
+          </>
+        }
+        noteLines={chart ? 3 : undefined}
       >
-        <p className="mt-2 text-xs text-[var(--fg-faint)]">{collection.subtitle}</p>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => playAll()}
-            disabled={tracks.length === 0}
-            className="slab press flex items-center gap-2 rounded-[var(--r-full)] px-4 py-2 text-[13px] font-bold text-[var(--accent-fg)] disabled:opacity-40"
-            style={{ background: "var(--accent)" }}
-          >
-            <PlayIcon className="size-4" />
-            Play
-          </button>
-          <button
-            type="button"
-            onClick={() => playAll(true)}
-            disabled={tracks.length === 0}
-            className="slab-sm press flex items-center gap-2 rounded-[var(--r-full)] bg-[var(--surface-2)] px-4 py-2 text-[13px] font-semibold text-[var(--fg-dim)] transition hover:text-[var(--fg)] disabled:opacity-40"
-          >
-            <ShuffleIcon className="size-4" />
-            Shuffle
-          </button>
+        {/* `QueueOrigin` knew only playlists and albums, so this button could not tell "playing
+            this chart" from "playing something" and read Play while its own tracks played. */}
+        <PlayRow songs={tracks} shuffle origin={collectionOrigin(collection.kind, collection.id)}>
           <SaveAsPlaylist
             key={`${collection.kind}:${collection.id}`}
             name={collection.title}
             songs={tracks}
             coverUrl={collection.coverUrl}
           />
-        </div>
-
-        <p className="mt-3 text-[11px] leading-relaxed text-[var(--fg-faint)]">
-          Assembled from {collection.from} and kept nowhere.{" "}
-          {collection.from === "YouTube Music"
-            ? "Each song plays the upload the playlist holds; if YouTube will not embed one, another copy of the same recording plays instead."
-            : "Playing a song searches for a copy Timbre can actually play, so an occasional match is a different upload of the same recording."}
-          {snapshot && (
-            <>
-              {" "}
-              Movement is against the last time you opened this chart — {describeAge(snapshot.at)},
-              on this device.
-            </>
-          )}
-        </p>
-      </PageHeader>
+        </PlayRow>
+      </DetailHeader>
 
       {collection.genreId !== null && <FromYourListening genreId={collection.genreId} />}
 
@@ -112,7 +110,7 @@ export function CollectionView({ collection }: { collection: Collection }) {
         </p>
       ) : (
         collection.sections.map((section) => (
-          <section key={section.key} className="mb-8 last:mb-0">
+          <section key={section.key} className="mb-6 last:mb-0">
             {section.title && (
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-1">
                 <SectionTitle>{section.title}</SectionTitle>
@@ -121,6 +119,8 @@ export function CollectionView({ collection }: { collection: Collection }) {
                 )}
               </div>
             )}
+
+            <TrackHead album tail={TAIL_TWO} />
 
             <RankedList
               songs={section.tracks}
@@ -132,6 +132,8 @@ export function CollectionView({ collection }: { collection: Collection }) {
                     <Movement delta={movementOf(snapshot, track.id, track.position)} />
                   )}
                   <SourceBadges song={track} className={ROW_BADGES} />
+                  <AlbumCell name={track.album} />
+                  <TimeCell ms={track.durationMs} />
                 </>
               )}
             />

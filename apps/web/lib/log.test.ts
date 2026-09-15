@@ -85,3 +85,37 @@ test("fields that cannot be serialised cost the fields, not the line", () => {
   assert.equal(written[0]!.line.event, "request_error");
   assert.equal(written[0]!.line.unserialisable, true);
 });
+
+test("a string field is scrubbed and bounded, not just a message", () => {
+  const written = capture(() =>
+    log("warn", "upstream_failed", {
+      source: "deezer",
+      url: "https://api.deezer.com/search?q=someone%27s+song",
+      body: "x".repeat(900),
+    }),
+  );
+
+  const line = written[0]!.line;
+  assert.equal(line.url, "https://api.deezer.com/search?…");
+  assert.equal((line.body as string).length, 501, "500 characters and the ellipsis");
+  assert.equal(line.source, "deezer");
+});
+
+test("a nested field is condensed as well, and a long list is capped", () => {
+  const written = capture(() =>
+    log("warn", "lyrics_upstream_failed", {
+      alternatives: Array.from({ length: 25 }, (_, index) => `track?id=${index}`),
+      attempt: { url: "https://lrclib.net/api/get?track_name=x", tries: 3 },
+    }),
+  );
+
+  const line = written[0]!.line;
+  const alternatives = line.alternatives as string[];
+  assert.equal(alternatives.length, 21, "twenty kept plus the tally");
+  assert.equal(alternatives[0], "track?…");
+  assert.equal(alternatives.at(-1), "…and 5 more");
+
+  const attempt = line.attempt as { url: string; tries: number };
+  assert.equal(attempt.url, "https://lrclib.net/api/get?…");
+  assert.equal(attempt.tries, 3, "a number is left alone");
+});

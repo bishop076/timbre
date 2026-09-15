@@ -1,6 +1,7 @@
 "use client";
 
 import { createLocalStore, readJson, useLocalStore, writeJson } from "../local-store.ts";
+import { forgetPlaylistImage } from "./playlist-image.ts";
 import { readProfileExport, type ProfileExport } from "../profile/profile-file.ts";
 import { usableArtwork, usableSongs } from "../song-shape.ts";
 import type { Song } from "../types";
@@ -136,14 +137,13 @@ export function renamePlaylist(id: string, name: string): void {
   update(id, () => ({ name: name.trim() }));
 }
 
-/** The picture a list arrived with. `null` drops it and hands the cover back to the collage. */
-export function setPlaylistCoverUrl(id: string, coverUrl: string | null): void {
-  update(id, () => ({ coverUrl: usableArtwork(coverUrl) }));
-}
-
 export function deletePlaylist(id: string): void {
   all = held().filter((playlist) => playlist.id !== id);
   persist();
+  // An uploaded cover lives in IndexedDB under `playlist:<id>`, not in this record, so dropping
+  // the record left the picture behind — a few hundred kilobytes per deleted list, kept for ever
+  // under an id nothing can name again. Nothing ever called `forgetPlaylistImage`; this is it.
+  forgetPlaylistImage(id);
 }
 
 export function addSongToPlaylist(id: string, song: Song): number {
