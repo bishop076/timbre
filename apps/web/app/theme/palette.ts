@@ -143,7 +143,13 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
   const veil = (L: number, C: number, alpha: number) =>
     `oklch(${L.toFixed(3)} ${chroma(C)} ${hue.toFixed(1)} / ${alpha})`;
 
-  // Shadows are ambient now, not the hard `Npx Npx 0` offset that made every
+  // --ink and --line are no longer the same thing. --line is the quiet divider
+  // between rows; --ink is the drawn edge around a card, which the references
+  // put back. They were identical while the design was chasing a hairline-only
+  // look, and leaving them identical here silently cancelled the 2px edge that
+  // globals.css had gone back to — this file wins, because it writes inline.
+  //
+  // Shadows stay ambient, not the hard `Npx Npx 0` offset that made every
   // surface look like a sticker. Two layers: a tight contact shadow and a wide
   // soft one, which is what reads as "lifted" rather than "drawn".
   const drops = (L: number, C: number, a1: number, a2: number) => ({
@@ -172,7 +178,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
         "--fg": tone(0.26, sat * 0.09),
         "--fg-dim": tone(0.49, sat * 0.05),
         "--fg-faint": tone(0.495, sat * 0.04),
-        "--ink": veil(0.45, sat * 0.08, 0.12),
+        "--ink": veil(0.26, sat * 0.1, 0.5),
         "--line": veil(0.45, sat * 0.08, 0.12),
         "--accent-wash": veil(0.72, accentChroma * 0.72, 0.14),
         ...drops(0.45, sat * 0.08, 0.06, 0.08),
@@ -190,7 +196,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
       "--fg": tone(0.22, sat * 0.05),
       "--fg-dim": tone(0.48, sat * 0.04),
       "--fg-faint": tone(0.5, sat * 0.035),
-      "--ink": veil(0.3, sat * 0.06, 0.09),
+      "--ink": tone(0.22, sat * 0.08),
       "--line": veil(0.3, sat * 0.06, 0.09),
       "--accent-wash": veil(0.54, accentChroma, 0.1),
       ...drops(0.25, sat * 0.06, 0.05, 0.06),
@@ -205,7 +211,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
     "--fg": tone(0.965, sat * 0.012),
     "--fg-dim": tone(0.762, sat * 0.016),
     "--fg-faint": tone(0.665, sat * 0.018),
-    "--ink": veil(0.99, sat * 0.01, 0.09),
+    "--ink": veil(0.88, sat * 0.05, 0.24),
     "--line": veil(0.99, sat * 0.01, 0.09),
     "--accent-wash": veil(0.74, accentChroma, 0.16),
     ...drops(0.02, 0, 0.4, 0.45),

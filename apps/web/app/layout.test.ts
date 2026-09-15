@@ -205,13 +205,30 @@ const REAL_WASH = {
   light: `linear-gradient(to bottom, ${washStop(84, 0.55)} 0%, ${washStop(91, 0.4)} 45%, var(--surface-1) 100%)`,
 };
 
-test("the wash this test replays is still the shape profile-view.tsx stores", () => {
+// The other shape it can store: when no colour could be sampled from the avatar it falls back to
+// a wash built entirely from palette tokens. That is three `var()` references in one value, which
+// is exactly what the old denylist refused, so it needs a control of its own.
+const ACCENT_WASH = "linear-gradient(to bottom, var(--accent-wash) 0%, var(--surface-1) 100%)";
+
+test("the washes this test replays are still the shapes profile-view.tsx stores", () => {
   const view = readFileSync(new URL("./profile/profile-view.tsx", import.meta.url), "utf8");
+
+  // Matched on the value, not on the assignment around it: the gradient is what this file
+  // replays, and wrapping it in a ternary — which is what happened — is not a change to it.
   assert.match(
     view,
-    /const washDark = `linear-gradient\(to bottom, \$\{stop\(\d+\)\} 0%, \$\{stop\([\d., ]+\)\} 45%, var\(--surface-1\) 100%\)`/,
-    "profile-view.tsx changed the wash — update REAL_WASH here rather than weakening it",
+    /`linear-gradient\(to bottom, \$\{stop\(\d+\)\} 0%, \$\{stop\([\d., ]+\)\} 45%, var\(--surface-1\) 100%\)`/,
+    "profile-view.tsx changed the sampled wash — update REAL_WASH here rather than weakening it",
   );
+  assert.ok(
+    view.includes(ACCENT_WASH),
+    "profile-view.tsx changed the token-only wash — update ACCENT_WASH here rather than weakening it",
+  );
+});
+
+test("the token-only wash replays too, three var() references and all", () => {
+  const replayed = replay({ "timbre:profile-wash": JSON.stringify({ dark: ACCENT_WASH }) });
+  assert.equal(replayed["--profile-wash"], ACCENT_WASH);
 });
 
 test("the real profile wash is replayed, var(--surface-1) and all", () => {

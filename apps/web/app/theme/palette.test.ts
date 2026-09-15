@@ -205,15 +205,25 @@ test("pastel is gentler than the album ramp at the same hue", () => {
   assert.ok(pastel < album, `pastel accent chroma ${pastel} should be under ${album}`);
 });
 
-test("the edge is a hairline in every mode, not an outline", () => {
-  // Replaces the old pair of tests, which asserted the look being removed: a
-  // near-black 2px border and a hard `Npx Npx 0` throw. --ink is now the same
-  // translucent hairline as --line everywhere, and nothing draws a solid edge.
+test("--ink is a drawn edge and --line is a quiet divider, and they are not the same", () => {
+  // They used to be identical, from a pass that was chasing a hairline-only look. That silently
+  // cancelled the 2px ink edge globals.css had gone back to, because this file writes inline and
+  // inline wins — the app drew hairlines everywhere while the stylesheet asked for an outline.
   for (const theme of ALL) {
     const palette = buildPalette(COVER, theme);
+    assert.notEqual(
+      palette["--ink"],
+      palette["--line"],
+      `${theme.mode}: an edge and a divider are different jobs`,
+    );
+
     const ink = parts(palette, "--ink");
-    assert.ok(ink.alpha <= 0.2, `${theme.mode}: --ink at alpha ${ink.alpha} is an outline`);
-    assert.equal(palette["--ink"], palette["--line"], `${theme.mode}: --ink should equal --line`);
+    const line = parts(palette, "--line");
+    assert.ok(
+      ink.alpha > line.alpha,
+      `${theme.mode}: --ink at ${ink.alpha} is no more visible than --line at ${line.alpha}`,
+    );
+    assert.ok(ink.alpha >= 0.2, `${theme.mode}: --ink at ${ink.alpha} will not read as an edge`);
   }
 });
 
