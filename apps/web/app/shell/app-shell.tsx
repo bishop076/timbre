@@ -18,6 +18,7 @@ import { searchPath } from "../search-url";
 import {
   PANEL_DEFAULT,
   PANEL_MAX,
+  PANEL_RESIST,
   PANEL_MIN,
   panelPaintWidth,
   panelCollapsesAt,
@@ -179,10 +180,10 @@ function PanelEdge() {
         label="Resize the now playing panel"
         variable="--np-w"
         width={width}
-        // The handle's floor sits a little under the panel's so there is somewhere to drag TO —
-        // the collapse fires the moment the width would go under PANEL_MIN, and a handle clamped
-        // exactly at PANEL_MIN could never report a width below it.
-        min={PANEL_MIN - 40}
+        // Far enough under the panel's own floor that the resistance band and the collapse past
+        // it are both reachable; a handle clamped at PANEL_MIN could never report a width below
+        // it, and one clamped inside the band could never get through it.
+        min={PANEL_MIN - PANEL_RESIST - 40}
         max={ceiling}
         reset={PANEL_DEFAULT}
         direction={-1}

@@ -17,6 +17,7 @@ import {
   RAIL_SNAP,
   RAIL_WIDE,
   PANEL_RAIL,
+  PANEL_RESIST,
   panelCollapsesAt,
   panelPaintWidth,
   resolvePanelWidth,
@@ -166,30 +167,40 @@ test("a stored panel width is clamped on the way in", () => {
   assert.equal(parsePanelWidth(null), PANEL_DEFAULT);
 });
 
-test("the panel collapses the moment it would go under its minimum", () => {
-  // The threshold and the minimum are the same number on purpose. When they differed there was a
-  // band between them where the panel had stopped resizing and had not yet collapsed — dragging
-  // into dead space, with nothing happening until it suddenly did.
-  assert.equal(panelCollapsesAt(PANEL_MIN - 1), true);
-  assert.equal(panelCollapsesAt(PANEL_MIN), false, "resting at the minimum is a size, not a hide");
-  assert.equal(panelCollapsesAt(PANEL_DEFAULT), false);
-
-  // A drag that produced no number should leave the panel alone rather than hiding it.
-  assert.equal(panelCollapsesAt(Number.NaN), false);
-  assert.equal(panelCollapsesAt(Number.POSITIVE_INFINITY), false);
-});
-
-test("the panel snaps shut under the pointer rather than following it down", () => {
-  // What it paints mid-drag, not what it commits. Past the minimum the pointer keeps moving and
-  // the panel does not: it is already the rail, and dragging further changes nothing. Returning
-  // the raw width here is what made it feel like dragging into an abyss.
+test("the panel resists at its minimum before it collapses", () => {
+  // Three bands, and the middle one is the point. Reaching the limit should be something you feel
+  // before it is something you did — the panel used to hit its minimum and vanish in the same
+  // pixel, so you were still pulling and it was already gone.
   const ceiling = 560;
+
+  // Above the minimum: follows the pointer.
   assert.equal(panelPaintWidth(PANEL_DEFAULT, ceiling), PANEL_DEFAULT);
-  assert.equal(panelPaintWidth(PANEL_MIN, ceiling), PANEL_MIN, "the minimum is still a size");
-  assert.equal(panelPaintWidth(PANEL_MIN - 1, ceiling), PANEL_RAIL);
-  assert.equal(panelPaintWidth(120, ceiling), PANEL_RAIL, "and stays there, however far you drag");
+
+  // Through the resistance band: holds at the minimum while the pointer keeps moving.
+  assert.equal(panelPaintWidth(PANEL_MIN, ceiling), PANEL_MIN);
+  assert.equal(panelPaintWidth(PANEL_MIN - 1, ceiling), PANEL_MIN);
+  assert.equal(panelPaintWidth(PANEL_MIN - PANEL_RESIST, ceiling), PANEL_MIN);
+
+  // Past it: the rail, and it stays the rail however far you drag.
+  assert.equal(panelPaintWidth(PANEL_MIN - PANEL_RESIST - 1, ceiling), PANEL_RAIL);
   assert.equal(panelPaintWidth(-400, ceiling), PANEL_RAIL);
 
   // The ceiling still applies on the way out.
   assert.equal(panelPaintWidth(9999, ceiling), ceiling);
+});
+
+test("what collapses and what paints agree about where the edge is", () => {
+  // If these drifted apart there would be a band that painted the rail without committing to it,
+  // or committed without showing it — the panel would snap shut and then reappear on release.
+  for (const raw of [PANEL_DEFAULT, PANEL_MIN, PANEL_MIN - 1, PANEL_MIN - PANEL_RESIST, PANEL_MIN - PANEL_RESIST - 1, 0]) {
+    assert.equal(
+      panelPaintWidth(raw, 560) === PANEL_RAIL,
+      panelCollapsesAt(raw),
+      `disagreement at ${raw}`,
+    );
+  }
+
+  // A drag that produced no number leaves the panel alone rather than hiding it.
+  assert.equal(panelCollapsesAt(Number.NaN), false);
+  assert.equal(panelCollapsesAt(Number.POSITIVE_INFINITY), false);
 });

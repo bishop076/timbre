@@ -271,7 +271,12 @@ export function NowPlayingPanel() {
         streamUrl ? "hidden xl:block" : ""
       } ${
         open
-          ? "translate-y-0 opacity-100 xl:w-[var(--np-w,23rem)]"
+          ? // min-w is the floor, in CSS, not in a number someone has to remember to clamp.
+            // --np-w is written imperatively during a drag, so it can hold a stale value that no
+            // amount of care in the commit path will catch — and when it did, the panel rendered
+            // at 28px with the embed's "Privacy policy" squeezed into it. An open panel is never
+            // narrower than PANEL_MIN now, whatever the variable says.
+            "translate-y-0 opacity-100 xl:w-[var(--np-w,23rem)] xl:min-w-[18rem]"
           : "pointer-events-none translate-y-3 opacity-0 xl:w-0 xl:p-0"
       }`;
 
