@@ -5,8 +5,15 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { getPlaybackPrefs } from "./playback-prefs";
 
-const LyricsPanel = dynamic(() => import("./lyrics-panel").then((m) => m.LyricsPanel));
-const RelatedPanel = dynamic(() => import("./related-panel").then((m) => m.RelatedPanel));
+// Both carry a `loading` fallback the same shape as their empty state. Without one, `dynamic`
+// renders nothing while the chunk arrives, so the pane under the tab strip collapsed to zero and
+// then filled — the tab bar itself held still, but everything below it jumped.
+const LyricsPanel = dynamic(() => import("./lyrics-panel").then((m) => m.LyricsPanel), {
+  loading: () => <Empty>Looking for lyrics…</Empty>,
+});
+const RelatedPanel = dynamic(() => import("./related-panel").then((m) => m.RelatedPanel), {
+  loading: () => <Empty>Finding songs like this…</Empty>,
+});
 
 const TABS = [
   { id: "queue", label: "Up next" },
@@ -99,7 +106,7 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
         role="tablist"
         aria-label="Now playing"
         onKeyDown={onKeyDown}
-        className="flex shrink-0 gap-1 border-b-[length:var(--edge)] border-[var(--ink)] px-2"
+        className="flex shrink-0 gap-0.5 border-b-[length:var(--edge)] border-[var(--ink)] px-2.5"
       >
         {TABS.map((tab) => {
           const selected = active === tab.id;
@@ -113,18 +120,20 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
               aria-controls={`panel-pane-${tab.id}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => setActive(tab.id)}
-              className={`relative px-3 py-3 text-[11px] font-bold uppercase tracking-wider transition-colors ${
+              className={`relative px-2.5 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors ${
                 selected ? "text-[var(--fg)]" : "text-[var(--fg-faint)] hover:text-[var(--fg-dim)]"
               }`}
             >
               {tab.label}
-              {selected && (
-                <span
-                  aria-hidden
-                  className="absolute inset-x-2 -bottom-px h-0.5 rounded-full"
-                  style={{ background: "var(--accent)" }}
-                />
-              )}
+              {/* Always drawn, so the 2px rule is part of every tab's box rather than something
+                  the selected one grows. Only its opacity changes. */}
+              <span
+                aria-hidden
+                className={`tint absolute inset-x-1 bottom-[calc(-1*var(--edge))] h-[3px] rounded-[var(--r-full)] transition-opacity ${
+                  selected ? "opacity-100" : "opacity-0"
+                }`}
+                style={{ background: "var(--accent)" }}
+              />
             </button>
           );
         })}
@@ -134,7 +143,9 @@ export function PanelTabs({ queue }: { queue: ReactNode }) {
         role="tabpanel"
         id={`panel-pane-${active}`}
         aria-labelledby={`panel-tab-${active}`}
-        className="flex min-h-0 flex-1 flex-col"
+        // `overflow-hidden` on the shared box: every pane scrolls inside its own scroller, and
+        // this is what stops a long one from being able to push the panel taller than the card.
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         {active === "queue" && queue}
         {active === "lyrics" && <LyricsPanel />}
