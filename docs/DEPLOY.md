@@ -162,6 +162,20 @@ registering validates the env schema. A build without `YTMUSIC_SHARED_SECRET`
 fails while prerendering that one page, with an error that does not obviously
 name the cause.
 
+**A third is optional: `NEXT_PUBLIC_SPOTIFY_CLIENT_ID`.** Set it and the Spotify
+panel offers to connect straight away; leave it unset and the panel asks each
+reader for a client id of their own, which it keeps in their browser. It is not a
+secret — `NEXT_PUBLIC_` means it is inlined into the client bundle — and because
+it is inlined at build time, changing it requires a redeploy rather than a
+restart. Whichever way it is supplied, the OAuth redirect must be registered in
+the Spotify dashboard as `https://<web>.vercel.app/spotify/callback`.
+
+The four `SOUNDCLOUD_*` variables are deliberately **unset in the hosted build**,
+which is why `/api/health` there answers `"soundcloud":false`. See
+[../RUNNING.md](../RUNNING.md) for what each does, and note that the client
+id/secret pair is currently counted by the health route without being wired to
+anything.
+
 Then:
 
 ```bash
