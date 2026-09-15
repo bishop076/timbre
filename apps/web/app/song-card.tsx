@@ -142,7 +142,15 @@ export function SongCard({
             // provider's own ladder and never upscales.
             src={sized(song.artworkUrl, 256)}
             eager={eager}
-            className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
+            // Not --ease, and not `transition` (all properties).
+            //
+            // --ease is cubic-bezier(0.32, 0.72, 0, 1): it covers 66% of the distance in the
+            // first 20% of the duration and 95% by halfway. That is excellent for something
+            // arriving, and wrong for a state that reverses — CSS runs the same curve backwards,
+            // so the zoom-out dropped almost all the way in about 100ms of a 500ms transition and
+            // then crawled the last few percent. It reads as a snap, which is exactly what it
+            // was reported as. A symmetric curve leaves and returns at the same rate.
+            className="size-full transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.04]"
             surfaceClassName={COVER_EMPTY}
             noteClassName={COVER_NOTE}
             iconClassName="size-8"
