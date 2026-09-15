@@ -19,7 +19,7 @@ import { LikedTile } from "./liked-tile";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { usePlaylistImages } from "./playlist-image";
-import { createPlaylist, importPlaylists, loadPlaylists, usePlaylists } from "./store";
+import { createPlaylist, importPlaylists, loadPlaylists, readBackupFile, usePlaylists } from "./store";
 import type { PlaylistSummary } from "./store";
 
 export const PLAYLIST_GRID =
@@ -94,7 +94,7 @@ export function LibraryView() {
   const picker = useFilePicker("application/json,.json", "Couldn't read that file.", async (file) => {
     setNotice(null);
     setOffered(null);
-    const data = JSON.parse(await file.text()) as {
+    const data = readBackupFile(await file.text()) as {
       liked?: unknown;
       profile?: unknown;
       history?: unknown;

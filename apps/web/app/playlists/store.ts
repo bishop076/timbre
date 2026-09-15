@@ -258,6 +258,23 @@ export function allPlaylists(): readonly LocalPlaylist[] {
   return all;
 }
 
+/**
+ * The text of a picked file, as whatever it parses to.
+ *
+ * `useFilePicker` reports a thrown `Error` by its `message`, which is exactly right for the
+ * refusals below — they are written to be read. `JSON.parse` throws an `Error` too, so a file
+ * that was never JSON answered in V8's voice instead: picking a .txt renamed to .json put
+ * `Unexpected token 'h', "this is not"... is not valid JSON` on the library page. Parse through
+ * here and an unreadable file refuses in the same voice as an unrecognised one.
+ */
+export function readBackupFile(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("That file isn't JSON. Pick the .json file Timbre exported.");
+  }
+}
+
 export function importPlaylists(data: unknown): number {
   const file = data as Record<string, unknown> | null;
   if (!file || file.format !== "timbre.playlists" || !Array.isArray(file.playlists)) {

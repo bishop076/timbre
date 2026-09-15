@@ -26,3 +26,21 @@ export function fromArtistSlug(slug: string): string {
 export function titleCase(value: string): string {
   return value.replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 }
+
+/**
+ * Whether a name a source answered with is the name that was asked for.
+ *
+ * `findArtist` is a best guess, not a lookup: it scores 25 Deezer hits and its reducer seeds
+ * with `results[0]`, so as long as Deezer returned anything at all it returns somebody. Asking
+ * it for the SoundCloud uploader "Pump Glock" answers Black Pumas, and "Praise Stones" answers
+ * Stoned in Paradise. The search facet already refused a non-exact hit; the now-playing panel's
+ * "About the artist" card did not, and drew the wrong band's photograph, follower count and
+ * link under the name of whoever actually uploaded the track.
+ *
+ * Compared as slugs so the guard is as forgiving as the URL is — "The Marías" and "the marias"
+ * are the same artist, "Pump Glock" and "Black Pumas" are not.
+ */
+export function isSameArtist(asked: string, answered: string): boolean {
+  const wanted = toArtistSlug(asked.trim());
+  return wanted !== "" && wanted === toArtistSlug(answered.trim());
+}

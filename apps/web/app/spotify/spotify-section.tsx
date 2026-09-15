@@ -65,7 +65,11 @@ export function SpotifySection({ query, render }: { query: string; render: (song
         {result.kind === "ok" && result.from === "account"
           ? "From your own Spotify account, filtered to what your market will actually play. "
           : "From Spotify's public catalogue — no account needed. "}
-        These play in Spotify&rsquo;s player and do not join the queue
+        {/* This used to say these "do not join the queue", which stopped being true when
+            player-context learned to resolve a spotify source — every row here carries an
+            "add to the queue" button that works. The copy dated from the commit that added
+            Spotify search and nobody re-read it. */}
+        These play through Spotify
         {connected
           ? ", in full if your account is Premium."
           : ". Without a connected account Spotify stops them at 30 seconds — that is their limit, not a fault here."}

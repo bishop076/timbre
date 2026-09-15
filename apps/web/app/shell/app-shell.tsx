@@ -168,6 +168,12 @@ function PanelEdge() {
   // being edited elsewhere, and the edge only ever fires this while the panel is open.
   const { panelOpen, togglePanel } = usePlayerControls();
 
+  // Nothing at all when the panel is closed. The handle is a hairline pinned over the main
+  // column's right margin, and with no panel behind it that hairline IS the whole sidebar as far
+  // as the eye is concerned — a line sitting at the edge of the screen for no reason. Hidden
+  // means hidden; the player bar's button is the way back.
+  if (!panelOpen) return null;
+
   // The rail is already taking its share of the row, so the panel's ceiling is what is left of
   // the window once the rail and the main column's minimum have been paid for.
   const ceiling = roomFor(viewport, rail, { max: PANEL_MAX, floor: PANEL_MIN });
@@ -218,16 +224,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   useTransportKeys();
   useSleepTimerDriver();
 
-  const title = current ? `Timbre · ${current.title}` : "Timbre";
+  // Only while something is playing. This used to fall back to a constant "Timbre" when idle, and
+  // because a MutationObserver re-applied it on every write to <head>, it did not merely race the
+  // route's own metadata — it overwrote it and kept overwriting it. The server sends
+  // "Your listening — Timbre" for /stats and the tab read "Timbre", on every route, on a hard
+  // load and on a client navigation, so every bookmark and history entry said the same word.
+  //
+  // The observer earns its place for the playing case: Next rewrites <head> on navigation, and a
+  // one-shot assignment would be undone the moment you changed page mid-track. When nothing is
+  // playing there is nothing to defend, so it does not run at all and the route keeps its title.
+  const nowPlayingTitle = current ? `Timbre · ${current.title}` : null;
   useEffect(() => {
+    if (!nowPlayingTitle) return;
     const apply = () => {
-      if (document.title !== title) document.title = title;
+      if (document.title !== nowPlayingTitle) document.title = nowPlayingTitle;
     };
     apply();
     const observer = new MutationObserver(apply);
     observer.observe(document.head, { childList: true, subtree: true, characterData: true });
     return () => observer.disconnect();
-  }, [title]);
+  }, [nowPlayingTitle]);
 
   const panel = useRef<HTMLElement>(null);
   const [overflowing, setOverflowing] = useState(true);
