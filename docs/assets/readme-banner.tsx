@@ -1,29 +1,35 @@
 // Source for docs/assets/readme-banner.png. Not routed, not built, not imported by the app —
-// it lives here so the banner is an edit rather than a redesign next time. The previous banner
+// it lives here so the banner is an edit rather than a redesign next time. The banner before it
 // was a PNG with no source, which is why replacing it took a day.
 //
 // To redraw it:
 //   1. cp docs/assets/readme-banner.tsx apps/web/app/banner-preview/route.tsx
 //   2. cd apps/web && TIMBRE_DIST_DIR=.next-banner npx next dev -p 3249
 //   3. curl -o ../../docs/assets/readme-banner.png http://localhost:3249/banner-preview
-//   4. rm -r apps/web/app/banner-preview apps/web/.next-banner
-//      and `git checkout -- apps/web/tsconfig.json` — next dev rewrites it
+//   4. rm -r apps/web/app/banner-preview apps/web/.next-banner apps/web/.next/dev/types
+//      then `npx next typegen` and `git checkout -- apps/web/tsconfig.json`
 //
-// Step 4 matters: left in place this is a public endpoint on the deployment.
+// Step 4 is not tidying. Left in place this is a public endpoint on the deployment, and the
+// stale route validator Next leaves in .next/dev/types fails typecheck until it is regenerated.
 //
-// It has to run inside Next because `next/og` is Satori plus resvg wired together by Next and
-// does not resolve standalone. Two of its limits are load-bearing here, both found the hard way:
-// a component or fragment returning <svg> children renders as nothing, and `url(#id)` gradient
-// references do not resolve. So every shape is inline and every fill is a flat colour.
+// The font paths below are relative to step 1's destination, not to this file — it only ever runs
+// from there. It has to run inside Next at all because `next/og` is Satori plus resvg wired
+// together by Next and does not resolve standalone. Two Satori limits are load-bearing here, both
+// found the hard way: a component or fragment returning <svg> children renders as nothing, and
+// `url(#id)` gradient references do not resolve. So every shape is inline and every fill is flat.
+//
+// app/opengraph-image.tsx draws the same lockup at 1200x630 for link previews. If the wordmark
+// changes here, change it there too.
 
 import { readFileSync } from "node:fs";
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { ImageResponse } from "next/og";
 
-// Resolved from apps/web, which is where `next dev` runs.
-const FONTS = path.join(process.cwd(), "../../docs/assets/fonts");
-const load = (file: string) => readFileSync(path.join(FONTS, file));
+// Read rather than fetched: this runs on the Node runtime, where `fetch` of a file: URL is
+// "not implemented... yet". The URL form is still what Next traces for bundling.
+const font = (file: string) =>
+  readFileSync(fileURLToPath(new URL(`../brand-fonts/${file}`, import.meta.url)));
 
 // The palm, inlined rather than imported from app/shell/brand so this file resolves wherever it
 // sits. If the mark changes there, copy the path across.
@@ -44,8 +50,7 @@ const H = 400;
 const INK = "#0c0b10";
 const CREAM = "#f3efe4";
 const VIOLET = "#7c5cf6";
-const LILAC = "#a78bfa";
-const SUN = "#ffd9a8";
+const PALM = "#2f6b46";
 
 // "tim" is Delicious Handrawn, "bre" is Gluten at 0.94x. Both numbers are measured off the
 // rendered pixels rather than judged: Delicious sits high on its line, so without the drop the
@@ -84,34 +89,34 @@ function Lockup({ size, color, mark }: { size: number; color: string; mark: stri
   );
 }
 
-// A deck seen from above, the cream side carrying the name and the black side the record.
+// The palm growing straight out of the record: the mark and the medium as one object, rather
+// than a logo placed next to a picture of a turntable.
 export function GET() {
-  const grooves = [136, 122, 108, 94];
+  const head = font("DeliciousHandrawn.woff");
+  const gluten = font("Gluten.woff");
+  const outfit = font("Outfit.woff");
+
+  const grooves = [150, 134, 118, 102];
 
   return new ImageResponse(
     (
-      <div style={{ display: "flex", width: W, height: H, background: "#efe7d6", position: "relative", overflow: "hidden" }}>
+      <div style={{ display: "flex", width: W, height: H, background: CREAM, position: "relative", overflow: "hidden" }}>
         <svg width={W} height={H} viewBox="0 0 1200 400" style={{ position: "absolute", left: 0, top: 0 }}>
-          <rect x="560" y="-30" width="640" height="460" rx="24" fill={INK} />
-          <circle cx="820" cy="200" r="168" fill="#1f1a2c" />
-          <circle cx="820" cy="200" r="150" fill="#100d18" />
+          <circle cx="856" cy="330" r="172" fill={INK} />
           {grooves.map((r) => (
-            <circle key={r} cx="820" cy="200" r={r} fill="none" stroke="#2b2539" strokeWidth="2" />
+            <circle key={r} cx="856" cy="330" r={r} fill="none" stroke="#2b2539" strokeWidth="2" />
           ))}
-          <circle cx="820" cy="200" r="52" fill={VIOLET} />
-          <circle cx="820" cy="200" r="6" fill="#100d18" />
-          <circle cx="1092" cy="92" r="30" fill="#2b2539" />
-          <rect x="1076" y="104" width="14" height="150" rx="7" fill="#3a3350" transform="rotate(22 1083 179)" />
-          <rect x="1016" y="240" width="44" height="18" rx="6" fill={CREAM} transform="rotate(22 1038 249)" />
-          <circle cx="632" cy="330" r="26" fill="#2b2539" />
-          <rect x="626" y="306" width="12" height="20" rx="6" fill={LILAC} />
-          <rect x="690" y="318" width="150" height="12" rx="6" fill="#2b2539" />
-          <rect x="690" y="318" width="92" height="12" rx="6" fill={SUN} />
+          <circle cx="856" cy="330" r="56" fill={VIOLET} />
+          <circle cx="856" cy="330" r="6" fill={INK} />
+          <rect x="620" y="96" width="9" height="34" rx="4" fill={VIOLET} opacity="0.5" />
+          <rect x="666" y="74" width="9" height="56" rx="4" fill={VIOLET} opacity="0.7" />
+          <rect x="712" y="102" width="9" height="28" rx="4" fill={VIOLET} opacity="0.45" />
         </svg>
-        <div style={{ display: "flex", position: "absolute", left: 96, top: 126 }}>
+        <TimbreMark width={176} height={201} style={{ color: PALM, position: "absolute", left: 768, top: 128 }} />
+        <div style={{ display: "flex", position: "absolute", left: 96, top: 120 }}>
           <Lockup size={110} color={INK} mark={VIOLET} />
         </div>
-        <span style={{ fontFamily: "Outfit", fontSize: 21, letterSpacing: 3, color: "#5d5674", position: "absolute", left: 98, top: 256 }}>
+        <span style={{ fontFamily: "Outfit", fontSize: 21, letterSpacing: 3, color: "#5d5674", position: "absolute", left: 98, top: 252 }}>
           one search box, one queue
         </span>
       </div>
@@ -120,9 +125,9 @@ export function GET() {
       width: W,
       height: H,
       fonts: [
-        { name: "Head", data: load("DeliciousHandrawn.woff"), weight: 400, style: "normal" },
-        { name: "Gluten", data: load("Gluten.woff"), weight: 400, style: "normal" },
-        { name: "Outfit", data: load("Outfit.woff"), weight: 400, style: "normal" },
+        { name: "Head", data: head, weight: 400, style: "normal" },
+        { name: "Gluten", data: gluten, weight: 400, style: "normal" },
+        { name: "Outfit", data: outfit, weight: 400, style: "normal" },
       ],
     },
   );
