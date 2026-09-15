@@ -106,6 +106,27 @@ for (const [name, input, expected] of counts) {
   test(name, () => assert.equal(mergeTracks(input).length, expected));
 }
 
+test("an uploader's byline does not keep a copy out of the song it belongs to", () => {
+  // SoundCloud and Audius write the artist into the title, in either order; the catalogues do
+  // not. Filing that byline as a variant split one recording into three rows, each holding one
+  // source, so a song with a playable copy could present as one without.
+  const songs = mergeTracks([
+    track({ source: "soundcloud", title: "Björk - Jóga", artists: ["Björk"], sourceId: "sc" }),
+    track({ source: "audius", title: "Jóga - Björk", artists: ["Björk"], sourceId: "au" }),
+    track({ source: "deezer", title: "Jóga", artists: ["Björk"], sourceId: "dz" }),
+  ]);
+  assert.equal(songs.length, 1);
+  assert.deepEqual(sourcesOf(songs[0]!), ["soundcloud", "audius", "deezer"]);
+});
+
+test("a dash that is not the credited artist still keeps two recordings apart", () => {
+  const songs = mergeTracks([
+    track({ source: "soundcloud", title: "Jóga - Björk", artists: ["Some Uploader"] }),
+    track({ source: "deezer", title: "Jóga", artists: ["Björk"] }),
+  ]);
+  assert.equal(songs.length, 2, "an uncredited name is evidence about the recording");
+});
+
 test("merges the same recording across sources, the playable one leading", () => {
   const songs = mergeTracks([
     track({ source: "apple" }),

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { dedupeKey, durationsMatch, normalizeArtists, parseTitle } from "./normalize.ts";
+import {
+  dedupeKey,
+  durationsMatch,
+  normalizeArtists,
+  normalizeLoose,
+  parseTitle,
+  parseVersions,
+  versionTags,
+} from "./normalize.ts";
 
 test("noise that does not change the recording is stripped and leaves no variant behind", () => {
   for (const title of [
@@ -95,6 +103,59 @@ test("dedupeKey ignores credit order and feat. placement", () => {
     dedupeKey("Sunflower (feat. Swae Lee)", ["Post Malone"]),
     dedupeKey("Sunflower", ["Post Malone", "Swae Lee"]),
   );
+});
+
+test("a dash that only repeats the credited artist is a byline, not a variant", () => {
+  // SoundCloud, Audius and Mixcloud uploaders title tracks the way they name files, in both
+  // orders. Either way the copy has to land on the same dedupe key as the catalogue's.
+  assert.deepEqual(parseTitle("Jóga - Björk", ["Björk"]), {
+    base: "joga",
+    variants: [],
+    featured: [],
+  });
+  assert.deepEqual(parseTitle("Nirvana - Smells Like Teen Spirit", ["Nirvana"]), {
+    base: "smells like teen spirit",
+    variants: [],
+    featured: [],
+  });
+  assert.equal(dedupeKey("Jóga - Björk", ["Björk"]), dedupeKey("Jóga", ["Björk"]));
+  assert.equal(
+    dedupeKey("Sylow & Pierre Leck - There Is No Wonderwall", ["Sylow & Pierre Leck"]),
+    dedupeKey("There Is No Wonderwall", ["Sylow", "Pierre Leck"]),
+    "a joint byline is still a byline",
+  );
+});
+
+test("a dash that says something about the recording keeps saying it", () => {
+  assert.deepEqual(parseTitle("Wonderwall - Live", ["Oasis"]).variants, ["live"]);
+  assert.deepEqual(parseTitle("Wonderwall - 2011 Remaster", ["Oasis"]).variants, []);
+  assert.equal(parseTitle("Wonderwall - 2011 Remaster", ["Oasis"]).base, "wonderwall");
+  assert.deepEqual(
+    parseTitle("Jóga - Björk", ["Radiohead"]).variants,
+    ["bjork"],
+    "an uncredited name is not this track's byline",
+  );
+  assert.equal(
+    parseTitle("Wonderwall", ["Wonderwall"]).base,
+    "wonderwall",
+    "a title that is only the artist name is still the title",
+  );
+});
+
+test("version tags fold every spelling onto the tag callers compare", () => {
+  assert.deepEqual(versionTags("Wonderwall (Live at Wembley)"), ["live"]);
+  assert.deepEqual(versionTags("Wonderwall - Tribute Version"), ["cover"]);
+  assert.deepEqual(versionTags("Wonderwall (In the Style of Oasis)"), ["karaoke"]);
+  assert.deepEqual(versionTags("Wonderwall (Slowed + Reverb)"), ["speed"]);
+  assert.deepEqual(versionTags("Wonderwall"), []);
+  assert.deepEqual(versionTags("Wonderwall (Acoustic Cover, Live)"), ["acoustic", "cover", "live"]);
+});
+
+test("parseVersions leaves the song behind when it takes the version away", () => {
+  assert.equal(normalizeLoose(parseVersions("wonderwall live").rest), "wonderwall");
+  assert.deepEqual(parseVersions("wonderwall live").tags, ["live"]);
+  assert.equal(normalizeLoose(parseVersions("wonderwall").rest), "wonderwall");
+  assert.deepEqual(parseVersions("wonderwall").tags, []);
 });
 
 test("duration tolerance absorbs provider disagreement but not real differences", () => {
