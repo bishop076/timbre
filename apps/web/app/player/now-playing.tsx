@@ -322,18 +322,14 @@ export function NowPlayingPanel() {
     </div>
   );
 
-  // Collapsed. Not gone, and not a compact panel either: a rail the width of a scrollbar with one
-  // arrow on it. The drag is what puts it here — shrink the panel to its limit and it becomes
-  // this — and the arrow is what brings it back, so neither direction needs a button in the
-  // player bar. `xl:` only, because below that the panel is already a floating card rather than a
-  // column, and there is no column for a rail to sit in.
-  if (current && !panelOpen && !theater) {
-    return (
-      <aside
-        id={NOW_PLAYING_ID}
-        aria-label="Now playing"
-        className="hidden shrink-0 py-2 pr-2 xl:block"
-      >
+  // The rail is a SIBLING of the panel, never a replacement for it.
+  //
+  // Returning the rail instead of the panel unmounted the whole subtree — and every embed player
+  // lives inside it, so collapsing the panel stopped the music. The panel stays mounted and goes
+  // to zero width exactly as it always did when closed; the rail is drawn beside it.
+  const collapsedRail =
+    current && !panelOpen && !theater ? (
+      <div className="hidden shrink-0 py-2 pr-2 xl:block">
         <button
           type="button"
           onClick={togglePanel}
@@ -341,17 +337,18 @@ export function NowPlayingPanel() {
           aria-expanded={false}
           aria-controls={NOW_PLAYING_ID}
           title="Show now playing"
-          className="group/rail slab-sm flex h-full w-3 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-1)] text-[var(--fg-faint)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+          className="slab-sm flex h-full w-7 items-center justify-center rounded-[var(--r-md)] bg-[var(--surface-1)] text-[var(--fg-dim)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
         >
-          <ChevronIcon className="size-3 rotate-90" />
+          <ChevronIcon className="size-4 rotate-90" />
         </button>
-      </aside>
-    );
-  }
+      </div>
+    ) : null;
 
   return (
-    <aside
-      id={NOW_PLAYING_ID}
+    <>
+      {collapsedRail}
+      <aside
+        id={NOW_PLAYING_ID}
       style={{ "--np-w": `${width}px` } as React.CSSProperties}
       className={shell}
       aria-hidden={!open}
@@ -591,5 +588,6 @@ export function NowPlayingPanel() {
         )}
       </div>
     </aside>
+    </>
   );
 }

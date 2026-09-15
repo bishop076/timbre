@@ -169,13 +169,13 @@ export function Sidebar() {
             href="/"
             onClick={exitTheater}
             aria-label="Timbre — home"
-            className={`press flex h-10 items-center gap-2.5 rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
+            className={`press flex h-12 items-center gap-2.5 rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
           >
-            <TimbreMark aria-hidden className="h-[22px] w-auto shrink-0 text-[var(--accent)]" />
+            <TimbreMark aria-hidden className="h-7 w-auto shrink-0 text-[var(--accent)]" />
             {/* The real wordmark, not the word set in the UI font. The mark is two faces — "tim"
                 in Delicious Handrawn, "bre" in Gluten — and none of that survives being typed in
                 Geist. */}
-            <TimbreWordmark className="hidden h-[17px] w-auto shrink-0 @[9rem]:block" />
+            <TimbreWordmark className="hidden h-6 w-auto shrink-0 @[9rem]:block" />
           </Link>
 
           <nav aria-label="Primary" className="flex flex-col gap-0.5">
