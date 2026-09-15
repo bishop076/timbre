@@ -90,12 +90,26 @@ export function Volume() {
           event.preventDefault();
           writeVolume(to);
         }}
-        className="group flex h-8 w-16 cursor-pointer touch-none items-center xl:w-24"
+        className="group flex h-8 w-16 cursor-pointer touch-none items-center rounded-[var(--r-full)] xl:w-24"
       >
-        <div className="slab-sm relative h-2.5 w-full overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
-          <div
-            className="tint absolute inset-y-0 left-0 rounded-[var(--r-full)]"
-            style={{ width: `${level}%`, background: "var(--accent)" }}
+        {/* Nothing here changes size on hover. A track that fattens under the pointer moves the
+            fill out from under it, and the volume you land on is not the one you aimed at — so the
+            hover and drag states are carried entirely by the knob's opacity. The knob sits outside
+            the clipped track, which is what lets it overhang the ink edge instead of being cut by
+            it, and it is inset by half its width so it never hangs off either end. */}
+        <div className="relative w-full">
+          <div className="slab-sm h-2.5 w-full overflow-hidden rounded-[var(--r-full)] bg-[var(--surface-2)]">
+            <div
+              className="tint h-full rounded-[var(--r-full)]"
+              style={{ width: `${level}%`, background: "var(--accent)" }}
+            />
+          </div>
+          <span
+            aria-hidden
+            className={`slab-sm pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-full)] bg-[var(--surface-1)] transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 ${
+              dragging ? "opacity-100" : "opacity-0"
+            }`}
+            style={{ left: `calc(${level}% + ${(7 - (level / 100) * 14).toFixed(2)}px)` }}
           />
         </div>
       </div>

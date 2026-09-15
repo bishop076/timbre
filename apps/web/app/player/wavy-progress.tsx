@@ -143,10 +143,13 @@ export function ScrubBar({
           vectorEffect="non-scaling-stroke"
         />
       </svg>
+      {/* Drawn at every position rather than appearing under the pointer, so nothing about this
+          control moves on hover, and inset by half its own width at each end so it never hangs
+          half off the bar — at 0:00 the old one sat with its left half outside the panel. */}
       <span
         aria-hidden
-        className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[var(--ink)] bg-current"
-        style={{ left: `${percent}%` }}
+        className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-full)] border-[length:var(--edge)] border-[var(--ink)] bg-current"
+        style={{ left: `calc(${percent}% + ${(7 - (percent / 100) * 14).toFixed(2)}px)` }}
       />
     </div>
   );

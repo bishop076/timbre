@@ -1,5 +1,6 @@
 "use client";
 
+import { moveBetweenItems } from "../a11y/arrow-nav";
 import { AddToPlaylist } from "../playlists/add-to-playlist";
 import type { SongsResponse } from "../types";
 import { QueueRow } from "./now-playing";
@@ -43,10 +44,15 @@ export function RelatedPanel() {
   }
 
   return (
-    <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
+    <div className="scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-2">
       <ul className="flex flex-col gap-0.5">
         {songs.map((song) => (
-          <li key={song.id}>
+          <li
+            key={song.id}
+            onKeyDown={(event) =>
+              moveBetweenItems(event, event.currentTarget.parentElement, "vertical")
+            }
+          >
             <QueueRow
               song={song}
               onPlay={() => play(song, [...songs.filter((item) => item.id !== song.id), ...queue])}
@@ -54,7 +60,7 @@ export function RelatedPanel() {
               actions={
                 <AddToPlaylist
                   song={song}
-                  className="shrink-0 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100"
+                  className="shrink-0 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/row:opacity-100 [@media(hover:none)]:opacity-100"
                 />
               }
             />
