@@ -1,3 +1,5 @@
+import { ProviderError } from "@timbre/core";
+
 import type { SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 import { createRequester, type RequesterOptions } from "./request.ts";
 
@@ -43,20 +45,53 @@ export function isYtMusicProvider(provider: SearchProvider): provider is YtMusic
   return provider.id === "ytmusic" && "playlist" in provider;
 }
 
-function toSourceTrack(raw: SidecarTrack): SourceTrack {
+const text = (value: unknown): string | null => (typeof value === "string" ? value : null);
+
+function toSourceTrack(raw: SidecarTrack): SourceTrack | null {
+  const id = text(raw?.video_id);
+  const title = text(raw?.title);
+  if (!id || !title) return null;
+
   return {
     source: "ytmusic",
-    sourceId: raw.video_id,
-    title: raw.title,
-    artists: raw.artists,
-    album: raw.album,
-    durationMs: raw.duration_seconds === null ? null : raw.duration_seconds * 1000,
+    sourceId: id,
+    title,
+    artists: Array.isArray(raw.artists) ? raw.artists.filter((name) => typeof name === "string") : [],
+    album: text(raw.album),
+    durationMs: typeof raw.duration_seconds === "number" ? raw.duration_seconds * 1000 : null,
     isrc: null,
-    url: `https://music.youtube.com/watch?v=${raw.video_id}`,
-    artworkUrl: raw.thumbnail_url,
+    url: `https://music.youtube.com/watch?v=${encodeURIComponent(id)}`,
+    artworkUrl: text(raw.thumbnail_url),
     playback: "queue",
-    videoType: raw.video_type ?? null,
+    videoType: text(raw.video_type),
   };
+}
+
+/**
+ * The sidecar's own list, checked before anything walks it.
+ *
+ * This was the one boundary in the package where the answer was trusted outright — `data.items`,
+ * `data.radio`, `data.tracks` were each `.map`ped straight off the parsed body — and the damage
+ * was not confined to this provider. `searchAll` catches what a provider throws, but it ranks
+ * and merges the pooled result *outside* that guard, so a single track whose `artists` came back
+ * null failed the whole search: `TypeError: Cannot read properties of null (reading 'flatMap')`,
+ * with Apple's and Deezer's perfectly good answers lost alongside it.
+ *
+ * The sidecar declares a `response_model` on every route, so a healthy one cannot send this. That
+ * is an argument for the shape being reliable, not for not checking it: `YTMUSIC_SERVICE_URL` is
+ * configuration, and the point of parsing at the boundary is that the far side does not have to
+ * be malicious to be wrong. A list that is not a list is this source failing, and says so; a
+ * single track that is not a track is dropped, exactly as every other provider drops one.
+ */
+function tracksFrom(value: unknown, what: string): SourceTrack[] {
+  if (!Array.isArray(value)) {
+    throw new ProviderError(
+      "ytmusic",
+      "unknown",
+      `The YouTube Music sidecar answered with no ${what} Timbre could read.`,
+    );
+  }
+  return value.flatMap((raw) => toSourceTrack(raw as SidecarTrack) ?? []);
 }
 
 export interface YtMusicConfig {
@@ -94,7 +129,7 @@ export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
 
     async search(ctx, query, limit) {
       const data = await call<{ items: SidecarTrack[] }>(ctx, "/search", { query, limit });
-      return data.items.map(toSourceTrack);
+      return tracksFrom(data.items, "results");
     },
 
     async resolve(ctx, url) {
@@ -109,8 +144,8 @@ export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
         limit,
       });
       return [
-        { list: "ytmusic:radio", tracks: data.radio.map(toSourceTrack) },
-        { list: "ytmusic:related", tracks: data.related.map(toSourceTrack) },
+        { list: "ytmusic:radio", tracks: tracksFrom(data.radio, "radio") },
+        { list: "ytmusic:related", tracks: tracksFrom(data.related, "related tracks") },
       ];
     },
 
@@ -127,7 +162,7 @@ export function createYtMusicProvider(config: YtMusicConfig): YtMusicProvider {
         year: data.year,
         trackCount: data.track_count,
         artworkUrl: data.thumbnail_url,
-        tracks: data.tracks.map(toSourceTrack),
+        tracks: tracksFrom(data.tracks, "playlist tracks"),
       };
     },
   };
