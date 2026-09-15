@@ -61,3 +61,20 @@ test("names join as prose", () => {
   assert.equal(listNames(["A", "B"]), "A and B");
   assert.equal(listNames(["A", "B", "C"]), "A, B and C");
 });
+
+test("an artist whose name holds no letters or digits is still their own artist", () => {
+  // Both are real acts, and both reduce to "" under `normalizeLoose`: !!! (dance-punk) and
+  // ††† (Crosses). Keyed on that, they were one artist — one genre credit between them, and
+  // only the first was ever named.
+  assert.notEqual(artistKey("!!!"), artistKey("†††"));
+
+  const [rock] = tallyGenres(
+    ["!!!", "†††", "∆", "!!!"].map((artist) => ({ artist })),
+    () => ROCK,
+  );
+  assert.deepEqual(rock!.artists, ["!!!", "†††", "∆"]);
+});
+
+test("the fallback key still folds case and surrounding space", () => {
+  assert.equal(artistKey(" †††  "), artistKey("†††"));
+});

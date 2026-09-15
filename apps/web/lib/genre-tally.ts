@@ -1,6 +1,16 @@
 import { normalizeLoose } from "@timbre/core";
 
-export const artistKey = normalizeLoose;
+/**
+ * One artist, one key — including the artists whose names are not made of letters.
+ *
+ * `normalizeLoose` keeps letters and digits and discards everything else, which for "!!!",
+ * "†††" or "∆" leaves nothing at all. An empty string is not an identity: it made every such
+ * act *the same act*, so they shared one entry in the taste book, one genre credit, and one
+ * slot in the "because you play …" line — and whichever was seen first was the one named.
+ * Falling back to the name itself, folded, keeps them apart. `stats/listening-stats.ts`
+ * already worked around this at its own call site; this closes it for every caller.
+ */
+export const artistKey = (name: string): string => normalizeLoose(name) || name.trim().toLowerCase();
 
 export function dominantGenre(genreIds: readonly (number | null | undefined)[]): number | null {
   const counts = new Map<number, number>();
