@@ -16,7 +16,6 @@ import {
   ShuffleIcon,
   SpinnerIcon,
 } from "../icons";
-import { PlaybackMenu } from "../player/playback-menu";
 import { usePlayerControls, usePlayerProgress } from "../player/player-context";
 import { Volume } from "../player/volume";
 import type { LeftYouTube } from "../player/youtube-refusal";
