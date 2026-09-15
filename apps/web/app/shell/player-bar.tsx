@@ -249,9 +249,18 @@ export function PlayerBar() {
           <Scrub height="h-4" />
         </div>
 
+        {/* The heart belongs to the track, not to the transport. It was wedged between repeat
+            and the volume group, four identical-weight glyphs in a row where three of them
+            control playback and one changes your library — so it was easy to hit by accident and
+            hard to find on purpose. Out here it sits beside the title it acts on, with space. */}
         <div className="flex min-w-0 items-center gap-3">
           {artwork}
           {meta}
+          {current ? (
+            <span className="ml-1 shrink-0">
+              <LikeButton song={current} />
+            </span>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center justify-center">
@@ -259,25 +268,17 @@ export function PlayerBar() {
             <ModeButton mode="shuffle" variant="bar" />
             <Transport variant="bar" />
             <ModeButton mode="repeat" variant="bar" />
-            <LikeButton song={current} />
           </div>
         </div>
 
         <div className="flex min-w-0 items-center justify-end gap-1.5">
+          {/* Four controls, not seven. The speed menu and the theater toggle used to sit here as
+              two more same-sized circles; both are things you reach for once a session, and both
+              live in the now-playing panel, which is where you already are when you want them.
+              What is left is the two things you read (elapsed, volume) and the one that opens the
+              panel. */}
           <Elapsed />
           <Volume />
-          <PlaybackMenu variant="bar" />
-          <span className="mx-1 h-6 w-px bg-[var(--line)]" />
-          <button
-            type="button"
-            onClick={toggleTheater}
-            aria-label={theater ? "Shrink video" : "Expand video"}
-            aria-pressed={theater}
-            className="slab-sm press flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg)]"
-            style={{ background: theater ? "var(--accent)" : "var(--surface-2)" }}
-          >
-            {theater ? <CollapseIcon className="size-[18px]" /> : <ExpandIcon className="size-[18px]" />}
-          </button>
           {panelButton}
         </div>
       </footer>

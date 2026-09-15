@@ -29,6 +29,25 @@ export function setFlag(name: string, value: string | null): void {
 }
 
 /**
+ * Which ground the *browser's own* widgets should be drawn for.
+ *
+ * Everything Timbre paints follows --bg. Everything the user agent paints does not: scrollbars,
+ * the caret, ::selection's default pair, Chrome's autofill fill, and the spin and picker
+ * controls inside a date or number field. Those follow `color-scheme`, and the app never
+ * declared one — so they were all drawn for `normal`, which is light. On the dark ground that
+ * is a white scrollbar with white arrow buttons down the side of a near-black panel, which is
+ * exactly what /stats shows in its "Read the numbers" table.
+ *
+ * It has to be the *resolved* ground, not the device preference: someone reading the light
+ * theme on a dark-set machine wants light widgets, and `color-scheme: light dark` would give
+ * them dark ones. One value, the one the page is actually wearing.
+ */
+export function setColorScheme(light: boolean): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.colorScheme = light ? "light" : "dark";
+}
+
+/**
  * The root font size, as a percentage. Every size in the app is in rem, so this is the one
  * knob that scales the whole interface — including the player bar and the safe-area padding —
  * without a single component knowing about it.

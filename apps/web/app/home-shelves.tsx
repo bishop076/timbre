@@ -8,7 +8,7 @@ import { usePlayerControls } from "./player/player-context";
 import { useHistory, type PlayedSong } from "./player/history-store";
 import { recentItems } from "./recent-items";
 import { Shelf } from "./shelf";
-import { SongCard, SongTiles, TILE } from "./song-card";
+import { EAGER_TILES, SongCard, SongTiles, TILE } from "./song-card";
 import { ArtistCard } from "./tile-cards";
 import { TileSkeletons } from "./tile-skeleton";
 import type { PlayContext, Song, SongsResponse } from "./types";
@@ -95,12 +95,23 @@ function ForYou() {
         caption="Only on this device"
         resetKey={items[0] && keyOf(items[0])}
       >
-        {items.map((item) => (
+        {/* `SongTiles` marks its first few covers eager; this shelf builds its tiles by hand, so
+            it has to do the same or the one shelf the user sees first is the one that arrives
+            as a row of blanks. */}
+        {items.map((item, index) => (
           <div key={keyOf(item)} className={TILE}>
             {item.kind === "song" ? (
-              <SongCard song={songFromHistory(item.entry)} queue={recentSongs} />
+              <SongCard
+                song={songFromHistory(item.entry)}
+                queue={recentSongs}
+                eager={index < EAGER_TILES}
+              />
             ) : (
-              <RecentArtist artist={item.artist} entries={item.entries} />
+              <RecentArtist
+                artist={item.artist}
+                entries={item.entries}
+                eager={index < EAGER_TILES}
+              />
             )}
           </div>
         ))}
@@ -115,7 +126,15 @@ function ForYou() {
   );
 }
 
-function RecentArtist({ artist, entries }: { artist: PlayContext; entries: PlayedSong[] }) {
+function RecentArtist({
+  artist,
+  entries,
+  eager,
+}: {
+  artist: PlayContext;
+  entries: PlayedSong[];
+  eager?: boolean;
+}) {
   const { play, current, state } = usePlayerControls();
   const songs = entries.map(songFromHistory);
   const playing =
@@ -131,6 +150,7 @@ function RecentArtist({ artist, entries }: { artist: PlayContext; entries: Playe
       subtitle={entries.length === 1 ? "Artist · 1 song" : `Artist · ${entries.length} songs`}
       onPlay={() => songs[0] && play(songs[0], songs)}
       playing={playing}
+      eager={eager}
     />
   );
 }
@@ -150,7 +170,7 @@ export function HomeShelves({ charts, failed }: { charts: SongsResponse | null; 
       )}
 
       {(failed || (charts !== null && songs.length === 0)) && (
-        <EmptyNotice className="mb-6 sm:mb-9">
+        <EmptyNotice className="mb-6 @xl:mb-9">
           Charts aren&rsquo;t available right now. Search still works — try a song or artist
           above.
         </EmptyNotice>

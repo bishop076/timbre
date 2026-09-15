@@ -49,7 +49,9 @@ export function SourceBadges({ song, className = "" }: { song: Song; className?:
                 rel="noreferrer noopener"
                 title={`Open on ${style.label}`}
                 aria-label={`Open on ${style.label}`}
-                className="text-[var(--fg-faint)] opacity-40 transition hover:opacity-100 focus-visible:opacity-100"
+                // 0.4 measured 1.77:1 against the light page — below the 3.0 a non-text control needs.
+                // It is meant to be quiet until you look for it, not invisible until you hover.
+                className="text-[var(--fg-faint)] opacity-70 transition hover:opacity-100 focus-visible:opacity-100"
               >
                 <ExternalIcon className="size-2.5" />
               </a>

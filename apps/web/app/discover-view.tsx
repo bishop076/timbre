@@ -11,6 +11,7 @@ import { ExploreForYou, kindLabel } from "./explore-for-you";
 import { ShuffleIcon } from "./icons";
 import { SectionHeader } from "./page-chrome";
 import { Shelf } from "./shelf";
+import { COVER_EMPTY, TILE_BOX } from "./song-card";
 import { useTaste } from "./taste-store";
 import type { Discover } from "@/lib/discover";
 import type { Radio } from "@/lib/radios";
@@ -68,6 +69,9 @@ export function DiscoverView({
     </div>
   );
 }
+
+/** Featured cards are wide, so only the first couple are ever on screen without scrolling. */
+const EAGER_FEATURED = 2;
 
 function Featured({ data }: { data: Discover }) {
   const cards: {
@@ -135,12 +139,24 @@ function Featured({ data }: { data: Discover }) {
 
   return (
     <Shelf title="Featured">
-      {cards.map((card) => {
+      {cards.map((card, index) => {
         const backdrop = card.image ?? card.covers?.[0] ?? null;
+        // The first two are on screen at any width a Featured shelf is shown at, and a cover
+        // that waits for the scroller before it starts loading is a card that arrives empty.
+        const eager = index < EAGER_FEATURED;
 
         return (
-          <Link key={card.key} href={card.href} className="group w-[15rem] shrink-0 sm:w-[20rem]">
-            <div className="press relative aspect-[4/3] w-full overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)]">
+          <Link
+            key={card.key}
+            href={card.href}
+            // A rem wider than it was on each step, because `TILE_BOX` adds the same 2 of
+            // padding a song tile has: the picture inside is the size it always was, and the
+            // card now lights up on hover as one panel the way the rest of the shelf does.
+            className={`group w-[16rem] shrink-0 @xl:w-[21rem] ${TILE_BOX}`}
+          >
+            <div
+              className={`slab-sm press relative aspect-[4/3] w-full overflow-hidden rounded-[var(--r-md)] ${COVER_EMPTY}`}
+            >
               {backdrop && (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -148,14 +164,19 @@ function Featured({ data }: { data: Discover }) {
                     src={coverSrc(backdrop, 120) ?? undefined}
                     alt=""
                     aria-hidden
-                    loading="lazy"
-                    decoding="async"
+                    loading={eager ? "eager" : "lazy"}
+                    decoding={eager ? "sync" : "async"}
                     {...hideWhenBroken}
                     className="absolute inset-0 size-full scale-[2] object-cover opacity-70 blur-3xl saturate-150"
                   />
+                  {/* Settles the blur into the page rather than dimming it. This was
+                      `from-white/5 to-black/25` — a black wash that only ever suited the dark
+                      theme, and in the light one laid a grey shadow across a blush page. Fading
+                      to `--bg` does the same job of keeping the floating cover legible and is
+                      the right colour in both. */}
                   <div
                     aria-hidden
-                    className="absolute inset-0 bg-gradient-to-b from-white/5 to-black/25"
+                    className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[var(--bg)] opacity-80"
                   />
                 </>
               )}
@@ -165,26 +186,43 @@ function Featured({ data }: { data: Discover }) {
                 <img
                   src={coverSrc(card.image, 500) ?? undefined}
                   alt=""
-                  loading="lazy"
-                  decoding="async"
+                  loading={eager ? "eager" : "lazy"}
+                  decoding={eager ? "sync" : "async"}
                   {...hideWhenBroken}
-                  className="absolute left-1/2 top-1/2 aspect-square h-[76%] -translate-x-1/2 -translate-y-1/2 rounded-[4px] object-cover shadow-[0_8px_28px_rgba(0,0,0,0.5)]"
+                  className="absolute left-1/2 top-1/2 aspect-square h-[76%] -translate-x-1/2 -translate-y-1/2 rounded-[var(--r-sm)] object-cover shadow-[var(--drop-lg)]"
                 />
               ) : (
-                <div className="absolute inset-0">
-                  <Collage covers={card.covers ?? []} className="size-full" rounded="" />
+                // `Collage` falls back to a flat `--surface-2` panel with a grey note when every
+                // cover in it is dead — the exact box this card is trying not to be, and it
+                // lives in a file this change does not own. Two overrides reach into it from
+                // out here: its own background is a *colour* and `COVER_EMPTY` is an *image*,
+                // so the lit ground paints over it whichever branch it takes; and a rule on the
+                // glyph itself beats the inherited `--fg-faint`, so the note matches the one on
+                // every other empty cover instead of going grey.
+                <div className="absolute inset-0 [&_svg]:text-[var(--accent-text)] [&_svg]:opacity-60">
+                  <Collage
+                    covers={card.covers ?? []}
+                    className={`size-full ${COVER_EMPTY}`}
+                    rounded=""
+                  />
                 </div>
               )}
             </div>
 
-            <p className="mt-2.5 truncate text-[10px] font-bold uppercase tracking-wider text-[var(--accent)]">
+            {/* `--accent` is a surface colour carrying black text, never a text colour itself:
+                as an eyebrow on a blush page it was pink on near-pink. `--accent-text` is the
+                readable one, and it is the accent in both themes. */}
+            <p className="mt-2 truncate text-[10px] font-bold uppercase tracking-wider text-[var(--accent-text)]">
               {card.eyebrow}
             </p>
-            <p className="line-clamp-2 text-[13px] font-bold leading-snug group-hover:underline sm:text-[15px]">
+            <p
+              title={card.title}
+              className="line-clamp-2 text-[13px] font-bold leading-snug group-hover:underline @xl:text-[15px]"
+            >
               {card.title}
             </p>
             {card.subtitle && (
-              <p className="mt-0.5 truncate text-[11px] text-[var(--fg-dim)] sm:text-[12px]">
+              <p className="mt-0.5 truncate text-[11px] text-[var(--fg-dim)] @xl:text-[12px]">
                 {card.subtitle}
               </p>
             )}
