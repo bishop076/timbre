@@ -7,6 +7,7 @@ import { proxied } from "../artwork-url";
 import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
 import { widgetStep } from "./soundcloud-handshake.ts";
+import { judgeSoundCloudStart, type StartReading } from "./soundcloud-stall.ts";
 
 interface SCWidget {
   bind(event: string, handler: () => void): void;
@@ -34,6 +35,14 @@ declare global {
 
 const API_SRC = "https://w.soundcloud.com/player/api.js";
 const STALL_MS = 7000;
+/**
+ * How long the widget gets to answer a question about itself before the silence is the answer.
+ * A healthy widget is answering `getDuration` twice a second from the poll below, so this is
+ * generous by an order of magnitude and only ever expires on one that has stopped listening.
+ */
+const ANSWER_MS = 2000;
+const STALL_REASON =
+  "SoundCloud wouldn't start this track. It plays on soundcloud.com but refuses to start here — pick another source from the badges to hear it.";
 
 const loadApi = loadGlobal(API_SRC, () => (window.SC?.Widget ? window.SC : undefined));
 
@@ -70,25 +79,52 @@ export function SoundCloudPlayer({
   const wantedUrl = useRef(trackUrl);
   const holdingUrl = useRef<string | null>(null);
   const stallTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const answerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const live = useLatest({ ...controls, level });
 
-  const start = useCallback((widget: SCWidget) => {
-    widget.play();
-    clearTimeout(stallTimer.current);
-    stallTimer.current = setTimeout(() => {
-      if (!readyRef.current || widgetRef.current !== widget) return;
-      widget.getPosition((position) => {
-        widget.isPaused((paused) => {
-          if (position > 0 || !paused) return;
-          live.current.handleError(
-            "SoundCloud wouldn't start this track. It plays on soundcloud.com but refuses to start here — pick another source from the badges to hear it.",
-            true,
-          );
-        });
-      });
-    }, STALL_MS);
-  }, [live]);
+  const start = useCallback(
+    (widget: SCWidget) => {
+      widget.play();
+      // Per track, not per component: each `start` is one song's attempt at getting going, and
+      // the reprieve it is allowed belongs to that attempt.
+      let reprieves = 0;
+
+      const watch = (): void => {
+        clearTimeout(stallTimer.current);
+        stallTimer.current = setTimeout(() => {
+          if (!readyRef.current || widgetRef.current !== widget) return;
+
+          let settled = false;
+          const settle = (reading: StartReading | null) => {
+            if (settled || widgetRef.current !== widget) return;
+            settled = true;
+            clearTimeout(answerTimer.current);
+            const verdict = judgeSoundCloudStart(reading, reprieves);
+            if (verdict === "playing") return;
+            if (verdict === "wait") {
+              reprieves += 1;
+              watch();
+              return;
+            }
+            live.current.handleError(STALL_REASON, true);
+          };
+
+          // Both readings come back over the same channel that has already gone quiet, so the
+          // question needs its own deadline. Without one this whole guard was unreachable for
+          // the failure that matters most — a widget that answers nothing at all — and a dead
+          // track stopped the queue with "playing" on screen until the tab was closed.
+          answerTimer.current = setTimeout(() => settle(null), ANSWER_MS);
+          widget.getPosition((position) => {
+            widget.isPaused((paused) => settle({ position, paused }));
+          });
+        }, STALL_MS);
+      };
+
+      watch();
+    },
+    [live],
+  );
 
   // The one place the widget is told what to do, so READY and a track change cannot disagree.
   const apply = useCallback((widget: SCWidget) => {
@@ -172,6 +208,7 @@ export function SoundCloudPlayer({
       cancelled = true;
       clearBlocked();
       clearTimeout(stallTimer.current);
+      clearTimeout(answerTimer.current);
       clearInterval(poll);
       widgetRef.current = null;
       readyRef.current = false;
