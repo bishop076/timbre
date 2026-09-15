@@ -10,7 +10,42 @@ import { AddToPlaylist } from "./playlists/add-to-playlist";
 import { PlayGlyph } from "./tile-cards";
 import type { Song } from "./types";
 
-export const TILE = "w-[8rem] shrink-0 snap-start sm:w-[11.5rem]";
+/**
+ * A tile measures the column it is in, not the window.
+ *
+ * `sm:` asks the viewport, and the viewport does not know about the dock or either sidebar — so
+ * a 1280px window with the dock open kept 184px tiles in a ~590px column and sliced the row at
+ * an arbitrary point. Every page that shows a shelf wraps its content in an `@container`
+ * (`page-chrome`'s `Page`, and the home, explore and search wrappers), so `@xl` is that column
+ * at 36rem — which is what a 640px window came to once the page padding was taken off, so the
+ * step lands where `sm:` used to and nothing moves at a full-width window.
+ */
+/**
+ * A tile's width is a fraction of the row it is in, not a fixed number.
+ *
+ * With a fixed width, a container of arbitrary size slices the last tile down the middle at
+ * nearly every width — and the edge fade then honestly reports that there is more, which reads
+ * as the app fading things for no reason on a wide screen. The user's words: "i dont want any
+ * fading when its full view. just show all, only fade when theres the right sidebar."
+ *
+ * So each step divides the track into a whole number of columns: `(100% - (n-1) * gap) / n`,
+ * where the gap is the `gap-1` / `@xl:gap-2` on the scroller. The row then ends on a tile
+ * boundary, `canRight` is false when everything fits, and no mask is drawn.
+ *
+ * Container queries, not viewport ones: the whole point is that it reflows when the right panel
+ * is dragged, and the panel narrows the container without touching the window.
+ */
+/*
+ * Written out as literal class strings, never assembled. Tailwind scans source TEXT for class
+ * names — a class built from a template literal or a variable produces no CSS at all, silently,
+ * and the tile falls back to its intrinsic width. Same shape of trap as a bundler that only
+ * traces a static `new URL`.
+ *
+ * No spaces inside the brackets, either: Tailwind's arbitrary-value syntax ends at whitespace,
+ * so `calc(100% - 1rem)` has to be written `calc(100%-1rem)`.
+ */
+export const TILE =
+  "w-[calc((100%-3*0.25rem)/4)] shrink-0 snap-start @xl:w-[calc((100%-4*0.5rem)/5)] @3xl:w-[calc((100%-5*0.5rem)/6)]";
 
 /**
  * The box a tile lives in: nothing at rest, a soft panel under the whole tile — artwork, title
@@ -22,13 +57,46 @@ export const TILE_BOX =
   "block rounded-[var(--r-lg)] p-2 transition duration-200 ease-[var(--ease)] hover:bg-[var(--surface-2)]";
 
 /**
+ * What a cover looks like when there is no art.
+ *
+ * This is not a rare state: when a provider or the art proxy is unreachable it is *every* cover
+ * on the page at once, which is how the shelves currently look here — rows of outlined boxes
+ * with a grey note centred in each. A flat `--surface-2` fill reads as a picture that failed to
+ * arrive. This reads as the place a picture goes: a ground lit from the top-left, warm pink at
+ * the corner and sinking to the page colour, with a soft accent bloom under the middle where
+ * the note sits. Every value is a token, so it is the same object in both themes and under a
+ * custom accent.
+ *
+ * It also covers the gap before a cover loads, so a shelf arrives coloured rather than blank.
+ */
+export const COVER_EMPTY =
+  "bg-[image:radial-gradient(66%_66%_at_50%_43%,color-mix(in_oklab,var(--accent)_22%,transparent),transparent_72%),radial-gradient(125%_125%_at_12%_-6%,var(--surface-3),var(--surface-2)_52%,var(--bg))]";
+
+/** The note that sits on `COVER_EMPTY` — a watermark in the accent, not a grey error glyph. */
+export const COVER_NOTE = "text-[var(--accent-text)] opacity-60";
+
+/**
+ * Cover, then title, then subtitle, and the space between them is what makes the three read as
+ * one object. It was 12px, which let the title float far enough from the cover to look like a
+ * caption printed underneath rather than part of the tile. The references all sit the title
+ * tight under the art and let the art carry the weight.
+ *
+ * The line heights are declared rather than inherited so that the text block is exactly two
+ * lines tall on every tile, whatever the title is — a shelf of tiles whose text blocks are all
+ * the same height is the difference between a row and a pile.
+ */
+export const TILE_TITLE =
+  "mt-2 block truncate text-[length:var(--text-meta)] font-bold leading-5 tracking-[var(--track-body)]";
+export const TILE_SUBTITLE = "mt-0.5 block truncate text-xs leading-4 text-[var(--fg-dim)]";
+
+/**
  * How many tiles to load without waiting to be scrolled to.
  *
  * Every cover in the app was `loading="lazy"`, including the ones already on screen, so a shelf
  * arrived as a row of empty outlined boxes and filled in afterwards — which reads as broken
  * rather than as loading. Six is the most a shelf shows at 1536px; past that, lazy is right.
  */
-const EAGER_TILES = 6;
+export const EAGER_TILES = 6;
 
 export function SongTiles({ songs, queue = songs }: { songs: Song[]; queue?: Song[] }) {
   return songs.map((song, index) => (
@@ -58,7 +126,9 @@ export function SongCard({
   return (
     <div className={`group relative w-full text-left ${TILE_BOX}`}>
       <div className="relative">
-        <div className="slab-sm press relative aspect-square overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-2)]">
+        <div
+          className={`slab-sm press relative aspect-square overflow-hidden rounded-[var(--r-md)] ${COVER_EMPTY}`}
+        >
           <Artwork
             // 500x500 arriving for a 168px box: 14 covers on /explore cost 702 kB where the six
             // that already went through sized() cost 27 kB between them. sized() snaps to each
@@ -66,7 +136,9 @@ export function SongCard({
             src={sized(song.artworkUrl, 256)}
             eager={eager}
             className="size-full transition duration-500 ease-[var(--ease)] group-hover:scale-[1.04]"
-            iconClassName="size-7"
+            surfaceClassName={COVER_EMPTY}
+            noteClassName={COVER_NOTE}
+            iconClassName="size-8"
           />
 
 
@@ -132,16 +204,19 @@ export function SongCard({
         aria-hidden
         className="block w-full text-left"
       >
+        {/* One line, on purpose. A title long enough to be cut is cut mid-word — there is no CSS
+            that ellipsises on a word boundary — so the `title` attribute carries the rest, and
+            the clamp stays at one line because two would reserve a second line box on every
+            tile in the app and 690px of window has no room to spare. */}
         <p
-          className={`tint mt-2.5 truncate text-[length:var(--text-meta)] font-bold tracking-[var(--track-body)] sm:mt-3 ${
-            isCurrent ? "text-[var(--accent)]" : ""
-          }`}
+          title={song.title}
+          className={`tint ${TILE_TITLE} ${isCurrent ? "text-[var(--accent-text)]" : ""}`}
         >
           {song.title}
         </p>
       </button>
 
-      <p className="mt-0.5 truncate text-xs text-[var(--fg-dim)]">
+      <p className={TILE_SUBTITLE}>
         <ArtistLink artists={song.artists} />
       </p>
     </div>

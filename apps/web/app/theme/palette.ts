@@ -224,7 +224,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
       "--fg-dim": tone(0.48, sat * 0.04),
       "--fg-faint": tone(0.5, sat * 0.035),
       "--ink": tone(0.22, sat * 0.08),
-      "--line": veil(0.3, sat * 0.06, 0.09),
+      "--line": veil(0.3, sat * 0.06, 0.22),
       "--accent-wash": veil(0.54, accentChroma, 0.1),
       ...drops(0.25, sat * 0.06, 0.05, 0.06),
     });
