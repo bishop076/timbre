@@ -7,60 +7,66 @@
    between values and `transition` skips it entirely. Registering as <color> is
    the only thing that makes a theme change fade instead of jump, which is what
    "seamless transitions of colours that change everytime" requires.
-
-   inherits: true because these cascade to the whole tree; the initial-value is
-   the purple default, so an element that somehow paints before :root resolves
-   still lands on brand rather than black.
    --------------------------------------------------------------------------- */
 @property --accent {
   syntax: "<color>";
   inherits: true;
-  initial-value: #5b3fd6;
+  initial-value: #ff6fa8;
 }
 @property --accent-fg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ffffff;
+  initial-value: #1f1218;
 }
 @property --accent-wash {
   syntax: "<color>";
   inherits: true;
-  initial-value: rgb(91 63 214 / 0.1);
+  initial-value: rgb(255 111 168 / 0.18);
 }
 @property --bg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ffffff;
+  initial-value: #f9eef2;
 }
 @property --surface-1 {
   syntax: "<color>";
   inherits: true;
-  initial-value: #f6f6f8;
+  initial-value: #ffffff;
 }
 @property --surface-2 {
   syntax: "<color>";
   inherits: true;
-  initial-value: #efeff2;
+  initial-value: #fde7ef;
 }
 @property --surface-3 {
   syntax: "<color>";
   inherits: true;
-  initial-value: #e6e6ec;
+  initial-value: #f9d6e4;
 }
 @property --fg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #101014;
+  initial-value: #1f1218;
 }
 @property --fg-dim {
   syntax: "<color>";
   inherits: true;
-  initial-value: #5d5d69;
+  initial-value: #6b4a57;
 }
 @property --fg-faint {
   syntax: "<color>";
   inherits: true;
-  initial-value: #666670;
+  initial-value: #705b63;
+}
+@property --line {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1f1218;
+}
+@property --ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1f1218;
 }
 @property --danger {
   syntax: "<color>";
@@ -73,24 +79,16 @@
   initial-value: #7a4f00;
 }
 
-/* The customisation layer's seed. --accent-seed is the reader's chosen colour
-   after lightness correction against the ground; --accent-seed-fg is the black
-   or white derived from it. Registered for the same reason as the ramp above:
-   unregistered, a theme change would snap instead of fade.
-
-   Note what is NOT registered: --drop, --drop-sm, --drop-lg. Those are shadow
-   values, not colours, and a registered property silently discards any value
-   that misses its declared syntax — registering them as <color> would delete
-   every shadow in the app. */
+/* The customisation layer's seed. */
 @property --accent-seed {
   syntax: "<color>";
   inherits: true;
-  initial-value: #5b3fd6;
+  initial-value: #ff6fa8;
 }
 @property --accent-seed-fg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ffffff;
+  initial-value: #1f1218;
 }
 @property --app-bg-dim {
   syntax: "<number>";
@@ -107,64 +105,52 @@
   inherits: true;
   initial-value: 1;
 }
-@property --line {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: rgb(0 0 0 / 0.08);
-}
-@property --ink {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: rgb(0 0 0 / 0.08);
-}
 
 /* ---------------------------------------------------------------------------
-   Light — a white page with grey cards, the way Apple Music reads. Surfaces
-   separate by tone alone; there is no outline doing the work.
+   Light — blush. This is the default, and the default is pink.
+
+   The references are unanimous: a blush page, white cards, an ink outline and a
+   hot pink accent carrying black text. Black on #ff6fa8 measures 6.99:1, which
+   is why the accent can be this loud and still hold a label.
    --------------------------------------------------------------------------- */
 :root,
 :root[data-theme="light"] {
-  --bg: #ffffff;
-  --surface-1: #f6f6f8;
-  --surface-2: #efeff2;
-  --surface-3: #e6e6ec;
-  --fg: #101014;
-  --fg-dim: #5d5d69;
-  --fg-faint: #666670;
-  --line: rgb(0 0 0 / 0.08);
+  --bg: #f9eef2;
+  --surface-1: #ffffff;
+  --surface-2: #fde7ef;
+  --surface-3: #f9d6e4;
+  --fg: #1f1218;
+  --fg-dim: #6b4a57;
+  --fg-faint: #705b63;
+  --line: rgb(31 18 24 / 0.16);
+
+  --accent: #ff6fa8;
+  --accent-fg: #1f1218;
+  --accent-wash: rgb(255 111 168 / 0.18);
 
   --danger: #b3261e;
   --warn: #7a4f00;
 
-  --accent: #5b3fd6;
-  --accent-fg: #ffffff;
-  --accent-wash: rgb(91 63 214 / 0.1);
+  /* The outline is deliberate here, not a leftover. The references draw it: a
+     solid ink edge around cards and controls is what the style is. What made
+     the old look cartoony was never the border, it was the `Npx Npx 0` hard
+     offset shadow sitting under it like a sticker — those stay gone. */
+  --ink: #1f1218;
 
-  /* --ink was a near-black outline colour; it is now the same hairline as
-     --line. Kept as its own token because ~190 call sites read it through
-     .slab, and renaming them is churn with no visual result. */
-  --ink: rgb(0 0 0 / 0.08);
-
-  /* Elevation, not a cartoon offset. These were `Npx Npx 0` — a hard shadow
-     with zero blur, sitting down-right like a sticker. Real players cast a
-     soft ambient shadow or none at all. */
-  --drop: 0 1px 2px rgb(16 16 20 / 0.05), 0 4px 12px rgb(16 16 20 / 0.06);
-  --drop-sm: 0 1px 2px rgb(16 16 20 / 0.06);
-  --drop-lg: 0 8px 28px rgb(16 16 20 / 0.12);
+  --drop: 0 1px 2px rgb(31 18 24 / 0.06), 0 6px 18px rgb(31 18 24 / 0.08);
+  --drop-sm: 0 1px 2px rgb(31 18 24 / 0.08);
+  --drop-lg: 0 10px 30px rgb(31 18 24 / 0.14);
 }
 
 :root {
-  /* Radii came down from 18px. Spotify's cards are 4-8px and its pills are
-     fully round; the in-between 18px is what read as "cartoony". */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  /* Rounder than the Spotify pass. The references are soft — pill buttons and
+     generously rounded cards are the whole character. */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
   --r-full: 999px;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-
-  /* How long a colour change takes. One number so a theme swap, an accent
-     change and an artwork-derived tint all move together. */
   --tint-ms: 420ms;
 
   --bar-h: 6rem;
@@ -175,12 +161,8 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
 
-  /* Was 2px. A 2px border in a dark ink colour is the single biggest reason
-     this looked drawn rather than designed. */
-  --edge: 1px;
+  --edge: 2px;
 
-  /* Type ramp. Display sizes get negative tracking because large text on a
-     tight grid needs it; body text does not. */
   --text-display: clamp(1.75rem, 1.2rem + 1.6vw, 2.5rem);
   --text-title: clamp(1.25rem, 1.05rem + 0.7vw, 1.6rem);
   --text-section: 1.0625rem;
@@ -198,57 +180,57 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Dark — near-black page, lifted cards, the Spotify reading. The accent is the
-   banner's light violet so the app and the artwork share a family.
+   Dark — pink void. Not a grey app with a pink accent: the blacks are warm and
+   carry the hue, which is what separates this from every default dark theme.
    --------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0a0a0c;
-    --surface-1: #121216;
-    --surface-2: #1a1a20;
-    --surface-3: #23232b;
-    --fg: #f2f2f5;
-    --fg-dim: #a8a8b4;
-    --fg-faint: #898994;
-    --line: rgb(255 255 255 / 0.09);
+    --bg: #120810;
+    --surface-1: #1b0e18;
+    --surface-2: #241320;
+    --surface-3: #2e1829;
+    --fg: #fbeaf2;
+    --fg-dim: #d3a8be;
+    --fg-faint: #978390;
+    --line: rgb(255 190 220 / 0.16);
+
+    --accent: #ff8fc0;
+    --accent-fg: #1f1218;
+    --accent-wash: rgb(255 143 192 / 0.18);
 
     --danger: #ff9f9f;
     --warn: #ffd27a;
 
-    --accent: #8f74ff;
-    --accent-fg: #0b0a14;
-    --accent-wash: rgb(143 116 255 / 0.16);
+    --ink: rgb(255 190 220 / 0.22);
 
-    --ink: rgb(255 255 255 / 0.09);
-
-    --drop: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
-    --drop-sm: 0 1px 3px rgb(0 0 0 / 0.45);
-    --drop-lg: 0 12px 36px rgb(0 0 0 / 0.55);
+    --drop: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.5);
+    --drop-sm: 0 1px 3px rgb(0 0 0 / 0.5);
+    --drop-lg: 0 14px 40px rgb(0 0 0 / 0.6);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0a0a0c;
-  --surface-1: #121216;
-  --surface-2: #1a1a20;
-  --surface-3: #23232b;
-  --fg: #f2f2f5;
-  --fg-dim: #a8a8b4;
-  --fg-faint: #898994;
-  --line: rgb(255 255 255 / 0.09);
+  --bg: #120810;
+  --surface-1: #1b0e18;
+  --surface-2: #241320;
+  --surface-3: #2e1829;
+  --fg: #fbeaf2;
+  --fg-dim: #d3a8be;
+  --fg-faint: #978390;
+  --line: rgb(255 190 220 / 0.16);
+
+  --accent: #ff8fc0;
+  --accent-fg: #1f1218;
+  --accent-wash: rgb(255 143 192 / 0.18);
 
   --danger: #ff9f9f;
   --warn: #ffd27a;
 
-  --accent: #8f74ff;
-  --accent-fg: #0b0a14;
-  --accent-wash: rgb(143 116 255 / 0.16);
+  --ink: rgb(255 190 220 / 0.22);
 
-  --ink: rgb(255 255 255 / 0.09);
-
-  --drop: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
-  --drop-sm: 0 1px 3px rgb(0 0 0 / 0.45);
-  --drop-lg: 0 12px 36px rgb(0 0 0 / 0.55);
+  --drop: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.5);
+  --drop-sm: 0 1px 3px rgb(0 0 0 / 0.5);
+  --drop-lg: 0 14px 40px rgb(0 0 0 / 0.6);
 
   --banner-fade: 45%;
 }
@@ -257,30 +239,29 @@
   --banner-fade: 26%;
 }
 
-/* Pastel keeps its identity — a warmer, lighter violet — but loses the heavy
-   outline and hard shadow along with everything else. */
+/* Pastel — the softest of the three: less ink, more air. */
 :root[data-theme="light"][data-mode="pastel"] {
-  --bg: #faf7fd;
+  --bg: #fdf4f7;
   --surface-1: #ffffff;
-  --surface-2: #f4eefb;
-  --surface-3: #eae1f5;
-  --fg: #241d2e;
-  --fg-dim: #635a72;
-  --fg-faint: #686371;
-  --line: rgb(90 60 130 / 0.12);
+  --surface-2: #fdeaf1;
+  --surface-3: #fadbe6;
+  --fg: #2a1a22;
+  --fg-dim: #74535f;
+  --fg-faint: #75606a;
+  --line: rgb(42 26 34 / 0.12);
+
+  --accent: #ff8ab8;
+  --accent-fg: #1f1218;
+  --accent-wash: rgb(255 138 184 / 0.16);
 
   --danger: #b3261e;
   --warn: #7a4f00;
 
-  --accent: #7356e5;
-  --accent-fg: #ffffff;
-  --accent-wash: rgb(115 86 229 / 0.14);
+  --ink: rgb(42 26 34 / 0.55);
 
-  --ink: rgb(90 60 130 / 0.12);
-
-  --drop: 0 1px 2px rgb(90 60 130 / 0.06), 0 4px 14px rgb(90 60 130 / 0.08);
-  --drop-sm: 0 1px 2px rgb(90 60 130 / 0.07);
-  --drop-lg: 0 10px 30px rgb(90 60 130 / 0.14);
+  --drop: 0 1px 2px rgb(42 26 34 / 0.05), 0 6px 18px rgb(42 26 34 / 0.07);
+  --drop-sm: 0 1px 2px rgb(42 26 34 / 0.07);
+  --drop-lg: 0 10px 28px rgb(42 26 34 / 0.12);
 }
 
 @theme inline {

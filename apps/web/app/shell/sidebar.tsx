@@ -6,10 +6,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { Artwork } from "../artwork";
 import { Equalizer } from "../equalizer";
-import { useHydrated } from "../hydrated";
-import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
+import { moveBetweenItems } from "../a11y/arrow-nav";
+import { CloseIcon, CompassIcon, HomeIcon, LibraryIcon } from "../icons";
+import { createJsonStore, useLocalStore } from "../local-store.ts";
 import { usePlayerControls } from "../player/player-context";
-import { LikedRow } from "../playlists/liked-tile";
+import { LikedCover, LikedRow } from "../playlists/liked-tile";
 import { PlaylistCover } from "../playlists/playlist-cover";
 import { usePlaylistImages } from "../playlists/playlist-image";
 import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/store";
@@ -26,11 +27,62 @@ const NAV = [
 
 const FILTERS = ["Queue", "Playlists"] as const;
 
-function NavLinks({ sidebar = false }: { sidebar?: boolean }) {
+type Filter = (typeof FILTERS)[number];
+
+// Whether the rail is shrunk to icons is a decision you make once, so it outlives the tab —
+// same `timbre:` prefix and the same JSON store every other preference here uses, which also
+// means the crash screen's export carries it out with the rest.
+const railStore = createJsonStore("timbre:rail-collapsed", false, (stored) => stored === true);
+
+export function useRailCollapsed(): boolean {
+  return useLocalStore(railStore);
+}
+
+export function toggleRail(): void {
+  railStore.save(!railStore.getSnapshot());
+}
+
+/** One rail, three dresses. `label` is the words, `wide` is anything that only makes sense
+ * beside words, `narrow` is anything that replaces them, and `row` re-centres what is left.
+ * Width picks between AUTO and ICONS in CSS rather than in JS, so a wide screen paints the
+ * labelled rail on the server's first pass instead of flicking into it after hydration. */
+type RailStyle = {
+  label: string;
+  wide: string;
+  narrow: string;
+  row: string;
+  pad: string;
+};
+
+const LABELLED: RailStyle = {
+  label: "",
+  wide: "flex",
+  narrow: "hidden",
+  row: "justify-start",
+  pad: "px-3",
+};
+
+const AUTO: RailStyle = {
+  label: "hidden xl:inline",
+  wide: "hidden xl:flex",
+  narrow: "flex xl:hidden",
+  row: "justify-center xl:justify-start",
+  pad: "px-1 xl:px-3",
+};
+
+const ICONS: RailStyle = {
+  label: "hidden",
+  wide: "hidden",
+  narrow: "flex",
+  row: "justify-center",
+  pad: "px-1",
+};
+
+function NavLinks({ rail }: { rail?: RailStyle }) {
   const pathname = usePathname();
   const { exitTheater } = usePlayerControls();
 
-  const items = sidebar ? NAV.filter((item) => item.href !== "/library") : NAV;
+  const items = rail ? NAV.filter((item) => item.href !== "/library") : NAV;
   return items.map(({ label, icon: Icon, href }) => {
     const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
     return (
@@ -39,163 +91,302 @@ function NavLinks({ sidebar = false }: { sidebar?: boolean }) {
         href={href}
         onClick={exitTheater}
         aria-current={active ? "page" : undefined}
+        title={rail ? label : undefined}
         className={
-          sidebar
-            ? `press flex items-center gap-3.5 rounded-[var(--r-md)] px-3 py-2.5 text-sm font-semibold ${
+          rail
+            ? `press flex items-center gap-3.5 rounded-[var(--r-md)] py-2.5 text-sm font-semibold ${rail.row} ${rail.pad} ${
                 active
-                  ? "slab-sm tint text-[var(--accent-fg)]"
-                  : "slab-ghost text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+                  ? "text-[var(--fg)]"
+                  : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
               }`
             : `flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-bold ${
                 active ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
               }`
         }
-        style={sidebar && active ? { background: "var(--accent)" } : undefined}
+        style={rail && active ? { background: "var(--accent-wash)" } : undefined}
       >
-        <Icon className={sidebar ? "size-[18px] shrink-0" : "size-[22px]"} />
-        {label}
+        <Icon
+          className={
+            rail
+              ? `size-[18px] shrink-0 ${active ? "tint text-[var(--accent)]" : ""}`
+              : "size-[22px]"
+          }
+        />
+        <span className={rail ? rail.label : undefined}>{label}</span>
       </Link>
     );
   });
 }
 
 export function Sidebar() {
-  const { queue, current, play, exitTheater } = usePlayerControls();
-  const profile = useLocalProfile();
-  const pictures = useLocalImages();
-  const hydrated = useHydrated();
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Queue");
-  const { playlists, settled } = usePlaylists();
-  const [list, edges] = useScrollEdges();
+  const { exitTheater } = usePlayerControls();
+  const collapsed = useRailCollapsed();
+  const [filter, setFilter] = useState<Filter>("Queue");
+  const [drawer, setDrawer] = useState(false);
+  const style = collapsed ? ICONS : AUTO;
 
   useEffect(() => {
     void loadPlaylists();
   }, []);
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col gap-1.5 p-2 pb-1.5 lg:flex">
-      <div className="mb-0.5 flex items-center gap-1.5 pl-3">
-        <TimbreMark
-          role="img"
-          aria-label="Timbre"
-          className="h-6 w-auto shrink-0 text-[var(--accent)]"
-        />
-        <Link
-          href="/profile"
-          onClick={exitTheater}
-          className="press relative flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-[var(--r-lg)] px-2 py-2.5 hover:bg-[var(--surface-1)]"
-        >
-          <Avatar
-            id={profile.id}
-            name={profile.name}
-            email={profile.name ?? "Profile"}
-            image={pictures.avatar}
-            className="size-8 shrink-0"
-            textClassName="text-sm"
-          />
-          <span
-            className="replay truncate text-[17px] font-extrabold tracking-tight"
-            style={{ "--replay": 'var(--profile-name, "Profile")' } as React.CSSProperties}
+    <>
+      <aside
+        className={`hidden shrink-0 flex-col p-2 pb-1.5 lg:flex ${
+          collapsed ? "w-24" : "w-24 xl:w-[16.75rem]"
+        }`}
+      >
+        {/* One rail, one edge. The brand, the nav and the library used to be three separate
+            bordered cards stacked with a gap, which at icon width read as a column of unrelated
+            boxes rather than a sidebar. They are sections inside a single surface now, separated
+            by a rule instead of by air. */}
+        <div className="slab flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] p-1.5">
+          <Link
+            href="/"
+            onClick={exitTheater}
+            aria-label="Timbre — home"
+            className={`press flex h-10 items-center gap-2.5 rounded-[var(--r-md)] ${style.row} ${style.pad}`}
           >
-            {hydrated ? profile.name?.trim() || "Profile" : null}
-          </span>
-        </Link>
+            <TimbreMark aria-hidden className="h-[22px] w-auto shrink-0 text-[var(--accent)]" />
+            <span className={`text-[17px] font-extrabold tracking-tight ${style.label}`}>
+              Timbre
+            </span>
+          </Link>
+
+          <nav aria-label="Primary" className="flex flex-col gap-0.5">
+            <NavLinks rail={style} />
+          </nav>
+
+          <hr className="my-1.5 border-0 border-t border-[var(--line)]" />
+
+          <LibraryCard
+            style={style}
+            filter={filter}
+            onFilter={setFilter}
+            onExpand={() => setDrawer(true)}
+          />
+        </div>
+      </aside>
+
+      <LibraryDrawer
+        open={drawer}
+        onClose={() => setDrawer(false)}
+        filter={filter}
+        onFilter={setFilter}
+      />
+    </>
+  );
+}
+
+function LibraryCard({
+  style,
+  filter,
+  onFilter,
+  onExpand,
+  onNavigate,
+}: {
+  style: RailStyle;
+  filter: Filter;
+  onFilter: (filter: Filter) => void;
+  onExpand?: () => void;
+  onNavigate?: () => void;
+}) {
+  const { queue, current, play, exitTheater } = usePlayerControls();
+  const { playlists, settled } = usePlaylists();
+  const [list, edges] = useScrollEdges();
+
+  const count = (filter === "Queue" ? queue.length : (playlists?.length ?? 0)) || "";
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Link
+        href="/library"
+        onClick={() => {
+          exitTheater();
+          onNavigate?.();
+        }}
+        className={`press ${style.wide} items-center gap-3 px-3.5 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+      >
+        <LibraryIcon className="size-[18px] shrink-0" />
+        <span className="text-sm font-bold">Your library</span>
+        <span className="ml-auto text-xs font-semibold tabular-nums text-[var(--fg-faint)]">
+          {count}
+        </span>
+      </Link>
+
+      {/* Icon width has no room for the filters, and none for a list that scrolls past four
+          rows either, so the icon rail hands the whole card to a drawer instead of shrinking
+          it further. */}
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-haspopup="dialog"
+        aria-label="Your library"
+        title="Your library"
+        className={`press ${style.narrow} shrink-0 items-center justify-center px-2 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+      >
+        <LibraryIcon className="size-[18px] shrink-0" />
+      </button>
+
+      <div className={`${style.wide} gap-1.5 px-3 pb-2.5`} role="group" aria-label="Library filter">
+        {FILTERS.map((name) => {
+          const selected = filter === name;
+          return (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onFilter(name)}
+              aria-pressed={selected}
+              className={`press rounded-[var(--r-full)] px-2.5 py-1 text-[11px] font-bold ${
+                selected
+                  ? "slab-sm tint text-[var(--accent-fg)]"
+                  : "slab-ghost bg-[var(--surface-2)] text-[var(--fg-dim)]"
+              }`}
+              style={selected ? { background: "var(--accent)" } : undefined}
+            >
+              {name}
+            </button>
+          );
+        })}
       </div>
 
-      <nav className="slab flex flex-col gap-1 rounded-[var(--r-lg)] bg-[var(--surface-1)] p-2">
-        <NavLinks sidebar />
-      </nav>
-
-      <div className="slab flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)]">
-        <Link
-          href="/library"
-          onClick={exitTheater}
-          className="press flex items-center gap-3 px-4 pb-3 pt-3.5 text-[var(--fg-dim)] hover:text-[var(--fg)]"
-        >
-          <LibraryIcon className="size-[18px] shrink-0" />
-          <span className="text-sm font-bold">Your library</span>
-          <span className="ml-auto text-xs font-semibold tabular-nums text-[var(--fg-faint)]">
-            {(filter === "Queue" ? queue.length : (playlists?.length ?? 0)) || ""}
-          </span>
-        </Link>
-
-        <div className="flex gap-1.5 px-3 pb-3">
-          {FILTERS.map((name) => {
-            const selected = filter === name;
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setFilter(name)}
-                className={`press rounded-[var(--r-full)] px-2.5 py-1 text-[11px] font-bold ${
-                  selected
-                    ? "slab-sm tint text-[var(--accent-fg)]"
-                    : "slab-ghost bg-[var(--surface-2)] text-[var(--fg-dim)]"
-                }`}
-                style={selected ? { background: "var(--accent)" } : undefined}
-              >
-                {name}
-              </button>
-            );
-          })}
-        </div>
-
-        <div
-          ref={list}
-          data-above={edges.above || undefined}
-          data-below={edges.below || undefined}
-          className="edge-fade scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2"
-        >
-          {filter === "Playlists" ? (
-            <>
+      <div
+        ref={list}
+        data-above={edges.above || undefined}
+        data-below={edges.below || undefined}
+        className="edge-fade scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+      >
+        {filter === "Playlists" ? (
+          <>
+            <div className={`${style.wide} flex-col`}>
               <LikedRow />
-              <PlaylistRows playlists={playlists} settled={settled} />
-            </>
-          ) : queue.length === 0 ? (
-            <p className="px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]">
-              Nothing queued. Play something and it shows up here.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {queue.map((song) => {
-                const isCurrent = current?.id === song.id;
-                return (
-                  <li key={song.id}>
-                    <button
-                      type="button"
-                      onClick={() => play(song, queue)}
-                      className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${
-                        isCurrent ? "tint" : "hover:bg-[var(--surface-2)]"
-                      }`}
-                      style={isCurrent ? { background: "var(--accent-wash)" } : undefined}
-                    >
-                      <Artwork
-                        src={song.artworkUrl}
-                        className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
-                        iconClassName="size-4"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className={`block truncate text-[13px] font-semibold ${
-                            isCurrent ? "text-[var(--accent)]" : ""
-                          }`}
-                        >
-                          {song.title}
-                        </span>
-                        <span className="block truncate text-[11px] text-[var(--fg-dim)]">
-                          {song.artists.join(", ") || "Unknown artist"}
-                        </span>
+            </div>
+            <Link
+              href="/liked"
+              onClick={onNavigate}
+              title="Liked songs"
+              className={`${style.narrow} mb-0.5 w-full items-center justify-center rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]`}
+            >
+              <LikedCover
+                className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+                iconClassName="size-4"
+              />
+            </Link>
+            <PlaylistRows
+              playlists={playlists}
+              settled={settled}
+              style={style}
+              onNavigate={onNavigate}
+            />
+          </>
+        ) : queue.length === 0 ? (
+          <p className={`${style.wide} px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]`}>
+            Nothing queued. Play something and it shows up here.
+          </p>
+        ) : (
+          <ul
+            className="flex flex-col gap-0.5"
+            onKeyDown={(event) => moveBetweenItems(event, event.currentTarget, "vertical")}
+          >
+            {queue.map((song) => {
+              const isCurrent = current?.id === song.id;
+              return (
+                <li key={song.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      play(song, queue);
+                      onNavigate?.();
+                    }}
+                    title={song.title}
+                    className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${style.row} ${
+                      isCurrent ? "tint" : "hover:bg-[var(--surface-2)]"
+                    }`}
+                    style={isCurrent ? { background: "var(--accent-wash)" } : undefined}
+                  >
+                    <Artwork
+                      src={song.artworkUrl}
+                      className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+                      iconClassName="size-4"
+                    />
+                    <span className={`min-w-0 flex-1 ${style.label}`}>
+                      <span
+                        className={`block truncate text-[13px] font-semibold ${
+                          isCurrent ? "text-[var(--accent)]" : ""
+                        }`}
+                      >
+                        {song.title}
                       </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+                      <span className="block truncate text-[11px] text-[var(--fg-dim)]">
+                        {song.artists.join(", ") || "Unknown artist"}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
+    </div>
+  );
+}
 
-    </aside>
+// A `<dialog>` rather than a fixed panel of our own: the top layer is outside every containing
+// block on the page, so none of the `@container` page wrappers can capture it the way they
+// capture a `position: fixed` child, and Escape and the focus trap come for free.
+function LibraryDrawer({
+  open,
+  onClose,
+  filter,
+  onFilter,
+}: {
+  open: boolean;
+  onClose: () => void;
+  filter: Filter;
+  onFilter: (filter: Filter) => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const el = dialog.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    if (!open && el.open) el.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialog}
+      aria-label="Your library"
+      onClose={onClose}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) event.currentTarget.close();
+      }}
+      className="fixed inset-0 m-0 size-full max-h-none max-w-none items-stretch justify-start overflow-hidden bg-transparent p-0 text-[var(--fg)] backdrop:bg-[rgb(0_0_0/50%)] backdrop:backdrop-blur-[6px] open:flex"
+    >
+      {open && (
+        <div className="rise flex h-full w-[19rem] max-w-[86vw] flex-col gap-1.5 p-2 pl-[calc(0.5rem+var(--safe-l))]">
+          <div className="flex h-10 shrink-0 items-center gap-2 px-1.5">
+            <span className="text-[15px] font-extrabold tracking-tight">Your library</span>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close library"
+              className="press ml-auto flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+            >
+              <CloseIcon className="size-4" />
+            </button>
+          </div>
+          <LibraryCard
+            style={LABELLED}
+            filter={filter}
+            onFilter={onFilter}
+            onNavigate={onClose}
+          />
+        </div>
+      )}
+    </dialog>
   );
 }
 
@@ -240,63 +431,70 @@ function useScrollEdges() {
 function PlaylistRows({
   playlists,
   settled,
+  style,
+  onNavigate,
 }: {
   playlists: PlaylistSummary[] | null;
   settled: boolean;
+  style: RailStyle;
+  onNavigate?: () => void;
 }) {
   const { queueOrigin, state } = usePlayerControls();
   const uploaded = usePlaylistImages();
   if (!settled || playlists === null) {
-    return <p className="px-2 py-6 text-xs text-[var(--fg-faint)]">Loading…</p>;
+    return <p className={`${style.wide} px-2 py-6 text-xs text-[var(--fg-faint)]`}>Loading…</p>;
   }
 
   if (playlists.length === 0) {
     return (
-      <p className="px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]">
+      <p className={`${style.wide} px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]`}>
         No playlists yet. Save a song with the + on any result.
       </p>
     );
   }
 
   return (
-    <ul className="flex flex-col gap-0.5">
+    <ul
+      className="flex flex-col gap-0.5"
+      onKeyDown={(event) => moveBetweenItems(event, event.currentTarget, "vertical")}
+    >
       {playlists.map((playlist) => {
         const playing =
-          queueOrigin?.kind === "playlist" &&
-          queueOrigin.id === playlist.id &&
-          state === "playing";
+          queueOrigin?.kind === "playlist" && queueOrigin.id === playlist.id && state === "playing";
 
         return (
-        <li key={playlist.id}>
-          <Link
-            href={`/playlist/${playlist.id}`}
-            className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${
-              playing ? "tint" : "hover:bg-[var(--surface-2)]"
-            }`}
-            style={playing ? { background: "var(--accent-wash)" } : undefined}
-          >
-            <PlaylistCover
-              covers={playlist.covers}
-              coverUrl={playlist.coverUrl}
-              uploaded={uploaded[playlist.id]}
-              className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
-              iconClassName="size-4"
-            />
-            <span className="min-w-0 flex-1">
-              <span
-                className={`flex items-center gap-1.5 text-[13px] font-semibold ${
-                  playing ? "text-[var(--accent)]" : ""
-                }`}
-              >
-                <span className="truncate">{playlist.name}</span>
-                {playing && <Equalizer className="tint h-3 shrink-0 gap-0.5" />}
+          <li key={playlist.id}>
+            <Link
+              href={`/playlist/${playlist.id}`}
+              onClick={onNavigate}
+              title={playlist.name}
+              className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${style.row} ${
+                playing ? "tint" : "hover:bg-[var(--surface-2)]"
+              }`}
+              style={playing ? { background: "var(--accent-wash)" } : undefined}
+            >
+              <PlaylistCover
+                covers={playlist.covers}
+                coverUrl={playlist.coverUrl}
+                uploaded={uploaded[playlist.id]}
+                className="slab-sm size-10 shrink-0 rounded-[var(--r-sm)]"
+                iconClassName="size-4"
+              />
+              <span className={`min-w-0 flex-1 ${style.label}`}>
+                <span
+                  className={`flex items-center gap-1.5 text-[13px] font-semibold ${
+                    playing ? "text-[var(--accent)]" : ""
+                  }`}
+                >
+                  <span className="truncate">{playlist.name}</span>
+                  {playing && <Equalizer className="tint h-3 shrink-0 gap-0.5" />}
+                </span>
+                <span className="block truncate text-[11px] text-[var(--fg-dim)]">
+                  {playlist.trackCount} {playlist.trackCount === 1 ? "song" : "songs"}
+                </span>
               </span>
-              <span className="block truncate text-[11px] text-[var(--fg-dim)]">
-                {playlist.trackCount} {playlist.trackCount === 1 ? "song" : "songs"}
-              </span>
-            </span>
-          </Link>
-        </li>
+            </Link>
+          </li>
         );
       })}
     </ul>
@@ -321,7 +519,7 @@ export function ProfileButton({ className }: { className?: string }) {
       href="/profile"
       onClick={exitTheater}
       aria-label="Your profile and settings"
-      className={`press flex shrink-0 items-center lg:hidden ${className ?? ""}`}
+      className={`press flex shrink-0 items-center ${className ?? ""}`}
     >
       <span className="block size-9">
         <Avatar
