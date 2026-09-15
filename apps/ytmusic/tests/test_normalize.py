@@ -98,6 +98,29 @@ def test_accepts_album_as_a_bare_string() -> None:
     assert track.album == "Morning Glory"
 
 
+@pytest.mark.parametrize(
+    "video_id",
+    [
+        # `resolve` has checked upstream's id against this pattern from the start. Search, radio,
+        # the playlist route and the lyrics art-track lookup did not, and `video_id` is the
+        # one field the web app interpolates into a URL without encoding it, so a trailing
+        # newline or an `&list=` left here as part of a link.
+        "dQw4w9WgXcQ\n",
+        "dQw4w9WgXcQ&list=PLhostile",
+        " dQw4w9WgXcQ",
+        "dQw4w9WgXcQ#",
+        "../../../etc/passwd",
+        "x" * 300,
+        "dQw4w9WgXc",
+        "dQw4w9WgXcQQ",
+        "",
+    ],
+)
+def test_an_id_that_is_not_a_video_id_drops_the_item(video_id: str) -> None:
+    assert to_track({**SONG, "videoId": video_id}) is None
+    assert to_tracks([SONG, {**SONG, "videoId": video_id}]) == [to_track(SONG)]
+
+
 def test_to_tracks_drops_unusable_entries_and_non_lists() -> None:
     assert len(to_tracks([SONG, {"resultType": "artist"}, None, {**SONG, "videoId": None}])) == 1
     assert to_tracks(None) == []

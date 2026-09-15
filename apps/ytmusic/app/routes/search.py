@@ -1,5 +1,4 @@
 import logging
-import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import parse_qs, urlparse
 
@@ -7,14 +6,19 @@ from fastapi import APIRouter, HTTPException, status
 
 from ..client import get_client
 from ..errors import upstream_error
-from ..models import ResolveRequest, ResolveResponse, SearchRequest, SearchResponse, Track
+from ..models import (
+    VIDEO_ID,
+    ResolveRequest,
+    ResolveResponse,
+    SearchRequest,
+    SearchResponse,
+    Track,
+)
 from ..normalize import to_track, to_tracks
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 
 _EMBED_RANK = {
     "MUSIC_VIDEO_TYPE_OMV": 0,

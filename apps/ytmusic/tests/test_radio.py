@@ -69,6 +69,15 @@ def test_related_drops_non_songs() -> None:
     assert to_related_track({"title": "ZAYN", "browseId": "UC789"}) is None
 
 
+def vid(label: str) -> str:
+    """An 11-character video id that still reads as its label.
+
+    `Track.video_id` is pinned to the shape YouTube actually uses, so a one-word stand-in
+    is no longer a video id. Padding keeps the assertions below readable as themselves.
+    """
+    return label.ljust(11, "_")
+
+
 @pytest.mark.parametrize(
     ("ids", "limit", "expected"),
     [
@@ -81,8 +90,9 @@ def test_related_drops_non_songs() -> None:
     ids=["seed-leads", "seed-anywhere", "repeats", "limit", "empty"],
 )
 def test_continuation(ids: list[str], limit: int, expected: list[str]) -> None:
-    tracks = [Track(video_id=video_id, title="Song") for video_id in ids]
-    assert [t.video_id for t in continuation(tracks, "a", limit)] == expected
+    tracks = [Track(video_id=vid(one), title="Song") for one in ids]
+    kept = continuation(tracks, vid("a"), limit)
+    assert [track.video_id for track in kept] == [vid(one) for one in expected]
 
 
 SEED = "P3cffdsEXXw"
