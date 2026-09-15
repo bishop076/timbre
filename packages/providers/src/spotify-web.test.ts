@@ -105,6 +105,25 @@ test("the embed page's own session is read, and a page without one is not guesse
   assert.equal(sessionFromEmbed(nextData(undefined)), null);
 });
 
+/**
+ * The embed page is read from the network, so the scan over it has to be linear in its length.
+ *
+ * The regex that used to do this restarted at every `__NEXT_DATA__` opening tag and walked the
+ * rest of the document from each one. Measured before the fix: 2.5 ms at 30 KB, 245 ms at
+ * 300 KB, 31.8 s at 3 MB — and all of it blocking the event loop, so a single page like this
+ * stalled every other request the instance was serving. The bound below is far looser than the
+ * few milliseconds the linear version takes; it only has to fail if the quadratic scan returns.
+ */
+test("a page built to make the scan quadratic is read in milliseconds, not seconds", () => {
+  const hostile = '<script id="__NEXT_DATA__" type="application/json">'.repeat(30_000);
+  assert.ok(hostile.length > 1_500_000, "the page has to be big enough for n squared to show");
+
+  const started = performance.now();
+  assert.equal(sessionFromEmbed(hostile), null);
+  const took = performance.now() - started;
+  assert.ok(took < 500, `reading an unclosed ${hostile.length}-char page took ${took.toFixed(0)}ms`);
+});
+
 test("a token is only used while it has more than a couple of minutes left", () => {
   const now = 1_000_000;
   assert.equal(isFresh({ token: "t", expiresAt: now + 10 * 60_000 }, now), true);
@@ -204,6 +223,28 @@ test("a retired hash with no findable successor fails loudly rather than looking
       assert.ok(error instanceof ProviderError);
       assert.match(error.message, /searchDesktop/);
       return true;
+    });
+  }));
+
+test("a Spotify that accepts and then says nothing is Spotify's failure, not a bare DOMException", () =>
+  withRoutes([["/embed/track/", () => { throw new DOMException("timed out", "TimeoutError"); }]], async () => {
+    await assert.rejects(searchSpotifyWeb(ctx, "x"), (error: unknown) => {
+      // `resolveUrl` and `/api/spotify/search` both branch on `ProviderError`; a raw
+      // `TimeoutError` slipped past both and was reported as something other than an outage.
+      assert.ok(error instanceof ProviderError, `got ${(error as Error)?.constructor?.name}`);
+      assert.equal(error.provider, "spotify");
+      assert.equal(error.kind, "transient");
+      assert.equal(error.message, "Spotify did not answer within 6s.");
+      return true;
+    });
+  }));
+
+test("an HTML error page served as a 200 is Spotify's failure, not a raw SyntaxError", () =>
+  withRoutes([token(), search(() => new Response("<html>502 Bad Gateway</html>"))], async () => {
+    await assert.rejects(searchSpotifyWeb(ctx, "x"), {
+      name: "ProviderError",
+      kind: "transient",
+      message: "Spotify returned an unreadable body.",
     });
   }));
 

@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { DEFAULT_POLICIES, MemoryBucketStore, ProviderError, RateLimiter } from "@timbre/core";
 
-import { createRequester, deadlineSignal, takeSlot, type RequesterOptions } from "./request.ts";
+import { MAX_BODY_BYTES, createRequester, deadlineSignal, readCapped, takeSlot, type RequesterOptions } from "./request.ts";
 import type { SearchContext } from "./types.ts";
 
 const CHART = "https://api.deezer.com/chart";
@@ -157,6 +157,73 @@ test("every request carries a deadline, and the caller's own abort still reaches
       assert.equal(composed?.aborted, true, "the caller's abort must still propagate");
     },
   ));
+
+/**
+ * A body that never ends, in chunks, exactly as `fetch` would deliver one.
+ *
+ * `sent` counts what the source actually managed to write, which is the assertion that matters:
+ * a cap that let the whole body arrive and then complained would have bounded nothing.
+ */
+function endlessBody(chunk = 64 * 1024): { response: () => Response; sent: () => number } {
+  const block = new Uint8Array(chunk).fill(0x20);
+  let sent = 0;
+  return {
+    sent: () => sent,
+    response: () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            sent += block.byteLength;
+            controller.enqueue(block.slice());
+          },
+        }),
+        { headers: { "content-type": "application/json" } },
+      ),
+  };
+}
+
+test("a source that never stops sending is cut off, and said so, rather than filling the heap", () => {
+  const endless = endlessBody();
+  return withFetch(
+    async () => endless.response(),
+    async () => {
+      await assert.rejects(requester()(stubContext().ctx, CHART), (error: unknown) => {
+        assert.ok(error instanceof ProviderError, "the cap must be this source's failure, not a raw one");
+        assert.equal(error.provider, "deezer");
+        assert.equal(error.kind, "transient");
+        assert.equal(error.message, "Deezer sent more than 4 MB; the read was stopped.");
+        return true;
+      });
+      // Near the cap rather than exactly on it: the stream keeps one chunk in hand, so the
+      // count lands a chunk or two past the line. What matters is that it lands at all.
+      const stopped = endless.sent();
+      assert.ok(stopped < MAX_BODY_BYTES * 1.1, `the read ran past the cap: ${stopped} bytes arrived`);
+      await sleep(20);
+      assert.equal(endless.sent(), stopped, "the source must be cancelled, not left writing");
+    },
+  );
+});
+
+test("an oversized body is not quietly truncated into a parse failure", () =>
+  // The failure has to name the size. A truncated body that then fails `JSON.parse` reports
+  // itself as "Deezer returned an unreadable body", which sends the reader after a malformed
+  // answer that was never malformed.
+  withFetch(
+    async () => new Response(`{"data":[{"pad":"${"x".repeat(2000)}"}]}`),
+    async () => {
+      await assert.rejects(requester({ maxBytes: 1024 })(stubContext().ctx, CHART), {
+        kind: "transient",
+        message: "Deezer sent more than 1 KB; the read was stopped.",
+      });
+    },
+  ));
+
+test("a body inside the cap is still read whole, multi-byte characters included", async () => {
+  const value = "é".repeat(200_000);
+  const text = await readCapped(new Response(JSON.stringify({ value })), "deezer", "Deezer");
+  assert.equal((JSON.parse(text) as { value: string }).value, value);
+  assert.equal(await readCapped(new Response(null, { status: 204 }), "deezer", "Deezer"), "");
+});
 
 test("a slot taken outside a requester is refused as rate_limited, not waited for", async () => {
   const limiter = { acquire: async () => false } as unknown as RateLimiter;

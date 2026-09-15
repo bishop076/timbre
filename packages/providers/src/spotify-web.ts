@@ -1,6 +1,6 @@
 import { ProviderError } from "@timbre/core";
 
-import { deadlineSignal, takeSlot } from "./request.ts";
+import { MAX_SCRIPT_BYTES, deadlineSignal, fetchOrFail, readCapped, takeSlot } from "./request.ts";
 import type { SearchContext, SourceTrack } from "./types.ts";
 
 const BOOTSTRAP = "https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC";
@@ -34,14 +34,42 @@ async function get(
   ms?: number,
 ): Promise<Response> {
   await takeSlot(ctx, "spotify", "Spotify");
-  return fetch(url, { signal: deadlineSignal(caller, ms), cache: "no-store", headers });
+  // Not a bare `fetch`: these are the paths that do not go through `createRequester`, and they
+  // were handing their callers a raw `DOMException` — `TimeoutError: The operation was aborted
+  // due to timeout`, with no provider on it and no kind. `resolveUrl` reads exactly that kind to
+  // tell a refused link from a service that is down, so an outage was filed as "nothing claims
+  // this link"; `/api/spotify/search` logged the DOMException's own wording instead of Spotify's.
+  return fetchOrFail(url, { signal: deadlineSignal(caller, ms), cache: "no-store", headers }, "spotify", "Spotify", ms);
 }
 
+const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
+const NEXT_DATA_CLOSE = "</script>";
+
+/**
+ * The state Spotify's embed page carries, found by two `indexOf`s rather than by a regex.
+ *
+ * The regex this replaces — `${OPEN}([\s\S]*?)</script>` — was quadratic in the length of the
+ * page, and the page is a body we read from the network. Every occurrence of the opening tag
+ * is a fresh start position, and from each one the lazy group walks the whole rest of the
+ * document looking for a closing tag that is not there. Measured on this machine against a
+ * document that is the opening tag repeated: 2.5 ms at 30 KB, 245 ms at 300 KB, **31.8 s at
+ * 3 MB** — ten times the input for a hundred times the work, and all of it on the event loop,
+ * so every other request on the instance waits it out.
+ *
+ * Reading the first opening tag and the first close after it is linear and is what the regex
+ * was for. It differs only where a page carries a `__NEXT_DATA__` tag that is never closed and
+ * a second one that is; no Next.js page emits two, and preferring the second is not worth
+ * paying for in a scan of untrusted text.
+ */
 export function spotifyEmbedState<T>(html: string): T | null {
-  const payload = /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
-  if (!payload?.[1]) return null;
+  const opens = html.indexOf(NEXT_DATA_OPEN);
+  if (opens === -1) return null;
+  const from = opens + NEXT_DATA_OPEN.length;
+  const closes = html.indexOf(NEXT_DATA_CLOSE, from);
+  if (closes <= from) return null;
+
   try {
-    const data = JSON.parse(payload[1]) as { props?: { pageProps?: { state?: T } } };
+    const data = JSON.parse(html.slice(from, closes)) as { props?: { pageProps?: { state?: T } } };
     return data.props?.pageProps?.state ?? null;
   } catch {
     return null;
@@ -82,7 +110,7 @@ async function bootstrap(ctx: SearchContext): Promise<AnonymousSession> {
         status: response.status,
       });
     }
-    const session = sessionFromEmbed(await response.text());
+    const session = sessionFromEmbed(await readCapped(response, "spotify", "Spotify"));
     if (!session) {
       throw new ProviderError("spotify", "unknown", "Spotify's embed page no longer carries a session token.");
     }
@@ -128,7 +156,7 @@ async function pathfinder<T>(
     ctx.signal?.throwIfAborted();
     const token = await anonymousToken(ctx, refreshed);
     await takeSlot(ctx, "spotify", "Spotify");
-    const response = await fetch(pathfinderUrl(operation, variables), {
+    const response = await fetchOrFail(pathfinderUrl(operation, variables), {
       signal: deadlineSignal(ctx.signal),
       cache: "no-store",
       headers: {
@@ -137,7 +165,7 @@ async function pathfinder<T>(
         ...PAGE_HEADERS,
         Accept: "application/json",
       },
-    });
+    }, "spotify", "Spotify");
     const { status } = response;
 
     if (status === 401) {
@@ -158,7 +186,16 @@ async function pathfinder<T>(
       throw new ProviderError("spotify", kind, `Spotify answered ${status}.`, { status });
     }
 
-    const body = (await response.json()) as { data?: T; errors?: { message?: string }[] };
+    // Outside a `try` this was the last raw throw left on the Spotify path: an HTML error page
+    // served with a 200 came back as a bare `SyntaxError` past every caller that catches
+    // `ProviderError`. An earlier fix caught exactly this in `createRequester` and never reached here.
+    let body: { data?: T; errors?: { message?: string }[] };
+    try {
+      body = JSON.parse(await readCapped(response, "spotify", "Spotify")) as typeof body;
+    } catch (cause) {
+      if (cause instanceof ProviderError) throw cause;
+      throw new ProviderError("spotify", "transient", "Spotify returned an unreadable body.", { cause });
+    }
     if (!body.errors?.some((error) => error.message === "PersistedQueryNotFound")) return body.data ?? null;
 
     if (!rediscovered) {
@@ -246,7 +283,7 @@ export async function discoverHashesFrom(ctx: SearchContext, refused?: string): 
     const result: DiscoveredHashes = { hashes: {}, from: {} };
     const text = async (url: string) => {
       const response = await get(ctx, url, undefined, { "User-Agent": USER_AGENT }, 20_000);
-      return response.ok ? response.text() : null;
+      return response.ok ? readCapped(response, "spotify", "Spotify", MAX_SCRIPT_BYTES) : null;
     };
     const adopt = (source: HashSource, script: string | null) => {
       if (!script) return;
@@ -520,7 +557,7 @@ export async function fetchSpotifyCollectionFromEmbed(
   id: string,
 ): Promise<SpotifyCollection | null> {
   const response = await get(ctx, `https://open.spotify.com/embed/${kind}/${id}`, ctx.signal);
-  return response.ok ? collectionFromEmbed(kind, id, await response.text()) : null;
+  return response.ok ? collectionFromEmbed(kind, id, await readCapped(response, "spotify", "Spotify")) : null;
 }
 
 export async function fetchSpotifyCollection(
