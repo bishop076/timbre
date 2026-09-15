@@ -16,7 +16,9 @@ import {
   RAIL_MIN,
   RAIL_SNAP,
   RAIL_WIDE,
+  PANEL_RAIL,
   panelCollapsesAt,
+  panelPaintWidth,
   resolvePanelWidth,
   resolveRailWidth,
   roomFor,
@@ -175,4 +177,19 @@ test("the panel collapses the moment it would go under its minimum", () => {
   // A drag that produced no number should leave the panel alone rather than hiding it.
   assert.equal(panelCollapsesAt(Number.NaN), false);
   assert.equal(panelCollapsesAt(Number.POSITIVE_INFINITY), false);
+});
+
+test("the panel snaps shut under the pointer rather than following it down", () => {
+  // What it paints mid-drag, not what it commits. Past the minimum the pointer keeps moving and
+  // the panel does not: it is already the rail, and dragging further changes nothing. Returning
+  // the raw width here is what made it feel like dragging into an abyss.
+  const ceiling = 560;
+  assert.equal(panelPaintWidth(PANEL_DEFAULT, ceiling), PANEL_DEFAULT);
+  assert.equal(panelPaintWidth(PANEL_MIN, ceiling), PANEL_MIN, "the minimum is still a size");
+  assert.equal(panelPaintWidth(PANEL_MIN - 1, ceiling), PANEL_RAIL);
+  assert.equal(panelPaintWidth(120, ceiling), PANEL_RAIL, "and stays there, however far you drag");
+  assert.equal(panelPaintWidth(-400, ceiling), PANEL_RAIL);
+
+  // The ceiling still applies on the way out.
+  assert.equal(panelPaintWidth(9999, ceiling), ceiling);
 });
