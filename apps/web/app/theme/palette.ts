@@ -135,7 +135,7 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
   const custom = theme.mode === "custom";
   const neutral = custom && theme.customNeutral;
 
-  const hslHue = Math.round(custom ? theme.customHue : (swatch?.hue ?? (light ? 338 : 336)));
+  const hslHue = Math.round(custom ? theme.customHue : (swatch?.hue ?? (light ? 262 : 258)));
   const hue = hslHueToOklch(hslHue);
   const sat = neutral ? 0.04 : custom ? 0.62 : swatch ? clamp(swatch.sat, 0.3, 0.7) : 0.5;
 

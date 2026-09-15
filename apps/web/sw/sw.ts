@@ -193,8 +193,8 @@ async function announce(): Promise<void> {
 
 // The violet from layout.tsx and the dark surface from globals.css. The page below is served by a
 // worker and can read neither, so both are copied here and have to be changed here too.
-const ACCENT = "#ff6fa8";
-const SURFACE = "#120810";
+const ACCENT = "#5b3fd6";
+const SURFACE = "#0b0814";
 
 /**
  * What a reader gets for a page that is neither cached nor reachable. Being specific is the whole

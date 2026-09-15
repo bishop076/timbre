@@ -11,17 +11,17 @@
 @property --accent {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ff6fa8;
+  initial-value: #5b3fd6;
 }
 @property --accent-fg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #1f1218;
+  initial-value: #ffffff;
 }
 @property --accent-wash {
   syntax: "<color>";
   inherits: true;
-  initial-value: rgb(255 111 168 / 0.18);
+  initial-value: rgb(91 63 214 / 0.16);
 }
 
 /* The accent, walked down until it can carry text.
@@ -32,12 +32,12 @@
 @property --accent-text {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ad4b72;
+  initial-value: #5b3fd6;
 }
 @property --bg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #f9eef2;
+  initial-value: #f6f4fc;
 }
 @property --surface-1 {
   syntax: "<color>";
@@ -47,27 +47,27 @@
 @property --surface-2 {
   syntax: "<color>";
   inherits: true;
-  initial-value: #fde7ef;
+  initial-value: #f0ecfa;
 }
 @property --surface-3 {
   syntax: "<color>";
   inherits: true;
-  initial-value: #f9d6e4;
+  initial-value: #e5def5;
 }
 @property --fg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #1f1218;
+  initial-value: #1b1630;
 }
 @property --fg-dim {
   syntax: "<color>";
   inherits: true;
-  initial-value: #6b4a57;
+  initial-value: #574f74;
 }
 @property --fg-faint {
   syntax: "<color>";
   inherits: true;
-  initial-value: #705b63;
+  initial-value: #645e77;
 }
 @property --line {
   syntax: "<color>";
@@ -94,12 +94,12 @@
 @property --accent-seed {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ff6fa8;
+  initial-value: #5b3fd6;
 }
 @property --accent-seed-fg {
   syntax: "<color>";
   inherits: true;
-  initial-value: #1f1218;
+  initial-value: #ffffff;
 }
 @property --app-bg-dim {
   syntax: "<number>";
@@ -118,27 +118,30 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Light — blush. This is the default, and the default is pink.
+   Light — the banner's violet. This is the default.
 
-   The references are unanimous: a blush page, white cards, an ink outline and a
-   hot pink accent carrying black text. Black on #ff6fa8 measures 6.99:1, which
-   is why the accent can be this loud and still hold a label.
+   A pale violet page, white cards, an ink outline, and the banner's #5b3fd6 as
+   the accent. It carries white at 6.72:1, so unlike the pink this briefly was,
+   the same value works as a fill and as text — which is why --accent-text is
+   the accent itself here rather than a darkened correction of it.
    --------------------------------------------------------------------------- */
 :root,
 :root[data-theme="light"] {
-  --bg: #f9eef2;
+  --bg: #f6f4fc;
   --surface-1: #ffffff;
-  --surface-2: #fde7ef;
-  --surface-3: #f9d6e4;
-  --fg: #1f1218;
-  --fg-dim: #6b4a57;
-  --fg-faint: #705b63;
-  --line: rgb(31 18 24 / 0.16);
+  --surface-2: #f0ecfa;
+  --surface-3: #e5def5;
+  --fg: #1b1630;
+  --fg-dim: #574f74;
+  --fg-faint: #645e77;
+  --line: rgb(27 22 48 / 0.15);
 
-  --accent: #ff6fa8;
-  --accent-fg: #1f1218;
-  --accent-text: #ad4b72;
-  --accent-wash: rgb(255 111 168 / 0.18);
+  /* The banner's middle violet, and it carries white at 6.72:1 — so unlike the pink this was
+     briefly, the accent works as a fill and as text without needing a corrected second value. */
+  --accent: #5b3fd6;
+  --accent-fg: #ffffff;
+  --accent-text: #5b3fd6;
+  --accent-wash: rgb(91 63 214 / 0.14);
 
   --danger: #b3261e;
   --warn: #7a4f00;
@@ -147,11 +150,11 @@
      solid ink edge around cards and controls is what the style is. What made
      the old look cartoony was never the border, it was the `Npx Npx 0` hard
      offset shadow sitting under it like a sticker — those stay gone. */
-  --ink: #1f1218;
+  --ink: #1b1630;
 
-  --drop: 0 1px 2px rgb(31 18 24 / 0.06), 0 6px 18px rgb(31 18 24 / 0.08);
-  --drop-sm: 0 1px 2px rgb(31 18 24 / 0.08);
-  --drop-lg: 0 10px 30px rgb(31 18 24 / 0.14);
+  --drop: 0 1px 2px rgb(27 22 48 / 0.06), 0 6px 18px rgb(27 22 48 / 0.08);
+  --drop-sm: 0 1px 2px rgb(27 22 48 / 0.08);
+  --drop-lg: 0 10px 30px rgb(27 22 48 / 0.14);
 }
 
 :root {
@@ -192,29 +195,29 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Dark — pink void. Not a grey app with a pink accent: the blacks are warm and
-   carry the hue, which is what separates this from every default dark theme.
+   Dark — a violet void. Not a grey app with a violet accent: the blacks carry the
+   hue, which is what separates this from every default dark theme.
    --------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #120810;
-    --surface-1: #1b0e18;
-    --surface-2: #241320;
-    --surface-3: #2e1829;
-    --fg: #fbeaf2;
-    --fg-dim: #d3a8be;
-    --fg-faint: #978390;
-    --line: rgb(255 190 220 / 0.16);
+    --bg: #0b0814;
+    --surface-1: #13101f;
+    --surface-2: #1a1629;
+    --surface-3: #241f36;
+    --fg: #f1eefb;
+    --fg-dim: #b3aad0;
+    --fg-faint: #8d899a;
+    --line: rgb(200 190 255 / 0.15);
 
-    --accent: #ff8fc0;
-    --accent-fg: #1f1218;
-    --accent-text: #ffa5cd;
-    --accent-wash: rgb(255 143 192 / 0.18);
+    --accent: #8f74ff;
+    --accent-fg: #0b0814;
+    --accent-text: #a78bfa;
+    --accent-wash: rgb(143 116 255 / 0.18);
 
     --danger: #ff9f9f;
     --warn: #ffd27a;
 
-    --ink: rgb(255 190 220 / 0.22);
+    --ink: rgb(200 190 255 / 0.22);
 
     --drop: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.5);
     --drop-sm: 0 1px 3px rgb(0 0 0 / 0.5);
@@ -223,24 +226,24 @@
 }
 
 :root[data-theme="dark"] {
-  --bg: #120810;
-  --surface-1: #1b0e18;
-  --surface-2: #241320;
-  --surface-3: #2e1829;
-  --fg: #fbeaf2;
-  --fg-dim: #d3a8be;
-  --fg-faint: #978390;
-  --line: rgb(255 190 220 / 0.16);
+  --bg: #0b0814;
+  --surface-1: #13101f;
+  --surface-2: #1a1629;
+  --surface-3: #241f36;
+  --fg: #f1eefb;
+  --fg-dim: #b3aad0;
+  --fg-faint: #8d899a;
+  --line: rgb(200 190 255 / 0.15);
 
-  --accent: #ff8fc0;
-  --accent-fg: #1f1218;
-  --accent-text: #ffa5cd;
-  --accent-wash: rgb(255 143 192 / 0.18);
+  --accent: #8f74ff;
+  --accent-fg: #0b0814;
+  --accent-text: #a78bfa;
+  --accent-wash: rgb(143 116 255 / 0.18);
 
   --danger: #ff9f9f;
   --warn: #ffd27a;
 
-  --ink: rgb(255 190 220 / 0.22);
+  --ink: rgb(200 190 255 / 0.22);
 
   --drop: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.5);
   --drop-sm: 0 1px 3px rgb(0 0 0 / 0.5);
@@ -255,28 +258,28 @@
 
 /* Pastel — the softest of the three: less ink, more air. */
 :root[data-theme="light"][data-mode="pastel"] {
-  --bg: #fdf4f7;
+  --bg: #faf7fd;
   --surface-1: #ffffff;
-  --surface-2: #fdeaf1;
-  --surface-3: #fadbe6;
-  --fg: #2a1a22;
-  --fg-dim: #74535f;
-  --fg-faint: #75606a;
-  --line: rgb(42 26 34 / 0.12);
+  --surface-2: #f4effc;
+  --surface-3: #eae1f7;
+  --fg: #241d33;
+  --fg-dim: #635a7c;
+  --fg-faint: #676176;
+  --line: rgb(36 29 51 / 0.12);
 
-  --accent: #ff8ab8;
-  --accent-fg: #1f1218;
-  --accent-text: #a35876;
-  --accent-wash: rgb(255 138 184 / 0.16);
+  --accent: #7c5cf6;
+  --accent-fg: #ffffff;
+  --accent-text: #6748db;
+  --accent-wash: rgb(124 92 246 / 0.14);
 
   --danger: #b3261e;
   --warn: #7a4f00;
 
-  --ink: rgb(42 26 34 / 0.55);
+  --ink: rgb(36 29 51 / 0.55);
 
-  --drop: 0 1px 2px rgb(42 26 34 / 0.05), 0 6px 18px rgb(42 26 34 / 0.07);
-  --drop-sm: 0 1px 2px rgb(42 26 34 / 0.07);
-  --drop-lg: 0 10px 28px rgb(42 26 34 / 0.12);
+  --drop: 0 1px 2px rgb(36 29 51 / 0.05), 0 6px 18px rgb(36 29 51 / 0.07);
+  --drop-sm: 0 1px 2px rgb(36 29 51 / 0.07);
+  --drop-lg: 0 10px 28px rgb(36 29 51 / 0.12);
 }
 
 @theme inline {

@@ -13,8 +13,8 @@ import type { MetadataRoute } from "next";
  *   `#0f0f14`, which matches no theme in this app: the splash flashed one near-black and the
  *   app painted a different one.
  */
-const ACCENT = "#ff6fa8";
-const SURFACE = "#120810";
+const ACCENT = "#5b3fd6";
+const SURFACE = "#0b0814";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
