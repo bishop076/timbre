@@ -112,7 +112,7 @@ export function ImagePicker({
           // text-[var(--danger)] here measured 2.68:1 on --surface-1 in the light themes, which is
           // below AA for any size — an error message you have to hunt for. --danger is the
           // token that tracks the surface: 6.06:1 light, 9.53:1 dark.
-          className={`absolute top-full z-30 mt-2 w-60 rounded-[var(--r-md)] bg-[var(--surface-1)] px-3 py-2 text-[var(--text-meta)] leading-relaxed text-[var(--danger)] shadow-[var(--drop-lg)] ${
+          className={`absolute top-full z-30 mt-2 w-60 rounded-[var(--r-md)] bg-[var(--surface-1)] px-3 py-2 text-[length:var(--text-meta)] leading-relaxed text-[var(--danger)] shadow-[var(--drop-lg)] ${
             overlay ? "left-0" : "right-0"
           }`}
         >
