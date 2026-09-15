@@ -181,29 +181,6 @@ export function PlayerBar() {
 
   if (!current) return null;
 
-  // A persistent toggle, which is how Spotify's now-playing-view button behaves: it is always
-  // there, in the same place, and it shows whether the panel is up rather than disappearing when
-  // it is. I had it render only while closed, so the control moved depending on state — you could
-  // open the panel and then have nothing in the corner to close it with.
-  const panelButton = (
-    <button
-      type="button"
-      onClick={togglePanel}
-      aria-label={panelOpen ? "Hide now playing" : "Show now playing"}
-      aria-pressed={panelOpen}
-      title={panelOpen ? "Hide now playing" : "Show now playing"}
-      className={`press relative size-8 items-center justify-center rounded-[var(--r-md)] ${
-        panelOpen ? "text-[var(--accent-text)]" : "text-[var(--fg-dim)] hover:text-[var(--fg)]"
-      } ${streamUrl ? "hidden xl:flex" : "flex"}`}
-    >
-      <QueuePanelIcon className="size-[18px]" open={panelOpen} />
-      {/* The dot under an active control, same as Spotify marks its toggles. Colour alone would
-          not carry it. */}
-      {panelOpen ? (
-        <span className="absolute -bottom-0.5 size-1 rounded-full bg-[var(--accent-text)]" />
-      ) : null}
-    </button>
-  );
 
   const artwork = (
     <Artwork src={current.artworkUrl} eager className="slab-sm size-11 shrink-0 rounded-[var(--r-md)]" />
@@ -255,6 +232,9 @@ export function PlayerBar() {
         <div className="mb-2 flex items-center gap-2">
           {artwork}
           {meta}
+          {/* The mobile bar keeps its "open the player" control — there is no column beside it
+              for a collapsed rail to live in, so the sheet is the only way in. On desktop the
+              panel's own rail does this and the bar carries no panel control at all. */}
           {streamUrl ? (
             <button
               type="button"
@@ -264,9 +244,7 @@ export function PlayerBar() {
             >
               <ExpandIcon className="size-[18px]" />
             </button>
-          ) : (
-            panelButton
-          )}
+          ) : null}
           <PlayButton variant="bar" />
         </div>
         <Scrub />
@@ -313,7 +291,6 @@ export function PlayerBar() {
               side of this cluster; the volume control ends it. */}
           <PlaybackMenu variant="bar" />
           <Volume />
-          {panelButton}
         </div>
       </footer>
     </>

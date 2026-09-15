@@ -37,6 +37,24 @@ export const RAIL_WIDE = 240;
  * hiding it is an explicit act, via the header chevron or the button in the player bar.
  */
 export const PANEL_MIN = 288;
+
+/**
+ * Drag the panel narrower than this and it collapses to its rail.
+ *
+ * The rail snaps to icons at its low end because an icon rail is still useful. The panel has no
+ * useful small form — a queue at 240px is unreadable — so its low end is the rail: a strip the
+ * width of a scrollbar carrying one arrow. That is what makes the drag the way to hide it, which
+ * is the point; nothing in the player bar needs to know about the panel at all.
+ *
+ * The width is not written when this fires, so reopening restores the size last chosen rather
+ * than the sliver the pointer was released at on the way past.
+ */
+export const PANEL_COLLAPSE_AT = 236;
+
+/** Whether a drag that ended at `width` means "collapse to the rail". */
+export function panelCollapsesAt(width: number): boolean {
+  return Number.isFinite(width) && width < PANEL_COLLAPSE_AT;
+}
 /** 35rem. */
 export const PANEL_MAX = 560;
 /** 23rem — the fixed width the now-playing panel had before it could be dragged. */
