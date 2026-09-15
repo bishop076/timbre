@@ -164,7 +164,7 @@ async function pathfinder<T>(
     if (!rediscovered) {
       rediscovered = true;
       const stale = hashFor(operation);
-      const found = (await discoverHashesFrom(ctx)).hashes[operation];
+      const found = (await discoverHashesFrom(ctx, stale)).hashes[operation];
       if (found && found !== stale) {
         healed[operation] = found;
         continue;
@@ -211,11 +211,36 @@ export interface DiscoveredHashes {
   from: Partial<Record<OperationKey, HashSource>>;
 }
 
-let discovered: { at: number; result: DiscoveredHashes } | null = null;
+interface Discovery {
+  at: number;
+  result: DiscoveredHashes;
+  /** The refused hashes this reading has already been offered as a replacement for. */
+  checked: Set<string>;
+}
+
+let discovered: Discovery | null = null;
 let discovering: Promise<DiscoveredHashes> | null = null;
 
-export async function discoverHashesFrom(ctx: SearchContext, fresh = false): Promise<DiscoveredHashes> {
-  if (!fresh && discovered && Date.now() - discovered.at < DISCOVERY_TTL_MS) return discovered.result;
+/**
+ * The hashes Spotify's own bundle — or, failing that, SpotifyScraper's table — is advertising.
+ *
+ * `refused` is the hash the caller has just been told is gone, and the reason the memo below is
+ * not simply a time-boxed cache. Spotify rotates a persisted query on a deploy, and can rotate
+ * the same one twice inside half an hour. The second repair was then handed the first repair's
+ * reading, found it naming the hash that had just been refused, and gave up — throwing "no
+ * replacement could be found" without asking Spotify anything, so search stayed broken for the
+ * rest of the TTL although one crawl would have fixed it.
+ *
+ * Remembering which refusals a reading has already answered for is what keeps both properties:
+ * a hash nobody has tested this reading against forces a fresh crawl, while a query that really
+ * has been retired with no successor anywhere is refused over and over from the one reading
+ * already taken, rather than sending every later request back to Spotify's CDN.
+ */
+export async function discoverHashesFrom(ctx: SearchContext, refused?: string): Promise<DiscoveredHashes> {
+  const memo = discovered;
+  if (memo && Date.now() - memo.at < DISCOVERY_TTL_MS && (refused === undefined || memo.checked.has(refused))) {
+    return memo.result;
+  }
 
   discovering ??= (async () => {
     const result: DiscoveredHashes = { hashes: {}, from: {} };
@@ -254,13 +279,17 @@ export async function discoverHashesFrom(ctx: SearchContext, fresh = false): Pro
     // full TTL — and the only caller that matters is the `PersistedQueryNotFound` repair,
     // which needs a hash it has not already tried. So a blip at the moment Spotify rotated a
     // hash disabled the self-heal for half an hour, when retrying would have fixed it at once.
-    if (Object.keys(result.hashes).length > 0) discovered = { at: Date.now(), result };
+    if (Object.keys(result.hashes).length > 0) discovered = { at: Date.now(), result, checked: new Set() };
     return result;
   })().finally(() => {
     discovering = null;
   });
 
-  return discovering;
+  const result = await discovering;
+  // Only the reading this call actually took can be marked as tried against `refused`; a crawl
+  // that came back with nothing leaves an older memo alone, exactly as the note above requires.
+  if (refused !== undefined && discovered?.result === result) discovered.checked.add(refused);
+  return result;
 }
 
 export function healedSpotifyHashes(): Hashes {
