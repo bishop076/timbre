@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 
 import { EYEBROW } from "../page-chrome";
 import type { Song } from "../types";
+import { refusalLine } from "./failures.ts";
 import { searchSpotify, searchSpotifyCatalogue, type SpotifySearchResult } from "./search.ts";
 import { useSpotifyTokens } from "./token-store.ts";
 
 function failure(cause: unknown): SpotifySearchResult {
   return {
     kind: "error",
-    message: cause instanceof Error ? cause.message : "Spotify did not answer.",
+    message: cause instanceof Error ? cause.message : refusalLine("unreachable"),
   };
 }
 
@@ -51,18 +52,23 @@ export function SpotifySection({ query, render }: { query: string; render: (song
       <h2 className={`px-1 pb-2 ${EYEBROW}`}>On Spotify</h2>
 
       {result.kind === "error" ? (
-        <p className="px-1 py-3 text-sm text-amber-500">{result.message}</p>
+        <p role="alert" className="px-1 py-3 text-sm leading-relaxed text-[var(--warn)]">
+          {result.message}
+        </p>
       ) : result.songs.length === 0 ? (
         <p className="px-1 py-3 text-sm text-[var(--fg-dim)]">Nothing on Spotify for this.</p>
       ) : (
         render(result.songs)
       )}
 
-      <p className="px-1 pt-2 text-[11px] text-[var(--fg-faint)]">
+      <p className="px-1 pt-2 text-[11px] leading-relaxed text-[var(--fg-faint)]">
         {result.kind === "ok" && result.from === "account"
-          ? "From your own Spotify account."
-          : "From Spotify's public catalogue — no account needed."}{" "}
-        These play in Spotify&rsquo;s player and do not join the queue.
+          ? "From your own Spotify account, filtered to what your market will actually play. "
+          : "From Spotify's public catalogue — no account needed. "}
+        These play in Spotify&rsquo;s player and do not join the queue
+        {connected
+          ? ", in full if your account is Premium."
+          : ". Without a connected account Spotify stops them at 30 seconds — that is their limit, not a fault here."}
       </p>
     </section>
   );
