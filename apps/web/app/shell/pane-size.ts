@@ -37,6 +37,23 @@ export const PANEL_MAX = 560;
 /** 23rem — the fixed width the now-playing panel had before it could be dragged. */
 export const PANEL_DEFAULT = 368;
 
+/**
+ * Drag the panel narrower than this and it closes instead of sitting at its minimum.
+ *
+ * The rail snaps to icons at its low end; the panel has no icon form — a queue squeezed to 240px
+ * is not a smaller queue, it is an unreadable one. So its low end is "gone", which is also what
+ * makes the drag a way to dismiss it rather than only a way to size it.
+ *
+ * The width is NOT written when this fires. Reopening restores the size you last chose, rather
+ * than the 200-odd pixels you happened to release the pointer at on your way to closing it.
+ */
+export const PANEL_CLOSE_AT = 240;
+
+/** Whether a drag that ended at `width` means "close" rather than "this narrow". */
+export function panelClosesAt(width: number): boolean {
+  return Number.isFinite(width) && width < PANEL_CLOSE_AT;
+}
+
 export function clampWidth(width: number, min: number, max: number): number {
   if (!Number.isFinite(width)) return min;
   return Math.max(min, Math.min(Math.max(max, min), Math.round(width)));
