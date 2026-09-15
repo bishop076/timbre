@@ -22,7 +22,6 @@ import {
   PANEL_MIN,
   panelPaintWidth,
   panelCollapsesAt,
-  resolvePanelWidth,
   roomFor,
   savePanelWidth,
   usePanelWidth,
@@ -34,13 +33,8 @@ import { BottomNav, ProfileButton, Sidebar } from "./sidebar";
 
 let movedOnce = false;
 
-// icons.tsx is not ours to grow, and nothing in it means "the rail". A panel with its first
-// column ruled off is the glyph both Spotify and the Music app use for this.
 const SUGGESTIONS_ID = "search-suggestions";
 const SEARCH_HINT_ID = "search-hint";
-
-const barButton =
-  "press flex size-8 shrink-0 items-center justify-center rounded-[var(--r-md)] text-[var(--fg-dim)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--fg)] disabled:pointer-events-none disabled:opacity-35";
 
 /** The one bar that outlives the page under it: history, search and your profile, reachable
  * from every route. Search used to live on three of them and vanish on the rest, so getting
