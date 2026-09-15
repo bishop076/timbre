@@ -3,8 +3,9 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { MAIN_ID } from "../a11y/skip-link";
 import { CloseIcon, SearchIcon } from "../icons";
-import { NowPlayingPanel } from "../player/now-playing";
+import { NOW_PLAYING_ID, NowPlayingPanel } from "../player/now-playing";
 import { usePlayerControls } from "../player/player-context";
 import { RemoteBar } from "../player/remote-bar";
 import { useArtworkAccent } from "../player/use-artwork-accent";
@@ -14,7 +15,18 @@ import { useTransportKeys } from "../player/use-transport-keys";
 import { setSearchQuery, useSearchQuery } from "../search-store";
 import { SearchSuggestions } from "../search-suggestions";
 import { searchPath } from "../search-url";
+import {
+  PANEL_DEFAULT,
+  PANEL_MAX,
+  PANEL_MIN,
+  resolvePanelWidth,
+  roomFor,
+  savePanelWidth,
+  usePanelWidth,
+  useRailWidth,
+} from "./pane-size.ts";
 import { PlayerBar } from "./player-bar";
+import { ResizeHandle, useViewportWidth } from "./resize-handle";
 import { BottomNav, ProfileButton, Sidebar } from "./sidebar";
 
 let movedOnce = false;
@@ -144,8 +156,38 @@ function ShellBar() {
   );
 }
 
+/** The now-playing panel's left edge. Zero width of its own: it is pinned over the gap the main
+ *  column's right margin already leaves, so the row is laid out exactly as it was before. */
+function PanelEdge() {
+  const width = usePanelWidth();
+  const rail = useRailWidth();
+  const viewport = useViewportWidth();
+
+  // The rail is already taking its share of the row, so the panel's ceiling is what is left of
+  // the window once the rail and the main column's minimum have been paid for.
+  const ceiling = roomFor(viewport, rail, { max: PANEL_MAX, floor: PANEL_MIN });
+
+  return (
+    <div className="relative hidden w-0 shrink-0 xl:block">
+      <ResizeHandle
+        controls={NOW_PLAYING_ID}
+        label="Resize the now playing panel"
+        variable="--np-w"
+        width={width}
+        min={PANEL_MIN}
+        max={ceiling}
+        reset={PANEL_DEFAULT}
+        direction={-1}
+        resolve={(raw) => resolvePanelWidth(raw, ceiling)}
+        onCommit={savePanelWidth}
+        className="-left-2 bottom-2 top-2"
+      />
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
-  const { theater, current } = usePlayerControls();
+  const { theater, current, panelOpen } = usePlayerControls();
   const remote = useRemotePlayer();
   const mirrored = current ? null : remote;
   const pathname = usePathname();
@@ -202,6 +244,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Sidebar />
         <main
           ref={panel}
+          // The skip link's `href="#main-content"` needs something to point at. It has a
+          // JS fallback that finds `<main>` by tag, but a fragment that resolves on its own
+          // survives the handler not running — and a link to a dangling id is the kind of
+          // thing an audit passes and a reader does not.
+          id={MAIN_ID}
           className={`${pathname.startsWith("/profile") ? "" : "ambient"} ${overflowing ? "scroll-fade" : ""} scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--surface-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
             theater ? "hidden" : ""
           }`}
@@ -213,6 +260,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </main>
+        {current && panelOpen && !theater && <PanelEdge />}
         <NowPlayingPanel />
       </div>
       <div className={theater ? "hidden lg:contents" : "contents"}>
