@@ -16,13 +16,14 @@
    a plain string out of one into a server component hands back a client-reference proxy rather
    than the string — so they are repeated here rather than shared. Kept literal, and in this
    order, so a diff against song-card.tsx is obvious. */
-const TILE = "w-[8rem] shrink-0 @xl:w-[11.5rem]";
+const TILE =
+  "min-w-0 shrink-0 snap-start w-[calc((100%-0.5rem)/2)] @md:w-[calc((100%-1rem)/3)] @2xl:w-[calc((100%-1.5rem)/4)] @3xl:w-[calc((100%-2rem)/5)] @5xl:w-[calc((100%-2.5rem)/6)]";
 const TILE_BOX = "block rounded-[var(--r-lg)] p-2";
 
 const BAR = "animate-pulse rounded-[var(--r-sm)] bg-[var(--surface-2)]";
 
-/* Eight is what TileSkeletons draws, and it is one more than fills the 1152px container at the
-   11.5rem tile width — so the shelf always overflows, as a loaded one does. */
+/* Eight is what TileSkeletons draws, and it is two more than the six columns a 1152px container
+   divides into — so the shelf always overflows, as a loaded one does. */
 const TILES = [0, 1, 2, 3, 4, 5, 6, 7];
 
 function ShelfSkeleton({ titleWidth }: { titleWidth: string }) {
@@ -50,7 +51,7 @@ function ShelfSkeleton({ titleWidth }: { titleWidth: string }) {
       {/* The loaded row is `overflow-x-auto`; this one is `overflow-hidden`, because a skeleton
           that can be scrolled sideways invites a gesture that is about to be thrown away. The
           padding matches either way, so the first tile starts in the same place. */}
-      <div className="flex gap-1 overflow-hidden px-1 pb-1 @xl:gap-2">
+      <div className="flex gap-2 overflow-hidden px-1 pb-1">
         {TILES.map((tile) => (
           <div key={tile} className={TILE}>
             <div className={TILE_BOX}>

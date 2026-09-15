@@ -149,10 +149,13 @@ function Featured({ data }: { data: Discover }) {
           <Link
             key={card.key}
             href={card.href}
-            // A rem wider than it was on each step, because `TILE_BOX` adds the same 2 of
-            // padding a song tile has: the picture inside is the size it always was, and the
-            // card now lights up on hover as one panel the way the rest of the shelf does.
-            className={`group w-[16rem] shrink-0 @xl:w-[21rem] ${TILE_BOX}`}
+            // Divides the track the way `TILE` does, for the same reason: a fixed 20rem against
+            // a column of arbitrary width left a sliced card on the end of every Featured shelf.
+            // Roughly two tiles to a card, so the two shelves read as the same grid at different
+            // scales. It also gains `TILE_BOX`, so the card lights up on hover as one panel the
+            // way the rest of the page does — the picture inside is the size it always was,
+            // because the box adds back exactly the 2 of padding a song tile has.
+            className={`group w-full shrink-0 @md:w-[calc((100%-0.5rem)/2)] @3xl:w-[calc((100%-1rem)/3)] ${TILE_BOX}`}
           >
             <div
               className={`slab-sm press relative aspect-[4/3] w-full overflow-hidden rounded-[var(--r-md)] ${COVER_EMPTY}`}
@@ -199,7 +202,7 @@ function Featured({ data }: { data: Discover }) {
                 // so the lit ground paints over it whichever branch it takes; and a rule on the
                 // glyph itself beats the inherited `--fg-faint`, so the note matches the one on
                 // every other empty cover instead of going grey.
-                <div className="absolute inset-0 [&_svg]:text-[var(--accent-text)] [&_svg]:opacity-60">
+                <div className="absolute inset-0 [&_svg]:text-[var(--accent-text)] [&_svg]:opacity-80">
                   <Collage
                     covers={card.covers ?? []}
                     className={`size-full ${COVER_EMPTY}`}

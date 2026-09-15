@@ -10,6 +10,7 @@ import { formatDuration } from "../duration";
 import { Equalizer } from "../equalizer";
 import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon, PlayIcon } from "../icons";
 import { EYEBROW } from "../page-chrome";
+import { usePanelWidth } from "../shell/pane-size.ts";
 import { sourceStyle } from "../sources";
 import type { Song } from "../types";
 import { ArtistCard } from "./artist-card";
@@ -139,7 +140,7 @@ function NowPlayingRow({ song, playing }: { song: Song; playing: boolean }) {
         </p>
       </div>
       {playing && (
-        <Equalizer className="tint h-3.5 shrink-0 gap-[3px] pr-1 text-[var(--accent)]" />
+        <Equalizer className="tint h-3.5 shrink-0 gap-[3px] pr-1 text-[var(--accent-text)]" />
       )}
       {menu}
     </div>
@@ -197,6 +198,10 @@ function QueueActions({
  * is what fits under the credits on a 690px-tall window without pushing anything off. */
 const DOCKED_QUEUE = 3;
 
+/** The panel's own id, so the separator in `app-shell.tsx` can name it in `aria-controls` and
+ *  find it to paint a width onto while it is being dragged. */
+export const NOW_PLAYING_ID = "now-playing-panel";
+
 export function NowPlayingPanel() {
   const {
     current,
@@ -221,6 +226,7 @@ export function NowPlayingPanel() {
     clearQueue,
   } = usePlayerControls();
   const { continueWithRadio } = usePlaybackPrefs();
+  const width = usePanelWidth();
 
   const open = current !== null && panelOpen;
   const expanded = open && theater;
@@ -249,19 +255,26 @@ export function NowPlayingPanel() {
         )}`
       : null);
 
+  // Docked, the width is whatever the handle on its left edge last committed — read from a custom
+  // property rather than a React value so a drag can repaint it without re-rendering the queue.
+  // `23rem` is the fallback the server paints with, which is the width this panel always had.
+  //
+  // `transition-[width]` is for opening and closing; during a drag it is 300ms of lag, so the
+  // root's `data-resizing` turns it off. The attribute selector outranks the media query, which
+  // is why there is no `!` on it.
   const shell = expanded
     ? "flex min-h-0 min-w-0 flex-1 p-2 lg:pl-0"
-    : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+var(--safe-b)+0.75rem)] right-[calc(0.75rem+var(--safe-r))] z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+var(--safe-b)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] ${
+    : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+var(--safe-b)+0.75rem)] right-[calc(0.75rem+var(--safe-r))] z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+var(--safe-b)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] [[data-resizing]_&]:transition-none ${
         streamUrl ? "hidden xl:block" : ""
       } ${
         open
-          ? "translate-y-0 opacity-100 xl:w-[23rem]"
+          ? "translate-y-0 opacity-100 xl:w-[var(--np-w,23rem)]"
           : "pointer-events-none translate-y-3 opacity-0 xl:w-0 xl:p-0"
       }`;
 
   const card = expanded
     ? "flex min-h-0 w-full flex-1 flex-col gap-2 xl:flex-row"
-    : "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-[22.5rem] xl:max-w-none";
+    : "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-full xl:max-w-none";
 
   const videoBox = expanded
     ? "slab relative min-h-[200px] w-full shrink-0 overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
@@ -302,7 +315,14 @@ export function NowPlayingPanel() {
   );
 
   return (
-    <aside className={shell} aria-hidden={!open} inert={!open} aria-label="Now playing">
+    <aside
+      id={NOW_PLAYING_ID}
+      style={{ "--np-w": `${width}px` } as React.CSSProperties}
+      className={shell}
+      aria-hidden={!open}
+      inert={!open}
+      aria-label="Now playing"
+    >
       <div className={card}>
         <div className={videoBox}>
           {state === "unplayable" && elsewhereUrl && (
@@ -310,7 +330,7 @@ export function NowPlayingPanel() {
               href={elsewhereUrl}
               target="_blank"
               rel="noreferrer noopener"
-              className="absolute inset-x-0 top-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-2)] px-3 py-2.5 text-xs font-medium text-[var(--fg)] transition hover:text-[var(--accent)]"
+              className="absolute inset-x-0 top-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-2)] px-3 py-2.5 text-xs font-medium text-[var(--fg)] transition hover:text-[var(--accent-text)]"
             >
               {problem ?? "Can't play this here"}
               <ExternalIcon className="size-3" />

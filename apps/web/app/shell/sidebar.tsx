@@ -8,7 +8,6 @@ import { Artwork } from "../artwork";
 import { Equalizer } from "../equalizer";
 import { moveBetweenItems } from "../a11y/arrow-nav";
 import { CloseIcon, CompassIcon, HomeIcon, LibraryIcon } from "../icons";
-import { createJsonStore, useLocalStore } from "../local-store.ts";
 import { usePlayerControls } from "../player/player-context";
 import { LikedCover, LikedRow } from "../playlists/liked-tile";
 import { PlaylistCover } from "../playlists/playlist-cover";
@@ -18,6 +17,18 @@ import { Avatar } from "../profile/avatar";
 import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
 import { TimbreMark } from "./brand";
+import {
+  dockedPanelWidth,
+  RAIL_ICONS,
+  RAIL_MAX,
+  RAIL_WIDE,
+  resolveRailWidth,
+  roomFor,
+  saveRailWidth,
+  usePanelWidth,
+  useRailWidth,
+} from "./pane-size.ts";
+import { ResizeHandle, useViewportWidth } from "./resize-handle";
 
 const NAV = [
   { label: "Home", icon: HomeIcon, href: "/" },
@@ -29,29 +40,35 @@ const FILTERS = ["Queue", "Playlists"] as const;
 
 type Filter = (typeof FILTERS)[number];
 
-// Whether the rail is shrunk to icons is a decision you make once, so it outlives the tab —
-// same `timbre:` prefix and the same JSON store every other preference here uses, which also
-// means the crash screen's export carries it out with the rest.
-const railStore = createJsonStore("timbre:rail-collapsed", true, (stored) => stored !== false);
+/** The id the rail's drag handle points `aria-controls` at, and how that handle finds the rail
+ *  to write its width onto mid-drag. */
+const RAIL_ID = "app-rail";
 
-export function useRailCollapsed(): boolean {
-  return useLocalStore(railStore);
-}
-
-export function toggleRail(): void {
-  railStore.save(!railStore.getSnapshot());
-}
-
-/** One rail, three dresses. `label` is the words, `wide` is anything that only makes sense
- * beside words, `narrow` is anything that replaces them, and `row` re-centres what is left.
- * Width picks between AUTO and ICONS in CSS rather than in JS, so a wide screen paints the
- * labelled rail on the server's first pass instead of flicking into it after hydration. */
+/** One rail, two dresses. `label` is the words, `wide` is anything that only makes sense beside
+ * words, `narrow` is anything that replaces them, and `row` re-centres what is left.
+ *
+ * The switch is a container query on the rail itself, not a viewport media query and not a
+ * branch in JS. That matters twice over. The rail's width is now a dragged number, so no media
+ * query could describe it; and the words appear at exactly the width the snap guarantees, in the
+ * same paint that changes the width, rather than one React render later.
+ *
+ * 9rem is the rail's *content* box — the aside's `p-2` is outside it — so it sits in the dead
+ * band the snap keeps empty: the icon rail's content is 56px and the narrowest labelled rail's
+ * is 192px. There is no width at which half a label is on screen. */
 type RailStyle = {
   label: string;
   wide: string;
   narrow: string;
   row: string;
   pad: string;
+};
+
+const RAIL: RailStyle = {
+  label: "hidden @[9rem]:inline",
+  wide: "hidden @[9rem]:flex",
+  narrow: "flex @[9rem]:hidden",
+  row: "justify-center @[9rem]:justify-start",
+  pad: "px-1 @[9rem]:px-3",
 };
 
 const LABELLED: RailStyle = {
@@ -61,39 +78,6 @@ const LABELLED: RailStyle = {
   row: "justify-start",
   pad: "px-3",
 };
-
-const AUTO: RailStyle = {
-  label: "hidden xl:inline",
-  wide: "hidden xl:flex",
-  narrow: "flex xl:hidden",
-  row: "justify-center xl:justify-start",
-  pad: "px-1 xl:px-3",
-};
-
-const ICONS: RailStyle = {
-  label: "hidden",
-  wide: "hidden",
-  narrow: "flex",
-  row: "justify-center",
-  pad: "px-1",
-};
-
-/** A panel with its first column ruled off — the rail, shown opening or closing. */
-function ExpandRailIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden className={className}>
-      <rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M9 4v16" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="m14.5 9.5 2.5 2.5-2.5 2.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function NavLinks({ rail }: { rail?: RailStyle }) {
   const pathname = usePathname();
@@ -136,24 +120,44 @@ function NavLinks({ rail }: { rail?: RailStyle }) {
 }
 
 export function Sidebar() {
-  const { exitTheater } = usePlayerControls();
-  const collapsed = useRailCollapsed();
+  const { exitTheater, current, panelOpen } = usePlayerControls();
+  const width = useRailWidth();
+  const panel = usePanelWidth();
+  const viewport = useViewportWidth();
   const [filter, setFilter] = useState<Filter>("Queue");
   const [drawer, setDrawer] = useState(false);
-
-  // Icons by default — the labelled rail spent 16.75rem repeating five words the icons already
-  // say. But it expands, and the control for that lives in the rail rather than in the top bar,
-  // which is the only place it makes sense: it is the thing it acts on.
-  const style = collapsed ? ICONS : LABELLED;
 
   useEffect(() => {
     void loadPlaylists();
   }, []);
 
+  // Icons by default — the labelled rail spent 16.75rem repeating five words the icons already
+  // say. It grows by dragging its right edge now; the button that used to do it is gone, along
+  // with the row of chrome it cost at the foot of a 690px window.
+  //
+  // How far it may grow depends on what the now-playing panel is taking on the other side, which
+  // is only anything at all once the panel is docked rather than floating.
+  const ceiling = roomFor(
+    viewport,
+    dockedPanelWidth(panel, current !== null && panelOpen, viewport),
+    { max: RAIL_MAX, floor: RAIL_ICONS },
+  );
+  const resolve = (raw: number) => resolveRailWidth(raw, ceiling);
+
   return (
     <>
       <aside
-        className={`hidden shrink-0 flex-col p-2 pb-1.5 lg:flex ${collapsed ? "w-[4.5rem]" : "w-[15rem]"}`}
+        // Two <aside> elements are two "complementary" landmarks, and an unnamed one is
+        // announced as just "complementary". The now-playing panel names itself; this one has
+        // to as well or a reader cannot tell the two apart in a landmark list.
+        aria-label="Sidebar"
+        id={RAIL_ID}
+        // `@container` here is what lets the labels follow the dragged width. It also makes this
+        // element the containing block for any `position: fixed` inside it — the trap the page
+        // wrappers already set — which is safe only because nothing in the rail is fixed. The
+        // library drawer below is a `<dialog>` in the top layer, and it is not in here anyway.
+        style={{ "--rail-w": `${width}px` } as React.CSSProperties}
+        className="@container relative hidden w-[var(--rail-w,4.5rem)] shrink-0 flex-col p-2 pb-1.5 lg:flex"
       >
         {/* One rail, one edge. The brand, the nav and the library used to be three separate
             bordered cards stacked with a gap, which at icon width read as a column of unrelated
@@ -164,41 +168,43 @@ export function Sidebar() {
             href="/"
             onClick={exitTheater}
             aria-label="Timbre — home"
-            className={`press flex h-10 items-center gap-2.5 rounded-[var(--r-md)] ${style.row} ${style.pad}`}
+            className={`press flex h-10 items-center gap-2.5 rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
           >
             <TimbreMark aria-hidden className="h-[22px] w-auto shrink-0 text-[var(--accent)]" />
-            <span className={`text-[17px] font-extrabold tracking-tight ${style.label}`}>
+            <span className={`text-[17px] font-extrabold tracking-tight ${RAIL.label}`}>
               Timbre
             </span>
           </Link>
 
           <nav aria-label="Primary" className="flex flex-col gap-0.5">
-            <NavLinks rail={style} />
+            <NavLinks rail={RAIL} />
           </nav>
 
           <hr className="my-1.5 border-0 border-t border-[var(--line)]" />
 
           <LibraryCard
-            style={style}
+            style={RAIL}
             filter={filter}
             onFilter={setFilter}
             onExpand={() => setDrawer(true)}
           />
-
-          <button
-            type="button"
-            onClick={toggleRail}
-            aria-label={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
-            aria-pressed={!collapsed}
-            title={collapsed ? "Expand the sidebar" : "Collapse the sidebar"}
-            className={`press mt-auto flex h-9 shrink-0 items-center gap-3 rounded-[var(--r-md)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)] ${style.row} ${style.pad}`}
-          >
-            <ExpandRailIcon
-              className={`size-[18px] shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`}
-            />
-            <span className={`text-sm font-semibold ${style.label}`}>Collapse</span>
-          </button>
         </div>
+
+        {/* Pinned over the rail's own right-hand padding, so the gutter between the rail and the
+            page is the grab area and the layout gains nothing. */}
+        <ResizeHandle
+          controls={RAIL_ID}
+          label="Resize the sidebar"
+          variable="--rail-w"
+          width={width}
+          min={RAIL_ICONS}
+          max={ceiling}
+          reset={RAIL_WIDE}
+          direction={1}
+          resolve={resolve}
+          onCommit={saveRailWidth}
+          className="bottom-1.5 right-0 top-2"
+        />
       </aside>
 
       <LibraryDrawer

@@ -109,11 +109,14 @@ function NewReleases({ releases }: { releases: ReturnType<typeof useTaste>["rele
 
   return (
     <Shelf title="New from artists you play" caption="The last four months">
-      {releases.slice(0, 16).map((release) => (
+      {releases.slice(0, 16).map((release, index) => (
         <div key={release.id} className={TILE}>
           <ReleaseCard
             href={`/album/${release.id}`}
             coverUrl={release.coverUrl}
+            // The first shelf on /explore, so these are the covers on screen when the page
+            // arrives. Lazy-loading them is what made a shelf turn up as a row of empty boxes.
+            eager={index < 6}
             title={release.title}
             subtitle={`${release.artist} · ${kindLabel(release.kind)} · ${when(release.date)}`}
           />
