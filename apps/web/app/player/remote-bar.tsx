@@ -31,7 +31,7 @@ export function RemoteBar({ remote }: { remote: RemotePlayer }) {
       </p>
       <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
         <ArtistLink artists={song.artists} className="min-w-0 truncate" />
-        <span className={`shrink-0 ${state === "unplayable" ? "text-amber-500" : "text-[var(--accent)]"}`}>
+        <span className={`shrink-0 ${state === "unplayable" ? "text-[var(--warn)]" : "text-[var(--accent)]"}`}>
           <span className="hidden sm:inline">{verb} in</span>
           <span className="sm:hidden">{state === "unplayable" ? "Stuck in" : "In"}</span> another tab
         </span>

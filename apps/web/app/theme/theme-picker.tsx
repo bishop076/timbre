@@ -158,7 +158,7 @@ function Slider({
 
 function Problem({ children }: { children: React.ReactNode }) {
   return (
-    <p role="status" className="mt-2 text-[11px] leading-relaxed text-amber-500">
+    <p role="status" className="mt-2 text-[11px] leading-relaxed text-[var(--warn)]">
       {children}
     </p>
   );
@@ -226,7 +226,7 @@ function ColourField({ accent }: { accent: string }) {
       </div>
 
       {bad && (
-        <p role="alert" className="basis-full text-[11px] text-amber-500">
+        <p role="alert" className="basis-full text-[11px] text-[var(--warn)]">
           That is not a colour this can read. Try #5b3fd6, rgb(91 63 214) or violet.
         </p>
       )}
@@ -325,7 +325,7 @@ function BackgroundGroup({ theme, light }: { theme: Theme; light: boolean }) {
                 clearBackgroundImage();
                 picker.setError(null);
               }}
-              className="slab-sm press flex items-center gap-2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[12px] font-bold hover:text-red-400"
+              className="slab-sm press flex items-center gap-2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-3 py-2 text-[12px] font-bold hover:text-[var(--danger)]"
             >
               <TrashIcon className="size-4" />
               Remove
@@ -340,7 +340,7 @@ function BackgroundGroup({ theme, light }: { theme: Theme; light: boolean }) {
       </div>
 
       {picker.error && (
-        <p role="alert" className="mt-2 text-[11px] text-red-400">
+        <p role="alert" className="mt-2 text-[11px] text-[var(--danger)]">
           {picker.error}
         </p>
       )}
@@ -435,7 +435,7 @@ function FontGroup({ theme }: { theme: Theme }) {
       )}
 
       {picker.error && (
-        <p role="alert" className="mt-2 text-[11px] text-red-400">
+        <p role="alert" className="mt-2 text-[11px] text-[var(--danger)]">
           {picker.error}
         </p>
       )}
@@ -447,7 +447,7 @@ function FontGroup({ theme }: { theme: Theme }) {
             clearCustomFont();
             setFont("default");
           }}
-          className="press mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--fg-dim)] hover:text-red-400"
+          className="press mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--fg-dim)] hover:text-[var(--danger)]"
         >
           <TrashIcon className="size-3.5" />
           Forget {theme.font.family}

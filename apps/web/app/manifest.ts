@@ -1,21 +1,48 @@
 import type { MetadataRoute } from "next";
 
+/**
+ * Both colours are copies, and the places they are copied from are named because nothing checks
+ * they still agree:
+ *
+ * - `theme_color` is the `ACCENT` in layout.tsx, which is what `viewport.themeColor` already
+ *   sends as a meta tag. They were different — violet in the head, near-black here — and a
+ *   manifest that disagrees with the page paints the installed app's title bar a colour the
+ *   app itself never uses.
+ * - `background_color` is the dark `--bg` from globals.css, because it is the splash screen,
+ *   and the boot script in layout.tsx puts a first-time visitor in the dark theme. It was
+ *   `#0f0f14`, which matches no theme in this app: the splash flashed one near-black and the
+ *   app painted a different one.
+ */
+const ACCENT = "#ff6fa8";
+const SURFACE = "#120810";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Timbre — one search across free music",
+    // Explicit, and worth keeping that way: a manifest with no `id` is identified by its
+    // `start_url`, so the day anything moves that, an installed Timbre becomes a second app
+    // beside the first rather than an update to it.
+    id: "/",
+    name: "Timbre — all your music, one search",
     short_name: "Timbre",
     description:
-      "Search YouTube Music, Deezer and Apple Music from one place. Every track plays from the service it belongs to, and everything you save stays in this browser.",
+      "Search YouTube Music, SoundCloud, Deezer, Apple Music and more from one place. Every track plays from the service it belongs to, and everything you save stays in this browser.",
     start_url: "/",
+    scope: "/",
     display: "standalone",
-    background_color: "#0f0f14",
-    theme_color: "#0f0f14",
+    background_color: SURFACE,
+    theme_color: ACCENT,
     orientation: "any",
     categories: ["music", "entertainment"],
     icons: [
+      // The two sizes Chrome requires before it will offer to install anything, the maskable
+      // Android crops to its own shape, and the SVG desktop installers prefer for the sizes no
+      // raster here covers. All four are the files in public/ and app/. The brand kit holds
+      // byte-identical *copies* of them for print and press use,
+      // and is not served at any URL.
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
     ],
   };
 }
