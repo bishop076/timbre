@@ -18,7 +18,9 @@ import { searchPath } from "../search-url";
 import {
   PANEL_DEFAULT,
   PANEL_MAX,
+  PANEL_COLLAPSE_AT,
   PANEL_MIN,
+  panelCollapsesAt,
   resolvePanelWidth,
   roomFor,
   savePanelWidth,
@@ -164,7 +166,7 @@ function PanelEdge() {
   const viewport = useViewportWidth();
   // `togglePanel` rather than a close action of its own: player-context owns that state and is
   // being edited elsewhere, and the edge only ever fires this while the panel is open.
-  // The edge is only ever mounted alongside an open panel, so it needs no guard of its own.
+  const { panelOpen, togglePanel } = usePlayerControls();
 
   // The rail is already taking its share of the row, so the panel's ceiling is what is left of
   // the window once the rail and the main column's minimum have been paid for.
@@ -177,16 +179,20 @@ function PanelEdge() {
         label="Resize the now playing panel"
         variable="--np-w"
         width={width}
-        // Dragging in stops at PANEL_MIN, and PANEL_MIN is a compact panel rather than a sliver:
-        // artwork, title, and the top of the queue all still readable. The drag sizes the panel,
-        // it does not dismiss it — hiding it is what the header chevron and the player-bar button
-        // are for, and those are explicit.
-        min={PANEL_MIN}
+        // Below PANEL_MIN the gesture means "collapse to the rail", so the handle's own floor
+        // has to sit under the panel's or the threshold is unreachable.
+        min={PANEL_COLLAPSE_AT - 40}
         max={ceiling}
         reset={PANEL_DEFAULT}
         direction={-1}
-        resolve={(raw) => resolvePanelWidth(raw, ceiling)}
-        onCommit={savePanelWidth}
+        resolve={(raw) => (panelCollapsesAt(raw) ? raw : resolvePanelWidth(raw, ceiling))}
+        onCommit={(next) => {
+          if (panelCollapsesAt(next)) {
+            if (panelOpen) togglePanel();
+            return;
+          }
+          savePanelWidth(next);
+        }}
         className="-left-2 bottom-2 top-2"
       />
     </div>
