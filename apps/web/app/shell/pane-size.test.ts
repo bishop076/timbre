@@ -7,7 +7,6 @@ import {
   MAIN_MIN,
   PANEL_DEFAULT,
   PANEL_MAX,
-  PANEL_CLOSE_AT,
   PANEL_MIN,
   parsePanelWidth,
   parseRailWidth,
@@ -17,7 +16,6 @@ import {
   RAIL_MIN,
   RAIL_SNAP,
   RAIL_WIDE,
-  panelClosesAt,
   resolvePanelWidth,
   resolveRailWidth,
   roomFor,
@@ -163,28 +161,4 @@ test("a stored panel width is clamped on the way in", () => {
   assert.equal(parsePanelWidth(20), PANEL_MIN);
   assert.equal(parsePanelWidth("wide"), PANEL_DEFAULT);
   assert.equal(parsePanelWidth(null), PANEL_DEFAULT);
-});
-
-test("dragging the panel past its low end means close, not narrower", () => {
-  // The rail snaps to icons at its low end. The panel has no icon form — a queue at 240px is not
-  // a smaller queue, it is an unreadable one — so its low end is "gone". That is also what makes
-  // the drag a way to dismiss the panel rather than only a way to size it.
-  assert.equal(panelClosesAt(PANEL_CLOSE_AT - 1), true);
-  assert.equal(panelClosesAt(PANEL_CLOSE_AT), false);
-  assert.equal(panelClosesAt(PANEL_MIN), false);
-  assert.equal(panelClosesAt(PANEL_DEFAULT), false);
-
-  // Not a number is not a close. A drag that produced NaN should leave the panel alone rather
-  // than dismissing it.
-  assert.equal(panelClosesAt(Number.NaN), false);
-  assert.equal(panelClosesAt(Number.POSITIVE_INFINITY), false);
-});
-
-test("the close threshold sits below the minimum, so it can only be reached deliberately", () => {
-  // If these ever crossed, every drag to the minimum would dismiss the panel instead of resting
-  // at it, and the panel would be impossible to size small.
-  assert.ok(
-    PANEL_CLOSE_AT < PANEL_MIN,
-    `close at ${PANEL_CLOSE_AT} must be under the minimum ${PANEL_MIN}`,
-  );
 });

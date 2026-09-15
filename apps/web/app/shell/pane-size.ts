@@ -31,28 +31,17 @@ export const RAIL_SNAP = 140;
 export const RAIL_WIDE = 240;
 
 /** 18rem. Narrower than this and a queue row is all ellipsis. */
+/**
+ * 18rem. A compact panel, deliberately not a sliver: the artwork, the title and the top of the
+ * queue are all still readable here. Dragging in lands on this rather than dismissing the panel —
+ * hiding it is an explicit act, via the header chevron or the button in the player bar.
+ */
 export const PANEL_MIN = 288;
 /** 35rem. */
 export const PANEL_MAX = 560;
 /** 23rem — the fixed width the now-playing panel had before it could be dragged. */
 export const PANEL_DEFAULT = 368;
 
-/**
- * Drag the panel narrower than this and it closes instead of sitting at its minimum.
- *
- * The rail snaps to icons at its low end; the panel has no icon form — a queue squeezed to 240px
- * is not a smaller queue, it is an unreadable one. So its low end is "gone", which is also what
- * makes the drag a way to dismiss it rather than only a way to size it.
- *
- * The width is NOT written when this fires. Reopening restores the size you last chose, rather
- * than the 200-odd pixels you happened to release the pointer at on your way to closing it.
- */
-export const PANEL_CLOSE_AT = 240;
-
-/** Whether a drag that ended at `width` means "close" rather than "this narrow". */
-export function panelClosesAt(width: number): boolean {
-  return Number.isFinite(width) && width < PANEL_CLOSE_AT;
-}
 
 export function clampWidth(width: number, min: number, max: number): number {
   if (!Number.isFinite(width)) return min;

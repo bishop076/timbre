@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Artwork } from "../artwork";
 import { Equalizer } from "../equalizer";
 import { moveBetweenItems } from "../a11y/arrow-nav";
+import { useScrollEdges } from "../scroll-edges";
 import { CloseIcon, CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { LikedCover, LikedRow } from "../playlists/liked-tile";
@@ -435,40 +436,6 @@ function LibraryDrawer({
 // Whether a scroll box has more above or below what it shows, so `.edge-fade` softens only an
 // edge with something past it. Watched, not measured once: the queue grows, and switching tabs
 // swaps the box's contents without resizing the box.
-function useScrollEdges() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ above: false, below: false });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const measure = () => {
-      const above = el.scrollTop > 1;
-      const below = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
-      setEdges((prev) => (prev.above === above && prev.below === below ? prev : { above, below }));
-    };
-
-    measure();
-    el.addEventListener("scroll", measure, { passive: true });
-    const sizes = new ResizeObserver(measure);
-    const watch = () => {
-      sizes.observe(el);
-      for (const child of el.children) sizes.observe(child);
-    };
-    watch();
-    const contents = new MutationObserver(watch);
-    contents.observe(el, { childList: true });
-
-    return () => {
-      el.removeEventListener("scroll", measure);
-      sizes.disconnect();
-      contents.disconnect();
-    };
-  }, []);
-
-  return [ref, edges] as const;
-}
 
 function PlaylistRows({
   playlists,

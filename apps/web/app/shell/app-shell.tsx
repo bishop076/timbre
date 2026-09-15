@@ -18,9 +18,7 @@ import { searchPath } from "../search-url";
 import {
   PANEL_DEFAULT,
   PANEL_MAX,
-  PANEL_CLOSE_AT,
   PANEL_MIN,
-  panelClosesAt,
   resolvePanelWidth,
   roomFor,
   savePanelWidth,
@@ -166,13 +164,7 @@ function PanelEdge() {
   const viewport = useViewportWidth();
   // `togglePanel` rather than a close action of its own: player-context owns that state and is
   // being edited elsewhere, and the edge only ever fires this while the panel is open.
-  const { panelOpen, togglePanel } = usePlayerControls();
-
-  // Nothing at all when the panel is closed. The handle is a hairline pinned over the main
-  // column's right margin, and with no panel behind it that hairline IS the whole sidebar as far
-  // as the eye is concerned — a line sitting at the edge of the screen for no reason. Hidden
-  // means hidden; the player bar's button is the way back.
-  if (!panelOpen) return null;
+  // The edge is only ever mounted alongside an open panel, so it needs no guard of its own.
 
   // The rail is already taking its share of the row, so the panel's ceiling is what is left of
   // the window once the rail and the main column's minimum have been paid for.
@@ -185,22 +177,16 @@ function PanelEdge() {
         label="Resize the now playing panel"
         variable="--np-w"
         width={width}
-        // The drag can go below PANEL_MIN, because below it the gesture means "close" rather
-        // than "narrower" — clamping at the minimum is what made it impossible to drag away.
-        min={PANEL_CLOSE_AT - 48}
+        // Dragging in stops at PANEL_MIN, and PANEL_MIN is a compact panel rather than a sliver:
+        // artwork, title, and the top of the queue all still readable. The drag sizes the panel,
+        // it does not dismiss it — hiding it is what the header chevron and the player-bar button
+        // are for, and those are explicit.
+        min={PANEL_MIN}
         max={ceiling}
         reset={PANEL_DEFAULT}
         direction={-1}
-        resolve={(raw) => (panelClosesAt(raw) ? raw : resolvePanelWidth(raw, ceiling))}
-        onCommit={(next) => {
-          if (panelClosesAt(next)) {
-            // Deliberately not saving the width. Reopening restores the size last chosen, not
-            // the sliver the pointer was released at on the way to dismissing it.
-            if (panelOpen) togglePanel();
-            return;
-          }
-          savePanelWidth(next);
-        }}
+        resolve={(raw) => resolvePanelWidth(raw, ceiling)}
+        onCommit={savePanelWidth}
         className="-left-2 bottom-2 top-2"
       />
     </div>
