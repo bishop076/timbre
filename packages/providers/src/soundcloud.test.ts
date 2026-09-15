@@ -58,11 +58,36 @@ test("the direct path asks api-v2 itself, with the resolved client_id", async (t
   assert.match(url, /client_id=RESOLVED_ID_0123456789/);
 });
 
-test("an unresolved client_id abstains instead of waiting", async (t) => {
+test("an unresolved client_id abstains instead of waiting, and says so instead of finding nothing", async (t) => {
   const fetches = stubSearch(t, { id: 5, title: "Never fetched" });
   const provider = createSoundCloudProvider({ clientId: async () => null });
-  assert.deepEqual(await provider.search(ctx, "anything", 5), []);
-  assert.equal(fetches.callCount(), 0);
+  // Still no waiting — that is what this test was always for. But `[]` said SoundCloud looked
+  // and found nothing, so `searchAll` counted it in `attempted`, left `failures` empty, and the
+  // route answered a clean success for a provider that never got as far as asking.
+  await assert.rejects(provider.search(ctx, "anything", 5), {
+    name: "ProviderError",
+    provider: "soundcloud",
+    kind: "transient",
+    message: "SoundCloud would not hand over a key to search with.",
+  });
+  assert.equal(fetches.callCount(), 0, "it must still not wait for the crawl");
+});
+
+test("a refusal on the search endpoint is an outage, not a page with no results on it", async (t) => {
+  for (const status of [401, 403]) {
+    t.mock.method(globalThis, "fetch", async () => new Response("", { status }));
+    await assert.rejects(proxied().search(ctx, "anything", 5), {
+      name: "ProviderError",
+      provider: "soundcloud",
+      message: `SoundCloud returned ${status}.`,
+    });
+    t.mock.restoreAll();
+  }
+});
+
+test("a 404 from oEmbed is still no such track, because that is what it means there", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => new Response("", { status: 404 }));
+  assert.equal(await proxied().resolve?.(ctx, "https://soundcloud.com/x/y"), null);
 });
 
 test("a link on soundcloud.com under another scheme is not resolved", async (t) => {
