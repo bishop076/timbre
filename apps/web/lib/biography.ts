@@ -78,12 +78,21 @@ export function soleEntity(body: { query?: { search?: { title?: string }[] } } |
   return ids.length === 1 ? ids[0]! : null;
 }
 
-export function sharesARelease(name: string, ours: string[], theirs: string[]): boolean {
-  const self = normalizeLoose(name);
-  const key = (title: string) => parseTitle(title).base;
+const key = (title: string) => parseTitle(title).base;
 
-  const mine = new Set(ours.map(key).filter((title) => title && title !== self));
+function ourReleases(name: string, ours: string[]): Set<string> {
+  const self = normalizeLoose(name);
+  return new Set(ours.map(key).filter((title) => title && title !== self));
+}
+
+export function sharesARelease(name: string, ours: string[], theirs: string[]): boolean {
+  const mine = ourReleases(name, ours);
   return theirs.some((title) => mine.has(key(title)));
+}
+
+/** Whether there is anything for `sharesARelease` to match against. Without it the answer is no. */
+export function canCorroborate({ name, releaseTitles }: BiographyQuery): boolean {
+  return ourReleases(name, releaseTitles).size > 0;
 }
 
 const articlePath = (title: string) => encodeURIComponent(title.replace(/ /g, "_"));
@@ -157,6 +166,13 @@ async function enwikiTitleOf(entity: string | null, signal: AbortSignal): Promis
 }
 
 async function titleByName(query: BiographyQuery, signal: AbortSignal): Promise<string | null> {
+  // The name path only ever answers when a release of theirs matches one of ours, so with no
+  // releases to match against the two requests below are two requests whose answer is already
+  // known. They are not free: each takes a slot in the 1.1s queue above, so a futile pair pushes
+  // whoever is behind it toward the deadline the slot handback exists to keep them away from.
+  // An artist reaches here with none whenever Deezer was rate limiting while the page rendered.
+  if (!canCorroborate(query)) return null;
+
   const phrase = `artist:"${query.name.replace(/["\\]/g, "\\$&")}"`;
   const found = await getJson<{ artists?: Parameters<typeof pickArtist>[1] }>(
     `https://musicbrainz.org/ws/2/artist?query=${encodeURIComponent(phrase)}&limit=5&fmt=json`,
@@ -207,7 +223,15 @@ export async function findBiography(query: BiographyQuery): Promise<Biography | 
     max: 500,
   }));
   try {
-    return await cache.take(deezerId, () => lookUp(query, deezerId));
+    // A `null` reached without anything to corroborate a name against is not a fact about the
+    // artist — it is a fact about the discography this page happened to be given. Caching it
+    // holds the About section empty for a day after Deezer comes back, which is the same
+    // degraded-answer-pinned-into-the-cache failure `keep` was added to `take` for.
+    return await cache.take(
+      deezerId,
+      () => lookUp(query, deezerId),
+      (bio) => bio !== null || canCorroborate(query),
+    );
   } catch {
     return null;
   }

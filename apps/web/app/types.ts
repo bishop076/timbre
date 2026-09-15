@@ -28,6 +28,12 @@ export interface PlayContext {
 
 export interface SongsResponse {
   songs: Song[];
-  failures: { source: string; message: string }[];
+  /**
+   * Which sources refused, and nothing else. `publicFailures()` in `lib/api.ts` strips the
+   * message on the way out on purpose — it is upstream text and can carry the query back — so
+   * declaring one here described a field no response has ever held. `search-results.tsx` read
+   * it and logged the word "undefined" after every refusal until the reader was told otherwise.
+   */
+  failures: { source: string }[];
   attempted?: number;
 }

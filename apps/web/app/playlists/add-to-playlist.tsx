@@ -61,6 +61,7 @@ export function PlaylistPicker({
             key={playlist.id}
             type="button"
             role="menuitem"
+            tabIndex={-1}
             onClick={() => onSave(playlist.id)}
             className="flex w-full items-center gap-2 rounded-[var(--r-sm)] px-2 py-2 text-left text-[13px] font-medium hover:bg-[var(--surface-2)]"
           >
@@ -167,6 +168,7 @@ export function AddToPlaylist({ song, className }: { song: Song; className?: str
         type="button"
         onClick={() => setOpen((was) => !was)}
         aria-label={`Add ${song.title} to a playlist`}
+        aria-haspopup="menu"
         aria-expanded={open}
         title="Save to a playlist"
         className="press flex size-8 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] hover:bg-[var(--surface-1)] hover:text-[var(--fg)]"

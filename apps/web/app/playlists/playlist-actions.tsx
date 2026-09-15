@@ -66,6 +66,16 @@ export function PlaylistActions({
     if (onDeletedGoTo) router.push(onDeletedGoTo);
   }
 
+  // Rename and Delete are not a list of commands, so the panel stops being a menu while either
+  // is up: a `role="menu"` holding a text field and a Save button describes itself wrongly to
+  // anything reading it, and there is nothing for the arrow keys to move between.
+  const panel =
+    mode === "rename"
+      ? { role: "dialog" as const, label: `Rename ${name}` }
+      : mode === "confirm"
+        ? { role: "dialog" as const, label: `Delete ${name}?` }
+        : { role: "menu" as const, label: `Actions for ${name}` };
+
   // The menu below is `fixed` and placed from `root`'s viewport rect, so it has to reach the
   // body: `@container` on the library and playlist page wrappers makes every ancestor between
   // here and there a containing block for fixed descendants, which would re-base those viewport
@@ -85,6 +95,7 @@ export function PlaylistActions({
         type="button"
         onClick={toggle}
         aria-label={`Actions for ${name}`}
+        aria-haspopup="menu"
         aria-expanded={open}
         className="press flex size-9 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
       >
@@ -94,7 +105,9 @@ export function PlaylistActions({
       {open && createPortal(
         <div
           ref={menu}
-          role="menu"
+          role={panel.role}
+          aria-label={panel.label}
+          tabIndex={-1}
           style={style}
           className="slab fixed z-50 w-60 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] shadow-[var(--drop-lg)]"
         >
@@ -103,6 +116,7 @@ export function PlaylistActions({
               <button
                 type="button"
                 role="menuitem"
+                tabIndex={-1}
                 onClick={() => setMode("rename")}
                 className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-left text-[13px] font-medium hover:bg-[var(--surface-2)]"
               >
@@ -112,6 +126,7 @@ export function PlaylistActions({
               <button
                 type="button"
                 role="menuitem"
+                tabIndex={-1}
                 onClick={picture.open}
                 disabled={picture.busy}
                 className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-left text-[13px] font-medium hover:bg-[var(--surface-2)] disabled:opacity-50"
@@ -123,6 +138,7 @@ export function PlaylistActions({
                 <button
                   type="button"
                   role="menuitem"
+                  tabIndex={-1}
                   onClick={() => {
                     clearPlaylistImage(id);
                     close();
@@ -136,6 +152,7 @@ export function PlaylistActions({
               <button
                 type="button"
                 role="menuitem"
+                tabIndex={-1}
                 onClick={() => setMode("confirm")}
                 className="flex w-full items-center gap-2.5 rounded-[var(--r-sm)] px-2.5 py-2 text-left text-[13px] font-medium text-red-400 hover:bg-[var(--surface-2)]"
               >

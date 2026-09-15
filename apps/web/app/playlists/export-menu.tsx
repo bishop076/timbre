@@ -83,10 +83,11 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
           ref={menu}
           role="menu"
           aria-label="Export"
+          tabIndex={-1}
           style={style}
           className="slab fixed z-50 w-64 overflow-hidden rounded-[var(--r-md)] bg-[var(--surface-1)] p-1.5 shadow-[var(--drop-lg)]"
         >
-          <button type="button" role="menuitem" disabled={busy} onClick={() => void backup(true)} className={item}>
+          <button type="button" role="menuitem" tabIndex={-1} disabled={busy} onClick={() => void backup(true)} className={item}>
             <span className="text-[13px] font-semibold">Back up everything</span>
             <span className="text-[11px] leading-relaxed text-[var(--fg-faint)]">
               Playlists, liked songs, your name and pictures. For this browser or your next one.
@@ -95,6 +96,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
           <button
             type="button"
             role="menuitem"
+            tabIndex={-1}
             disabled={busy || !hasPlaylists}
             onClick={() => void backup(false)}
             className={item}
@@ -104,7 +106,7 @@ export function ExportMenu({ hasPlaylists, hasProfile }: { hasPlaylists: boolean
               Nothing about you — for sending to someone.
             </span>
           </button>
-          <button type="button" role="menuitem" disabled={!hasPlaylists && !hasLikes} onClick={csv} className={item}>
+          <button type="button" role="menuitem" tabIndex={-1} disabled={!hasPlaylists && !hasLikes} onClick={csv} className={item}>
             <span className="text-[13px] font-semibold">Spreadsheet (CSV)</span>
             <span className="text-[11px] leading-relaxed text-[var(--fg-faint)]">
               To read or sort elsewhere. Timbre can&rsquo;t import it back.

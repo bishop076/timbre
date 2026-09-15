@@ -1,16 +1,18 @@
 "use client";
 
-import { EmptyNotice, Page } from "@/app/page-chrome";
+import { ErrorPanel } from "@/app/failure-panel";
 
-export default function ArtistError({ retry }: { retry: () => void }) {
+export default function ArtistError({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string };
+  retry: () => void;
+}) {
   return (
-    <Page>
-      <EmptyNotice>
-        None of the sources answered for this artist.{" "}
-        <button type="button" onClick={retry} className="font-semibold text-[var(--fg)] underline">
-          Try again
-        </button>
-      </EmptyNotice>
-    </Page>
+    <ErrorPanel where="The artist page" title="None of the sources answered for this artist." error={error} retry={retry}>
+      An artist page is assembled from several services at once, and this time not one of them
+      came back. That usually means the network, not the artist.
+    </ErrorPanel>
   );
 }

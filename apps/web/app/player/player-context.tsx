@@ -25,6 +25,7 @@ import { PlaybackAnnouncer } from "./playback-announcer";
 import { playedHandle } from "./played-handle";
 import { getPlaybackPrefs, usePlaybackPrefs } from "./playback-prefs";
 import { insertAfter, moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
+import type { QueueOrigin } from "./queue-origin.ts";
 import { takeTrackEndStop } from "./sleep-timer.ts";
 import { clearSpotifyLeading, markSpotifyLeading, spotifyShouldLead } from "./spotify-lead";
 import { plausiblySameSong, rankMatches, sameTrack } from "./song-match";
@@ -84,12 +85,6 @@ let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 function cancelResume(): void {
   unaskedResumes = 0;
   clearTimeout(resumeTimer);
-}
-
-/** The list a queue was started from. */
-export interface QueueOrigin {
-  kind: "playlist" | "album";
-  id: string;
 }
 
 const PlayerContext = createContext<PlayerControls | null>(null);
