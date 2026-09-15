@@ -88,7 +88,7 @@ function About() {
           className="group flex items-center gap-4 py-3.5 first:pt-0"
         >
           <div className="min-w-0 flex-1">
-            <p className="text-[var(--text-meta)] font-bold transition group-hover:text-[var(--accent)]">
+            <p className="text-[var(--text-meta)] font-bold transition group-hover:text-[var(--accent-text)]">
               {page.label}
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-[var(--fg-dim)]">{page.detail}</p>

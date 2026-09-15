@@ -39,7 +39,7 @@ export function MobileTransport() {
           aria-pressed={showLyrics}
           aria-label={showLyrics ? "Hide lyrics" : "Show lyrics"}
           className={`slab-sm press flex size-9 shrink-0 items-center justify-center rounded-[var(--r-full)] text-[11px] font-bold transition ${
-            showLyrics ? "tint text-[var(--accent)]" : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
+            showLyrics ? "tint text-[var(--accent-text)]" : "bg-[var(--surface-2)] text-[var(--fg-dim)]"
           }`}
         >
           Aa

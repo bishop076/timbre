@@ -232,7 +232,7 @@ export function TrackRank({
   if (!playing) return position;
   return (
     <span className="flex justify-end">
-      <Equalizer className="tint h-3 gap-0.5 text-[var(--accent)]" />
+      <Equalizer className="tint h-3 gap-0.5 text-[var(--accent-text)]" />
     </span>
   );
 }

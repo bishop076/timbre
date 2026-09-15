@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { useReducedMotion } from "../a11y/use-reduced-motion";
 import { formatDuration } from "../duration";
 import { usePlayer } from "./player-context";
 
@@ -88,7 +89,12 @@ export function ScrubBar({
   const smooth = useSmoothPosition(position, duration, playing);
   const raw = duration > 0 ? (smooth / duration) * 100 : 0;
   const percent = Math.max(0, Math.min(100, Number.isFinite(raw) ? raw : 0));
-  const phase = playing ? (percent / 100) * 42 : 0;
+  // The fill advancing is the progress, and progress is information. The wave travelling
+  // along it is decoration, and it is the only thing on the bar that moves for its own sake
+  // — a sine shifting under the playhead for as long as the track runs. globals.css cannot
+  // reach it: the shape is a `d` attribute this component recomputes, not a transition.
+  const stillWave = useReducedMotion();
+  const phase = playing && !stillWave ? (percent / 100) * 42 : 0;
 
   return (
     <div
@@ -114,7 +120,7 @@ export function ScrubBar({
         event.preventDefault();
         onSeek(Math.max(0, Math.min(duration, position + step)));
       }}
-      className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent)]`}
+      className={`tint group relative flex ${height} w-full cursor-pointer items-center text-[var(--accent-text)]`}
     >
       <svg
         viewBox={`0 0 100 ${HEIGHT}`}

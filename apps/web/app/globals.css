@@ -335,7 +335,11 @@
   box-shadow:
     0 0 0 2px var(--ring-inner, #fff),
     0 0 0 4px var(--ring-outer, #0a0a0c);
-  border-radius: inherit;
+  /* No `border-radius: inherit` here. A box-shadow already follows the element's OWN radius, so
+     that line did nothing except overwrite it with the parent's — squaring the ring off around
+     every rounded control. Measured on focus: the search field went 999px to 0px, a tile's
+     add-to-queue button 999px to 14px, a shelf scroll button 999px to 0px. A pill with a
+     hard-cornered rectangle around it. */
 }
 :root[data-theme="dark"],
 :root:not([data-theme="light"]) {

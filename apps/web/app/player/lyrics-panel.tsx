@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { scrollBehavior } from "../a11y/motion";
 import { formatClock } from "../duration";
-import { ChevronIcon, CheckIcon } from "../icons";
+import { ChevronIcon, CheckIcon, InfoIcon } from "../icons";
 import type { Song } from "../types";
 import {
   clearLyricsPref,
@@ -18,12 +19,17 @@ import {
   artTrackIds,
   busySeconds,
   hasYouTube,
+  isScrollKey,
+  matchQuality,
   PROVIDER_NAMES,
   readAnswer,
+  readScroll,
   retryDelayMs,
+  scrollSettleMs,
   type Lyrics,
   type LyricsAnswer,
   type LyricsProvider,
+  type MatchQuality,
 } from "./lyrics-source";
 import { Empty, useJson } from "./panel-tabs";
 import { usePlayer } from "./player-context";
@@ -102,9 +108,13 @@ export function LyricsPanel() {
   const other = youtube ? (provider === "ytmusic" ? "lrclib" : "ytmusic") : null;
 
   const url = lyricsUrl(current, provider, playing, pref.id);
-  const { data, loading } = useJson(url, readLyrics, lyricsRetry);
+  const { data, loading, retry } = useJson(url, readLyrics, lyricsRetry);
   const answer: LyricsAnswer | null = data ?? (loading || !url ? null : { kind: "failed" });
   const lyrics = answer?.kind === "found" ? answer.lyrics : null;
+  const quality: MatchQuality =
+    lyrics && current
+      ? matchQuality({ title: current.title, artist: current.artists[0] ?? "" }, lyrics)
+      : "unknown";
   const [fixing, setFixing] = useState(false);
   const [following, setFollowing] = useState(true);
 
@@ -125,6 +135,11 @@ export function LyricsPanel() {
   const container = useRef<HTMLDivElement>(null);
   const activeLine = useRef<HTMLButtonElement>(null);
   const resumeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // When our own last `scrollTo` went out, and which request's lines the box has been placed
+  // for. Keyed on the request rather than the song: picking another version from the drawer
+  // replaces every line while the song stays put.
+  const scrolledAt = useRef<number | null>(null);
+  const placedFor = useRef<string | null>(null);
 
   const lines = lyrics?.synced ?? null;
   const offset = pref.offset ?? 0;
@@ -137,11 +152,18 @@ export function LyricsPanel() {
     const line = activeLine.current;
     if (!box || !line) return;
 
+    // The first placement in a new set of lines is instant. The scroller arrives filled and at
+    // the top, so gliding from there to the current line is a lurch nobody asked for — and on a
+    // song resumed near its end it is a long one, running the whole lyric past the reader.
+    const behavior = placedFor.current === url ? scrollBehavior() : "auto";
+    placedFor.current = url;
+    scrolledAt.current = Date.now();
+
     box.scrollTo({
       top: line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2,
-      behavior: "smooth",
+      behavior,
     });
-  }, [activeIndex, following]);
+  }, [activeIndex, following, url]);
 
   function onUserScroll() {
     setFollowing(false);
@@ -149,32 +171,59 @@ export function LyricsPanel() {
     resumeTimer.current = setTimeout(() => setFollowing(true), 6_000);
   }
 
+  // `wheel` and `touchmove` were the only two ways of moving the box the panel noticed, so a
+  // scrollbar drag, a trackpad's momentum, a two-finger swipe read as `scroll` and every keyboard
+  // page were answered by dragging the view back to the current line. `scroll` hears all of them;
+  // the window is what keeps it from hearing our own smooth scroll and calling it the reader's.
+  function onBoxScroll() {
+    const read = readScroll(Date.now(), scrolledAt.current, scrollSettleMs(scrollBehavior()));
+    scrolledAt.current = read.scrolledAt;
+    if (read.reader) onUserScroll();
+  }
+
   useEffect(() => () => clearTimeout(resumeTimer.current), []);
 
+  if (!url) return <Empty>Nothing is playing.</Empty>;
   if (loading && !answer) return <Empty>Looking for lyrics…</Empty>;
 
   if (!lyrics || (lyrics.instrumental && !lyrics.plain && !lines)) {
+    const unreachable = answer?.kind === "failed";
     return (
       <Empty>
         {answer?.kind === "busy"
           ? `${PROVIDER_NAMES[provider]} is busy right now. Trying again shortly.`
-          : answer?.kind === "failed"
-            ? `${PROVIDER_NAMES[provider]} did not answer.`
+          : unreachable
+            ? // Not "no lyrics for this track". Nothing was reached that could have said so, and
+              // the difference is the whole point of the 502 the route now sends for an outage.
+              `${PROVIDER_NAMES[provider]} couldn’t be reached, so there’s no telling whether it has the words to this one.`
             : lyrics?.instrumental
               ? "This one is instrumental."
               : provider === "ytmusic"
                 ? "YouTube Music has no lyrics for this track."
                 : "No lyrics found for this track."}
-        {other && (
+        {(unreachable || other) && (
           <>
             <br />
-            <button
-              type="button"
-              onClick={() => setLyricsProvider(prefKey, other)}
-              className="slab-sm press mt-3 inline-block rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold text-[var(--fg)]"
-            >
-              Try {PROVIDER_NAMES[other]}
-            </button>
+            <span className="mt-3 inline-flex flex-wrap justify-center gap-2">
+              {unreachable && (
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="slab-sm press rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold text-[var(--fg)]"
+                >
+                  Try again
+                </button>
+              )}
+              {other && (
+                <button
+                  type="button"
+                  onClick={() => setLyricsProvider(prefKey, other)}
+                  className="slab-sm press rounded-[var(--r-full)] bg-[var(--surface-2)] px-3 py-1.5 text-[11px] font-bold text-[var(--fg)]"
+                >
+                  Try {PROVIDER_NAMES[other]}
+                </button>
+              )}
+            </span>
           </>
         )}
       </Empty>
@@ -197,11 +246,16 @@ export function LyricsPanel() {
         onToggle={() => setFixing((was) => !was)}
         synced={synced}
       />
+      <MatchNotice quality={quality} lyrics={lyrics} onPickAnother={() => setFixing(true)} />
       {synced ? (
         <div
           ref={container}
           onWheel={onUserScroll}
           onTouchMove={onUserScroll}
+          onScroll={onBoxScroll}
+          onKeyDown={(event) => {
+            if (isScrollKey(event.key)) onUserScroll();
+          }}
           className="scroller-quiet relative min-h-0 flex-1 overflow-y-auto px-4 py-[38vh] sm:px-5"
         >
           {lines.map((line, index) => (
@@ -209,13 +263,20 @@ export function LyricsPanel() {
               key={`${line.at}-${index}`}
               ref={index === activeIndex ? activeLine : undefined}
               type="button"
+              // Colour and opacity are the whole of the old distinction, and neither survives a
+              // screen reader, a high-contrast mode or a reader who cannot separate the two
+              // greys. The rule down the left edge, the wash behind the line and the heavier
+              // weight are three more, and `aria-current` is the one that can be spoken.
+              aria-current={index === activeIndex ? "true" : undefined}
+              aria-label={line.text ? undefined : "Instrumental break"}
+              title={`Jump to ${formatClock(line.at)}`}
               onClick={() => seek(line.at)}
-              className={`block w-full origin-left py-2 text-left text-lg font-extrabold leading-tight sm:py-2.5 sm:text-xl transition-all duration-500 ease-[var(--ease)] @lg:text-[1.6rem] ${
+              className={`block w-full border-l-[3px] py-2 pl-3 text-left text-lg font-bold leading-snug transition-all duration-500 ease-[var(--ease)] sm:py-2.5 sm:text-xl @lg:text-[1.6rem] ${
                 index === activeIndex
-                  ? "scale-100 text-[var(--fg)] opacity-100"
+                  ? "rounded-r-[var(--r-sm)] border-[var(--accent)] bg-[var(--accent-wash)] font-extrabold text-[var(--fg)] opacity-100"
                   : index < activeIndex
-                    ? "scale-[0.97] text-[var(--fg-dim)] opacity-35 hover:opacity-60"
-                    : "scale-[0.97] text-[var(--fg-dim)] opacity-55 hover:opacity-85"
+                    ? "border-transparent text-[var(--fg-dim)] opacity-35 hover:opacity-60"
+                    : "border-transparent text-[var(--fg-dim)] opacity-55 hover:opacity-85"
               }`}
             >
               {line.text || <span className="opacity-40">♪</span>}
@@ -243,6 +304,67 @@ export function LyricsPanel() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Said out loud when the words on screen may not be this song's.
+ *
+ * `/api/lyrics` falls back to LRCLIB's search and keeps the first synced hit, so "Creep" by
+ * Nirvana comes back as a complete, confidently timed "Negative Creep" — which the panel drew
+ * exactly as it draws a real match, the only trace being a matched-title caption at 11px in
+ * `--fg-faint` that reads like a credit. Wrong words presented as right ones are worse than an
+ * empty panel, and this is the one thing the reader needs in order to distrust them.
+ */
+function MatchNotice({
+  quality,
+  lyrics,
+  onPickAnother,
+}: {
+  quality: MatchQuality;
+  lyrics: Lyrics;
+  onPickAnother: () => void;
+}) {
+  if (quality === "exact" || quality === "unknown") return null;
+
+  const wrongSong = quality === "different";
+  const matched = lyrics.matchedArtist
+    ? `${lyrics.matchedTitle} by ${lyrics.matchedArtist}`
+    : lyrics.matchedTitle;
+
+  return (
+    <div
+      className={`flex shrink-0 items-start gap-2 border-b-[length:var(--edge)] border-[var(--ink)] px-4 py-2 text-[11px] leading-relaxed ${
+        wrongSong ? "bg-[var(--surface-2)] text-[var(--fg-dim)]" : "text-[var(--fg-faint)]"
+      }`}
+    >
+      <InfoIcon
+        aria-hidden
+        className={`mt-0.5 size-3.5 shrink-0 ${wrongSong ? "text-[var(--danger)]" : ""}`}
+      />
+      <p className="min-w-0 flex-1">
+        {wrongSong ? (
+          <>
+            These are the words to{" "}
+            <span className="font-bold text-[var(--fg)]">{matched}</span> — the nearest thing{" "}
+            {PROVIDER_NAMES.lrclib} had, <span className="font-bold text-[var(--fg)]">not this song</span>.
+          </>
+        ) : (
+          <>
+            {PROVIDER_NAMES.lrclib} credits these to{" "}
+            <span className="font-bold text-[var(--fg)]">{lyrics.matchedArtist}</span>, so they may
+            be another artist&rsquo;s version.
+          </>
+        )}{" "}
+        <button
+          type="button"
+          onClick={onPickAnother}
+          className="press whitespace-nowrap font-bold text-[var(--fg)] underline underline-offset-2"
+        >
+          Pick another
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -363,7 +485,7 @@ function LyricsToolbar({
                 </span>
               </span>
               {provider === "ytmusic" && (
-                <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent)]" />
+                <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-text)]" />
               )}
             </button>
           )}
@@ -417,7 +539,7 @@ function LyricsToolbar({
                         .join(" · ")}
                     </span>
                   </span>
-                  {chosen && <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent)]" />}
+                  {chosen && <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-[var(--accent-text)]" />}
                 </button>
               );
             })}

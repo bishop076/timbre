@@ -68,7 +68,7 @@ export function PlaylistPicker({
             <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
             {saved === playlist.id || holding.has(playlist.id) ? (
               <CheckIcon
-                className="size-4 shrink-0 text-[var(--accent)]"
+                className="size-4 shrink-0 text-[var(--accent-text)]"
                 aria-label="Already in this playlist"
               />
             ) : (

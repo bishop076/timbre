@@ -203,7 +203,7 @@ export function LibraryView() {
           {picker.error ?? error}
         </p>
       )}
-      {notice && <p className="mt-3 text-sm text-[var(--accent)]">{notice}</p>}
+      {notice && <p className="mt-3 text-sm text-[var(--accent-text)]">{notice}</p>}
       {offered && (
         <div className="mt-3 flex max-w-xl flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--r-md)] bg-[var(--surface-2)] px-3.5 py-2.5">
           <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-[var(--fg-dim)]">

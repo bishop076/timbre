@@ -417,7 +417,7 @@ function FontGroup({ theme }: { theme: Theme }) {
             >
               <span className="flex items-center gap-1.5 text-[13px] font-bold">
                 {custom && theme.font.family ? theme.font.family : font.label}
-                {selected && <CheckIcon className="size-3.5 shrink-0 text-[var(--accent)]" />}
+                {selected && <CheckIcon className="size-3.5 shrink-0 text-[var(--accent-text)]" />}
               </span>
               <span className="mt-0.5 block text-[11px] leading-relaxed text-[var(--fg-dim)]">
                 {font.note}
