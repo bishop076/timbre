@@ -39,21 +39,19 @@ export const RAIL_WIDE = 240;
 export const PANEL_MIN = 288;
 
 /**
- * Drag the panel narrower than this and it collapses to its rail.
+ * Drag the panel narrower than it is allowed to be, and it collapses to its rail.
  *
- * The rail snaps to icons at its low end because an icon rail is still useful. The panel has no
- * useful small form — a queue at 240px is unreadable — so its low end is the rail: a strip the
- * width of a scrollbar carrying one arrow. That is what makes the drag the way to hide it, which
- * is the point; nothing in the player bar needs to know about the panel at all.
+ * The threshold IS the minimum, deliberately. It used to sit 50px below, which meant dragging
+ * through a band where the panel had stopped resizing and had not yet collapsed — you hauled it
+ * into dead space and nothing happened until it suddenly did. Now the panel resists down to
+ * PANEL_MIN, and the first pixel past that is the collapse: one continuous gesture with one
+ * decision point at the edge you can feel.
  *
  * The width is not written when this fires, so reopening restores the size last chosen rather
  * than the sliver the pointer was released at on the way past.
  */
-export const PANEL_COLLAPSE_AT = 236;
-
-/** Whether a drag that ended at `width` means "collapse to the rail". */
 export function panelCollapsesAt(width: number): boolean {
-  return Number.isFinite(width) && width < PANEL_COLLAPSE_AT;
+  return Number.isFinite(width) && width < PANEL_MIN;
 }
 /** 35rem. */
 export const PANEL_MAX = 560;
