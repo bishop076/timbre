@@ -325,3 +325,21 @@ def test_the_route_is_registered_behind_the_shared_secret(monkeypatch, client) -
         "/lyrics", json={"video_ids": ["nope"]}, headers={"x-timbre-secret": secret}
     )
     assert refused.status_code == 422
+
+
+def test_a_lyrics_client_that_cannot_be_built_is_a_502_and_not_a_traceback(
+    monkeypatch, client
+) -> None:
+    # `get_client` builds the YTMusic object on first use, and building one reaches YouTube
+    # for a visitor id. For the lyrics slot that call sat outside the try, which made it the
+    # one upstream failure in any route that escaped as a bare 500.
+    def get_client(slot: str = "default"):
+        if slot == "lyrics":
+            raise RuntimeError("YouTube refused a visitor id")
+        return client
+
+    monkeypatch.setattr(route, "get_client", get_client)
+    with pytest.raises(HTTPException) as raised:
+        ask(VIDEO)
+    assert raised.value.status_code == 502
+    assert raised.value.detail == "YouTube Music lyrics failed."

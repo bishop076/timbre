@@ -176,3 +176,30 @@ def test_bad_input_is_a_422_that_does_not_echo_it(monkeypatch, path, body):
     assert answer.status_code == 422
     assert all("input" not in issue for issue in answer.json()["detail"])
     assert "yyyy" not in answer.text
+
+
+def test_a_bug_inside_a_route_answers_json_rather_than_bare_text(monkeypatch):
+    # Starlette's own fallback replies `text/plain` "Internal Server Error" — the one answer
+    # from this service that is not the {"detail": ...} every caller parses.
+    app = load(monkeypatch, NEW, "app.main").app
+    radio = importlib.import_module("app.routes.radio")
+
+    class StubClient:
+        def get_watch_playlist(self, videoId: str, limit: int, radio: bool = False) -> dict:
+            return {"tracks": [], "related": None}
+
+    def boom(*_args, **_kwargs):
+        raise ValueError("a bug of ours, not YouTube's")
+
+    monkeypatch.setattr(radio, "get_client", lambda slot="default": StubClient())
+    monkeypatch.setattr(radio, "continuation", boom)
+
+    http = TestClient(app, raise_server_exceptions=False)
+    body = {"video_id": "P3cffdsEXXw", "limit": 5}
+    answer = http.post("/radio", json=body, headers={"X-Timbre-Secret": NEW})
+
+    assert answer.status_code == 500
+    assert answer.headers["content-type"].startswith("application/json")
+    assert answer.json() == {"detail": "The ytmusic sidecar failed to handle that request."}
+    # Nothing about our internals travels to the caller.
+    assert "a bug of ours" not in answer.text

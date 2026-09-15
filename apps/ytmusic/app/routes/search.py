@@ -40,7 +40,13 @@ def _search_videos(query: str, limit: int) -> list | None:
 
 @router.post("/search", response_model=SearchResponse)
 def search(request: SearchRequest) -> SearchResponse:
-    with ThreadPoolExecutor(max_workers=1) as pool:
+    # `with ThreadPoolExecutor(...)` joins on the way out, including the way out through an
+    # exception. A songs search that failed in 200ms therefore still sat there for the video
+    # search's whole 8s upstream timeout, and the web app gave up at 6s and reported "did not
+    # answer" for a 502 that had been ready almost immediately. Shut down without waiting: the
+    # worker is already bounded by that timeout and frees itself.
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
         pending_videos = pool.submit(_search_videos, request.query, request.limit)
         try:
             results = get_client().search(request.query, filter="songs", limit=request.limit)
@@ -48,6 +54,8 @@ def search(request: SearchRequest) -> SearchResponse:
             raise upstream_error("search", error) from error
         tracks = to_tracks(results)
         videos = to_tracks(pending_videos.result())
+    finally:
+        pool.shutdown(wait=False)
 
     seen = {track.video_id for track in tracks}
     for track in videos:
