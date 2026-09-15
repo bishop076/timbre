@@ -7,6 +7,7 @@ import type { ArtistTaste, TasteRelease } from "@/lib/taste";
 
 import { createJsonStore, useLocalStore } from "./local-store.ts";
 import { useHistory } from "./player/history-store";
+import { playedAt } from "./stats/play-log.ts";
 
 interface Known {
   genreId: number | null;
@@ -22,14 +23,34 @@ const NEW_FOR_MS = 120 * DAY_MS;
 const RECENT = 30;
 const PER_VISIT = 6;
 const MAX_KNOWN = 300;
+const MAX_RELEASES = 12;
 const EMPTY: Book = {};
 const SEPARATOR = "\n";
 
+/**
+ * `at` is a lookup time, and the play log already says what one of those is.
+ *
+ * `typeof entry.at === "number"` was the whole check, and `NaN` passes it. One of those did
+ * three things at once: `now - at > STALE_MS` is false, so that artist is never looked up again
+ * for as long as the book lives; `at - NEW_FOR_MS` makes every release comparison false, so the
+ * artist's whole back catalogue reads as new; and `newest()` sorts on `b.at - a.at`, where a
+ * `NaN` comparator result is undefined behaviour in the spec — the trim then drops whichever
+ * 100 entries the engine's sort happens to land on, taking real lookups with it. Out-of-range
+ * times are the same story. `playedAt` is the rule the play log applies to a stored time, and
+ * two stores describing the same kind of value with different validators is how the weaker one
+ * ends up deciding.
+ */
 function isKnown(entry: Partial<Known> | null): entry is Known {
+  if (!entry || playedAt(entry.at) === null) return false;
+
   return (
-    typeof entry?.at === "number" &&
-    (entry.genreId === null || typeof entry.genreId === "number") &&
+    // A genre is an id from Deezer, so a whole number: `NaN` is a `number` to `typeof`, and it
+    // would go on to key the tally and the `genreOf` lookup that every shelf is built from.
+    (entry.genreId === null || Number.isInteger(entry.genreId)) &&
     Array.isArray(entry.releases) &&
+    // `fetchArtistTaste` slices to three, so a book holding dozens against one name was not
+    // written by this app; `useTaste` walks every one of them on every render.
+    entry.releases.length <= MAX_RELEASES &&
     entry.releases.every(
       (release) =>
         typeof release === "object" &&
@@ -44,22 +65,45 @@ function isKnown(entry: Partial<Known> | null): entry is Known {
   );
 }
 
-const store = createJsonStore("timbre:taste", EMPTY, (stored) =>
-  Object.fromEntries(Object.entries(stored as Book).filter(([, entry]) => isKnown(entry))),
-);
+/**
+ * The newest `MAX_KNOWN` artists and no more — the same rule on both sides of storage.
+ *
+ * `remember` trimmed on the way out and the read took whatever it found, so a book written by
+ * a build with a larger cap, merged by a second tab, or edited by hand came back at its full
+ * length and stayed there: nothing trims on read, and `remember` only ever removes the excess
+ * *one write* creates, so 400 entries went back out as 400. A bound only the writer honours is
+ * not a bound. `at` is when the artist was last looked up, so the oldest lookups go first.
+ */
+function newest(book: Book): Book {
+  const names = Object.keys(book);
+  if (names.length <= MAX_KNOWN) return book;
+
+  return Object.fromEntries(
+    names
+      .sort((a, b) => book[b]!.at - book[a]!.at)
+      .slice(0, MAX_KNOWN)
+      .map((name) => [name, book[name]!]),
+  );
+}
+
+/** What this browser has stored, held to the shape and the size the app writes. */
+export function readBook(stored: unknown): Book {
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return EMPTY;
+  return newest(
+    Object.fromEntries(
+      Object.entries(stored as Record<string, Partial<Known> | null>).filter(([, entry]) =>
+        isKnown(entry),
+      ),
+    ) as Book,
+  );
+}
+
+const store = createJsonStore("timbre:taste", EMPTY, readBook);
 
 const asking = new Set<string>();
 
 function remember(key: string, known: Known): void {
-  const next: Book = { ...store.getSnapshot(), [key]: known };
-  const names = Object.keys(next);
-  if (names.length > MAX_KNOWN) {
-    names
-      .sort((a, b) => next[a]!.at - next[b]!.at)
-      .slice(0, names.length - MAX_KNOWN)
-      .forEach((name) => delete next[name]);
-  }
-  store.save(next);
+  store.save(newest({ ...store.getSnapshot(), [key]: known }));
 }
 
 function unknown(key: string, now: number): boolean {

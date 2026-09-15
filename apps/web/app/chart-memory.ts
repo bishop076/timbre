@@ -3,6 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 import { readJson, writeJson } from "./local-store.ts";
+import { playedAt } from "./stats/play-log.ts";
 
 const MIN_AGE_MS = 12 * 60 * 60 * 1000;
 
@@ -13,13 +14,35 @@ interface ChartSnapshot {
 
 type Placed = { id: string; position: number };
 
+/**
+ * A snapshot this browser wrote, or nothing.
+ *
+ * `typeof stored.at === "number"` let `1e20` through, and `at` is printed: `describeAge` turns
+ * it into "over 3170979198376 weeks" under the movement arrows, in a sentence that is meant to
+ * say when the reader last looked. It is also the clock this store runs on — `now - at` decides
+ * whether today's positions replace yesterday's — so a time no `Date` can represent freezes the
+ * comparison as well as reading absurdly. `playedAt` is the rule the play log and the taste book
+ * apply to a stored time; there is no reason for a third.
+ *
+ * A position has to be a real number for the same reason, and `Object.entries` of a stored array
+ * would otherwise have made every index a track id.
+ */
+export function readSnapshot(stored: unknown): ChartSnapshot | null {
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
+  const { at, positions } = stored as { at?: unknown; positions?: unknown };
+  const when = playedAt(at);
+  if (when === null) return null;
+  if (typeof positions !== "object" || positions === null || Array.isArray(positions)) return null;
+
+  const placed = Object.entries(positions).filter(
+    (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]),
+  );
+  return { at: when, positions: Object.fromEntries(placed) };
+}
+
 function rememberChart(genre: number, tracks: Placed[]): ChartSnapshot | null {
   const key = `timbre:chart:${genre}`;
-  const stored = readJson(key) as Partial<ChartSnapshot> | null;
-  const previous =
-    typeof stored?.at === "number" && typeof stored.positions === "object"
-      ? { at: stored.at, positions: stored.positions ?? {} }
-      : null;
+  const previous = readSnapshot(readJson(key));
   const now = Date.now();
   if (previous && now - previous.at < MIN_AGE_MS) return previous;
 

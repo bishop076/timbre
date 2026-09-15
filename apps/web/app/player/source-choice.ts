@@ -54,14 +54,30 @@ export function afterFailure(choices: SourceChoices, key: string, source: string
 
 let cache: SourceChoices | null = null;
 
+/**
+ * What this tab has stored, held to the shape *and* the size `afterPick` writes.
+ *
+ * `afterPick` trims to `MAX_ENTRIES` on the way out and the read took whatever it found, so a
+ * value left longer by an older build or edited by hand came back at its full length and stayed:
+ * a write only ever removes the excess that one write creates. `Object.entries` of an array also
+ * came back as `{0: "…"}`, which made every numeric index a choice key. The tail is kept, which
+ * is the end `afterPick` trims from — the most recently pressed sources.
+ */
+export function readChoices(parsed: unknown): SourceChoices {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+  const usable = Object.entries(parsed).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
+  return Object.fromEntries(usable.slice(-MAX_ENTRIES));
+}
+
 function read(): SourceChoices {
   if (cache) return cache;
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(readItem(KEY, "sessionStorage") ?? "{}");
   } catch {}
-  const entries = parsed && typeof parsed === "object" ? Object.entries(parsed) : [];
-  cache = Object.fromEntries(entries.filter(([, value]) => typeof value === "string"));
+  cache = readChoices(parsed);
   return cache;
 }
 
