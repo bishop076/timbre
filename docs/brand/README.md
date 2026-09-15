@@ -12,44 +12,64 @@ measured rather than judged.
 ```
 docs/brand/
   logo/
-    timbre-mark.svg               the palm alone, currentColor, viewBox 0 0 247 282
-    timbre-icon.svg               the app icon — palm on the violet rounded square
-    timbre-icon-192.png           PWA install icon
-    timbre-icon-512.png           PWA install icon
-    timbre-icon-maskable-512.png  full-bleed maskable variant
-    favicon.ico
+    mark/       the palm alone            4 SVG + 25 PNG
+    wordmark/   "timbre" alone            4 SVG + 16 PNG
+    lockup/     wordmark + palm           5 SVG + 20 PNG
+    avatar/     square tile, rounded      3 SVG + 18 PNG
+    app-icon/   what the app itself ships (icon.svg, favicon.ico, 3 PWA rasters)
   banners/
-    readme-banner.png             1200x400 — the current banner, the README, and the link card
-    readme-banner.tsx             its source; the PNG is regenerated from this, byte for byte
-    turntable-deck.png            the previous banner, superseded 2026-09-15
-  type/
-    README.md                     the two-face wordmark and its measured offsets
-  history/
-    01-tim-variants.png           early "tim" candidates
-    02-tim-rounded.png            the rounded pass
-    03-tim-specimen-named.png     the named specimen sheet the "tim" was finally chosen from
+    readme-banner.png   1200x400 — the current banner, the README, and the link card
+    readme-banner.tsx   its source; the PNG is regenerated from this, byte for byte
+    turntable-deck.png  the previous banner, superseded 2026-09-15
+  type/         the two-face wordmark and its measured offsets
+  history/      the specimen sheets the "tim" was chosen from
 ```
 
-### Which copy is canonical
+### Which file do I want
 
-`logo/` holds **exports**. The app ships its own copies and those are the ones that can drift:
-
-| Export here | Canonical file |
+| I need | Take |
 |---|---|
-| `logo/timbre-mark.svg` | `apps/web/app/shell/brand.tsx` — the `<TimbreMark>` path |
-| `logo/timbre-icon.svg` | `apps/web/app/icon.svg` |
-| `logo/favicon.ico` | `apps/web/app/favicon.ico` |
-| `logo/timbre-icon-*.png` | `apps/web/public/icon-*.png` |
-| `type/` fonts | `apps/web/app/brand-fonts/*.woff` |
+| the logo, on a dark background | `logo/lockup/timbre-lockup-on-dark.svg` |
+| the logo, on a light background | `logo/lockup/timbre-lockup-on-light.svg` |
+| the logo, exactly as the banner draws it | `logo/lockup/timbre-lockup-sunset.svg` |
+| just the name | `logo/wordmark/timbre-wordmark-{on-dark,on-light,violet}.svg` |
+| just the palm | `logo/mark/timbre-mark-{on-dark,on-light,violet}.svg` |
+| a profile picture / org avatar | `logo/avatar/timbre-avatar-{violet,on-dark,on-light}.svg` |
+| to inherit the surrounding colour | the un-suffixed `timbre-{mark,wordmark,lockup}.svg` — they fill with `currentColor` |
+| a PNG | the `png/` folder beside each, named by **height**: `…-256.png` is 256px tall |
 
-`banners/readme-banner.{png,tsx}` are canonical here — nothing else owns them.
+`on-dark` is the cream artwork **for use on** a dark background; `on-light` is the ink artwork for a
+light one. Every SVG and PNG has a transparent background — the colour in the name is the ink.
 
-Refresh the exports and check for drift with:
+### The SVGs carry no font
+
+The wordmark is normally drawn by Satori from two `.woff` files, so it only ever existed inside a
+rendered banner. `scripts/brand-assets.mts` converts the glyphs to **outlines**, which is why these
+files open correctly in a browser, in Figma, and anywhere else without the faces installed.
+
+That conversion is checked, not assumed. `node scripts/brand-assets.mts --verify` rebuilds the
+wordmark at the banner's own size and position and compares it against the shipped banner pixel by
+pixel: **92.65% IoU and zero disagreements more than 2px from a mask edge** — i.e. every difference
+is antialiasing. Run it after touching any constant in that script.
+
+### Regenerating
 
 ```
-node scripts/brand-export.mts          # copy canonical → docs/brand
-node scripts/brand-export.mts --check   # fail if they have diverged
+node scripts/brand-assets.mts            # mark, wordmark, lockup, avatar — SVG and PNG
+node scripts/brand-assets.mts --verify   # check the outlines still match the banner
+node scripts/brand-export.mts            # refresh logo/app-icon from what the app ships
+node scripts/brand-export.mts --check    # fail if it has drifted
 ```
+
+`brand-assets` parses the `.woff` files directly rather than pulling in a font library, because the
+repo has no font dependency and adding one to the lockfile costs every other session an install.
+All three faces are TrueType-flavoured (`glyf`, quadratic curves), which is the easy case; a CFF/OTF
+face would need a real library. PNGs need `sharp`, which is not a dependency either — it is found in
+the pnpm store if Next dragged it in, and skipped with a note if not. SVG is always written.
+
+`logo/app-icon/` holds **copies**. The canonical files are `apps/web/app/icon.svg`,
+`apps/web/app/favicon.ico` and `apps/web/public/icon-*.png`. `banners/readme-banner.{png,tsx}` are
+canonical here — nothing else owns them.
 
 ## The mark
 
@@ -75,13 +95,15 @@ cropping to a circle; a square-cropping launcher would have shown the transparen
 **Two faces on purpose.** The full spec, including the three measured offsets and the Satori
 alignment trap, is in [`type/README.md`](type/README.md).
 
-It exists only as drawn code — there is no wordmark image file. Both drawings of it are:
+Three things draw it, and they must agree:
 
+- `logo/wordmark/` and `logo/lockup/` — the outlined SVGs, generated by `scripts/brand-assets.mts`
 - [`banners/readme-banner.tsx`](banners/readme-banner.tsx) — the README banner
 - `apps/web/app/opengraph-image.tsx` — the link card
 
-**They are the same picture at the same size.** If the wordmark or the palette changes in one,
-change it in the other.
+The last two are **the same picture at the same size**; if the wordmark or the palette changes in
+one, change it in the other. The SVGs are then regenerated from the same constants, and `--verify`
+is what proves all three still agree.
 
 ## Palette
 
