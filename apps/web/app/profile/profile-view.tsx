@@ -10,7 +10,7 @@ import { EmptyNotice } from "../page-chrome";
 import { PLAYLIST_GRID, PlaylistGrid } from "../playlists/library-view";
 import { loadPlaylists, usePlaylists } from "../playlists/store";
 import { isLightTheme, useTheme } from "../theme/theme-store";
-import { Avatar, AVATAR_TONE, avatarHue } from "./avatar";
+import { Avatar, AVATAR_TONE } from "./avatar";
 import { ImagePicker } from "./image-picker";
 import { useLocalImages } from "./local-images";
 import { setDisplayName, useLocalProfile } from "./local-profile";
@@ -38,6 +38,20 @@ function useDominantColor(src: string | null) {
   if (!src) return { color: null, settled: true };
   return { color: found?.color ?? null, settled: found?.src === src };
 }
+
+/**
+ * The banner behind a profile that has no picture of its own.
+ *
+ * The alternative — and what was here — is a gradient built from a hue hashed out of the
+ * profile id, which is a colour nobody picked, on the one page that is supposed to be theirs.
+ * A reader who uploads a picture still gets a banner sampled from it, because that colour *is*
+ * their choice. Absent one, the app’s own accent is the honest default.
+ *
+ * Every token here is on the boot script’s PALETTE, so this survives `css()` and replays
+ * before first paint like the sampled version did.
+ */
+const ACCENT_WASH =
+  "linear-gradient(to bottom, var(--accent-wash) 0%, var(--surface-1) 100%)";
 
 const BANNER_SCRIM =
   "linear-gradient(to top, var(--surface-1) 0%, transparent var(--banner-fade, 45%)), " +
@@ -75,16 +89,22 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
 
   const ready =
     Boolean(profile.id) && local.loaded && (sampled.settled || sampled.color !== null);
-  const hue = sampled.color ? Math.round(sampled.color.h * 360) : avatarHue(profile.id || "local");
-  const saturation = Math.min(0.58, Math.max(0.26, sampled.color?.s ?? AVATAR_TONE.saturation));
+
+  const tinted = sampled.color;
+  const hue = tinted ? Math.round(tinted.h * 360) : 0;
+  const saturation = Math.min(0.58, Math.max(0.26, tinted?.s ?? AVATAR_TONE.saturation));
 
   const light = isLightTheme(useTheme());
 
   const stop = (lightness: number, satScale = 1) =>
     `hsl(${hue} ${Math.round(saturation * satScale * 100)}% ${lightness}%)`;
 
-  const washLight = `linear-gradient(to bottom, ${stop(84, 0.55)} 0%, ${stop(91, 0.4)} 45%, var(--surface-1) 100%)`;
-  const washDark = `linear-gradient(to bottom, ${stop(34)} 0%, ${stop(22, 0.8)} 45%, var(--surface-1) 100%)`;
+  const washLight = tinted
+    ? `linear-gradient(to bottom, ${stop(84, 0.55)} 0%, ${stop(91, 0.4)} 45%, var(--surface-1) 100%)`
+    : ACCENT_WASH;
+  const washDark = tinted
+    ? `linear-gradient(to bottom, ${stop(34)} 0%, ${stop(22, 0.8)} 45%, var(--surface-1) 100%)`
+    : ACCENT_WASH;
   const wash = light ? washLight : washDark;
 
   useEffect(() => {
@@ -139,7 +159,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
         <div className="mx-auto w-full max-w-6xl px-4 pb-5 pt-12 sm:px-7 sm:pb-7 sm:pt-20">
           <div className="flex flex-col gap-3 sm:gap-5 @lg:flex-row @lg:items-end @lg:gap-6">
             <div className="group relative shrink-0 self-start">
-              <div className="overflow-hidden rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.4)] ring-2 ring-white/20">
+              <div className="overflow-hidden rounded-full shadow-[var(--drop-lg)] ring-2 ring-[var(--ink)]">
                 <Avatar
                   id={profile.id}
                   name={profile.name}
@@ -166,12 +186,12 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                     autoFocus
                     aria-label="Display name"
                     placeholder="What should we call you?"
-                    className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-2)] px-3.5 py-2.5 text-xl font-extrabold outline-none placeholder:font-medium placeholder:text-[var(--fg-faint)]"
+                    className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-1)] px-3.5 py-2.5 text-[var(--text-title)] font-extrabold tracking-[var(--track-title)] outline-none transition placeholder:font-medium placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-2)]"
                   />
                   <div className="flex gap-2">
                     <button
                       type="submit"
-                      className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-md)] px-3.5 py-2 text-[13px] font-bold text-[var(--accent-fg)]"
+                      className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-full)] px-4 py-2 text-[var(--text-meta)] font-bold text-[var(--accent-fg)]"
                       style={{ background: "var(--accent)" }}
                     >
                       <CheckIcon className="size-3.5" />
@@ -180,7 +200,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                     <button
                       type="button"
                       onClick={() => setEditing(false)}
-                      className="press rounded-[var(--r-md)] bg-[var(--surface-2)] px-3.5 py-2 text-[13px] font-semibold"
+                      className="slab-ghost press rounded-[var(--r-full)] bg-[var(--surface-1)] px-4 py-2 text-[var(--text-meta)] font-semibold transition hover:bg-[var(--surface-2)]"
                     >
                       Cancel
                     </button>
@@ -189,7 +209,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
               ) : (
                 <>
                   <p
-                    className={`mb-1.5 text-[11px] font-bold uppercase tracking-wider ${onDark ? "text-white/80" : "text-[var(--fg-dim)]"}`}
+                    className={`mb-1.5 text-[11px] font-bold uppercase tracking-wider ${onDark ? "text-white/85" : "text-[var(--fg-dim)]"}`}
                   >
                     Profile
                   </p>
@@ -249,7 +269,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                     </span>
                     <Link
                       href="/stats"
-                      className={`press ml-1 rounded-[var(--r-full)] px-2.5 py-0.5 text-[12px] font-semibold ${onDark ? "bg-white/10 text-white hover:bg-white/20" : "bg-[var(--surface-2)] text-[var(--fg)] hover:bg-[var(--surface-3)]"}`}
+                      className={`slab-sm press ml-1 rounded-[var(--r-full)] px-2.5 py-1 text-[12px] font-semibold ${onDark ? "bg-black/35 text-white backdrop-blur hover:bg-black/50" : "bg-[var(--surface-1)] text-[var(--fg)] hover:bg-[var(--surface-2)]"}`}
                     >
                       Your listening
                     </Link>
@@ -262,7 +282,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
       </div>
 
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-7">
-        <h2 className="mb-3 mt-6 text-lg font-extrabold tracking-tight sm:mb-4 sm:mt-8 sm:text-xl">
+        <h2 className="mb-3 mt-6 text-[var(--text-section)] font-extrabold tracking-[var(--track-title)] sm:mb-4 sm:mt-8 sm:text-[var(--text-title)]">
           Playlists
         </h2>
 
