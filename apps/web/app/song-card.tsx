@@ -11,29 +11,27 @@ import { PlayGlyph } from "./tile-cards";
 import type { Song } from "./types";
 
 /**
- * A tile measures the column it is in, not the window.
+ * A tile's width is a fraction of the row, not a fixed number.
  *
- * `sm:` asks the viewport, and the viewport does not know about the dock or either sidebar — so
- * a 1280px window with the dock open kept 184px tiles in a ~590px column and sliced the row at
- * an arbitrary point. Every page that shows a shelf wraps its content in an `@container`
- * (`page-chrome`'s `Page`, and the home, explore and search wrappers), so `@xl` is that column
- * at 36rem — which is what a 640px window came to once the page padding was taken off, so the
- * step lands where `sm:` used to and nothing moves at a full-width window.
- */
-/**
- * A tile's width is a fraction of the row it is in, not a fixed number.
- *
- * With a fixed width, a container of arbitrary size slices the last tile down the middle at
- * nearly every width — and the edge fade then honestly reports that there is more, which reads
- * as the app fading things for no reason on a wide screen. The user's words: "i dont want any
+ * Two things were wrong with `w-[8rem] sm:w-[11.5rem]`. It asked the *viewport*, which knows
+ * nothing about the icon rail or a dragged now-playing panel, so a 1280px window with the panel
+ * open kept 184px tiles in a ~590px column. And a fixed width against a track of arbitrary size
+ * slices the last tile down the middle at very nearly every width — six covers with the sixth
+ * cut in half. The edge fade was then honestly reporting that there is more, which from the
+ * outside reads as the app fading things for no reason on a wide screen: "i dont want any
  * fading when its full view. just show all, only fade when theres the right sidebar."
  *
- * So each step divides the track into a whole number of columns: `(100% - (n-1) * gap) / n`,
- * where the gap is the `gap-1` / `@xl:gap-2` on the scroller. The row then ends on a tile
- * boundary, `canRight` is false when everything fits, and no mask is drawn.
+ * `100%` inside a flex item resolves against the scroller's content box, so `(100% - gaps) / n`
+ * divides the track exactly and the row always ends on a tile boundary. The gap in the sum is
+ * the shelf's, which is a constant `gap-2` precisely so these two numbers cannot drift apart.
  *
- * Container queries, not viewport ones: the whole point is that it reflows when the right panel
- * is dragged, and the panel narrows the container without touching the window.
+ * Container queries, not viewport ones: the point is that the row re-divides while the panel
+ * edge is being dragged, and a drag changes the column without touching the window.
+ *
+ * Going from n to n+1 costs a third of the tile width at the low end, so the bands are wide and
+ * placed where a tile would otherwise get absurd; across all of them a tile stays between about
+ * 130 and 200px. At 1152, the widest the content column goes, that is six tiles of ~175. At the
+ * 560px `MAIN_MIN` a greedy pane leaves, three of ~180.
  */
 /*
  * Written out as literal class strings, never assembled. Tailwind scans source TEXT for class
@@ -45,7 +43,7 @@ import type { Song } from "./types";
  * so `calc(100% - 1rem)` has to be written `calc(100%-1rem)`.
  */
 export const TILE =
-  "w-[calc((100%-3*0.25rem)/4)] shrink-0 snap-start @xl:w-[calc((100%-4*0.5rem)/5)] @3xl:w-[calc((100%-5*0.5rem)/6)]";
+  "min-w-0 shrink-0 snap-start w-[calc((100%-0.5rem)/2)] @md:w-[calc((100%-1rem)/3)] @2xl:w-[calc((100%-1.5rem)/4)] @3xl:w-[calc((100%-2rem)/5)] @5xl:w-[calc((100%-2.5rem)/6)]";
 
 /**
  * The box a tile lives in: nothing at rest, a soft panel under the whole tile — artwork, title
@@ -72,8 +70,17 @@ export const TILE_BOX =
 export const COVER_EMPTY =
   "bg-[image:radial-gradient(66%_66%_at_50%_43%,color-mix(in_oklab,var(--accent)_22%,transparent),transparent_72%),radial-gradient(125%_125%_at_12%_-6%,var(--surface-3),var(--surface-2)_52%,var(--bg))]";
 
-/** The note that sits on `COVER_EMPTY` — a watermark in the accent, not a grey error glyph. */
-export const COVER_NOTE = "text-[var(--accent-text)] opacity-60";
+/**
+ * The note that sits on `COVER_EMPTY` — a watermark in the accent, not a grey error glyph.
+ *
+ * 80, and not the 60 this started at, because dimming works backwards between the two themes:
+ * on the dark page a lower opacity pulls the glyph toward the ink and it keeps its contrast, on
+ * the blush one it pulls it toward the page and washes out. Measured on the light surfaces it
+ * lands on, 60 and 70 both sit under the 3:1 a non-text graphic needs; 80 clears it at 3.38 on
+ * `--surface-1` and 3.02 on `--surface-3`. This is the glyph every tile in the app shows when
+ * the art proxy is down, so it is not a detail.
+ */
+export const COVER_NOTE = "text-[var(--accent-text)] opacity-80";
 
 /**
  * Cover, then title, then subtitle, and the space between them is what makes the three read as
