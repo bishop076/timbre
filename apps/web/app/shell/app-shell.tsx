@@ -18,7 +18,9 @@ import { searchPath } from "../search-url";
 import {
   PANEL_DEFAULT,
   PANEL_MAX,
+  PANEL_CLOSE_AT,
   PANEL_MIN,
+  panelClosesAt,
   resolvePanelWidth,
   roomFor,
   savePanelWidth,
@@ -162,6 +164,9 @@ function PanelEdge() {
   const width = usePanelWidth();
   const rail = useRailWidth();
   const viewport = useViewportWidth();
+  // `togglePanel` rather than a close action of its own: player-context owns that state and is
+  // being edited elsewhere, and the edge only ever fires this while the panel is open.
+  const { panelOpen, togglePanel } = usePlayerControls();
 
   // The rail is already taking its share of the row, so the panel's ceiling is what is left of
   // the window once the rail and the main column's minimum have been paid for.
@@ -174,12 +179,22 @@ function PanelEdge() {
         label="Resize the now playing panel"
         variable="--np-w"
         width={width}
-        min={PANEL_MIN}
+        // The drag can go below PANEL_MIN, because below it the gesture means "close" rather
+        // than "narrower" — clamping at the minimum is what made it impossible to drag away.
+        min={PANEL_CLOSE_AT - 48}
         max={ceiling}
         reset={PANEL_DEFAULT}
         direction={-1}
-        resolve={(raw) => resolvePanelWidth(raw, ceiling)}
-        onCommit={savePanelWidth}
+        resolve={(raw) => (panelClosesAt(raw) ? raw : resolvePanelWidth(raw, ceiling))}
+        onCommit={(next) => {
+          if (panelClosesAt(next)) {
+            // Deliberately not saving the width. Reopening restores the size last chosen, not
+            // the sliver the pointer was released at on the way to dismissing it.
+            if (panelOpen) togglePanel();
+            return;
+          }
+          savePanelWidth(next);
+        }}
         className="-left-2 bottom-2 top-2"
       />
     </div>
