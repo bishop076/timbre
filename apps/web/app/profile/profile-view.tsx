@@ -186,12 +186,12 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                     autoFocus
                     aria-label="Display name"
                     placeholder="What should we call you?"
-                    className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-1)] px-3.5 py-2.5 text-[var(--text-title)] font-extrabold tracking-[var(--track-title)] outline-none transition placeholder:font-medium placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-2)]"
+                    className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-1)] px-3.5 py-2.5 text-[length:var(--text-title)] font-extrabold tracking-[var(--track-title)] outline-none transition placeholder:font-medium placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-2)]"
                   />
                   <div className="flex gap-2">
                     <button
                       type="submit"
-                      className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-full)] px-4 py-2 text-[var(--text-meta)] font-bold text-[var(--accent-fg)]"
+                      className="slab-sm press inline-flex items-center gap-1.5 rounded-[var(--r-full)] px-4 py-2 text-[length:var(--text-meta)] font-bold text-[var(--accent-fg)]"
                       style={{ background: "var(--accent)" }}
                     >
                       <CheckIcon className="size-3.5" />
@@ -200,7 +200,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                     <button
                       type="button"
                       onClick={() => setEditing(false)}
-                      className="slab-ghost press rounded-[var(--r-full)] bg-[var(--surface-1)] px-4 py-2 text-[var(--text-meta)] font-semibold transition hover:bg-[var(--surface-2)]"
+                      className="slab-ghost press rounded-[var(--r-full)] bg-[var(--surface-1)] px-4 py-2 text-[length:var(--text-meta)] font-semibold transition hover:bg-[var(--surface-2)]"
                     >
                       Cancel
                     </button>
@@ -282,7 +282,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
       </div>
 
       <div className="mx-auto w-full max-w-6xl px-4 sm:px-7">
-        <h2 className="mb-3 mt-6 text-[var(--text-section)] font-extrabold tracking-[var(--track-title)] sm:mb-4 sm:mt-8 sm:text-[var(--text-title)]">
+        <h2 className="mb-3 mt-6 text-[length:var(--text-section)] font-extrabold tracking-[var(--track-title)] sm:mb-4 sm:mt-8 sm:text-[length:var(--text-title)]">
           Playlists
         </h2>
 
