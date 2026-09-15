@@ -6,6 +6,7 @@ import { proxied } from "../artwork-url";
 import { useLatest, useTransport } from "./embed";
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
+import { stalledStart, START_DEADLINE_MS } from "./progressive-stall.ts";
 import { nextStreamHost } from "./stream-url";
 import { useMediaSession } from "./use-media-session";
 
@@ -76,6 +77,15 @@ export function ProgressiveAudioPlayer({
       live.current.handleError(message, true);
     };
 
+    // The same two answers the `error` handler gives, on the same one-verdict guard — reached
+    // by a clock instead of an event, because the failure this catches fires no event at all.
+    const takeFallback = () => {
+      if (reported || !fallback) return false;
+      reported = true;
+      setRetry({ key: streamUrl, url: fallback });
+      return true;
+    };
+
     const lifetime = new AbortController();
     const on = (type: string, listener: () => void) =>
       audio.addEventListener(type, listener, { signal: lifetime.signal });
@@ -93,14 +103,14 @@ export function ProgressiveAudioPlayer({
     on("pause", () => live.current.handleStateChange("paused"));
     on("ended", () => live.current.handleEnded());
     on("error", () => {
-      if (fallback && !started) {
-        // Taking the fallback is a verdict too, as far as the pending `play()` is concerned.
-        reported = true;
-        setRetry({ key: streamUrl, url: fallback });
-        return;
-      }
-      report("That track wouldn't play.");
+      // Taking the fallback is a verdict too, as far as the pending `play()` is concerned.
+      if (started || !takeFallback()) report("That track wouldn't play.");
     });
+
+    const deadline = setTimeout(() => {
+      if (started || !stalledStart(audio)) return;
+      if (!takeFallback()) report("That track never started playing.");
+    }, START_DEADLINE_MS);
 
     audio.play().catch((cause: unknown) => {
       const name = cause instanceof DOMException ? cause.name : "";
@@ -110,7 +120,10 @@ export function ProgressiveAudioPlayer({
       else report("That track wouldn't start.");
     });
 
-    return () => lifetime.abort();
+    return () => {
+      clearTimeout(deadline);
+      lifetime.abort();
+    };
   }, [live, src, streamUrl]);
 
   useTransport({

@@ -6,6 +6,7 @@ import { hideWhenBroken } from "../artwork";
 import { proxied } from "../artwork-url";
 import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
+import { widgetStep } from "./soundcloud-handshake.ts";
 
 interface SCWidget {
   bind(event: string, handler: () => void): void;
@@ -64,7 +65,10 @@ export function SoundCloudPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<SCWidget | null>(null);
   const readyRef = useRef(false);
-  const loadedUrl = useRef(trackUrl);
+  // What should be playing, and what the widget actually has. They come apart during the
+  // handshake and during a `load`, which is the whole of `soundcloud-handshake.ts`.
+  const wantedUrl = useRef(trackUrl);
+  const holdingUrl = useRef<string | null>(null);
   const stallTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const live = useLatest({ ...controls, level });
@@ -86,14 +90,26 @@ export function SoundCloudPlayer({
     }, STALL_MS);
   }, [live]);
 
+  // The one place the widget is told what to do, so READY and a track change cannot disagree.
+  const apply = useCallback((widget: SCWidget) => {
+    const step = widgetStep(holdingUrl.current, wantedUrl.current);
+    if (step.do === "load") {
+      holdingUrl.current = step.url;
+      widget.load(step.url, { callback: () => start(widget) });
+    } else if (step.do === "play") {
+      start(widget);
+    }
+  }, [start]);
+
   useEffect(() => {
     if (readyRef.current) widgetRef.current?.setVolume(level);
   }, [level]);
 
   useEffect(() => {
     const container = containerRef.current;
-    const initialUrl = loadedUrl.current;
+    const initialUrl = wantedUrl.current;
     if (!container || !initialUrl) return;
+    holdingUrl.current = initialUrl;
 
     const host = Object.assign(document.createElement("iframe"), {
       width: "100%",
@@ -121,7 +137,7 @@ export function SoundCloudPlayer({
           clearBlocked();
           readyRef.current = true;
           widget.setVolume(live.current.level);
-          start(widget);
+          apply(widget);
         });
         widget.bind(Events.PLAY, () => live.current.handleStateChange("playing"));
         widget.bind(Events.PLAY_PROGRESS, () => clearTimeout(stallTimer.current));
@@ -156,26 +172,25 @@ export function SoundCloudPlayer({
       clearInterval(poll);
       widgetRef.current = null;
       readyRef.current = false;
+      holdingUrl.current = null;
       host.remove();
     };
-  }, [live, start]);
+  }, [apply, live]);
 
-  // A track change that lands during the widget's ~0.5–2s handshake used to be dropped: the
-  // guard returned before recording `loadedUrl`, and `readyRef` is a ref, so READY firing a
-  // moment later re-ran nothing and `start(widget)` ran against the *initial* url. The
-  // component is not remounted between two SoundCloud tracks — `load` batches `setPlaying(null)`
-  // and `start(own)` into one commit, so `activeSource` never passes through `null` — so the
-  // previous track kept playing while the bar, artwork and lyrics showed the new one, and its
-  // FINISH advanced the queue from the wrong position. Record the url either way, and let READY
-  // pick up whatever is current by the time it fires.
+  // A track change that lands during the widget's ~0.5–2s handshake was dropped. Recording the
+  // new url was not enough on its own: `readyRef` is a ref, so READY firing a moment later
+  // re-ran nothing and played whatever the iframe was built with. The component is not
+  // remounted between two SoundCloud tracks — `load` batches `setPlaying(null)` and
+  // `start(own)` into one commit, so `activeSource` never passes through `null` — so the
+  // previous track kept playing under the new one's artwork, and its FINISH advanced the queue
+  // from the wrong position. Record what is wanted either way; `apply` reconciles it whenever
+  // the widget is in a state to be told, whether that is now or at READY.
   useEffect(() => {
-    if (!trackUrl || loadedUrl.current === trackUrl) return;
-    loadedUrl.current = trackUrl;
-
+    wantedUrl.current = trackUrl;
     const widget = widgetRef.current;
-    if (!readyRef.current || !widget) return;
-    widget.load(trackUrl, { callback: () => start(widget) });
-  }, [trackUrl, start]);
+    if (!trackUrl || !readyRef.current || !widget) return;
+    apply(widget);
+  }, [apply, trackUrl]);
 
   useTransport({
     toggle: () => {

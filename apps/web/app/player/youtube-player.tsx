@@ -14,6 +14,7 @@ import {
 } from "./embed";
 import { publishYouTubeRates, speedToApply, useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
+import { youtubeError } from "./youtube-error.ts";
 import { stalledAt } from "./youtube-stall.ts";
 
 interface YTPlayer {
@@ -64,15 +65,6 @@ const CAPTION_RETRIES = [0, 500, 1500];
 const STALL_MS = 10_000;
 const API_SRC = "https://www.youtube.com/iframe_api";
 const PLAYER_HOST = "https://www.youtube-nocookie.com";
-
-const REFUSED = "YouTube wouldn't play this copy here.";
-const RETRYABLE_ERRORS: Record<number, string> = {
-  5: "The player couldn't load this track.",
-  100: "That upload has been removed.",
-  101: REFUSED,
-  150: REFUSED,
-  153: REFUSED,
-};
 
 // Whether the API script has been judged missing, for the page rather than for one mount. The
 // eight-second timer below runs once per mount of this component, and a song that leaves YouTube
@@ -237,10 +229,8 @@ export function YouTubePlayer({ size = "aspect-video w-full" }: { size?: string 
             console.warn(`[timbre] ${note}`);
             log("error", note);
 
-            const reason = RETRYABLE_ERRORS[data];
-            live.current.handleError(reason ?? "Playback was blocked.", Boolean(reason), {
-              refused: reason === REFUSED,
-            });
+            const { reason, worthRetrying, refused } = youtubeError(data);
+            live.current.handleError(reason, worthRetrying, { refused });
           },
         },
       });
