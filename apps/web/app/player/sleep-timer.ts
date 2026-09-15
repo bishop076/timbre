@@ -47,8 +47,18 @@ function countDown(timer: SleepTimer): number | null {
   return left;
 }
 
-function set(next: SleepTimer): void {
+// Forgetting the handle is the point, not tidiness. `clock` used to keep the id of every
+// countdown that had already been stopped, and every later `set` handed that dead id back to
+// `clearInterval` — which is a no-op right up until the ids are being reissued, and then it
+// cancels a timer nobody asked it to. A stopped clock is `undefined`.
+function stopClock(): void {
+  if (clock === undefined) return;
   clearInterval(clock);
+  clock = undefined;
+}
+
+function set(next: SleepTimer): void {
+  stopClock();
   countDown(next);
   timerStore.publish(next);
 }
@@ -73,6 +83,9 @@ export function takeTrackEndStop(): boolean {
   set(OFF);
   return true;
 }
+
+export const getSleepTimer = timerStore.getSnapshot;
+export const getSleepSecondsLeft = remainingStore.getSnapshot;
 
 export function useSleepTimer(): SleepTimer {
   return useLocalStore(timerStore);

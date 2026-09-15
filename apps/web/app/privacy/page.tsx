@@ -5,6 +5,16 @@ export const metadata = {
   description: "What Timbre stores about you, which is nothing, and what the services it embeds can see.",
 };
 
+/* The same scale as about/page.tsx, character for character. These two are the app's prose pages
+   and are read one after the other often enough that any drift between them shows. Everything is
+   off the type ramp in globals.css rather than a hand-picked `text-lg`. */
+const SHELL = "mx-auto w-full max-w-3xl px-4 pb-16 pt-4 sm:px-7 sm:pb-20 sm:pt-6";
+const TITLE =
+  "text-[length:var(--text-display)] font-extrabold leading-tight tracking-[var(--track-display)]";
+const HEAD = "text-[length:var(--text-section)] font-bold tracking-[var(--track-title)]";
+const BODY = "text-[length:var(--text-body)] leading-relaxed text-[var(--fg-dim)]";
+const STRONG = "font-semibold text-[var(--fg)]";
+const BULLETS = "ml-4 list-disc space-y-2 marker:text-[var(--fg-faint)]";
 const LINK = "font-semibold text-[var(--fg)] underline underline-offset-2";
 
 const POLICIES = [
@@ -12,28 +22,26 @@ const POLICIES = [
   ["https://soundcloud.com/pages/privacy", "SoundCloud privacy policy"],
 ];
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="mt-9">
-      <h2 className="text-lg font-bold tracking-tight">{title}</h2>
-      <div className="mt-2.5 space-y-3 text-sm leading-relaxed text-[var(--fg-dim)]">
-        {children}
-      </div>
+    <section id={id} className="mt-8 scroll-mt-20">
+      <h2 className={HEAD}>{title}</h2>
+      <div className={`mt-2.5 space-y-3 ${BODY}`}>{children}</div>
     </section>
   );
 }
 
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-6 sm:px-7">
-      <h1 className="text-2xl font-extrabold tracking-tight">Privacy</h1>
-      <p className="mt-2 text-sm leading-relaxed text-[var(--fg-dim)]">
+    <div className={SHELL}>
+      <h1 className={TITLE}>Privacy</h1>
+      <p className={`mt-2 ${BODY}`}>
         The short version: Timbre has no account system, no database and no analytics.
         Everything it remembers about you is stored by your own browser, on your own
         device.
       </p>
 
-      <Section title="What Timbre stores">
+      <Section id="what-it-stores" title="What Timbre stores">
         <p>
           Your playlists, listening history, volume, theme, lyrics corrections and profile
           name are kept in your browser&rsquo;s local storage. Profile pictures are larger,
@@ -42,20 +50,19 @@ export default function PrivacyPage() {
         </p>
         <p>
           One exception, and it is a real one:{" "}
-          <strong className="font-semibold text-[var(--fg)]">Timbre sets one cookie</strong>,{" "}
-          <code className="font-mono text-[13px]">timbre-name</code>, holding the display
-          name you chose. It exists so your own name is in the page the first time it
-          paints instead of appearing a moment later. Being a cookie, it is sent to this
+          <strong className={STRONG}>Timbre sets one cookie</strong>,{" "}
+          <code className="font-mono text-[length:var(--text-meta)]">timbre-name</code>, holding
+          the display name you chose. It exists so your own name is in the page the first time
+          it paints instead of appearing a moment later. Being a cookie, it is sent to this
           site with every request — nothing else Timbre stores is. It is first-party,
           holds nothing but that name, and clearing your display name clears it too.
         </p>
         <p>Two consequences follow, and both cut in your favour and against it:</p>
-        <ul className="ml-4 list-disc space-y-2 marker:text-[var(--fg-faint)]">
+        <ul className={BULLETS}>
           <li>Nobody — including whoever runs this site — can look up what you listened to.</li>
           <li>
             Clearing your browser data deletes all of it permanently, and it does not
-            follow you to another device.{" "}
-            <strong className="font-semibold text-[var(--fg)]">Export</strong> in{" "}
+            follow you to another device. <strong className={STRONG}>Export</strong> in{" "}
             <Link href="/library" className={LINK}>
               your library
             </Link>{" "}
@@ -65,8 +72,8 @@ export default function PrivacyPage() {
         </ul>
       </Section>
 
-      <Section title="What it does not do">
-        <ul className="ml-4 list-disc space-y-2 marker:text-[var(--fg-faint)]">
+      <Section id="what-it-does-not-do" title="What it does not do">
+        <ul className={BULLETS}>
           <li>No accounts, sign-ins, email addresses or passwords.</li>
           <li>No analytics, tracking pixels or advertising identifiers.</li>
           <li>
@@ -77,7 +84,7 @@ export default function PrivacyPage() {
         </ul>
       </Section>
 
-      <Section title="The services Timbre embeds can see you">
+      <Section id="embedded-services" title="The services Timbre embeds can see you">
         <p>
           This is the important part, and it is the one thing Timbre cannot promise on
           anyone else&rsquo;s behalf.
@@ -85,10 +92,10 @@ export default function PrivacyPage() {
         <p>
           When a song plays, it plays inside that service&rsquo;s own embedded player,
           loaded directly from them into your browser. Your device talks to{" "}
-          <strong className="font-semibold text-[var(--fg)]">them</strong>, not through
-          Timbre. They can therefore see your IP address, your browser, and what you played
-          — and if you are signed in to that service in the same browser, they may connect
-          it to your account there. They may set their own cookies.
+          <strong className={STRONG}>them</strong>, not through Timbre. They can therefore see
+          your IP address, your browser, and what you played — and if you are signed in to
+          that service in the same browser, they may connect it to your account there. They
+          may set their own cookies.
         </p>
         <p>
           That is governed by their privacy policies, not this one. The same applies to
@@ -105,7 +112,7 @@ export default function PrivacyPage() {
         </ul>
       </Section>
 
-      <Section title="What the server sees">
+      <Section id="what-the-server-sees" title="What the server sees">
         <p>
           Searching sends your search words to this site&rsquo;s server, which asks the
           music services on your behalf and returns the merged results. Those searches are
@@ -134,13 +141,13 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section title="Children">
+      <Section id="children" title="Children">
         <p>
           Timbre is not directed at children and collects nothing from anyone, of any age.
         </p>
       </Section>
 
-      <Section title="Changes">
+      <Section id="changes" title="Changes">
         <p>
           If this ever changes, this page changes with it — and any change that meant
           Timbre started collecting something would be a change to how the app works, not

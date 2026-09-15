@@ -1,16 +1,18 @@
 "use client";
 
-import { EmptyNotice, Page } from "@/app/page-chrome";
+import { ErrorPanel } from "@/app/failure-panel";
 
-export default function CollectionError({ retry }: { retry: () => void }) {
+export default function CollectionError({
+  error,
+  retry,
+}: {
+  error: Error & { digest?: string };
+  retry: () => void;
+}) {
   return (
-    <Page>
-      <EmptyNotice>
-        The source for this collection didn&apos;t answer.{" "}
-        <button type="button" onClick={retry} className="font-semibold text-[var(--fg)] underline">
-          Try again
-        </button>
-      </EmptyNotice>
-    </Page>
+    <ErrorPanel where="The collection page" title="The source for this collection didn’t answer." error={error} retry={retry}>
+      Charts, genres, stations and imported playlists each come from somewhere different —
+      Deezer, YouTube Music or Spotify — and whichever one owns this page did not reply.
+    </ErrorPanel>
   );
 }
