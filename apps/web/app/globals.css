@@ -728,6 +728,30 @@ html[data-bg-image="true"] body {
   background-color: transparent;
 }
 
+/* ---------------------------------------------------------------------------
+   The shell's own surfaces, and why a background picture needs its own tokens.
+
+   Setting a picture used to do nothing visible. It was painting — the layer
+   above is correct — but the shell covers the whole viewport with opaque
+   surfaces: the main column, the rail and the now-playing panel all sit on
+   --surface-1, so the picture was behind a wall.
+
+   Those tokens cannot simply be made translucent. They are written inline on
+   <html> by the palette, and a hundred other things read them for cards, rows
+   and menus that are meant to stay solid. So the three big shell surfaces read
+   their own token instead, which is --surface-1 until a picture is set and a
+   veil of it afterwards.
+   --------------------------------------------------------------------------- */
+:root {
+  --shell-1: var(--surface-1);
+  --shell-2: var(--surface-2);
+}
+
+html[data-bg-image="true"] {
+  --shell-1: color-mix(in oklab, var(--surface-1) 66%, transparent);
+  --shell-2: color-mix(in oklab, var(--surface-2) 66%, transparent);
+}
+
 /* The reader's font choice, with the app's own stack as the fallback so a font
    that fails to load can never leave the app unreadable. */
 body {

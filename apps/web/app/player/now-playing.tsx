@@ -282,7 +282,7 @@ export function NowPlayingPanel() {
 
   const card = expanded
     ? "flex min-h-0 w-full flex-1 flex-col gap-2 xl:flex-row"
-    : "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] xl:h-full xl:w-full xl:max-w-none";
+    : "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--shell-1)] xl:h-full xl:w-full xl:max-w-none";
 
   const videoBox = expanded
     ? "slab relative min-h-[200px] w-full shrink-0 overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"

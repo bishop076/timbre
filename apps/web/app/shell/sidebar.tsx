@@ -164,7 +164,7 @@ export function Sidebar() {
             bordered cards stacked with a gap, which at icon width read as a column of unrelated
             boxes rather than a sidebar. They are sections inside a single surface now, separated
             by a rule instead of by air. */}
-        <div className="slab flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden rounded-[var(--r-lg)] bg-[var(--surface-1)] p-1.5">
+        <div className="slab flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden rounded-[var(--r-lg)] bg-[var(--shell-1)] p-1.5">
           <Link
             href="/"
             onClick={exitTheater}
