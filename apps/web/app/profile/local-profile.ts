@@ -1,6 +1,6 @@
 "use client";
 
-import { createLocalStore, useLocalStore, writeItem, writeJson } from "../local-store.ts";
+import { createLocalStore, newId, readItem, useLocalStore, writeItem, writeJson } from "../local-store.ts";
 
 import { monogram } from "./avatar";
 
@@ -17,17 +17,26 @@ function recordMonogram({ id, name }: LocalProfile): void {
   writeJson("timbre:avatar-mono", monogram(id, name, "Profile"));
 }
 
+/**
+ * The name first, and never at the id's expense.
+ *
+ * This was one `try` around both reads and the id's write, so *anything* that threw — a full
+ * `localStorage` refusing the `setItem`, a browser with storage blocked, `crypto.randomUUID`
+ * being undefined off a secure origin — returned `{ id: "local", name: null }` and the reader's
+ * display name vanished from the heading while sitting perfectly intact one key away. The name
+ * is the part there is no server copy of; the id only tints a monogram, and minting a fresh one
+ * that could not be stored costs a colour. `readItem` and `writeItem` each answer for themselves,
+ * so a failure in one no longer decides for the other.
+ */
 function readStorage(): LocalProfile {
-  try {
-    let id = window.localStorage.getItem(ID_KEY);
-    if (!id) {
-      id = crypto.randomUUID();
-      window.localStorage.setItem(ID_KEY, id);
-    }
-    return { id, name: window.localStorage.getItem(NAME_KEY) };
-  } catch {
-    return { id: "local", name: null };
-  }
+  const name = readItem(NAME_KEY);
+  const stored = readItem(ID_KEY);
+  if (stored) return { id: stored, name };
+
+  // An id that could not be stored is not this browser's id, and a monogram that changes colour
+  // on every load is worse than one shared by every browser that cannot store anything.
+  const id = newId();
+  return { id: writeItem(ID_KEY, id) ? id : "local", name };
 }
 
 function writeNameCookie(name: string | null): void {
