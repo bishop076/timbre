@@ -106,7 +106,10 @@ const SHORTCUTS: { keys: string[]; action: string; note?: string }[] = [
   { keys: ["←"], action: "Previous track" },
   { keys: ["↑"], action: "Volume up" },
   { keys: ["↓"], action: "Volume down" },
-  { keys: ["/"], action: "Search", note: "Home, Explore and Search" },
+  // No note: the search box moved into the bar on every page, and this still scoped the key to
+  // the three pages that used to own one — telling a reader a shortcut is unavailable where it
+  // in fact works. The caption above already says the one thing that is still true of it.
+  { keys: ["/"], action: "Search" },
   { keys: ["Esc"], action: "Leave the search field" },
 ];
 
