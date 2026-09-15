@@ -34,7 +34,7 @@ export function SaveAsPlaylist({
 
       <p role="status" className="basis-full text-[13px] empty:hidden">
         {saved && error ? (
-          <span className="text-red-400">{error}</span>
+          <span className="text-[var(--danger)]">{error}</span>
         ) : saved ? (
           <span className="text-[var(--accent)]">
             Saved {saved.saved} {saved.saved === 1 ? "song" : "songs"} to{" "}

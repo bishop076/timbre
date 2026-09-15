@@ -84,7 +84,7 @@ function PlayButton({ variant }: { variant: Variant }) {
       disabled={!current || state === "unplayable"}
       aria-label={playing ? "Pause" : "Play"}
       className={`slab press tint flex ${
-        variant === "bar" ? "size-10 rounded-[var(--r-lg)]" : "size-16 rounded-[var(--r-full)]"
+        variant === "bar" ? "size-10 rounded-[var(--r-full)]" : "size-16 rounded-[var(--r-full)]"
       } items-center justify-center text-[var(--accent-fg)] disabled:opacity-40`}
       style={{ background: "var(--accent)" }}
     >
@@ -101,7 +101,14 @@ function PlayButton({ variant }: { variant: Variant }) {
 
 export function Transport({ variant }: { variant: Variant }) {
   const { current, index, hasNext, previous, next } = usePlayerControls();
-  const skip = `slab-sm press flex ${variant === "bar" ? "h-9 w-12" : "h-12 w-16"} items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)] disabled:opacity-40`;
+  // The bar's skips are bare icons, not slabs. Three bordered pills in a row beside a bordered
+  // play button was the toy-piano look the redesign is getting away from; the sheet keeps its
+  // slabs, where they are the only chrome on a full-screen surface.
+  const skip = `press flex items-center justify-center disabled:opacity-40 ${
+    variant === "bar"
+      ? "size-9 rounded-[var(--r-full)] text-[var(--fg-dim)] transition-colors hover:text-[var(--fg)]"
+      : "slab-sm h-12 w-16 rounded-[var(--r-full)] bg-[var(--surface-2)] text-[var(--fg)]"
+  }`;
   const icon = variant === "bar" ? "size-[18px]" : "size-5";
 
   return (
@@ -182,7 +189,7 @@ export function PlayerBar() {
       <p className="flex items-center gap-2 truncate text-xs text-[var(--fg-dim)]">
         <ArtistLink artists={current.artists} className="min-w-0 truncate" />
         {state === "unplayable" ? (
-          <span className="shrink-0 text-amber-500">{problem ?? "Can't play this"}</span>
+          <span className="shrink-0 text-[var(--warn)]">{problem ?? "Can't play this"}</span>
         ) : subscriptionTrack ? (
           <span className="shrink-0 text-[var(--accent)]">
             press to start — full song if you&rsquo;re signed in
@@ -200,10 +207,10 @@ export function PlayerBar() {
           />
         )}
         {playingPreview && state !== "unplayable" && (
-          <span className="shrink-0 text-amber-500">30-second preview</span>
+          <span className="shrink-0 text-[var(--warn)]">30-second preview</span>
         )}
         {youtubeTurnedAway && state !== "unplayable" && (
-          <span className="min-w-0 truncate text-amber-500" title={LEFT_YOUTUBE[youtubeTurnedAway]}>
+          <span className="min-w-0 truncate text-[var(--warn)]" title={LEFT_YOUTUBE[youtubeTurnedAway]}>
             · {LEFT_YOUTUBE[youtubeTurnedAway]}
           </span>
         )}
@@ -234,18 +241,21 @@ export function PlayerBar() {
         <Scrub />
       </footer>
 
-      <footer className="relative hidden shrink-0 items-center gap-6 bg-[var(--surface-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:flex">
+      {/* Three columns, not three flex children: the transport sits on the bar's centre line
+          whatever the track is called, which is how every player people already know does it.
+          A flex row with `flex-1` on each side drifts as soon as the title is long. */}
+      <footer className="relative hidden shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 bg-[var(--surface-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:grid">
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
           <Scrub height="h-4" />
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {artwork}
           {meta}
         </div>
 
         <div className="flex shrink-0 items-center justify-center">
-          <div className="relative flex items-center gap-2">
+          <div className="relative flex items-center gap-1.5">
             <ModeButton mode="shuffle" variant="bar" />
             <Transport variant="bar" />
             <ModeButton mode="repeat" variant="bar" />
@@ -253,7 +263,7 @@ export function PlayerBar() {
           </div>
         </div>
 
-        <div className="flex flex-1 items-center justify-end gap-1.5">
+        <div className="flex min-w-0 items-center justify-end gap-1.5">
           <Elapsed />
           <Volume />
           <PlaybackMenu variant="bar" />

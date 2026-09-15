@@ -110,7 +110,7 @@ export function PlaylistView({ id }: { id: string }) {
       </PageHeader>
 
       {error && (
-        <p role="alert" className="mb-4 text-sm text-red-400">
+        <p role="alert" className="mb-4 text-sm text-[var(--danger)]">
           {error}
         </p>
       )}
@@ -192,7 +192,7 @@ export function PlaylistView({ id }: { id: string }) {
                       type="button"
                       onClick={() => removeSongAt(playlist.id, position)}
                       aria-label={`Remove ${song.title} from ${playlist.name}`}
-                      className="press mr-1 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-red-400"
+                      className="press mr-1 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-faint)] hover:bg-[var(--surface-1)] hover:text-[var(--danger)]"
                     >
                       <TrashIcon className="size-4" />
                     </button>
