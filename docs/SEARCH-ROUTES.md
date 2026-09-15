@@ -1,8 +1,19 @@
 # Making Spotify and SoundCloud searchable
 
-Both sources **play**. Neither can be **searched**. This records what shipped, why the gap
-exists, and every route out of it that was actually tested — including the ones that do not
-work, so they are not proposed again.
+Both sources **play**. Spotify can now also be **searched**; SoundCloud still cannot, except
+by whoever runs the app opting in. This records what shipped, why the gap existed, and every
+route out of it that was actually tested — including the ones that do not work, so they are
+not proposed again.
+
+**Where each stands today, before you read the history:**
+
+| | Search | How |
+| :--- | :--- | :--- |
+| **Spotify** | ✅ shipped, for everyone | `/api/spotify/search` → `searchSpotifyWeb`. The server reads the anonymous token an embed page carries and queries Spotify's GraphQL gateway. No developer app, no key. **R10** below. Results appear as their own section, not merged into the main rows. |
+| **SoundCloud** | ⚠️ off unless enabled | `SOUNDCLOUD_DIRECT_API=true`, or `SOUNDCLOUD_API_BASE` pointing at a base you run. `soundcloud.ts` sets `searchable` from exactly those two. Off in the hosted build. |
+
+This lede used to read *"Neither can be searched"*, which its own R10 note had already
+contradicted. Corrected 2026-09-15.
 
 *Written 2026-08-19. Companion to [BLOCKED.md](BLOCKED.md), which records what other people
 gate, and [BUGS.md](BUGS.md), which records ours.*

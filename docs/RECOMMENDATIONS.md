@@ -238,10 +238,14 @@ would have to be true before one made sense here, and the third is decisive.
 4. **Item features.** No keyless source publishes genre, mood, tempo or
    embeddings. Spotify's audio-features endpoint sits behind the same wall that
    already blocked Phase B.5. You would be training on title strings.
-5. **Somewhere to run it.** Not the ytmusic sidecar — `main.py` documents it as
-   stateless, credential-free and holding no database connection. A model server
-   with weights and a feature store violates all of that. It is a third service,
-   against a hosting plan of a hobby tier and a free Postgres.
+5. **Somewhere to run it.** Not the ytmusic sidecar — it is stateless, holds no
+   store of any kind, and the single credential it does have
+   (`YTMUSIC_SHARED_SECRET`) exists only so the web app can prove who it is. A
+   model server with weights and a feature store violates all of that. It would
+   be a third service, against a hosting plan that is **two Vercel Hobby projects
+   and no database at all** — there is nowhere for a feature store to live
+   without ending the "free to host, holds nothing" property the whole app is
+   built on.
 
 **If 1 and 2 ever land, the right first model is still not a retriever.** It is a
 re-ranker over service-supplied candidates: a handful of features (time since

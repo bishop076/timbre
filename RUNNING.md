@@ -53,9 +53,44 @@ Both live in **one root `.env`**, loaded by `dotenv-cli` — Next does not look 
 own directory in a monorepo, which is why `apps/web`'s scripts all start with
 `dotenv -e ../../.env --`.
 
-> On the sidecar side the variable is read as a **comma-separated list**, newest first, so
-> a secret can be rotated without downtime: add the new one alongside the old, move the web
-> app across, then drop the old. Locally one value is all you need.
+> On the sidecar side the variable is read as a **comma-separated list**, so a secret can be
+> rotated without downtime: add the new one alongside the old, move the web app across, then
+> drop the old. Order does not matter — `app/security.py` compares against every entry — and
+> locally one value is all you need. A value under 32 characters boots but warns.
+
+### Everything else is optional
+
+`apps/web/lib/env.ts` is the whole server-side contract, and it is six variables plus
+`NODE_ENV`. Nothing else in it is required, and nothing outside it is read.
+
+| | |
+| :--- | :--- |
+| `YTMUSIC_SHARED_SECRET` | **required.** Above. |
+| `YTMUSIC_SERVICE_URL` | defaults to `http://127.0.0.1:8787`. Set it in a deploy, not here. |
+| `SOUNDCLOUD_DIRECT_API` | `true` turns on SoundCloud catalogue search by resolving a public `client_id` at runtime. Local opt-in, off in the hosted build. |
+| `SOUNDCLOUD_CLIENT_ID` / `SOUNDCLOUD_CLIENT_SECRET` | accepted, and **currently wired to nothing** — see below. |
+| `SOUNDCLOUD_API_BASE` | an `api-v2`-shaped base *you* run. See [docs/SOUNDCLOUD-PROXIES.md](docs/SOUNDCLOUD-PROXIES.md). |
+
+`SOUNDCLOUD_DIRECT_API` or `SOUNDCLOUD_API_BASE` is what actually enables the catalogue
+search: those two are the only ones `lib/providers.ts` passes to the provider.
+
+> **The client-id pair is a trap as it stands.** `hasSoundCloud()` in `lib/env.ts` counts
+> `SOUNDCLOUD_CLIENT_ID` + `SOUNDCLOUD_CLIENT_SECRET` as configured, so setting both makes
+> `/api/health` answer `"soundcloud":true` — but `lib/providers.ts` never reads them, so
+> `searchable` stays `false` and no SoundCloud result ever appears. Do not set them expecting
+> search; set `SOUNDCLOUD_DIRECT_API=true` instead.
+
+One variable is read in the browser rather than on the server, so it is not in `env.ts` at
+all:
+
+- **`NEXT_PUBLIC_SPOTIFY_CLIENT_ID`** — optional. Without it the Spotify panel still works;
+  it just asks the reader for a client id of their own instead, and keeps it in their
+  browser (`app/spotify/connection.ts`). Being `NEXT_PUBLIC_`, it is inlined at **build**
+  time, so changing it means rebuilding.
+
+`NEXT_PUBLIC_SITE_URL` is the only other one the app looks at, and only to build absolute
+URLs for link previews; on Vercel it falls back to `VERCEL_PROJECT_PRODUCTION_URL` and
+locally to `http://localhost:3000`. Leave it unset.
 
 ## Start it
 
@@ -102,7 +137,9 @@ curl -s -X POST http://127.0.0.1:8787/search \
   -d '{"query":"Harry Styles As It Was","limit":5}'
 ```
 
-Sidecar surface, in full: `GET /health`, `POST /search`, `POST /resolve`, `POST /radio`.
+Sidecar surface, in full: `GET /health`, `POST /search`, `POST /resolve`, `POST /radio`,
+`POST /playlist`, `POST /lyrics`. Only `/health` is unauthenticated; every other route goes
+through the shared-secret middleware in `app/security.py`.
 
 ---
 
@@ -211,11 +248,14 @@ shipping only the `tsgo` binary, so the two live side by side without argument.
 ## The pre-commit hook, and what it is for
 
 `git config core.hooksPath .githooks` turns on one check: **a staged file may not import
-something git will not have after the commit.**
+something git will not have after the commit.** `.githooks/pre-commit` is two lines; the
+check itself is `scripts/check-staged-imports.mts`, which reads the staged *blob* rather than
+the file on disk and resolves every relative import in it against `git ls-files` plus the
+index.
 
-It exists because that happened twice on 2026-08-20, both times the same way. Two agents
+It exists because that happened twice on 2026-08-20, both times the same way. Several agents
 share this working directory, so `git add <path>` stages the *whole* file including whatever
-the other one was midway through writing. The second time it swept in a `search-results.tsx`
+another one was midway through writing. The second time it swept in a `search-results.tsx`
 that imported a brand-new `./source-badges` — a file still untracked — so the commit
 referenced something it did not contain. **HEAD did not build, and nothing local said so**,
 because the working tree had the file and every check passed.
@@ -235,5 +275,10 @@ git add path/to/file.tsx && git commit
 cp /tmp/theirs path/to/file.tsx           # give their work back, uncommitted
 ```
 
-Verified against every tracked file in the repo: 181 scanned, 370 relative imports, zero
-false positives.
+Verified against every tracked file in the repo *as it stood on 2026-08-20*: 181 scanned, 370
+relative imports, zero false positives. The tree has since grown to 306 tracked source files
+and the sweep has not been repeated, so treat the zero as evidence rather than a guarantee.
+
+It only sees relative specifiers. A staged file that imports a bare package missing from
+`package.json`, or a `@/`-aliased path, goes through untouched — that is what `pnpm
+typecheck` is for.
