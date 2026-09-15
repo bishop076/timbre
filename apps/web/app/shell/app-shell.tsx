@@ -276,24 +276,34 @@ export function AppShell({ children }: { children: ReactNode }) {
     >
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main
-          ref={panel}
-          // The skip link's `href="#main-content"` needs something to point at. It has a
-          // JS fallback that finds `<main>` by tag, but a fragment that resolves on its own
-          // survives the handler not running — and a link to a dangling id is the kind of
-          // thing an audit passes and a reader does not.
-          id={MAIN_ID}
-          className={`${pathname.startsWith("/profile") ? "" : "ambient"} ${overflowing ? "scroll-fade" : ""} scroller-quiet relative min-h-0 flex-1 overflow-y-auto bg-[var(--shell-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
+        {/* The card is the wrapper; the scroller is inside it.
+            `.scroll-fade` is a mask, and a mask applies to the whole border box — so while it
+            sat on the same element that drew the edge, the bottom 32px of that edge went with
+            the content. The main column had a crisp ink outline on three sides and a fourth
+            that dissolved, corners included, on every page long enough to scroll. Splitting
+            them leaves the mask over the content it is for and the border outside it. */}
+        <div
+          className={`flex min-h-0 flex-1 bg-[var(--shell-1)] lg:my-2 lg:mr-2 lg:rounded-[var(--r-lg)] lg:border-[length:var(--edge)] lg:border-[var(--ink)] lg:shadow-[var(--drop)] ${
             theater ? "hidden" : ""
           }`}
         >
-          <div className="relative z-10">
-            <ShellBar />
-            <div key={pathname} className={navigated ? "page-in" : undefined}>
-              {children}
+          <main
+            ref={panel}
+            // The skip link's `href="#main-content"` needs something to point at. It has a
+            // JS fallback that finds `<main>` by tag, but a fragment that resolves on its own
+            // survives the handler not running — and a link to a dangling id is the kind of
+            // thing an audit passes and a reader does not.
+            id={MAIN_ID}
+            className={`${pathname.startsWith("/profile") ? "" : "ambient"} ${overflowing ? "scroll-fade" : ""} scroller-quiet relative min-h-0 flex-1 overflow-y-auto rounded-[inherit]`}
+          >
+            <div className="relative z-10">
+              <ShellBar />
+              <div key={pathname} className={navigated ? "page-in" : undefined}>
+                {children}
+              </div>
             </div>
-          </div>
-        </main>
+          </main>
+        </div>
         {current && panelOpen && !theater && <PanelEdge />}
         <NowPlayingPanel />
       </div>
