@@ -12,13 +12,16 @@ import {
   type ReactNode,
 } from "react";
 
+import { SkipLink } from "../a11y/skip-link";
 import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
 import { log } from "../logs.ts";
 import { addSourcesToSong } from "../playlists/store";
 import { getSpotifyTokens } from "../spotify/token-store.ts";
 import type { Song, SongsResponse } from "../types";
+import { judgeDeadTrack } from "./dead-track";
 import { drawRadio } from "./draw-radio";
 import { getHistorySnapshot, recordPlay } from "./history-store";
+import { PlaybackAnnouncer } from "./playback-announcer";
 import { playedHandle } from "./played-handle";
 import { getPlaybackPrefs, usePlaybackPrefs } from "./playback-prefs";
 import { insertAfter, moveWithin, removeAt as removeFromQueue, type QueueEdit } from "./queue-ops";
@@ -250,7 +253,18 @@ function cycleRepeat(): void {
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const value = usePlayerValue();
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  return (
+    <PlayerContext.Provider value={value}>
+      {/* Two app-wide accessibility fixtures, mounted here because this provider is the
+          outermost thing in <body> that is not `layout.tsx` or `app-shell.tsx`. The skip link
+          has to be the first focusable element on the page, which it is from here; the
+          announcer has to be inside this provider to see the player at all. If the shell is
+          ever reorganised, `<SkipLink />` belongs directly inside <body> in layout.tsx. */}
+      <SkipLink />
+      <PlaybackAnnouncer />
+      {children}
+    </PlayerContext.Provider>
+  );
 }
 
 function usePlayerValue() {
@@ -292,6 +306,11 @@ function usePlayerValue() {
   const rescued = useRef<Set<string>>(new Set());
   const recorded = useRef<string | null>(null);
   const steered = useRef<string | null>(null);
+  // The two facts behind the dead-track skip below. `handPicked` is whether a listener named
+  // this source themselves; `deadSkips` counts the run of tracks stepped over since one last
+  // played, which is what bounds the skipping on a queue where nothing works.
+  const handPicked = useRef(false);
+  const deadSkips = useRef(0);
   const warmed = useRef(new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>());
 
   const current = queue[index] ?? null;
@@ -432,6 +451,10 @@ function usePlayerValue() {
       setYoutubeTurnedAway(null);
       setPlaying(null);
       writeProgress(0, song.durationMs ? song.durationMs / 1000 : 0);
+      // Read from the argument rather than from `prefer` below, which `rememberedSource` fills
+      // in a line later: a source this song happens to have been played on before is not one
+      // anybody just pressed, and if it fails the ladder carries on past it anyway.
+      handPicked.current = prefer !== undefined;
 
       prefer ??= rememberedSource(song);
       const named = prefer && prefer !== "ytmusic" ? chosenSource(song, prefer) : null;
@@ -513,6 +536,10 @@ function usePlayerValue() {
 
   const play = useCallback(
     (song: Song, rest: Song[] = [], prefer?: string, origin?: QueueOrigin) => {
+      // Starting something fresh hands the dead-track skip below a full allowance again. It is
+      // spent by tracks that would not play, and only playing one — or asking for another list
+      // — earns it back; `goTo` does not, because `advance` reaches the queue through it.
+      deadSkips.current = 0;
       if (prefer) pickSource(song, prefer, playbackFrom(song, prefer));
       const switchingSource = prefer && rest.length === 0 && songRef.current?.id === song.id;
       if (!switchingSource) {
@@ -577,8 +604,9 @@ function usePlayerValue() {
     return continueWithRadio && unqueued(radio).length > 0;
   }, [continueWithRadio, index, queue, radio, repeat, shuffle, unplayed, unqueued]);
 
+  /** Moves the queue on, and answers whether there was anywhere to move it to. */
   const advance = useCallback(
-    (fromEnd: boolean) => {
+    (fromEnd: boolean): boolean => {
       const here = indexRef.current;
       const playing = queueRef.current[here];
       if (playing) shuffled.current.add(playing.id);
@@ -587,13 +615,13 @@ function usePlayerValue() {
       if (target !== null) {
         if (target === here && fromEnd) restart(true);
         else goTo(target);
-        return;
+        return true;
       }
 
       const fresh = continueWithRadio ? unqueued(radio) : [];
       if (fresh.length === 0) {
         if (fromEnd) writeState("idle");
-        return;
+        return false;
       }
       // Where the appended block starts, read before the append rather than from the render's
       // own `queue` — which the async radio fetch may already have grown past.
@@ -601,11 +629,12 @@ function usePlayerValue() {
       writeQueue((queued) => [...queued, ...fresh]);
       setRadio([]);
       goTo(landing);
+      return true;
     },
     [continueWithRadio, goTo, nextIndex, radio, restart, unqueued, writeQueue, writeState],
   );
 
-  const next = useCallback(() => advance(false), [advance]);
+  const next = useCallback((): void => void advance(false), [advance]);
   const previous = useCallback(() => goTo(Math.max(0, indexRef.current - 1)), [goTo]);
 
   const handleEnded = useCallback(() => {
@@ -622,6 +651,40 @@ function usePlayerValue() {
     else if (repeat === "one") restart(true);
     else advance(true);
   }, [advance, repeat, restart, writeState]);
+
+  // A track nothing can play must not be the end of the queue. This is the shape of "playback
+  // doesn't run on its own": one rotted source in the middle of a saved playlist — a stream id
+  // that 404s a year after the song was saved — and every song after it never plays, with the
+  // next one named on screen under "Next up" the whole time. Nobody is watching a queue, so
+  // there is nobody to press Next.
+  //
+  // Hung off the state rather than off a give-up branch because there are four of them: `load`
+  // ends here twice while resolving, and `handleError` twice more once a source has spoken. All
+  // four write this state and nothing else does, so this is the one place that sees every way a
+  // track can turn out to be dead.
+  //
+  // Keyed on `state` alone, deliberately. The effect that runs is the one belonging to the
+  // render that turned unplayable, so `advance` reads that render's queue; re-running it because
+  // `advance` took a new identity would step over a second track that never failed at all.
+  useEffect(() => {
+    if (state !== "unplayable") return;
+    const verdict = judgeDeadTrack({
+      chosenByHand: handPicked.current,
+      skipped: deadSkips.current,
+      queued: queueRef.current.length,
+    });
+    if (verdict !== "skip") return;
+
+    const dead = songRef.current?.title ?? "a track";
+    deadSkips.current += 1;
+    // `false`, not `true`: with nowhere left to go this leaves the player exactly where it is,
+    // still showing what went wrong, where `advance(true)` would wipe that to "idle". And the
+    // line is logged only once it has actually moved — the last track of a queue reaches here
+    // too, and a log that claims a skip nobody made is worse than no line at all.
+    if (!advance(false)) return;
+    log("warn", `Skipped “${dead}” — nothing here would play it`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   const toggleShuffle = useCallback(() => {
     const modes = modeStore.getSnapshot();
@@ -918,6 +981,11 @@ function usePlayerValue() {
           }, RESUME_DELAY_MS);
         }
       }
+
+      // A track that reached "playing" is proof the queue is getting somewhere, which is what
+      // the dead-track skip's allowance is counted from — not from reaching a position, or a
+      // playlist of alternating good and dead songs would never spend it and never stop.
+      if (next === "playing") deadSkips.current = 0;
 
       if (next !== "playing" || !current || recorded.current === current.id) return;
       recorded.current = current.id;
