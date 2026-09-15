@@ -110,3 +110,72 @@ test("the boot scripts are wrapped in try/catch", () => {
     assert.match(body.trimEnd(), /catch\s*\([\w$]*\)\s*\{[^}]*\}$/, "and end with a catch");
   }
 });
+
+// The boot script runs before React, before hydration, with every failure swallowed. Anything it
+// writes to a custom property lands on <html> for the whole session. Three of its sinks took an
+// arbitrary name or an arbitrary value from localStorage; --artwork-img and --profile-wash are
+// both consumed by background-image, so a "colour" reading url(...) is a tracking pixel that
+// fires before first paint, on every load, with no UI. CSP cannot stop it: img-src already
+// permits https:. These tests are the control.
+
+test("a planted palette variable cannot reach background-image", () => {
+  const properties = replay({
+    "timbre:palette": JSON.stringify({ vars: { "--artwork-img": "url(https://example.com/pixel.png)" } }),
+  });
+  assert.equal(properties["--artwork-img"], undefined);
+});
+
+test("only the variables the palette actually mints are replayed", () => {
+  const properties = replay({
+    "timbre:palette": JSON.stringify({ vars: { "--not-a-palette-var": "red", "--bg": "hsl(258 50% 7%)" } }),
+  });
+  assert.equal(properties["--not-a-palette-var"], undefined);
+  assert.equal(properties["--bg"], "hsl(258 50% 7%)", "the allowlist still lets a real palette through");
+});
+
+test("an allowlisted name cannot carry an image value", () => {
+  for (const planted of [
+    "url(https://example.com/pixel.png)",
+    "image-set('https://example.com/x.png' 1x)",
+    "-webkit-image-set(url(x) 1x)",
+    "element(#leak)",
+    "var(--something-else)",
+    "attr(href)",
+    "red; background-image: url(https://example.com/x.png)",
+  ]) {
+    const properties = replay({ "timbre:palette": JSON.stringify({ vars: { "--accent": planted } }) });
+    assert.equal(properties["--accent"], undefined, `replayed ${planted}`);
+  }
+});
+
+test("a palette variable name is matched whole, not as a substring", () => {
+  const properties = replay({ "timbre:palette": JSON.stringify({ vars: { "--fg-evil": "hsl(0 0% 0%)" } }) });
+  assert.equal(properties["--fg-evil"], undefined, "--fg must not match inside --fg-evil");
+});
+
+test("the profile wash cannot become an outbound request", () => {
+  const planted = replay({
+    "timbre:profile-wash": JSON.stringify({ dark: "url(https://example.com/pixel.png)" }),
+  });
+  assert.equal(planted["--profile-wash"], undefined);
+
+  const real = replay({
+    "timbre:profile-wash": JSON.stringify({ dark: "linear-gradient(hsl(258 40% 10%), transparent)" }),
+  });
+  assert.equal(real["--profile-wash"], "linear-gradient(hsl(258 40% 10%), transparent)");
+});
+
+test("the avatar fill cannot become an outbound request", () => {
+  const planted = replay({ "timbre:avatar-mono": JSON.stringify({ fill: "url(https://example.com/pixel.png)" }) });
+  assert.equal(planted["--avatar-fill"], undefined);
+
+  const real = replay({ "timbre:avatar-mono": JSON.stringify({ fill: "hsl(258 40% 40%)" }) });
+  assert.equal(real["--avatar-fill"], "hsl(258 40% 40%)");
+});
+
+test("an absurdly long value is refused before anything parses it", () => {
+  const properties = replay({
+    "timbre:palette": JSON.stringify({ vars: { "--accent": "hsl(258 50% 50%)".padEnd(200, " ") } }),
+  });
+  assert.equal(properties["--accent"], undefined);
+});
