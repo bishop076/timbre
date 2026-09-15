@@ -2,7 +2,7 @@
 
 Three faces used by the two places the brand is drawn rather than typed:
 `app/opengraph-image.tsx` (the card a link to the site unfurls into) and
-`docs/assets/readme-banner.tsx` (the README banner).
+`docs/brand/banners/readme-banner.tsx` (the README banner).
 
 | File | Face | Used for |
 |---|---|---|
@@ -35,4 +35,4 @@ Nothing here reaches the browser bundle. `layout.tsx` still serves Geist for eve
 sees; these are only ever rasterised into a PNG on the server.
 
 The wordmark is deliberately two faces. The pairing, and the measured offsets that keep the `bre`
-from floating above the `tim`, are explained in the comments in `docs/assets/readme-banner.tsx`.
+from floating above the `tim`, are explained in the comments in `docs/brand/banners/readme-banner.tsx`.

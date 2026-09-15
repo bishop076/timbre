@@ -1,11 +1,11 @@
-// Source for docs/assets/readme-banner.png. Not routed, not built, not imported by the app —
+// Source for docs/brand/banners/readme-banner.png. Not routed, not built, not imported by the app —
 // it lives here so the banner is an edit rather than a redesign next time. The banner before it
 // was a PNG with no source, which is why replacing it took a day.
 //
 // To redraw it:
-//   1. cp docs/assets/readme-banner.tsx apps/web/app/banner-preview/route.tsx
+//   1. cp docs/brand/banners/readme-banner.tsx apps/web/app/banner-preview/route.tsx
 //   2. cd apps/web && TIMBRE_DIST_DIR=.next-banner npx next dev -p 3249
-//   3. curl -o ../../docs/assets/readme-banner.png http://localhost:3249/banner-preview
+//   3. curl -o ../../docs/brand/banners/readme-banner.png http://localhost:3249/banner-preview
 //   4. rm -r apps/web/app/banner-preview apps/web/.next-banner apps/web/.next/dev/types
 //      then `npx next typegen` and `git checkout -- apps/web/tsconfig.json`
 //
