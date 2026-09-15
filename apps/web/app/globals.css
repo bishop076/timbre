@@ -72,6 +72,41 @@
   inherits: true;
   initial-value: #7a4f00;
 }
+
+/* The customisation layer's seed. --accent-seed is the reader's chosen colour
+   after lightness correction against the ground; --accent-seed-fg is the black
+   or white derived from it. Registered for the same reason as the ramp above:
+   unregistered, a theme change would snap instead of fade.
+
+   Note what is NOT registered: --drop, --drop-sm, --drop-lg. Those are shadow
+   values, not colours, and a registered property silently discards any value
+   that misses its declared syntax — registering them as <color> would delete
+   every shadow in the app. */
+@property --accent-seed {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #5b3fd6;
+}
+@property --accent-seed-fg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+@property --app-bg-dim {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0.6;
+}
+@property --app-bg-blur {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 8px;
+}
+@property --ui-scale {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
 @property --line {
   syntax: "<color>";
   inherits: true;
@@ -335,7 +370,12 @@
     --fg-dim var(--tint-ms) var(--ease),
     --fg-faint var(--tint-ms) var(--ease),
     --line var(--tint-ms) var(--ease),
-    --ink var(--tint-ms) var(--ease);
+    --ink var(--tint-ms) var(--ease),
+    --accent-seed var(--tint-ms) var(--ease),
+    --accent-seed-fg var(--tint-ms) var(--ease),
+    /* The scrim fades; the blur does not. Animating a blur radius repaints the
+       whole viewport every frame for the length of the transition. */
+    --app-bg-dim 0.4s var(--ease);
 }
 
 html {
@@ -625,4 +665,85 @@ input[type="search"]::-webkit-search-results-decoration {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Reader-supplied background picture.
+
+   Moved here from a constructed stylesheet that `theme-css.ts` adopted at
+   runtime. That was a stopgap so the feature was not inert while this file was
+   being rewritten; a stylesheet belongs in the stylesheet.
+
+   Two fixed pseudo-elements rather than a background on <body>: the picture
+   needs to stay put while content scrolls, and the scrim has to sit between the
+   picture and the content. `transform: scale(1.08)` hides the transparent edge
+   a blur otherwise pulls in from outside the element.
+
+   The scrim is not decoration. Text over an arbitrary photograph has no
+   knowable contrast, so --app-bg-dim has a floor the reader cannot remove.
+   --------------------------------------------------------------------------- */
+:root {
+  --app-bg-position: 50% 50%;
+}
+
+html[data-bg-image="true"] {
+  background-image: none;
+}
+
+html[data-bg-image="true"]::before,
+html[data-bg-image="true"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+html[data-bg-image="true"]::before {
+  z-index: -2;
+  background-image: var(--app-bg-image, none);
+  background-size: var(--app-bg-size, cover);
+  background-position: var(--app-bg-position, 50% 50%);
+  background-repeat: var(--app-bg-repeat, no-repeat);
+  filter: blur(var(--app-bg-blur, 0px));
+  transform: scale(1.08);
+}
+
+html[data-bg-image="true"]::after {
+  z-index: -1;
+  background: var(--app-bg-scrim, #000000);
+  opacity: var(--app-bg-dim, 0.6);
+}
+
+html[data-bg-image="true"] body {
+  background-color: transparent;
+}
+
+/* The reader's font choice, with the app's own stack as the fallback so a font
+   that fails to load can never leave the app unreadable. */
+body {
+  font-family: var(--font-ui, var(--font-geist-sans), system-ui, -apple-system, sans-serif);
+}
+
+/* Surface tinting off: the accent stays, the surfaces go neutral. For readers
+   who want the colour on controls but a plain grey page behind their work. */
+html[data-tint="off"] {
+  --bg: oklch(from var(--bg) l 0 h);
+  --surface-1: oklch(from var(--surface-1) l 0 h);
+  --surface-2: oklch(from var(--surface-2) l 0 h);
+  --surface-3: oklch(from var(--surface-3) l 0 h);
+  --fg: oklch(from var(--fg) l 0 h);
+  --fg-dim: oklch(from var(--fg-dim) l 0 h);
+  --fg-faint: oklch(from var(--fg-faint) l 0 h);
+}
+
+/* High contrast: push text to the ends of the range and make the hairline a
+   real line. The accent is corrected to 7:1 by the customisation layer, so it
+   is deliberately not touched here. */
+html[data-contrast="high"] {
+  --fg: oklch(from var(--fg) clamp(0, calc((l - 0.5) * 1.35 + 0.5), 1) c h);
+  --fg-dim: var(--fg);
+  --fg-faint: oklch(from var(--fg-faint) clamp(0, calc((l - 0.5) * 1.25 + 0.5), 1) c h);
+  --line: color-mix(in oklab, var(--fg) 45%, transparent);
+  --ink: var(--line);
+  --edge: 2px;
 }

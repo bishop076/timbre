@@ -69,8 +69,24 @@ const CONTENT_SECURITY_POLICY = [
   // loss, kept because the alternative is dropping the embed controller entirely.
   `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${PLAYERS} ${SOUNDCLOUD_ASSETS} ${SPOTIFY_EMBED_ASSETS}`,
   "style-src 'self' 'unsafe-inline'",
+  // The one directive here that is wider than anyone would like, and the reason the boot
+  // script in layout.tsx polices CSS *values* rather than trusting CSP to catch what they
+  // fetch. Covers are rendered straight from the provider CDNs in a dozen components — see
+  // `<img src={song.artworkUrl}>` in song-card.tsx and its neighbours — and only some paths
+  // go through the same-origin /api/art proxy. Enumerating those hosts is the real fix and
+  // is a change that needs violation reports behind it, not a guess: get it wrong and every
+  // cover in production is a broken icon, which is exactly the class of bug that reaches
+  // production because no test loads a page.
   "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
+  // Three sources, none of which leaves the machine — which is the whole rule for a custom
+  // font. The reader's own face is a file they picked: kept as bytes in IndexedDB, handed to
+  // the font engine as a URL this document minted, never fetched from a third party. `data:`
+  // is what theme/fonts.ts uses today; `blob:` is added so it can stop doing the base64 round
+  // trip, as its own comment plans to. What is deliberately absent is any scheme with a host
+  // behind it: a remote font would be a request to someone else's server on every page load,
+  // and this directive is the half of that refusal the browser enforces whatever the code
+  // does. Narrowing to `'self' blob:` is the follow-up, once fonts.ts no longer needs data:.
+  "font-src 'self' data: blob:",
   `frame-src https://www.youtube-nocookie.com https://widget.deezer.com https://embed.music.apple.com ${PLAYERS}`,
   "media-src 'self' https: blob:",
   // Deliberately wide, and the next thing to narrow. The players reach hosts this document

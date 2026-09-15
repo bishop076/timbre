@@ -72,25 +72,58 @@ try {
   r.dataset.theme = light ? "light" : "dark";
   r.dataset.mode = m;
 
+  // Not one backslash anywhere in this script, and a test below that keeps it that way. The
+  // script is a template literal: an escape in the source is resolved before the browser sees
+  // it, so a backslash-s reaches the page as a plain "s", while the tests read the literal's
+  // raw text and still see the escape. A regex written with escapes would pass every test
+  // here and be a different regex in production. None are needed: inside a character class a
+  // slash needs no escape, and [(] matches what an escaped bracket would.
+  var PICTURE = /^data:image[/](?:png|jpeg|webp|gif|avif);base64,[A-Za-z0-9+/]+={0,2}$/;
   var thumb = function (key) {
     var v = localStorage.getItem(key);
-    return v && v.indexOf("data:image/") === 0 ? "url(" + JSON.stringify(v) + ")" : null;
+    return v && v.length <= 700000 && PICTURE.test(v) ? "url(" + JSON.stringify(v) + ")" : null;
   };
 
   var PALETTE = " --bg --surface-1 --surface-2 --surface-3 --fg --fg-dim --fg-faint --ink --line --accent --accent-fg --accent-wash --drop --drop-sm --drop-lg ";
-  var BAD = ["url(", "image", "element(", "var(", "attr(", "expression", ";", "{", "}"];
+
+  // A denylist of dangerous substrings was wrong in both directions. It rejected the real
+  // --profile-wash, which reads var(--surface-1) and is built that way in profile-view.tsx,
+  // so the header lost its pre-paint wash; and it could only ever refuse the sinks someone
+  // had already thought of. This is the inverse. Nothing reaches setProperty unless every
+  // character is in a set that cannot open a string, a comment or a second declaration, and
+  // every "(" in it is preceded by a function on FUNCTIONS. url(), image-set(), element(),
+  // attr() and expression() are not on it, so none of them needs naming.
+  //
+  // var() is allowed only as var(--token) with --token on PALETTE, and no fallback — a
+  // fallback is a second value, and var(--a, url(x)) is the sink wearing a hat. That is what
+  // makes it safe rather than a hole: every property on PALETTE is either a globals.css
+  // default or something paint() below put there, under this same grammar. The set is
+  // closed, so no chain of var() can arrive anywhere this function would not have allowed
+  // directly.
+  var FUNCTIONS = " rgb rgba hsl hsla hwb lab lch oklab oklch color color-mix calc min max clamp linear-gradient radial-gradient conic-gradient repeating-linear-gradient repeating-radial-gradient repeating-conic-gradient ";
+  var SAFE = /^[a-z0-9 (),.%#/*+_-]+$/;
+
+  var css = function (value, limit) {
+    if (typeof value !== "string" || !value || value.length > limit) return null;
+    var low = value.toLowerCase();
+    if (!SAFE.test(low) || low.indexOf("/*") >= 0) return null;
+    var call = /([a-z0-9-]*)[(]/g;
+    var found;
+    while ((found = call.exec(low))) {
+      if (found[1] === "var") {
+        var named = /^ *(--[a-z0-9-]+) *[)]/.exec(low.slice(call.lastIndex));
+        if (!named || PALETTE.indexOf(" " + named[1] + " ") < 0) return null;
+      } else if (FUNCTIONS.indexOf(" " + found[1] + " ") < 0) return null;
+    }
+    return value;
+  };
+
   var paint = function (name, value) {
     if (PALETTE.indexOf(" " + name + " ") < 0) return;
-    if (typeof value !== "string" || value.length > 120) return;
-    var low = value.toLowerCase();
-    for (var i = 0; i < BAD.length; i++) if (low.indexOf(BAD[i]) >= 0) return;
-    r.style.setProperty(name, value);
+    if (css(value, 120)) r.style.setProperty(name, value);
   };
   var tint = function (name, value) {
-    if (typeof value !== "string" || value.length > 240) return;
-    var low = value.toLowerCase();
-    for (var i = 0; i < BAD.length; i++) if (low.indexOf(BAD[i]) >= 0) return;
-    r.style.setProperty(name, value);
+    if (css(value, 240)) r.style.setProperty(name, value);
   };
 
   var a = thumb("timbre:thumb-avatar");
@@ -124,8 +157,11 @@ try {
   var p = read("timbre:palette");
   if (p && p.vars) {
     for (var k in p.vars) paint(k, p.vars[k]);
-    if (p.theme) r.dataset.theme = p.theme;
-    if (p.mode) r.dataset.mode = p.mode;
+    // Two values each, matched exactly. These select rules in globals.css, and a planted
+    // third value is not an attack so much as a way to leave the page in a state no
+    // stylesheet describes — dark variables under a light ground, with no way back.
+    if (p.theme === "light" || p.theme === "dark") r.dataset.theme = p.theme;
+    if (p.mode === "album" || p.mode === "pastel" || p.mode === "custom") r.dataset.mode = p.mode;
     r.dataset.neutral = String(p.neutral === true);
   }
 
@@ -134,6 +170,51 @@ try {
     var v = r.dataset.theme === "light" ? w.light : w.dark;
     if (v) tint("--profile-wash", v);
   }
+
+  // The reader's own picture behind the app, and the interface scale — replayed last, and the
+  // reason theme/background.ts keeps a small copy of the picture in localStorage at all. Both
+  // of these are otherwise applied only once React is up, which the reader sees as a flat
+  // theme and a jump in text size on every single load.
+  //
+  // This is the ES5 twin of replayProperties() in app/customise/replay.ts, which is itself
+  // built out of the live path's own parseTheme() and backgroundVars(). The parity test in
+  // layout.test.ts replays one corpus through both and compares what lands on the root, so a
+  // clamp that changes there and not here is a failing test rather than a pre-paint frame
+  // that disagrees with every frame after it.
+  //
+  // The picture is the only free-form value in the whole customisation surface, and the only
+  // one spliced into a url(). Hence PICTURE: base64 of a raster type, an alphabet with no
+  // quote in it, checked before JSON.stringify quotes it anyway.
+  //
+  // number() and clamp() are the pair theme/custom-theme.ts validates these with, in the same
+  // order: a value that is not a number becomes the default first, and only then is it held
+  // between its ends. Rounding a non-number instead produces 0, which is how a planted
+  // "blur": null became no blur here and 8px everywhere else — caught by the parity test.
+  var number = function (value, fallback) {
+    return typeof value === "number" && isFinite(value) ? value : fallback;
+  };
+  var clamp = function (value, low, high) {
+    return Math.min(high, Math.max(low, value));
+  };
+
+  var bg = localStorage.getItem("timbre:theme-bg");
+  if (bg && bg.length <= 700000 && PICTURE.test(bg)) {
+    var prefs = (t && typeof t.background === "object" && t.background) || {};
+    var fit = prefs.fit === "contain" || prefs.fit === "tile" ? prefs.fit : "cover";
+    r.dataset.bgImage = "true";
+    r.style.setProperty("--app-bg-image", "url(" + JSON.stringify(bg) + ")");
+    r.style.setProperty("--app-bg-size", fit === "tile" ? "auto" : fit);
+    r.style.setProperty("--app-bg-repeat", fit === "tile" ? "repeat" : "no-repeat");
+    r.style.setProperty("--app-bg-dim", String(clamp(number(prefs.dim, 0.6), 0.3, 0.92)));
+    r.style.setProperty("--app-bg-blur", clamp(Math.round(number(prefs.blur, 8)), 0, 40) + "px");
+    // The scrim is the ground colour, not black, and the ground is whatever the palette above
+    // settled on — a light wash under dark text for one frame is the bug this avoids.
+    r.style.setProperty("--app-bg-scrim", r.dataset.theme === "light" ? "#eef0f6" : "#08080a");
+  }
+
+  var scale = clamp(Math.round(number(t.textScale, 1) * 100) / 100, 0.85, 1.5);
+  r.style.setProperty("--ui-scale", String(scale));
+  if (scale !== 1) r.style.setProperty("font-size", Math.round(scale * 100) + "%");
 } catch (e) {}
 `.trim();
 
