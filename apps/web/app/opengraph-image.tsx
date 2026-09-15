@@ -7,7 +7,7 @@ import { TimbreMark } from "./shell/brand";
 
 export const alt = "Timbre — a music player for people who don't pay for streaming";
 
-// 1200x400, not the conventional 1200x630. This is the same drawing as docs/assets/readme-banner.tsx
+// 1200x400, not the conventional 1200x630. This is the same drawing as docs/brand/banners/readme-banner.tsx
 // at the same size, deliberately: the banner shape is the design, and re-flowing it into a 630-tall
 // frame to satisfy the convention reads as a different picture — the sky opens up, the lockup drops
 // away from the top edge, and the whole thing shrinks when it is scaled to fit. Unfurlers take it as

@@ -1,4 +1,4 @@
-![Timbre — a music player for people who don't pay for streaming](docs/assets/readme-banner.png)
+![Timbre — a music player for people who don't pay for streaming](docs/brand/banners/readme-banner.png)
 
 # Timbre
 
