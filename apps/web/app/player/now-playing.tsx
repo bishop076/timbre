@@ -8,6 +8,7 @@ import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import { formatDuration } from "../duration";
 import { Equalizer } from "../equalizer";
+import { PlaybackMenu } from "./playback-menu";
 import { ChevronIcon, CloseIcon, CollapseIcon, ExpandIcon, ExternalIcon, PlayIcon } from "../icons";
 import { EYEBROW } from "../page-chrome";
 import { usePanelWidth } from "../shell/pane-size.ts";
@@ -304,15 +305,22 @@ export function NowPlayingPanel() {
           gesture is not discoverable and cannot be reached from a keyboard without knowing the
           handle is there. The player bar's button only ever opens now, so this is the close. */}
       {variant === "docked" ? (
-        <button
-          type="button"
-          onClick={togglePanel}
-          aria-label="Hide now playing"
-          title="Hide now playing"
-          className="press absolute right-2 top-2 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
-        >
-          <ChevronIcon className="size-4 -rotate-90" />
-        </button>
+        <div className="absolute right-2 top-2 flex items-center gap-1">
+          {/* Speed and quality. These were in the player bar and came out of it, because seven
+              controls in that corner was the complaint — but they had nowhere else to go on
+              desktop, so taking them out of the bar removed the only way to reach them at all.
+              The mobile sheet has had them all along; this is the desktop equivalent. */}
+          <PlaybackMenu variant="bar" />
+          <button
+            type="button"
+            onClick={togglePanel}
+            aria-label="Hide now playing"
+            title="Hide now playing"
+            className="press flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
+          >
+            <ChevronIcon className="size-4 -rotate-90" />
+          </button>
+        </div>
       ) : null}
       <p
         className={`line-clamp-2 font-bold tracking-[var(--track-title)] ${
