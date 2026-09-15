@@ -1,5 +1,8 @@
 import "server-only";
 
+/** Deezer's own bucket in `packages/core` allows 20 with an 8/s refill; stay well under it. */
+export const DEEZER_AT_ONCE = 5;
+
 /**
  * `Promise.all` over a mapper, with at most `limit` in flight.
  *
