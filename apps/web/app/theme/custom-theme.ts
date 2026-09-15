@@ -103,21 +103,28 @@ export const DEFAULT_ACCENT = SKIN.accent;
 /** The grounds contrast is measured against. Mirrors --bg in globals.css for each theme. */
 export const GROUND = { light: SKIN.page, dark: SKIN.void } as const;
 
-/** Offered as one-tap starting points. Any colour at all is reachable past these. */
+/**
+ * A shortcut, not a catalogue.
+ *
+ * Three off the banner — the violet the app wears, the lilac beside it and the peach of the sun
+ * — and then one each of the hues the banner has none of, far enough apart that no two swatches
+ * are a choice between near-identical colours. Thirteen of these read as a colour chart to work
+ * through; at eight the row is one glance, and anything not here is a tap away in the picker,
+ * which is the honest place for "any colour at all".
+ *
+ * Dropped, and why: midnight and cream sat at the ends of the lightness range, where `accentFor`
+ * has to move them so far to clear the ground that the swatch stops resembling the result; rose
+ * and ember were a second pink and a second orange; graphite was a second grey.
+ */
 export const PRESETS: { name: string; hex: string }[] = [
-  { name: "Timbre violet", hex: BANNER.violet },
-  { name: "Blush", hex: "#ff6fa8" },
+  { name: "Violet", hex: BANNER.violet },
   { name: "Lilac", hex: BANNER.lilac },
-  { name: "Midnight", hex: BANNER.sky },
   { name: "Peach", hex: BANNER.sun },
-  { name: "Cream", hex: BANNER.cream },
-  { name: "Rose", hex: "#e2476d" },
-  { name: "Ember", hex: "#e06c2a" },
-  { name: "Moss", hex: "#3f9d5a" },
-  { name: "Teal", hex: "#1f9e9a" },
+  { name: "Blush", hex: "#ff6fa8" },
   { name: "Ocean", hex: "#2f6fe0" },
+  { name: "Teal", hex: "#1f9e9a" },
+  { name: "Moss", hex: "#3f9d5a" },
   { name: "Slate", hex: "#6b7280" },
-  { name: "Graphite", hex: "#8a8a93" },
 ];
 
 /**

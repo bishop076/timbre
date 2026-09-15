@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chromaOf, contrastRatio, hslHue } from "./color.ts";
+import { chromaOf, contrastRatio, hexToOklch, hslHue } from "./color.ts";
 import {
   accentFor,
   accentForeground,
@@ -62,6 +62,44 @@ test("the app and the mark are the same colour, and pink is still one tap away",
     PRESETS.some((preset) => preset.hex === "#ff6fa8"),
     "blush is offered, it is simply not the default",
   );
+});
+
+test("the presets are a shortcut, not a catalogue", () => {
+  assert.ok(PRESETS.length >= 6 && PRESETS.length <= 8, `${PRESETS.length} is not a short row`);
+  assert.equal(PRESETS[0].hex, DEFAULT_ACCENT, "the app's own colour comes first");
+
+  assert.equal(new Set(PRESETS.map((preset) => preset.hex)).size, PRESETS.length, "no repeats");
+  assert.equal(new Set(PRESETS.map((preset) => preset.name)).size, PRESETS.length);
+  for (const preset of PRESETS) {
+    assert.match(preset.hex, /^#[0-9a-f]{6}$/, `${preset.name} is not a plain hex`);
+  }
+
+  // The banner is where the palette comes from, so it is where the shortcuts start.
+  for (const hex of [BANNER.violet, BANNER.lilac, BANNER.sun]) {
+    assert.ok(
+      PRESETS.some((preset) => preset.hex === hex),
+      `${hex} is a banner colour and should be offered`,
+    );
+  }
+
+  // Far enough apart to be a choice. Two swatches a reader cannot tell apart are one swatch and
+  // a wasted tap. The one close pair is violet and lilac, which is a tone and its tint off the
+  // same banner and reads as two things; greys are exempt, having no hue to be distant in.
+  const colourful = PRESETS.filter((preset) => !isNeutralSeed(preset.hex)).map((preset) => ({
+    ...preset,
+    ...hexToOklch(preset.hex),
+  }));
+  for (let i = 0; i < colourful.length; i++) {
+    for (let j = i + 1; j < colourful.length; j++) {
+      const first = colourful[i];
+      const second = colourful[j];
+      const apart = Math.abs((((first.h - second.h + 540) % 360) + 360) % 360 - 180);
+      assert.ok(
+        apart >= 18 || Math.abs(first.l - second.l) >= 0.15,
+        `${first.name} and ${second.name} are the same colour twice`,
+      );
+    }
+  }
 });
 
 test("the seed already clears both grounds, so it is used as chosen", () => {

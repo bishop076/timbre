@@ -516,7 +516,7 @@ function General() {
 
   return (
     <>
-      <Caption>Saved in this browser, like everything else here.</Caption>
+      <Caption>Saved in this browser.</Caption>
 
       <Card className="mt-3 divide-y divide-[var(--line)]">
         <Choice
