@@ -1,33 +1,123 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Registered colour tokens.
+
+   An unregistered custom property is an untyped string to the engine: it flips
+   between values and `transition` skips it entirely. Registering as <color> is
+   the only thing that makes a theme change fade instead of jump, which is what
+   "seamless transitions of colours that change everytime" requires.
+
+   inherits: true because these cascade to the whole tree; the initial-value is
+   the purple default, so an element that somehow paints before :root resolves
+   still lands on brand rather than black.
+   --------------------------------------------------------------------------- */
+@property --accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #5b3fd6;
+}
+@property --accent-fg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+@property --accent-wash {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgb(91 63 214 / 0.1);
+}
+@property --bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ffffff;
+}
+@property --surface-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #f6f6f8;
+}
+@property --surface-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #efeff2;
+}
+@property --surface-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e6e6ec;
+}
+@property --fg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #101014;
+}
+@property --fg-dim {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #5d5d69;
+}
+@property --fg-faint {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #8c8c99;
+}
+@property --line {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgb(0 0 0 / 0.08);
+}
+@property --ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgb(0 0 0 / 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   Light — a white page with grey cards, the way Apple Music reads. Surfaces
+   separate by tone alone; there is no outline doing the work.
+   --------------------------------------------------------------------------- */
 :root,
 :root[data-theme="light"] {
-  --bg: #eef0f6;
-  --surface-1: #fbfcfe;
-  --surface-2: #e7eaf2;
-  --surface-3: #dbdfea;
-  --fg: #232733;
-  --fg-dim: #5c6273;
-  --fg-faint: #8990a1;
-  --line: #dfe3ec;
+  --bg: #ffffff;
+  --surface-1: #f6f6f8;
+  --surface-2: #efeff2;
+  --surface-3: #e6e6ec;
+  --fg: #101014;
+  --fg-dim: #5d5d69;
+  --fg-faint: #8c8c99;
+  --line: rgb(0 0 0 / 0.08);
 
   --accent: #5b3fd6;
   --accent-fg: #ffffff;
-  --accent-wash: rgba(91, 63, 214, 0.1);
+  --accent-wash: rgb(91 63 214 / 0.1);
 
-  --ink: hsl(228 12% 62%);
-  --drop: 1px 1px 0 hsl(228 14% 52% / 0.16);
-  --drop-sm: 1px 1px 0 hsl(228 14% 52% / 0.16);
-  --drop-lg: 2px 2px 0 hsl(228 14% 52% / 0.16);
+  /* --ink was a near-black outline colour; it is now the same hairline as
+     --line. Kept as its own token because ~190 call sites read it through
+     .slab, and renaming them is churn with no visual result. */
+  --ink: rgb(0 0 0 / 0.08);
+
+  /* Elevation, not a cartoon offset. These were `Npx Npx 0` — a hard shadow
+     with zero blur, sitting down-right like a sticker. Real players cast a
+     soft ambient shadow or none at all. */
+  --drop: 0 1px 2px rgb(16 16 20 / 0.05), 0 4px 12px rgb(16 16 20 / 0.06);
+  --drop-sm: 0 1px 2px rgb(16 16 20 / 0.06);
+  --drop-lg: 0 8px 28px rgb(16 16 20 / 0.12);
 }
 
 :root {
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
+  /* Radii came down from 18px. Spotify's cards are 4-8px and its pills are
+     fully round; the in-between 18px is what read as "cartoony". */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
   --r-full: 999px;
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* How long a colour change takes. One number so a theme swap, an accent
+     change and an artwork-derived tint all move together. */
+  --tint-ms: 420ms;
 
   --bar-h: 6rem;
   --nav-h: 4rem;
@@ -37,7 +127,20 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
 
-  --edge: 2px;
+  /* Was 2px. A 2px border in a dark ink colour is the single biggest reason
+     this looked drawn rather than designed. */
+  --edge: 1px;
+
+  /* Type ramp. Display sizes get negative tracking because large text on a
+     tight grid needs it; body text does not. */
+  --text-display: clamp(1.75rem, 1.2rem + 1.6vw, 2.5rem);
+  --text-title: clamp(1.25rem, 1.05rem + 0.7vw, 1.6rem);
+  --text-section: 1.0625rem;
+  --text-body: 0.9375rem;
+  --text-meta: 0.8125rem;
+  --track-display: -0.022em;
+  --track-title: -0.014em;
+  --track-body: -0.006em;
 }
 
 @media (min-width: 64rem) {
@@ -46,46 +149,52 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Dark — near-black page, lifted cards, the Spotify reading. The accent is the
+   banner's light violet so the app and the artwork share a family.
+   --------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #08080a;
-    --surface-1: #101014;
-    --surface-2: #17171d;
-    --surface-3: #212129;
-    --fg: #f4f4f7;
-    --fg-dim: #a0a0af;
-    --fg-faint: #6e6e7e;
-    --line: #23232c;
+    --bg: #0a0a0c;
+    --surface-1: #121216;
+    --surface-2: #1a1a20;
+    --surface-3: #23232b;
+    --fg: #f2f2f5;
+    --fg-dim: #a8a8b4;
+    --fg-faint: #71717e;
+    --line: rgb(255 255 255 / 0.09);
 
-    --accent: #a78bfa;
-    --accent-fg: #0b0b0f;
-    --accent-wash: rgba(167, 139, 250, 0.14);
+    --accent: #8f74ff;
+    --accent-fg: #0b0a14;
+    --accent-wash: rgb(143 116 255 / 0.16);
 
-    --ink: hsl(0 0% 0%);
-    --drop: 3px 3px 0 hsl(0 0% 0% / 0.75);
-    --drop-sm: 2px 2px 0 hsl(0 0% 0% / 0.75);
-    --drop-lg: 5px 5px 0 hsl(0 0% 0% / 0.75);
+    --ink: rgb(255 255 255 / 0.09);
+
+    --drop: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+    --drop-sm: 0 1px 3px rgb(0 0 0 / 0.45);
+    --drop-lg: 0 12px 36px rgb(0 0 0 / 0.55);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #08080a;
-  --surface-1: #101014;
-  --surface-2: #17171d;
-  --surface-3: #212129;
-  --fg: #f4f4f7;
-  --fg-dim: #a0a0af;
-  --fg-faint: #6e6e7e;
-  --line: #23232c;
+  --bg: #0a0a0c;
+  --surface-1: #121216;
+  --surface-2: #1a1a20;
+  --surface-3: #23232b;
+  --fg: #f2f2f5;
+  --fg-dim: #a8a8b4;
+  --fg-faint: #71717e;
+  --line: rgb(255 255 255 / 0.09);
 
-  --accent: #a78bfa;
-  --accent-fg: #0b0b0f;
-  --accent-wash: rgba(167, 139, 250, 0.14);
+  --accent: #8f74ff;
+  --accent-fg: #0b0a14;
+  --accent-wash: rgb(143 116 255 / 0.16);
 
-  --ink: hsl(0 0% 0%);
-  --drop: 3px 3px 0 hsl(0 0% 0% / 0.75);
-  --drop-sm: 2px 2px 0 hsl(0 0% 0% / 0.75);
-  --drop-lg: 5px 5px 0 hsl(0 0% 0% / 0.75);
+  --ink: rgb(255 255 255 / 0.09);
+
+  --drop: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.45);
+  --drop-sm: 0 1px 3px rgb(0 0 0 / 0.45);
+  --drop-lg: 0 12px 36px rgb(0 0 0 / 0.55);
 
   --banner-fade: 45%;
 }
@@ -94,24 +203,27 @@
   --banner-fade: 26%;
 }
 
+/* Pastel keeps its identity — a warmer, lighter violet — but loses the heavy
+   outline and hard shadow along with everything else. */
 :root[data-theme="light"][data-mode="pastel"] {
-  --bg: #f7f4fb;
-  --surface-1: #fffdff;
-  --surface-2: #f0ebf7;
-  --surface-3: #e4dcef;
-  --fg: #2f2839;
-  --fg-dim: #6b6379;
-  --fg-faint: #948da1;
-  --line: #e6dff0;
+  --bg: #faf7fd;
+  --surface-1: #ffffff;
+  --surface-2: #f4eefb;
+  --surface-3: #eae1f5;
+  --fg: #241d2e;
+  --fg-dim: #635a72;
+  --fg-faint: #918a9d;
+  --line: rgb(90 60 130 / 0.12);
 
-  --accent: #b48ee0;
-  --accent-fg: #2f2839;
-  --accent-wash: rgba(180, 142, 224, 0.28);
+  --accent: #7c5cf6;
+  --accent-fg: #ffffff;
+  --accent-wash: rgb(124 92 246 / 0.14);
 
-  --ink: hsl(268 16% 66%);
-  --drop: 1px 1px 0 hsl(268 22% 58% / 0.14);
-  --drop-sm: 1px 1px 0 hsl(268 22% 58% / 0.14);
-  --drop-lg: 2px 2px 0 hsl(268 22% 58% / 0.14);
+  --ink: rgb(90 60 130 / 0.12);
+
+  --drop: 0 1px 2px rgb(90 60 130 / 0.06), 0 4px 14px rgb(90 60 130 / 0.08);
+  --drop-sm: 0 1px 2px rgb(90 60 130 / 0.07);
+  --drop-lg: 0 10px 30px rgb(90 60 130 / 0.14);
 }
 
 @theme inline {
@@ -135,17 +247,73 @@
   border: var(--edge) solid transparent;
 }
 
+/* Press was `translate(2px, 2px)` with the shadow collapsing to zero — the
+   sticker-being-pushed-down gesture. Every real player scales instead: the
+   control stays where it is and acknowledges the touch. Scaling also survives
+   being inside a scroll container, which translating did not. */
 .press {
   transition:
-    transform 0.09s var(--ease),
-    box-shadow 0.09s var(--ease);
+    transform 0.12s var(--ease),
+    filter 0.12s var(--ease);
 }
 .press:active:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: 0 0 0 var(--ink);
+  transform: scale(0.97);
 }
-:root[data-theme="light"] .press:active:not(:disabled) {
-  transform: translate(1px, 1px);
+/* A scale on a big surface reads as a wobble, so cards dim rather than shrink. */
+.press-soft:active:not(:disabled) {
+  transform: none;
+  filter: brightness(0.94);
+}
+
+/* ---------------------------------------------------------------------------
+   One focus ring, for any accent and any background the user sets.
+
+   A ring drawn only in --accent disappears the moment someone picks an accent
+   close to their surface, and a custom background image can put anything at all
+   behind it. Two rings solve it without knowing either colour: an inner light
+   halo and an outer dark one, so whichever way the backdrop goes, one of the two
+   is visible. Same trick as a map label's halo.
+   --------------------------------------------------------------------------- */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--ring-inner, #fff),
+    0 0 0 4px var(--ring-outer, #0a0a0c);
+  border-radius: inherit;
+}
+:root[data-theme="dark"],
+:root:not([data-theme="light"]) {
+  --ring-inner: #0a0a0c;
+  --ring-outer: #f2f2f5;
+}
+:root[data-theme="light"] {
+  --ring-inner: #ffffff;
+  --ring-outer: #101014;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ring-inner: #ffffff;
+    --ring-outer: #101014;
+  }
+}
+
+/* Anything that has opted into the tint transition also carries colour changes
+   smoothly. The tokens are registered above, which is what makes this animate
+   at all rather than snap. */
+:root {
+  transition:
+    --accent var(--tint-ms) var(--ease),
+    --accent-fg var(--tint-ms) var(--ease),
+    --accent-wash var(--tint-ms) var(--ease),
+    --bg var(--tint-ms) var(--ease),
+    --surface-1 var(--tint-ms) var(--ease),
+    --surface-2 var(--tint-ms) var(--ease),
+    --surface-3 var(--tint-ms) var(--ease),
+    --fg var(--tint-ms) var(--ease),
+    --fg-dim var(--tint-ms) var(--ease),
+    --fg-faint var(--tint-ms) var(--ease),
+    --line var(--tint-ms) var(--ease),
+    --ink var(--tint-ms) var(--ease);
 }
 
 html {
