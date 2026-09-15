@@ -10,7 +10,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 // The banner violet, and --accent in globals.css.
-const ACCENT = "#ff6fa8";
+const ACCENT = "#5b3fd6";
 
 const DESCRIPTION = "Search YouTube Music, SoundCloud and more from one place.";
 
@@ -212,7 +212,7 @@ try {
     // These two are GROUND in theme/custom-theme.ts, written out as literals because the boot
     // script is a template string and cannot import. A parity test compares this script against
     // the live path, which is how the stale pair was caught when the palette went pink.
-    r.style.setProperty("--app-bg-scrim", r.dataset.theme === "light" ? "#f9eef2" : "#120810");
+    r.style.setProperty("--app-bg-scrim", r.dataset.theme === "light" ? "#f6f4fc" : "#0b0814");
   }
 
   var scale = clamp(Math.round(number(t.textScale, 1) * 100) / 100, 0.85, 1.5);

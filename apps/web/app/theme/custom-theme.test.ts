@@ -7,7 +7,7 @@ import {
   accentForeground,
   artworkSeed,
   BANNER,
-  BLUSH,
+  SKIN,
   clampBlur,
   clampDim,
   clampScale,
@@ -35,10 +35,11 @@ import {
 
 const theme = (patch: Partial<Theme> = {}): Theme => withMirror({ ...DEFAULT_THEME, ...patch });
 
-test("nobody choosing anything means blush pink, on dark, and the app keeps its own colour", () => {
-  assert.equal(DEFAULT_ACCENT, "#ff6fa8");
-  assert.equal(DEFAULT_ACCENT, BLUSH.hot);
-  assert.equal(DEFAULT_THEME.accent, "#ff6fa8");
+test("nobody choosing anything means the banner violet, on dark, and the app keeps its own colour", () => {
+  assert.equal(DEFAULT_ACCENT, "#5b3fd6");
+  assert.equal(DEFAULT_ACCENT, SKIN.accent);
+  assert.equal(DEFAULT_ACCENT, BANNER.violet, "the app wears the mark's colour");
+  assert.equal(DEFAULT_THEME.accent, "#5b3fd6");
   assert.equal(DEFAULT_THEME.ground, "dark");
   assert.equal(
     DEFAULT_THEME.accentSource,
@@ -47,33 +48,32 @@ test("nobody choosing anything means blush pink, on dark, and the app keeps its 
   );
   assert.equal(DEFAULT_THEME.contrast, "normal");
   assert.equal(DEFAULT_THEME.textScale, 1);
-  assert.equal(parseTheme(null).accent, "#ff6fa8");
-  assert.equal(parseTheme(undefined).accent, "#ff6fa8");
-  assert.equal(parseTheme("nonsense").accent, "#ff6fa8");
+  assert.equal(parseTheme(null).accent, "#5b3fd6");
+  assert.equal(parseTheme(undefined).accent, "#5b3fd6");
+  assert.equal(parseTheme("nonsense").accent, "#5b3fd6");
   assert.equal(parseTheme(42).ground, "dark");
 });
 
-test("the banner's colours are still reachable, they are just not the default", () => {
-  // The mark is a dusk scene and reads violet; the interface it introduces is blush. Both sets
-  // live here, and the banner's are offered as presets — this pins that they were kept.
-  assert.equal(BANNER.violet, "#5b3fd6");
+test("the app and the mark are the same colour, and pink is still one tap away", () => {
+  // This went pink for an afternoon, read off reference screenshots that were about the look
+  // rather than the hue. The colour had already been specified: the banner's violet.
+  assert.equal(SKIN.accent, BANNER.violet);
   assert.ok(
-    PRESETS.some((preset) => preset.hex === BANNER.violet),
-    "the banner violet is still one tap away",
+    PRESETS.some((preset) => preset.hex === "#ff6fa8"),
+    "blush is offered, it is simply not the default",
   );
 });
 
-test("the seed is darkened on the light ground, because hot pink cannot carry text", () => {
-  // #ff6fa8 against the blush page is 2.2:1 — fine as a fill with black on it, nowhere near
-  // readable as text. accentFor walks it down OKLCH lightness until it clears AA, which is why
-  // the light ground gets a deeper rose than the colour that was chosen.
+test("the seed already clears both grounds, so it is used as chosen", () => {
+  // The banner violet carries white at 6.72:1 on the light page and clears the dark ground too,
+  // which the pink this briefly was did not — that needed walking down to #c33675 before it
+  // could hold a word. A seed that already passes should come through untouched.
   const light = accentFor(DEFAULT_ACCENT, "light", "normal");
-  assert.notEqual(light, DEFAULT_ACCENT, "an uncorrected hot pink would fail on the page");
   assert.ok(
     contrastRatio(light, GROUND.light) >= 4.5,
     `${light} on ${GROUND.light} is ${contrastRatio(light, GROUND.light).toFixed(2)}`,
   );
-  assert.ok(Math.abs(hslHue(light) - hslHue(DEFAULT_ACCENT)) <= 8, "the hue is held while it darkens");
+  assert.ok(Math.abs(hslHue(light) - hslHue(DEFAULT_ACCENT)) <= 8, "the hue is held");
 
   // The dark ground needs no such rescue: the seed already clears it.
   const dark = accentFor(DEFAULT_ACCENT, "dark", "normal");
@@ -150,8 +150,11 @@ test("a saved template keeps its ground, and is reset onto the app's own colour"
 test("a store already on this version is left exactly as the reader left it", () => {
   // The migration must be a one-off, not a rule. Once v is current, a chosen colour and a
   // chosen source survive every read — otherwise nobody could ever pick anything again.
+  // DEFAULT_THEME.v rather than a literal: this test is about "current version is not migrated",
+  // and writing the number here means it silently starts testing the migration path instead the
+  // next time the version moves — which is exactly what happened on the first bump.
   const chosen = parseTheme({
-    v: 2,
+    v: DEFAULT_THEME.v,
     ground: "light",
     accentSource: "artwork",
     accent: "#2f6fe0",
