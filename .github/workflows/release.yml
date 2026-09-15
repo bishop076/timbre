@@ -44,9 +44,22 @@ jobs:
       - name: Build the container, and discard it
         run: docker build -t timbre:ci-check .
 
+      # Moved here from ci.yml, which no longer runs on main — main was running the four
+      # commands above twice, once in each workflow, and this step was the only thing the
+      # second run added. Runtime dependencies only, and only high and above, so a dev-only
+      # advisory does not stop a release.
+      - name: Audit the locked dependencies
+        run: pnpm audit --prod --audit-level high
+
+  # main is what deploys, so main is where opening a page matters most. Same `if` as verify, so
+  # the two skip together on a release commit and `release` below skips with them.
+  smoke:
+    if: "!contains(github.event.head_commit.message, 'chore(release):')"
+    uses: ./.github/workflows/smoke.yml
+
   release:
     name: Version, changelog and GitHub Release
-    needs: verify
+    needs: [verify, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
