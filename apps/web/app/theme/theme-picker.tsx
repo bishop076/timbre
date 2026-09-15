@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CheckIcon, SpinnerIcon, TrashIcon } from "../icons";
 import { Caption } from "../page-chrome";
 import { useFilePicker } from "../profile/image-picker";
+import { rememberAccent, useAccentHistory } from "./accent-history";
 import {
   ACCEPT as ACCEPT_IMAGE,
   clearBackgroundImage,
@@ -17,7 +18,7 @@ import { contrastRatio, normaliseHex } from "./color";
 import {
   accentFor,
   accentForeground,
-  CONTRAST_TARGET,
+  CYCLE_STEP_MS,
   GROUND,
   MAX_DIM,
   MIN_DIM,
@@ -47,15 +48,20 @@ import {
 } from "./theme-store";
 
 const GROUNDS: { id: Ground; label: string }[] = [
-  { id: "dark", label: "Dark" },
   { id: "light", label: "Light" },
-  { id: "system", label: "Match device" },
+  { id: "dark", label: "Dark" },
+  { id: "system", label: "Follow system" },
 ];
 
-const SOURCES: { id: AccentSource; label: string; blurb: string }[] = [
-  { id: "artwork", label: "From the cover", blurb: "Changes with whatever is playing." },
-  { id: "fixed", label: "One colour", blurb: "The colour you choose, and only that." },
-  { id: "cycle", label: "Slowly changing", blurb: "Drifts through the wheel while you listen." },
+/**
+ * A note only where the label cannot carry it. "Album art" and "One colour" say what they do;
+ * "Cycling" does not say how fast, and a reader watching a still screen deserves the number
+ * rather than a sentence about drifting.
+ */
+const SOURCES: { id: AccentSource; label: string; note?: string }[] = [
+  { id: "fixed", label: "One colour" },
+  { id: "artwork", label: "Album art" },
+  { id: "cycle", label: "Cycling", note: `New hue every ${CYCLE_STEP_MS / 1000} seconds.` },
 ];
 
 const FITS: { id: BackgroundFit; label: string }[] = [
@@ -166,10 +172,22 @@ function Problem({ children }: { children: React.ReactNode }) {
 
 /* ------------------------------------------------------------------ colour */
 
+/**
+ * How long after the last change a colour counts as chosen rather than passed through.
+ *
+ * The wheel fires on every step of a drag, and the theme follows within 120ms so the app moves
+ * under the reader's hand — but three history slots filled with the colours a drag happened to
+ * cross would be worse than no history at all. A pause this long, or leaving the control, is
+ * the difference between the two.
+ */
+const SETTLED_MS = 900;
+
 function ColourField({ accent }: { accent: string }) {
   const [draft, setDraft] = useState(accent);
   const [bad, setBad] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chosen = useRef<string | null>(null);
   const typing = useRef(false);
 
   // The field follows the theme while the reader is not in it — cycling, or a cover, moves the
@@ -181,8 +199,17 @@ function ColourField({ accent }: { accent: string }) {
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      if (settle.current) clearTimeout(settle.current);
     };
   }, []);
+
+  /** Records what was last landed on, whether by pausing on it or by leaving the control. */
+  function remember(): void {
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = null;
+    if (chosen.current) rememberAccent(chosen.current);
+    chosen.current = null;
+  }
 
   function commit(next: string, delay: number): void {
     setDraft(next);
@@ -191,6 +218,9 @@ function ColourField({ accent }: { accent: string }) {
     if (!hex) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => chooseAccent(hex), delay);
+    chosen.current = hex;
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(remember, SETTLED_MS);
   }
 
   return (
@@ -201,6 +231,7 @@ function ColourField({ accent }: { accent: string }) {
           type="color"
           value={normaliseHex(draft) ?? accent}
           onChange={(event) => commit(event.target.value, 120)}
+          onBlur={remember}
           className="absolute -inset-2 size-[calc(100%+1rem)] cursor-pointer border-0 bg-transparent p-0"
         />
       </label>
@@ -211,7 +242,7 @@ function ColourField({ accent }: { accent: string }) {
           value={draft}
           spellCheck={false}
           autoComplete="off"
-          aria-label="Colour, as hex, rgb() or a colour name"
+          aria-label="Colour, as hex, rgb() or a name"
           aria-invalid={bad}
           placeholder="#5b3fd6"
           onFocus={() => (typing.current = true)}
@@ -219,6 +250,7 @@ function ColourField({ accent }: { accent: string }) {
             typing.current = false;
             setBad(false);
             setDraft(accent);
+            remember();
           }}
           onChange={(event) => commit(event.target.value, 350)}
           className="slab-sm w-full rounded-[var(--r-md)] bg-[var(--surface-2)] px-2.5 py-2 font-mono text-[12px] outline-none focus-visible:bg-[var(--surface-3)]"
@@ -227,35 +259,75 @@ function ColourField({ accent }: { accent: string }) {
 
       {bad && (
         <p role="alert" className="basis-full text-[11px] text-[var(--warn)]">
-          That is not a colour this can read. Try #5b3fd6, rgb(91 63 214) or violet.
+          Not a colour. Try #5b3fd6, rgb(91 63 214) or violet.
         </p>
       )}
     </div>
   );
 }
 
-function Swatches({ accent, onPick }: { accent: string; onPick: (hex: string) => void }) {
+function Dot({
+  hex,
+  label,
+  active,
+  onPick,
+}: {
+  hex: string;
+  label: string;
+  active: boolean;
+  onPick: (hex: string) => void;
+}) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {PRESETS.map((preset) => {
-        const active = preset.hex === accent;
-        return (
-          <button
-            key={preset.hex}
-            type="button"
-            onClick={() => onPick(preset.hex)}
-            aria-label={preset.name}
-            aria-pressed={active}
-            title={preset.name}
-            className={`press flex size-7 items-center justify-center rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
-              active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
-            }`}
-            style={{ background: preset.hex, color: accentForeground(preset.hex) }}
-          >
-            {active && <CheckIcon className="size-3.5" />}
-          </button>
-        );
-      })}
+    <button
+      type="button"
+      onClick={() => onPick(hex)}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      className={`press flex size-7 items-center justify-center rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
+        active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
+      }`}
+      style={{ background: hex, color: accentForeground(hex) }}
+    >
+      {active && <CheckIcon className="size-3.5" />}
+    </button>
+  );
+}
+
+/**
+ * The eight templates, then — behind a rule — the last three colours the reader mixed for
+ * themselves. Presets are left out of that list on purpose: one is never more than a tap away
+ * on the row above, and repeating it here would spend a slot saying so twice.
+ */
+function Swatches({ accent, onPick }: { accent: string; onPick: (hex: string) => void }) {
+  const history = useAccentHistory();
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {PRESETS.map((preset) => (
+        <Dot
+          key={preset.hex}
+          hex={preset.hex}
+          label={preset.name}
+          active={preset.hex === accent}
+          onPick={onPick}
+        />
+      ))}
+
+      {history.length > 0 && (
+        <>
+          <span aria-hidden className="mx-1 h-6 w-px shrink-0 bg-[var(--line)]" />
+          {history.map((hex) => (
+            <Dot
+              key={hex}
+              hex={hex}
+              label={`Yours, ${hex}`}
+              active={hex === accent}
+              onPick={onPick}
+            />
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -267,7 +339,11 @@ function Readout({ theme, light }: { theme: Theme; light: boolean }) {
   const seed = useAccentSeed();
   const accent = accentFor(seed, light ? "light" : "dark", theme.contrast);
   const ratio = contrastRatio(accent, GROUND[light ? "light" : "dark"]);
-  const target = CONTRAST_TARGET[theme.contrast];
+
+  // The swatch and the hex are the *used* colour, not the chosen one, because that is what the
+  // reader is looking at everywhere else in the app. Where the two differ, the chosen one is
+  // named rather than quietly dropped.
+  const moved = seed.toLowerCase() !== accent.toLowerCase();
 
   return (
     <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -279,12 +355,8 @@ function Readout({ theme, light }: { theme: Theme; light: boolean }) {
       </span>
       <span className="font-mono text-[11px] text-[var(--fg-faint)]">{accent}</span>
       <span className="text-[11px] text-[var(--fg-dim)]">
-        {ratio.toFixed(1)}:1 against the background
-        {ratio + 0.05 < target
-          ? " — lifted to reach it"
-          : seed.toLowerCase() === accent.toLowerCase()
-            ? " — your colour, unchanged"
-            : " — adjusted to stay readable"}
+        {ratio.toFixed(1)}:1 on the background
+        {moved && ` · adjusted from ${seed}`}
       </span>
     </div>
   );
@@ -300,10 +372,7 @@ function BackgroundGroup({ theme, light }: { theme: Theme; light: boolean }) {
   const readable = scrimIsReadable(theme.background.dim, light, light ? "#232733" : "#f4f4f7");
 
   return (
-    <Group
-      title="Background picture"
-      detail="A picture from this device, behind everything. It is kept in this browser and never uploaded."
-    >
+    <Group title="Background picture">
       {picker.input}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -348,7 +417,7 @@ function BackgroundGroup({ theme, light }: { theme: Theme; light: boolean }) {
       {image && (
         <div className="mt-3">
           <Segmented
-            label="How the picture fits"
+            label="Picture fit"
             value={theme.background.fit}
             options={FITS}
             onChange={(fit) => setBackgroundPrefs({ fit })}
@@ -374,10 +443,7 @@ function BackgroundGroup({ theme, light }: { theme: Theme; light: boolean }) {
             />
           </div>
           {!readable && (
-            <Problem>
-              At this dimming, text over the brightest part of a picture can fall below the
-              readable minimum. Raise it, or add some blur.
-            </Problem>
+            <Problem>Text will be hard to read over the brightest parts. Dim it, or add blur.</Problem>
           )}
         </div>
       )}
@@ -394,10 +460,7 @@ function FontGroup({ theme }: { theme: Theme }) {
   });
 
   return (
-    <Group
-      title="Typeface"
-      detail="Every choice falls back to your device's own font, so nothing here can leave the app unreadable."
-    >
+    <Group title="Typeface">
       {picker.input}
 
       <div className="grid gap-1.5 sm:grid-cols-2">
@@ -430,7 +493,7 @@ function FontGroup({ theme }: { theme: Theme }) {
       {picker.busy && (
         <p className="mt-2 flex items-center gap-2 text-[11px] text-[var(--fg-dim)]">
           <SpinnerIcon className="size-3.5 animate-spin" />
-          Reading that font…
+          Reading the font…
         </p>
       )}
 
@@ -462,28 +525,24 @@ function FontGroup({ theme }: { theme: Theme }) {
 export function ThemePicker() {
   const theme = useTheme();
   const light = resolveGround(theme, prefersDark()) === "light";
+  const note = SOURCES.find((source) => source.id === theme.accentSource)?.note;
 
   return (
     <section>
-      <Caption>
-        Saved in this browser, like everything else here. Pictures and fonts you add are kept on
-        this device and never uploaded.
-      </Caption>
+      <Caption>Saved in this browser. Pictures and fonts you add stay on this device.</Caption>
 
-      <Group title="Ground" detail="What the app sits on.">
+      <Group title="Ground">
         <Segmented label="Ground" value={theme.ground} options={GROUNDS} onChange={setGround} />
       </Group>
 
-      <Group title="Colour" detail="One colour. Everything else is worked out from it.">
+      <Group title="Colour">
         <Segmented
-          label="Where the colour comes from"
+          label="Colour source"
           value={theme.accentSource}
           options={SOURCES}
           onChange={setAccentSource}
         />
-        <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--fg-dim)]">
-          {SOURCES.find((source) => source.id === theme.accentSource)?.blurb}
-        </p>
+        {note && <p className="mt-1.5 text-[11px] text-[var(--fg-dim)]">{note}</p>}
 
         <div className="mt-3 space-y-2.5">
           <Swatches accent={theme.accent} onPick={chooseAccent} />
@@ -499,20 +558,17 @@ export function ThemePicker() {
             onChange={(event) => setTintSurfaces(event.target.checked)}
             className="size-4 accent-[var(--accent)]"
           />
-          Tint the greys with it too
+          Tint the greys
         </label>
       </Group>
 
-      <Group
-        title="Readability"
-        detail="Whatever you pick above is adjusted until it clears this. It is never taken at face value."
-      >
+      <Group title="Readability" detail="Your colour is adjusted until it clears this.">
         <Segmented
           label="Contrast"
           value={theme.contrast}
           options={[
-            { id: "normal" as Contrast, label: "Normal (AA)" },
-            { id: "high" as Contrast, label: "High (AAA)" },
+            { id: "normal" as Contrast, label: "Normal" },
+            { id: "high" as Contrast, label: "High" },
           ]}
           onChange={setContrast}
         />
@@ -537,7 +593,7 @@ export function ThemePicker() {
         onClick={resetTheme}
         className="press mt-3 text-[11px] font-semibold text-[var(--fg-dim)] underline decoration-dotted hover:text-[var(--fg)]"
       >
-        Put everything back to the way it came
+        Reset appearance
       </button>
     </section>
   );
