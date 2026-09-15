@@ -253,7 +253,7 @@ export function PlayerBar() {
       {/* Three columns, not three flex children: the transport sits on the bar's centre line
           whatever the track is called, which is how every player people already know does it.
           A flex row with `flex-1` on each side drifts as soon as the title is long. */}
-      <footer className="relative hidden shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 bg-[var(--surface-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:grid">
+      <footer className="relative hidden shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4 bg-[var(--shell-1)] px-4 pb-[calc(0.5rem+var(--safe-b))] pt-2 lg:grid">
         <div className="absolute inset-x-0 -top-2 z-10 px-2">
           <Scrub height="h-4" />
         </div>
