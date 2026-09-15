@@ -87,10 +87,14 @@ const store = createLocalStore<PlaylistsState>({
   keys: [KEY],
 });
 
-function persist(): void {
-  const next = state(null);
-  if (writeJson(KEY, all)) store.publish(next);
-  else store.publish(state("Out of browser storage. Remove a playlist, or a profile picture."));
+/** Publishes what is now held, and answers whether storage took it. */
+function persist(): boolean {
+  if (writeJson(KEY, all)) {
+    store.publish(state(null));
+    return true;
+  }
+  store.publish(state("Out of browser storage. Remove a playlist, or a profile picture."));
+  return false;
 }
 
 export const loadPlaylists = store.load;
@@ -296,7 +300,13 @@ export function importPlaylists(data: unknown): number {
   }
 
   const now = new Date().toISOString();
-  const existing = held();
+  // Copies, not the live records. A merge writes into playlists this browser already has, and
+  // `persist()` answers a refused write by publishing rather than throwing — so a file too big
+  // for what is left of the quota landed in memory, failed to store, and left the library
+  // holding songs no file describes until the next reload took them away again. Merging into
+  // copies means the swap at the foot of this function is the only moment anything changes,
+  // and it happens after the write rather than before it.
+  const existing = held().map((playlist) => ({ ...playlist, songs: [...playlist.songs] }));
 
   // Re-importing the same file used to double the whole library: every incoming playlist was
   // minted a fresh `crypto.randomUUID()` and prepended, so nothing could ever recognise a
@@ -320,7 +330,13 @@ export function importPlaylists(data: unknown): number {
     // less than it was given is the one thing a backup may not do.
     const coverUrl = usableArtwork(playlist.coverUrl);
 
-    const match = (id && byId.get(id)) || byName.get(name.toLowerCase());
+    // A file's id is the playlist's identity; its name is not. Trying the name *as well* meant a
+    // list from somebody else's export was absorbed into whichever of yours happened to share a
+    // title — their three songs merged into your "Favourites", no new tile anywhere, and
+    // "Imported 1 playlist" underneath to say it had worked. "Playlists only — for sending to
+    // someone" is the menu item that produces those files. The name stays as the fallback for a
+    // file old enough to carry no id, which is all it was ever meant to be.
+    const match = id ? byId.get(id) : byName.get(name.toLowerCase());
     if (match) {
       const known = new Set(match.songs.map((song) => song.id));
       const fresh: Song[] = [];
@@ -351,7 +367,17 @@ export function importPlaylists(data: unknown): number {
     added.push(made);
   }
 
+  const before = all;
   all = [...added, ...existing];
-  persist();
+  if (!persist()) {
+    // Nothing was stored, so nothing changed — which is what the copies above are for. Half a
+    // backup is a library in a state no file describes, and the caller announced "Imported 1
+    // playlist" directly beneath the storage warning while it was happening.
+    all = before;
+    store.publish(state(null));
+    throw new Error(
+      "There isn't room in this browser for that file. Remove a playlist or a picture, then try again.",
+    );
+  }
   return incoming.length;
 }
