@@ -4,6 +4,7 @@ import { listProviders, scoreCandidates, type RankedList } from "@timbre/provide
 
 import { fetchChartTracks } from "./deezer";
 import { fetchGenres, type LinkedSong } from "./discover";
+import { DEEZER_AT_ONCE, mapPool } from "./pool";
 import { bandOf } from "./rank-bands";
 import { getProviderRuntime } from "./providers";
 
@@ -92,16 +93,23 @@ export async function fetchRankings(limit = 100): Promise<Rankings> {
   };
 }
 
+/**
+ * `/explore` asks for thirty of these, and `Promise.all` put all thirty on the wire at once —
+ * ten past the capacity of Deezer's own bucket, from the one caller that does not go through
+ * it. The refusals come back as `DeezerUnavailable`, `deezer()` forgives them into `null` and
+ * `fetchChartTracks` into `[]`, so a genre whose chart was refused reads as a genre no charting
+ * song belongs to: it drops out of the genre mix and off the songs entirely, silently, and the
+ * page is `revalidate = 3600` so the gap stays for an hour. Same fan-out, same queue as
+ * `genre-feed.ts`.
+ */
 export async function fetchGenreCharts(genres: number): Promise<GenreChart[]> {
   const candidates = (await fetchGenres()).filter((entry) => entry.id !== 0).slice(0, genres);
 
-  return Promise.all(
-    candidates.map(async ({ id, name }) => ({
-      id,
-      genre: name,
-      trackIds: (await fetchChartTracks(id)).map((track) => String(track.id)),
-    })),
-  );
+  return mapPool(candidates, DEEZER_AT_ONCE, async ({ id, name }) => ({
+    id,
+    genre: name,
+    trackIds: (await fetchChartTracks(id)).map((track) => String(track.id)),
+  }));
 }
 
 function deezerIds(song: RankedSong): string[] {
