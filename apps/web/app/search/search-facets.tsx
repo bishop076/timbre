@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { toArtistSlug } from "../artist-slug";
+import { isSameArtist, toArtistSlug } from "../artist-slug";
 import { Artwork } from "../artwork";
 
 interface Artist {
@@ -69,7 +69,7 @@ export function useArtistMatch(query: string): ArtistMatch | null {
           });
           const body = response.ok ? ((await response.json()) as ArtistResponse | null) : null;
           const artist = body?.artist ?? null;
-          const exact = artist && toArtistSlug(artist.name) === toArtistSlug(trimmed);
+          const exact = artist && isSameArtist(trimmed, artist.name);
 
           setFound({
             key: trimmed,

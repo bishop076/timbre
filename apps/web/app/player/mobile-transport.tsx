@@ -50,9 +50,13 @@ export function MobileTransport() {
         <p className="truncate text-lg font-extrabold leading-tight">
           {current?.title ?? "Nothing playing"}
         </p>
-        <p className="truncate text-sm text-[var(--fg-dim)]">
-          {current?.artists.join(", ") || "Unknown artist"}
-        </p>
+        {/* Same pairing as the panel: "Unknown artist" describes a song with missing credits,
+            not the absence of a song. */}
+        {current ? (
+          <p className="truncate text-sm text-[var(--fg-dim)]">
+            {current.artists.join(", ") || "Unknown artist"}
+          </p>
+        ) : null}
       </div>
 
       <div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { toArtistSlug } from "../artist-slug";
+import { isSameArtist, toArtistSlug } from "../artist-slug";
 import { hideWhenBroken } from "../artwork";
 import { cover as coverSrc } from "../artwork-url";
 import { ChevronIcon } from "../icons";
@@ -18,7 +18,10 @@ export function ArtistCard({ name }: { name: string | null }) {
   const artist = useJson<{ artist: ArtistInfo | null }>(
     name ? `/api/artist?name=${encodeURIComponent(name)}` : null,
   ).data?.artist;
-  if (!artist) return null;
+  // `/api/artist` answers with its best guess rather than a match, so an uploader's handle comes
+  // back as whichever real artist scored highest — the card drew Black Pumas over a track by
+  // Pump Glock. Only somebody's own card belongs under their own name.
+  if (!artist || !name || !isSameArtist(name, artist.name)) return null;
 
   return (
     <Link
