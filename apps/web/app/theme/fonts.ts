@@ -26,7 +26,7 @@ export const FONTS = [
   {
     id: "default",
     label: "Timbre",
-    note: "Geist, the face the app ships with.",
+    note: "The app's own face.",
     stack: null,
   },
   {
@@ -44,7 +44,7 @@ export const FONTS = [
   {
     id: "rounded",
     label: "Rounded",
-    note: "Softer shapes, a little friendlier.",
+    note: "Rounded letterforms.",
     stack: `ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Nunito", ${FALLBACK}`,
   },
   {
@@ -56,7 +56,7 @@ export const FONTS = [
   {
     id: "legible",
     label: "High legibility",
-    note: "Wide, open letterforms, for tired eyes and small screens.",
+    note: "Wide, open letterforms.",
     stack: `"Atkinson Hyperlegible", "Lexend", Verdana, Tahoma, ${FALLBACK}`,
   },
   {
@@ -68,7 +68,7 @@ export const FONTS = [
   {
     id: "custom",
     label: "Your own font",
-    note: "A file from this device. It never leaves it.",
+    note: "A file from this device.",
     stack: null,
   },
 ] as const;
