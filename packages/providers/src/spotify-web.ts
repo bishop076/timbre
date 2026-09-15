@@ -32,15 +32,22 @@ async function get(
   url: string,
   caller?: AbortSignal,
   headers: HeadersInit = PAGE_HEADERS,
-  ms?: number,
+  ms = 6_000,
 ): Promise<Response> {
-  await takeSlot(ctx, "spotify", "Spotify");
+  // The same split `createRequester` makes: the budget covers the queue as well as the request,
+  // the queue may have half of it, and the fetch keeps whatever is left. Taking the slot outside
+  // the budget meant a drained bucket could add six seconds to every read on top of the read's
+  // own deadline — which for the hash crawl below was four reads deep.
+  const startedAt = Date.now();
+  await takeSlot(ctx, "spotify", "Spotify", { ms: Math.max(1, Math.round(ms / 2)) });
+  const left = Math.max(1, ms - (Date.now() - startedAt));
   // Not a bare `fetch`: these are the paths that do not go through `createRequester`, and they
   // were handing their callers a raw `DOMException` — `TimeoutError: The operation was aborted
   // due to timeout`, with no provider on it and no kind. `resolveUrl` reads exactly that kind to
   // tell a refused link from a service that is down, so an outage was filed as "nothing claims
   // this link"; `/api/spotify/search` logged the DOMException's own wording instead of Spotify's.
-  return fetchOrFail(url, { signal: deadlineSignal(caller, ms), cache: "no-store", headers }, "spotify", "Spotify", ms);
+  const init = { signal: deadlineSignal(caller, left), cache: "no-store" as const, headers };
+  return fetchOrFail(url, init, "spotify", "Spotify", ms);
 }
 
 const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
@@ -243,6 +250,7 @@ export function chunkUrl(mainJs: string, mainUrl: string, name: string): string 
 }
 
 const DISCOVERY_TTL_MS = 30 * 60 * 1000;
+const DISCOVERY_BUDGET_MS = 20_000;
 
 export interface DiscoveredHashes {
   hashes: Hashes;
@@ -282,8 +290,18 @@ export async function discoverHashesFrom(ctx: SearchContext, refused?: string): 
 
   discovering ??= (async () => {
     const result: DiscoveredHashes = { hashes: {}, from: {} };
+    // One budget for the crawl, not one per read. Each of the four reads used to start its own
+    // 20s clock, so a CDN that accepted the connection and then said nothing cost 20 seconds
+    // per read with nothing bounding the sequence. Measured against a stalling host: one
+    // `searchSpotifyWeb` call took 40.3 seconds, for a path whose deadline is 6 — and
+    // `/api/search` hands that one in-flight promise to every reader waiting on the same query,
+    // so all of them wait it out. Running out of budget reads as "no script", which is what a
+    // failed read already meant here.
+    const until = Date.now() + DISCOVERY_BUDGET_MS;
     const text = async (url: string) => {
-      const response = await get(ctx, url, undefined, { "User-Agent": USER_AGENT }, 20_000);
+      const left = until - Date.now();
+      if (left <= 0) return null;
+      const response = await get(ctx, url, undefined, { "User-Agent": USER_AGENT }, left);
       return response.ok ? readCapped(response, "spotify", "Spotify", MAX_SCRIPT_BYTES) : null;
     };
     const adopt = (source: HashSource, script: string | null) => {
