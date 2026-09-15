@@ -22,8 +22,9 @@ export const RAIL_ICONS = 72;
 /** 13rem. The narrowest the rail goes *with words on it*: anything between this and the icon
  *  rail would be a label clipped mid-syllable, which is the thing the snap exists to prevent. */
 export const RAIL_MIN = 208;
-/** 24rem. */
-export const RAIL_MAX = 384;
+/** 19rem. 24 was wide enough that the rail started competing with the page for attention;
+ *  the nav rows and the playlist list both fit comfortably well before it. */
+export const RAIL_MAX = 304;
 /** Let go of the edge left of here and the rail collapses to icons. Roughly halfway across the
  *  dead band, so the rail commits to one state or the other well before the pointer stops. */
 export const RAIL_SNAP = 140;
@@ -59,8 +60,12 @@ export const PANEL_RAIL = 28;
  * and it was already gone, with no moment to stop at the smallest size you were allowed. This is
  * a detent: the panel sticks at PANEL_MIN through this much further travel, so reaching the limit
  * is something you feel before it becomes something you did.
+ *
+ * 120px, not the 56 it started at. 56 was still sensitive enough to collapse on a drag that had
+ * only slightly overshot — a detent you can cross by accident is not a detent. This is a
+ * deliberate shove, which is right for a gesture whose other outcome is "the panel disappears".
  */
-export const PANEL_RESIST = 56;
+export const PANEL_RESIST = 120;
 
 /** Whether a drag that ended at `width` means "collapse to the rail". */
 export function panelCollapsesAt(width: number): boolean {
@@ -79,8 +84,9 @@ export function panelPaintWidth(raw: number, ceiling: number): number {
   if (panelCollapsesAt(raw)) return PANEL_RAIL;
   return resolvePanelWidth(raw, ceiling);
 }
-/** 35rem. */
-export const PANEL_MAX = 560;
+/** 27.5rem. 35rem was wide enough to be a second page rather than a panel — at 1536 it took a
+ *  third of the window, and the shelves beside it dropped a whole column to pay for it. */
+export const PANEL_MAX = 440;
 /** 23rem — the fixed width the now-playing panel had before it could be dragged. */
 export const PANEL_DEFAULT = 368;
 
