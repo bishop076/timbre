@@ -231,6 +231,38 @@ for (const [name, sources, upstream] of repairCases) {
   );
 }
 
+const NEWER_SEARCH = "f".repeat(64);
+const table = (hash: string) => html(`SEARCH_OPERATION = Operation(\n    "searchDesktop",\n    "${hash}",\n)`);
+const scraper = (hash: string): Route => ["SpotifyScraper", table(hash)];
+const crawls = (calls: Call[]) => calls.filter((call) => call.url.includes("SpotifyScraper")).length;
+
+// Spotify rotates a persisted query on a deploy, and deploys more than once in half an hour.
+// The second repair used to be handed the first repair's reading straight out of the discovery
+// memo, see it naming the hash that had just been refused, and throw "no replacement could be
+// found" — without a single request going out to look for the successor that was sitting there.
+// Search then stayed broken for the rest of the memo's thirty minutes.
+test("a hash rotated twice inside the memo's lifetime is still repaired the second time", () =>
+  withRoutes(
+    [token(), RETIRED, scraper(NEW_SEARCH), FOUND, RETIRED, scraper(NEWER_SEARCH), FOUND],
+    async (calls) => {
+      assert.equal((await searchSpotifyWeb(ctx, "x")).length, 1);
+      assert.deepEqual(healedSpotifyHashes(), { search: NEW_SEARCH });
+
+      assert.equal((await searchSpotifyWeb(ctx, "y")).length, 1);
+      assert.deepEqual(healedSpotifyHashes(), { search: NEWER_SEARCH });
+      assert.equal(sentHash(calls.at(-1)!.url).sha256Hash, NEWER_SEARCH);
+      assert.equal(crawls(calls), 2, "the second rotation needed a reading of its own");
+    },
+  ));
+
+// The other half of the same bargain: re-reading on every refusal would send every later request
+// back to Spotify's CDN for as long as a genuinely retired query kept being asked for.
+test("the same refusal twice over is answered from the reading already taken", () =>
+  withRoutes([token(), RETIRED, scraper(SPOTIFY_OPERATIONS.search.sha256), RETIRED], async (calls) => {
+    for (const query of ["x", "y"]) await assert.rejects(searchSpotifyWeb(ctx, query), ProviderError);
+    assert.equal(crawls(calls), 1);
+  }));
+
 test("a bundle from anywhere but Spotify's CDN is not read, and the second source is a pinned commit", () =>
   withRoutes(
     [

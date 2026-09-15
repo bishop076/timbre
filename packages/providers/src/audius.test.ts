@@ -110,6 +110,29 @@ test("every host down is one error, after each was asked once", async () => {
   });
 });
 
+test("a drained bucket is not a host failure, and costs the pool nothing it had learnt", async () => {
+  // Its own bucket, so the shared one above is not drained into real waits by this test.
+  const ctx = { limiter: new RateLimiter(new MemoryBucketStore()) };
+  await withHosts({ [PRIMARY]: json({}, 503) }, async (provider, asked) => {
+    await provider.search!(ctx, "one", 5);
+    assert.deepEqual(asked, [PRIMARY, SECOND], "the pool should have learnt the primary is down");
+
+    // Timbre's own bucket for Audius, saturated. It is keyed on the provider, so no host can
+    // answer and no request leaves the process — nothing here is evidence about any host.
+    const saturated = { limiter: { acquire: async () => false } as unknown as RateLimiter };
+    asked.length = 0;
+    await assert.rejects(provider.search!(saturated, "burst", 5), (error: unknown) => {
+      assert.ok(error instanceof ProviderError);
+      assert.equal(error.kind, "rate_limited");
+      return true;
+    });
+    assert.deepEqual(asked, [], "a refused slot must not be carried round the pool");
+
+    await provider.search!(ctx, "two", 5);
+    assert.deepEqual(asked, [SECOND], "the pool forgot which host was actually down");
+  });
+});
+
 test("the caller's own abort is not a host failure", async () => {
   let aborted = false;
   const abortOnce = () => {
