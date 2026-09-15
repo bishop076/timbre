@@ -409,6 +409,12 @@ test("an embed page's track list stands in for pathfinder, preview clips include
   assert.deepEqual(album?.tracks[0]?.artists, ["Daft Punk", "Romanthony"]);
   assert.equal(album?.tracks[0]?.previewUrl, "https://p.scdn.co/mp3-preview/abc");
   assert.equal(collectionFromEmbed("album", ALBUM_ID, "<html></html>"), null);
+
+  // The clip is set as an `<audio src>`, so the host in it is a host the listener's browser
+  // connects to. An embed page is HTML scraped off the network, and this is the one field on a
+  // live result that does not go through `/api/art`.
+  const elsewhere = ALBUM_EMBED.replace("https://p.scdn.co/mp3-preview/abc", "https://evil.example/x.mp3");
+  assert.equal(collectionFromEmbed("album", ALBUM_ID, elsewhere)?.tracks[0]?.previewUrl, null);
 });
 
 test("an album still opens when pathfinder is down, from its embed page", () =>

@@ -1,5 +1,6 @@
 import { ProviderError } from "@timbre/core";
 
+import { previewOn } from "./preview-url.ts";
 import { MAX_SCRIPT_BYTES, deadlineSignal, fetchOrFail, readCapped, takeSlot } from "./request.ts";
 import type { SearchContext, SourceTrack } from "./types.ts";
 
@@ -545,7 +546,7 @@ export function collectionFromEmbed(kind: SpotifyCollectionKind, id: string, htm
         album: kind === "album" ? title : null,
         durationMs: track.duration ?? null,
         artworkUrl: cover,
-        previewUrl: track.audioPreview?.url ?? null,
+        previewUrl: previewOn("spotify", track.audioPreview?.url),
       });
     }),
   };
