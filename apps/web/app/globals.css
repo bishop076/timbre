@@ -23,6 +23,17 @@
   inherits: true;
   initial-value: rgb(255 111 168 / 0.18);
 }
+
+/* The accent, walked down until it can carry text.
+   --accent is a fill: hot pink with black on it, 6.99:1, exactly as the
+   references draw it. The same pink AS text on the blush page is 2.2:1. Those
+   are different jobs and they cannot be the same value, which is why reaching
+   for --accent to colour a word has been failing AA every time someone did it. */
+@property --accent-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #ad4b72;
+}
 @property --bg {
   syntax: "<color>";
   inherits: true;
@@ -126,6 +137,7 @@
 
   --accent: #ff6fa8;
   --accent-fg: #1f1218;
+  --accent-text: #ad4b72;
   --accent-wash: rgb(255 111 168 / 0.18);
 
   --danger: #b3261e;
@@ -196,6 +208,7 @@
 
     --accent: #ff8fc0;
     --accent-fg: #1f1218;
+    --accent-text: #ffa5cd;
     --accent-wash: rgb(255 143 192 / 0.18);
 
     --danger: #ff9f9f;
@@ -221,6 +234,7 @@
 
   --accent: #ff8fc0;
   --accent-fg: #1f1218;
+  --accent-text: #ffa5cd;
   --accent-wash: rgb(255 143 192 / 0.18);
 
   --danger: #ff9f9f;
@@ -252,6 +266,7 @@
 
   --accent: #ff8ab8;
   --accent-fg: #1f1218;
+  --accent-text: #a35876;
   --accent-wash: rgb(255 138 184 / 0.16);
 
   --danger: #b3261e;
@@ -343,6 +358,7 @@
     --accent var(--tint-ms) var(--ease),
     --accent-fg var(--tint-ms) var(--ease),
     --accent-wash var(--tint-ms) var(--ease),
+    --accent-text var(--tint-ms) var(--ease),
     --bg var(--tint-ms) var(--ease),
     --surface-1 var(--tint-ms) var(--ease),
     --surface-2 var(--tint-ms) var(--ease),

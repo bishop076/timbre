@@ -157,6 +157,28 @@ test("muted text clears AA on the busiest surface it is used on", () => {
   }
 });
 
+test("--accent-text can carry a word on the surface, in every mode and at every hue", () => {
+  // --accent is a fill and clears AA against the label ON it. --accent-text is the same colour
+  // walked until it clears AA against the surface BEHIND it. Conflating the two is how a "now
+  // playing" title ended up at 2.2:1 on the blush page.
+  for (let hue = 0; hue < 360; hue += 11) {
+    for (const theme of ALL) {
+      const palette = buildPalette({ hue, sat: 0.7 }, { ...theme, customHue: hue });
+      const s = parts(palette, "--surface-1");
+      const hex =
+        "#" +
+        oklchToRgb(s.L, s.C, s.H)
+          .map((c) => Math.round(c * 255).toString(16).padStart(2, "0"))
+          .join("");
+      const ratio = ratioAgainstHex(palette, "--accent-text", hex);
+      assert.ok(
+        ratio >= 4.5,
+        `${theme.mode} at hue ${hue}: --accent-text on --surface-1 is ${ratio.toFixed(2)}:1`,
+      );
+    }
+  }
+});
+
 test("accent text is derived from the accent, so it can never fail AA", () => {
   // This is the regression that mattered: --accent-fg used to be authored on its
   // own ramp, independent of --accent, so an artwork-driven accent could drift

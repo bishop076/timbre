@@ -83,6 +83,11 @@ function luminance(rgb: [number, number, number]): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+/** WCAG contrast between two sRGB triples. */
+export function contrastOf(a: [number, number, number], b: [number, number, number]): number {
+  return contrast(luminance(a), luminance(b));
+}
+
 function contrast(a: number, b: number): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
@@ -163,7 +168,29 @@ export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette 
   function withAccent(accentL: number, rest: Palette, chromaScale = 1): Palette {
     const C = chroma(accentChroma * chromaScale);
     const { fg } = readableOn(oklchToRgb(accentL, C, hue));
-    return { ...rest, "--accent": tone(accentL, C), "--accent-fg": fg };
+
+    // --accent is a fill and --accent-text is a text colour, and on a light ground they cannot
+    // be the same value: a hot pink that carries black beautifully at 6.99:1 is 2.2:1 as a word
+    // on the page behind it. Walk the lightness until it clears AA against the surface it will
+    // sit on, holding hue and chroma so it still reads as the same colour.
+    const ground = rest["--surface-1"];
+    const groundParts = /oklch\(([\d.]+) ([\d.]+) ([\d.]+)/.exec(ground);
+    const groundRgb = groundParts
+      ? oklchToRgb(Number(groundParts[1]), Number(groundParts[2]), Number(groundParts[3]))
+      : ([1, 1, 1] as [number, number, number]);
+    const step = light ? -0.02 : 0.02;
+    let textL = accentL;
+    for (let i = 0; i < 48; i++) {
+      if (contrastOf(oklchToRgb(textL, C, hue), groundRgb) >= 4.6) break;
+      textL = clamp(textL + step, 0.06, 0.98);
+    }
+
+    return {
+      ...rest,
+      "--accent": tone(accentL, C),
+      "--accent-fg": fg,
+      "--accent-text": tone(textL, C),
+    };
   }
 
   if (theme.mode === "pastel") {
