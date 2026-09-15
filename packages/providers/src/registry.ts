@@ -1,5 +1,6 @@
 import { PROVIDER_IDS, ProviderError } from "@timbre/core";
 
+import { rankSearchResults } from "./rank.ts";
 import { recommend, type SongIdentity } from "./recommend.ts";
 import {
   PLAYBACK_RANK,
@@ -70,7 +71,10 @@ export function searchAll(
   return collect(
     listProviders().filter((provider) => provider.searchable),
     (provider) => provider.search(ctx, query, limit),
-    interleaveByPlayability,
+    // Playability decides the order of answers the query cannot separate; the query decides the
+    // rest. Ranking here rather than after `mergeTracks` is what lets a demoted variant take its
+    // duplicates down with it — merge keeps the order it is given.
+    (answered) => rankSearchResults(interleaveByPlayability(answered), query),
   );
 }
 
