@@ -148,6 +148,19 @@ test("search reads tracks, prefers the 300px cover, and drops what cannot play",
   ]);
 });
 
+test("a track id that is not a Spotify track id is dropped, not built into a link", () => {
+  // The id becomes `open.spotify.com/track/<id>` and the `spotify:track:<id>` handed to the
+  // embed controller. The `uri` fallback beside it was always pinned to 22 base62 characters
+  // and `fetchSpotifyCollection` pins its own; `raw.id` was taken as given.
+  const of = (data: unknown) => tracksFromSearch({ searchV2: { tracksV2: { items: [{ item: { data } }] } } } as never);
+  for (const id of ["../../elsewhere", "", "short", `${TRACK_ID}x`, "0DiWol3AO6WpXZgp0goxA!"]) {
+    assert.equal(of({ ...RAW_TRACK, id }).length, 0, JSON.stringify(id));
+  }
+  assert.equal(of({ ...RAW_TRACK, id: TRACK_ID })[0]?.url, `https://open.spotify.com/track/${TRACK_ID}`);
+  // A bad `id` still lets a well-formed `uri` answer, which is the pair's whole point.
+  assert.equal(of({ ...RAW_TRACK, id: "nope", uri: `spotify:track:${TRACK_ID}` })[0]?.sourceId, TRACK_ID);
+});
+
 test("the query travels as a persisted-query GET naming the operation and its hash", () => {
   const url = new URL(pathfinderUrl("search", { searchTerm: "a&b" }));
   assert.equal(url.searchParams.get("operationName"), "searchDesktop");

@@ -374,6 +374,7 @@ interface RawTrack {
 }
 
 const TRACK_URI = /^spotify:track:([A-Za-z0-9]{22})$/;
+const TRACK_ID = /^[A-Za-z0-9]{22}$/;
 
 function pickCover(sources: RawImage[] | undefined): string | null {
   const usable = (sources ?? []).filter((source) => source.url);
@@ -405,7 +406,12 @@ export function spotifySourceTrack(
 
 function toSourceTrack(raw: RawTrack | undefined, fallback: { album?: string; cover?: string | null } = {}) {
   if (!raw || (raw.__typename && raw.__typename !== "Track")) return null;
-  const id = raw.id ?? TRACK_URI.exec(raw.uri ?? "")?.[1];
+  // `raw.id` used to be taken as given while the `uri` fallback beside it was pinned to 22
+  // base62 characters, and `fetchSpotifyCollection` pins its own id the same way before it
+  // fetches anything. This is the id that becomes `open.spotify.com/track/<id>` and the
+  // `spotify:track:<id>` the embed controller is handed, so it gets the shape the rest of the
+  // file already insists on rather than whatever the response happened to carry.
+  const id = [raw.id, TRACK_URI.exec(raw.uri ?? "")?.[1]].find((value) => value && TRACK_ID.test(value));
   const title = raw.name?.trim();
   if (!id || !title || raw.playability?.playable === false) return null;
 
