@@ -209,7 +209,10 @@ try {
     r.style.setProperty("--app-bg-blur", clamp(Math.round(number(prefs.blur, 8)), 0, 40) + "px");
     // The scrim is the ground colour, not black, and the ground is whatever the palette above
     // settled on — a light wash under dark text for one frame is the bug this avoids.
-    r.style.setProperty("--app-bg-scrim", r.dataset.theme === "light" ? "#eef0f6" : "#08080a");
+    // These two are GROUND in theme/custom-theme.ts, written out as literals because the boot
+    // script is a template string and cannot import. A parity test compares this script against
+    // the live path, which is how the stale pair was caught when the palette went pink.
+    r.style.setProperty("--app-bg-scrim", r.dataset.theme === "light" ? "#f9eef2" : "#120810");
   }
 
   var scale = clamp(Math.round(number(t.textScale, 1) * 100) / 100, 0.85, 1.5);
