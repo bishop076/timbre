@@ -1,5 +1,6 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, HTTPException, status
@@ -51,7 +52,11 @@ def search(request: SearchRequest) -> SearchResponse:
     # worker is already bounded by that timeout and frees itself.
     pool = ThreadPoolExecutor(max_workers=1)
     try:
-        pending_videos = pool.submit(_search_videos, request.query, request.limit)
+        # A thread starts with a fresh context, so without carrying ours across, the video
+        # search would not see this request's upstream budget and would take the full
+        # per-call bound of its own.
+        carried = copy_context()
+        pending_videos = pool.submit(carried.run, _search_videos, request.query, request.limit)
         try:
             results = get_client().search(request.query, filter="songs", limit=request.limit)
         except Exception as error:
