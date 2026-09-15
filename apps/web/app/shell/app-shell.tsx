@@ -18,7 +18,6 @@ import { searchPath } from "../search-url";
 import {
   PANEL_DEFAULT,
   PANEL_MAX,
-  PANEL_COLLAPSE_AT,
   PANEL_MIN,
   panelCollapsesAt,
   resolvePanelWidth,
@@ -179,9 +178,10 @@ function PanelEdge() {
         label="Resize the now playing panel"
         variable="--np-w"
         width={width}
-        // Below PANEL_MIN the gesture means "collapse to the rail", so the handle's own floor
-        // has to sit under the panel's or the threshold is unreachable.
-        min={PANEL_COLLAPSE_AT - 40}
+        // The handle's floor sits a little under the panel's so there is somewhere to drag TO —
+        // the collapse fires the moment the width would go under PANEL_MIN, and a handle clamped
+        // exactly at PANEL_MIN could never report a width below it.
+        min={PANEL_MIN - 40}
         max={ceiling}
         reset={PANEL_DEFAULT}
         direction={-1}

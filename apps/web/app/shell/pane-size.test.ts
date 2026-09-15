@@ -16,6 +16,7 @@ import {
   RAIL_MIN,
   RAIL_SNAP,
   RAIL_WIDE,
+  panelCollapsesAt,
   resolvePanelWidth,
   resolveRailWidth,
   roomFor,
@@ -161,4 +162,17 @@ test("a stored panel width is clamped on the way in", () => {
   assert.equal(parsePanelWidth(20), PANEL_MIN);
   assert.equal(parsePanelWidth("wide"), PANEL_DEFAULT);
   assert.equal(parsePanelWidth(null), PANEL_DEFAULT);
+});
+
+test("the panel collapses the moment it would go under its minimum", () => {
+  // The threshold and the minimum are the same number on purpose. When they differed there was a
+  // band between them where the panel had stopped resizing and had not yet collapsed — dragging
+  // into dead space, with nothing happening until it suddenly did.
+  assert.equal(panelCollapsesAt(PANEL_MIN - 1), true);
+  assert.equal(panelCollapsesAt(PANEL_MIN), false, "resting at the minimum is a size, not a hide");
+  assert.equal(panelCollapsesAt(PANEL_DEFAULT), false);
+
+  // A drag that produced no number should leave the panel alone rather than hiding it.
+  assert.equal(panelCollapsesAt(Number.NaN), false);
+  assert.equal(panelCollapsesAt(Number.POSITIVE_INFINITY), false);
 });
