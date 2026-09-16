@@ -59,7 +59,11 @@ export function ProgressiveAudioPlayer({
     const audio = audioRef.current;
     if (!audio || !streamUrl || !src) return;
 
-    const fallback = src === streamUrl ? nextStreamHost(src) : null;
+    // Asked of the url being *tried*, not of the one the song shipped with. `src === streamUrl`
+    // is true only on the first attempt, so the walk stopped dead after one hop: the second and
+    // third fallbacks `nextStreamHost` exists to reach were never asked for, and a track whose
+    // first two Audius nodes were down gave up with two of its four addresses untried.
+    const fallback = nextStreamHost(src);
     let started = false;
 
     // A media resource that fails to load fires the element's `error` event *and* rejects the
