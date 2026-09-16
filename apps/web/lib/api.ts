@@ -1,9 +1,11 @@
 import "server-only";
 
+import { ProviderError } from "@timbre/core";
 import type { z } from "zod";
 
 import { createCache } from "./cache";
-import { log, scrub } from "./log";
+import { deezerRefusal } from "./deezer";
+import { describeError, log, scrub } from "./log";
 import { clientKey, createRateLimiter } from "./rate-limit";
 
 const globalForApi = globalThis as unknown as {
@@ -49,6 +51,52 @@ export function reportFailures(
   }
 }
 
+/**
+ * The floor under every route: nothing gets out of here uncaught.
+ *
+ * `queryRoute` had no `try` at all, so whatever a handler threw went to the platform, and the
+ * platform's answer is a **500 with an empty body, no `content-type` and no `cache-control`** —
+ * measured on a production build, with a Deezer that was answering 200 the whole time. Nine
+ * routes stand on this wrapper; five of them have no `catch` of their own. A 500 says Timbre
+ * broke, and the ones that are not that had already been fixed one route at a time — `/api/art`,
+ * `/api/artist`, `/api/taste`, `/api/lyrics`, `/api/resolve`, `/api/spotify/search` all map a
+ * refusal to 502 + `no-store`. This is the same answer, given once, under all of them.
+ *
+ * The two kinds it can name are named. `DeezerUnavailable` goes through `deezerRefusal` so the
+ * wording stays the one wording. A `ProviderError` is only an outage when it says so:
+ * `resolveUrl` draws exactly this line, because a provider handed a link that is not its own
+ * declines with an error too, and calling that an outage is worse than the confusion it fixes.
+ *
+ * Anything else genuinely is Timbre broken, and stays a 500 — but a said 500, with a reason and
+ * `no-store` on it. Catching it here is also the last place `instrumentation.ts` would have seen
+ * it, so it is logged with the same `describeError` fields `onRequestError` writes.
+ */
+function routeFailed(route: string, error: unknown): Response {
+  const refusal = deezerRefusal(error);
+  if (refusal) return refusal;
+
+  const outage =
+    error instanceof ProviderError && (error.kind === "rate_limited" || error.kind === "transient")
+      ? error
+      : null;
+  log(outage ? "warn" : "error", "route_failed", { route, ...describeError(error) });
+
+  // Which source, and nothing else — `publicFailures` above says why the message itself never
+  // goes out.
+  return outage
+    ? Response.json(
+        {
+          error: "The service behind this wouldn't answer for it just now. Try again shortly.",
+          source: outage.provider,
+        },
+        { status: 502, headers: { "cache-control": "no-store" } },
+      )
+    : Response.json(
+        { error: "Timbre broke while answering this. Try again shortly." },
+        { status: 500, headers: { "cache-control": "no-store" } },
+      );
+}
+
 export function queryRoute<S extends z.ZodObject>(
   schema: S,
   invalid: string,
@@ -59,15 +107,21 @@ export function queryRoute<S extends z.ZodObject>(
     const refusal = guard(request);
     if (refusal) return refusal;
 
-    const params = new URL(request.url).searchParams;
-    const query = Object.keys(schema.shape).map((key) => [key, params.get(key) ?? undefined]);
+    const { pathname, searchParams } = new URL(request.url);
+    const query = Object.keys(schema.shape).map((key) => [key, searchParams.get(key) ?? undefined]);
     const parsed = schema.safeParse(Object.fromEntries(query));
-    if (parsed.success) return handle(parsed.data, request);
+    if (!parsed.success) {
+      return Response.json(
+        issues ? { error: invalid, issues: parsed.error.issues } : { error: invalid },
+        { status: 400 },
+      );
+    }
 
-    return Response.json(
-      issues ? { error: invalid, issues: parsed.error.issues } : { error: invalid },
-      { status: 400 },
-    );
+    try {
+      return await handle(parsed.data, request);
+    } catch (error) {
+      return routeFailed(pathname, error);
+    }
   };
 }
 
