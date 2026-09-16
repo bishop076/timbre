@@ -65,7 +65,15 @@ function usableSource(value: unknown): SourceTrack | null {
   const playback = PLAYBACK.has(raw.playback as SourceTrack["playback"])
     ? (raw.playback as SourceTrack["playback"])
     : "link";
-  const url = typeof raw.url === "string" && onHosts(raw.url, SOURCE_HOSTS[raw.source] ?? []) ? raw.url : null;
+  // `SOURCE_HOSTS[raw.source] ?? []` looked like it defaulted an unknown source to "no hosts",
+  // and did for every name except the ones Object.prototype already answers. A stored song
+  // whose `source` is "constructor" or "__proto__" got back a function or the prototype — not
+  // nullish, so `??` never fired — and `hosts.includes(...)` below was then a TypeError thrown
+  // out of a parser the whole of S-1 and S-11 exists to make total. One planted entry in
+  // `timbre:likes` put "This page stopped working." on /library and /liked on every load, and
+  // the only way out was clearing storage, which takes the playlists with it.
+  const hosts = Object.hasOwn(SOURCE_HOSTS, raw.source) ? SOURCE_HOSTS[raw.source] : [];
+  const url = typeof raw.url === "string" && onHosts(raw.url, hosts) ? raw.url : null;
   const previewUrl =
     typeof raw.previewUrl === "string" && underDomains(raw.previewUrl, PREVIEW_HOSTS) ? raw.previewUrl : null;
 
