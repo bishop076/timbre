@@ -41,6 +41,22 @@ test("anything unreadable is null, so a half-typed code never repaints the app",
   }
 });
 
+test("a name that is also a property of Object is not a colour", () => {
+  // The colour field's own label is "Colour, as hex, rgb() or a name", and the names live in an
+  // object literal — so every key on Object.prototype answered the lookup too. "constructor"
+  // came back as the Object constructor, `.slice(1)` on it threw, and because parseColor is
+  // called during the field's own render, typing the word replaced the page with "This page
+  // stopped working." The same throw came out of storage: a planted timbre:accents of
+  // ["constructor"] goes through normaliseHex on every load of Appearance.
+  for (const input of ["constructor", "__proto__", "CONSTRUCTOR", " Constructor ", "toString", "valueOf", "hasOwnProperty"]) {
+    assert.equal(hex(input), null, `${JSON.stringify(input)} should not parse`);
+    assert.doesNotThrow(() => contrastRatio(input, "#ffffff"));
+    assert.doesNotThrow(() => hslHue(input));
+    assert.doesNotThrow(() => chromaOf(input));
+  }
+  assert.equal(hex("violet"), "#ee82ee", "a real name still resolves");
+});
+
 test("isHex only accepts the normalised form", () => {
   assert.ok(isHex("#5b3fd6"));
   assert.ok(!isHex("#5B3FD6"));

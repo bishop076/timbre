@@ -66,6 +66,21 @@ test("a link that does not belong to its source is dropped", () => {
   assert.equal(song?.sources[2]?.url, null);
 });
 
+test("a source named after a property of Object is a source nobody serves", () => {
+  // The host table is an object literal, so `SOURCE_HOSTS[raw.source]` answered "constructor"
+  // with the Object constructor and "__proto__" with the prototype — neither nullish, so the
+  // `?? []` never fired and `hosts.includes(...)` was a TypeError thrown *out of* the parser
+  // this file was built to make total. One of these in `timbre:likes` put
+  // "This page stopped working." on /library and /liked on every load, for good.
+  for (const name of ["constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"]) {
+    const songs = usableSongs([
+      { ...GOOD, sources: [{ source: name, sourceId: "x", url: "https://soundcloud.com/a/b", playback: "queue" }] },
+    ]);
+    assert.equal(songs[0]?.sources[0]?.source, name, `${name} should survive as a name`);
+    assert.equal(songs[0]?.sources[0]?.url, null, `${name} names no host, so it keeps no link`);
+  }
+});
+
 test("a preview from anywhere but a catalogue is not kept", () => {
   const [song] = usableSongs([
     {
