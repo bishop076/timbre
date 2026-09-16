@@ -1,5 +1,7 @@
+import { ProviderError } from "@timbre/core";
+
 import type { SearchProvider, SourceTrack } from "./types.ts";
-import { createRequester } from "./request.ts";
+import { createRequester, type RequesterOptions } from "./request.ts";
 
 const MAX_PAGE = 200;
 const EMBEDDED_TRACK_ID = /api\.soundcloud\.com(?:%2F|\/)tracks(?:%2F|\/)(\d+)/i;
@@ -54,12 +56,20 @@ function isSoundCloudUrl(raw: string): boolean {
   }
 }
 
-const request = createRequester({
+const soundcloud: RequesterOptions = {
   id: "soundcloud",
   label: "SoundCloud",
   init: () => ({ cache: "no-store" }),
-  softStatuses: [403, 404],
-});
+};
+
+const request = createRequester(soundcloud);
+
+// Only `resolve` may read a refusal as an answer, and only because it is asked about links that
+// are not SoundCloud's: oEmbed 404s a track it does not have and 403s one that is private, which
+// really is "no such track". `/search/tracks` does neither — a 403 there is SoundCloud turning
+// this server away — so sharing one requester between the two made an outage look like a page
+// with no results on it.
+const lookup = createRequester({ ...soundcloud, softStatuses: [403, 404] });
 
 export interface SoundCloudOptions {
   apiBase?: string;
@@ -77,20 +87,28 @@ export function createSoundCloudProvider(options: SoundCloudOptions = {}): Searc
 
     async search(ctx, query, limit) {
       const id = apiBase ? null : await clientId?.();
-      if (!apiBase && !id) return [];
+      // Still no waiting — the resolver hands back `null` the moment its own deadline passes,
+      // and this returns at once. What changed is that it says so. Returning `[]` reported a
+      // provider that never got as far as asking as a provider that looked and found nothing:
+      // `searchAll` counted SoundCloud in `attempted`, put nothing in `failures`, and the route
+      // answered `{ songs: [], failures: [], attempted: 1 }` while SoundCloud was refusing every
+      // request. The crawl then backs off for five minutes, so the silence held for all of it.
+      if (!apiBase && !id) {
+        throw new ProviderError("soundcloud", "transient", "SoundCloud would not hand over a key to search with.");
+      }
 
       const params = `q=${encodeURIComponent(query)}&limit=${Math.min(limit, MAX_PAGE)}`;
       const url = id
         ? `https://api-v2.soundcloud.com/search/tracks?${params}&client_id=${encodeURIComponent(id)}`
         : `${apiBase}/search/tracks?${params}`;
       const body = await request<{ collection?: SoundCloudApiTrack[] }>(ctx, url);
-      return (body?.collection ?? []).flatMap((raw) => fromApiTrack(raw) ?? []);
+      return (body.collection ?? []).flatMap((raw) => fromApiTrack(raw) ?? []);
     },
 
     async resolve(ctx, url) {
       if (!isSoundCloudUrl(url)) return null;
 
-      const body = await request<SoundCloudOEmbed>(
+      const body = await lookup<SoundCloudOEmbed>(
         ctx,
         `https://soundcloud.com/oembed?format=json&url=${encodeURIComponent(url)}`,
       );

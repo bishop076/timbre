@@ -105,6 +105,25 @@ test("the embed page's own session is read, and a page without one is not guesse
   assert.equal(sessionFromEmbed(nextData(undefined)), null);
 });
 
+/**
+ * The embed page is read from the network, so the scan over it has to be linear in its length.
+ *
+ * The regex that used to do this restarted at every `__NEXT_DATA__` opening tag and walked the
+ * rest of the document from each one. Measured before the fix: 2.5 ms at 30 KB, 245 ms at
+ * 300 KB, 31.8 s at 3 MB — and all of it blocking the event loop, so a single page like this
+ * stalled every other request the instance was serving. The bound below is far looser than the
+ * few milliseconds the linear version takes; it only has to fail if the quadratic scan returns.
+ */
+test("a page built to make the scan quadratic is read in milliseconds, not seconds", () => {
+  const hostile = '<script id="__NEXT_DATA__" type="application/json">'.repeat(30_000);
+  assert.ok(hostile.length > 1_500_000, "the page has to be big enough for n squared to show");
+
+  const started = performance.now();
+  assert.equal(sessionFromEmbed(hostile), null);
+  const took = performance.now() - started;
+  assert.ok(took < 500, `reading an unclosed ${hostile.length}-char page took ${took.toFixed(0)}ms`);
+});
+
 test("a token is only used while it has more than a couple of minutes left", () => {
   const now = 1_000_000;
   assert.equal(isFresh({ token: "t", expiresAt: now + 10 * 60_000 }, now), true);
@@ -127,6 +146,19 @@ test("search reads tracks, prefers the 300px cover, and drops what cannot play",
       playback: "manual",
     },
   ]);
+});
+
+test("a track id that is not a Spotify track id is dropped, not built into a link", () => {
+  // The id becomes `open.spotify.com/track/<id>` and the `spotify:track:<id>` handed to the
+  // embed controller. The `uri` fallback beside it was always pinned to 22 base62 characters
+  // and `fetchSpotifyCollection` pins its own; `raw.id` was taken as given.
+  const of = (data: unknown) => tracksFromSearch({ searchV2: { tracksV2: { items: [{ item: { data } }] } } } as never);
+  for (const id of ["../../elsewhere", "", "short", `${TRACK_ID}x`, "0DiWol3AO6WpXZgp0goxA!"]) {
+    assert.equal(of({ ...RAW_TRACK, id }).length, 0, JSON.stringify(id));
+  }
+  assert.equal(of({ ...RAW_TRACK, id: TRACK_ID })[0]?.url, `https://open.spotify.com/track/${TRACK_ID}`);
+  // A bad `id` still lets a well-formed `uri` answer, which is the pair's whole point.
+  assert.equal(of({ ...RAW_TRACK, id: "nope", uri: `spotify:track:${TRACK_ID}` })[0]?.sourceId, TRACK_ID);
 });
 
 test("the query travels as a persisted-query GET naming the operation and its hash", () => {
@@ -204,6 +236,28 @@ test("a retired hash with no findable successor fails loudly rather than looking
       assert.ok(error instanceof ProviderError);
       assert.match(error.message, /searchDesktop/);
       return true;
+    });
+  }));
+
+test("a Spotify that accepts and then says nothing is Spotify's failure, not a bare DOMException", () =>
+  withRoutes([["/embed/track/", () => { throw new DOMException("timed out", "TimeoutError"); }]], async () => {
+    await assert.rejects(searchSpotifyWeb(ctx, "x"), (error: unknown) => {
+      // `resolveUrl` and `/api/spotify/search` both branch on `ProviderError`; a raw
+      // `TimeoutError` slipped past both and was reported as something other than an outage.
+      assert.ok(error instanceof ProviderError, `got ${(error as Error)?.constructor?.name}`);
+      assert.equal(error.provider, "spotify");
+      assert.equal(error.kind, "transient");
+      assert.equal(error.message, "Spotify did not answer within 6s.");
+      return true;
+    });
+  }));
+
+test("an HTML error page served as a 200 is Spotify's failure, not a raw SyntaxError", () =>
+  withRoutes([token(), search(() => new Response("<html>502 Bad Gateway</html>"))], async () => {
+    await assert.rejects(searchSpotifyWeb(ctx, "x"), {
+      name: "ProviderError",
+      kind: "transient",
+      message: "Spotify returned an unreadable body.",
     });
   }));
 
@@ -368,6 +422,12 @@ test("an embed page's track list stands in for pathfinder, preview clips include
   assert.deepEqual(album?.tracks[0]?.artists, ["Daft Punk", "Romanthony"]);
   assert.equal(album?.tracks[0]?.previewUrl, "https://p.scdn.co/mp3-preview/abc");
   assert.equal(collectionFromEmbed("album", ALBUM_ID, "<html></html>"), null);
+
+  // The clip is set as an `<audio src>`, so the host in it is a host the listener's browser
+  // connects to. An embed page is HTML scraped off the network, and this is the one field on a
+  // live result that does not go through `/api/art`.
+  const elsewhere = ALBUM_EMBED.replace("https://p.scdn.co/mp3-preview/abc", "https://evil.example/x.mp3");
+  assert.equal(collectionFromEmbed("album", ALBUM_ID, elsewhere)?.tracks[0]?.previewUrl, null);
 });
 
 test("an album still opens when pathfinder is down, from its embed page", () =>

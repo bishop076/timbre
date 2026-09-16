@@ -1,6 +1,7 @@
 import { ProviderError } from "@timbre/core";
 
-import { deadlineSignal, takeSlot } from "./request.ts";
+import { previewOn } from "./preview-url.ts";
+import { MAX_SCRIPT_BYTES, deadlineSignal, fetchOrFail, readCapped, takeSlot } from "./request.ts";
 import type { SearchContext, SourceTrack } from "./types.ts";
 
 const BOOTSTRAP = "https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC";
@@ -31,17 +32,52 @@ async function get(
   url: string,
   caller?: AbortSignal,
   headers: HeadersInit = PAGE_HEADERS,
-  ms?: number,
+  ms = 6_000,
 ): Promise<Response> {
-  await takeSlot(ctx, "spotify", "Spotify");
-  return fetch(url, { signal: deadlineSignal(caller, ms), cache: "no-store", headers });
+  // The same split `createRequester` makes: the budget covers the queue as well as the request,
+  // the queue may have half of it, and the fetch keeps whatever is left. Taking the slot outside
+  // the budget meant a drained bucket could add six seconds to every read on top of the read's
+  // own deadline — which for the hash crawl below was four reads deep.
+  const startedAt = Date.now();
+  await takeSlot(ctx, "spotify", "Spotify", { ms: Math.max(1, Math.round(ms / 2)) });
+  const left = Math.max(1, ms - (Date.now() - startedAt));
+  // Not a bare `fetch`: these are the paths that do not go through `createRequester`, and they
+  // were handing their callers a raw `DOMException` — `TimeoutError: The operation was aborted
+  // due to timeout`, with no provider on it and no kind. `resolveUrl` reads exactly that kind to
+  // tell a refused link from a service that is down, so an outage was filed as "nothing claims
+  // this link"; `/api/spotify/search` logged the DOMException's own wording instead of Spotify's.
+  const init = { signal: deadlineSignal(caller, left), cache: "no-store" as const, headers };
+  return fetchOrFail(url, init, "spotify", "Spotify", ms);
 }
 
+const NEXT_DATA_OPEN = '<script id="__NEXT_DATA__" type="application/json">';
+const NEXT_DATA_CLOSE = "</script>";
+
+/**
+ * The state Spotify's embed page carries, found by two `indexOf`s rather than by a regex.
+ *
+ * The regex this replaces — `${OPEN}([\s\S]*?)</script>` — was quadratic in the length of the
+ * page, and the page is a body we read from the network. Every occurrence of the opening tag
+ * is a fresh start position, and from each one the lazy group walks the whole rest of the
+ * document looking for a closing tag that is not there. Measured on this machine against a
+ * document that is the opening tag repeated: 2.5 ms at 30 KB, 245 ms at 300 KB, **31.8 s at
+ * 3 MB** — ten times the input for a hundred times the work, and all of it on the event loop,
+ * so every other request on the instance waits it out.
+ *
+ * Reading the first opening tag and the first close after it is linear and is what the regex
+ * was for. It differs only where a page carries a `__NEXT_DATA__` tag that is never closed and
+ * a second one that is; no Next.js page emits two, and preferring the second is not worth
+ * paying for in a scan of untrusted text.
+ */
 export function spotifyEmbedState<T>(html: string): T | null {
-  const payload = /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/.exec(html);
-  if (!payload?.[1]) return null;
+  const opens = html.indexOf(NEXT_DATA_OPEN);
+  if (opens === -1) return null;
+  const from = opens + NEXT_DATA_OPEN.length;
+  const closes = html.indexOf(NEXT_DATA_CLOSE, from);
+  if (closes <= from) return null;
+
   try {
-    const data = JSON.parse(payload[1]) as { props?: { pageProps?: { state?: T } } };
+    const data = JSON.parse(html.slice(from, closes)) as { props?: { pageProps?: { state?: T } } };
     return data.props?.pageProps?.state ?? null;
   } catch {
     return null;
@@ -82,7 +118,7 @@ async function bootstrap(ctx: SearchContext): Promise<AnonymousSession> {
         status: response.status,
       });
     }
-    const session = sessionFromEmbed(await response.text());
+    const session = sessionFromEmbed(await readCapped(response, "spotify", "Spotify"));
     if (!session) {
       throw new ProviderError("spotify", "unknown", "Spotify's embed page no longer carries a session token.");
     }
@@ -128,7 +164,7 @@ async function pathfinder<T>(
     ctx.signal?.throwIfAborted();
     const token = await anonymousToken(ctx, refreshed);
     await takeSlot(ctx, "spotify", "Spotify");
-    const response = await fetch(pathfinderUrl(operation, variables), {
+    const response = await fetchOrFail(pathfinderUrl(operation, variables), {
       signal: deadlineSignal(ctx.signal),
       cache: "no-store",
       headers: {
@@ -137,7 +173,7 @@ async function pathfinder<T>(
         ...PAGE_HEADERS,
         Accept: "application/json",
       },
-    });
+    }, "spotify", "Spotify");
     const { status } = response;
 
     if (status === 401) {
@@ -158,7 +194,16 @@ async function pathfinder<T>(
       throw new ProviderError("spotify", kind, `Spotify answered ${status}.`, { status });
     }
 
-    const body = (await response.json()) as { data?: T; errors?: { message?: string }[] };
+    // Outside a `try` this was the last raw throw left on the Spotify path: an HTML error page
+    // served with a 200 came back as a bare `SyntaxError` past every caller that catches
+    // `ProviderError`. An earlier fix caught exactly this in `createRequester` and never reached here.
+    let body: { data?: T; errors?: { message?: string }[] };
+    try {
+      body = JSON.parse(await readCapped(response, "spotify", "Spotify")) as typeof body;
+    } catch (cause) {
+      if (cause instanceof ProviderError) throw cause;
+      throw new ProviderError("spotify", "transient", "Spotify returned an unreadable body.", { cause });
+    }
     if (!body.errors?.some((error) => error.message === "PersistedQueryNotFound")) return body.data ?? null;
 
     if (!rediscovered) {
@@ -205,6 +250,7 @@ export function chunkUrl(mainJs: string, mainUrl: string, name: string): string 
 }
 
 const DISCOVERY_TTL_MS = 30 * 60 * 1000;
+const DISCOVERY_BUDGET_MS = 20_000;
 
 export interface DiscoveredHashes {
   hashes: Hashes;
@@ -244,9 +290,19 @@ export async function discoverHashesFrom(ctx: SearchContext, refused?: string): 
 
   discovering ??= (async () => {
     const result: DiscoveredHashes = { hashes: {}, from: {} };
+    // One budget for the crawl, not one per read. Each of the four reads used to start its own
+    // 20s clock, so a CDN that accepted the connection and then said nothing cost 20 seconds
+    // per read with nothing bounding the sequence. Measured against a stalling host: one
+    // `searchSpotifyWeb` call took 40.3 seconds, for a path whose deadline is 6 — and
+    // `/api/search` hands that one in-flight promise to every reader waiting on the same query,
+    // so all of them wait it out. Running out of budget reads as "no script", which is what a
+    // failed read already meant here.
+    const until = Date.now() + DISCOVERY_BUDGET_MS;
     const text = async (url: string) => {
-      const response = await get(ctx, url, undefined, { "User-Agent": USER_AGENT }, 20_000);
-      return response.ok ? response.text() : null;
+      const left = until - Date.now();
+      if (left <= 0) return null;
+      const response = await get(ctx, url, undefined, { "User-Agent": USER_AGENT }, left);
+      return response.ok ? readCapped(response, "spotify", "Spotify", MAX_SCRIPT_BYTES) : null;
     };
     const adopt = (source: HashSource, script: string | null) => {
       if (!script) return;
@@ -318,6 +374,7 @@ interface RawTrack {
 }
 
 const TRACK_URI = /^spotify:track:([A-Za-z0-9]{22})$/;
+const TRACK_ID = /^[A-Za-z0-9]{22}$/;
 
 function pickCover(sources: RawImage[] | undefined): string | null {
   const usable = (sources ?? []).filter((source) => source.url);
@@ -349,7 +406,12 @@ export function spotifySourceTrack(
 
 function toSourceTrack(raw: RawTrack | undefined, fallback: { album?: string; cover?: string | null } = {}) {
   if (!raw || (raw.__typename && raw.__typename !== "Track")) return null;
-  const id = raw.id ?? TRACK_URI.exec(raw.uri ?? "")?.[1];
+  // `raw.id` used to be taken as given while the `uri` fallback beside it was pinned to 22
+  // base62 characters, and `fetchSpotifyCollection` pins its own id the same way before it
+  // fetches anything. This is the id that becomes `open.spotify.com/track/<id>` and the
+  // `spotify:track:<id>` the embed controller is handed, so it gets the shape the rest of the
+  // file already insists on rather than whatever the response happened to carry.
+  const id = [raw.id, TRACK_URI.exec(raw.uri ?? "")?.[1]].find((value) => value && TRACK_ID.test(value));
   const title = raw.name?.trim();
   if (!id || !title || raw.playability?.playable === false) return null;
 
@@ -508,7 +570,7 @@ export function collectionFromEmbed(kind: SpotifyCollectionKind, id: string, htm
         album: kind === "album" ? title : null,
         durationMs: track.duration ?? null,
         artworkUrl: cover,
-        previewUrl: track.audioPreview?.url ?? null,
+        previewUrl: previewOn("spotify", track.audioPreview?.url),
       });
     }),
   };
@@ -520,7 +582,7 @@ export async function fetchSpotifyCollectionFromEmbed(
   id: string,
 ): Promise<SpotifyCollection | null> {
   const response = await get(ctx, `https://open.spotify.com/embed/${kind}/${id}`, ctx.signal);
-  return response.ok ? collectionFromEmbed(kind, id, await response.text()) : null;
+  return response.ok ? collectionFromEmbed(kind, id, await readCapped(response, "spotify", "Spotify")) : null;
 }
 
 export async function fetchSpotifyCollection(
