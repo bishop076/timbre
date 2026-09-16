@@ -6,7 +6,7 @@ import { proxied } from "../artwork-url";
 import { useLatest, useTransport } from "./embed";
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
-import { stalledStart, START_DEADLINE_MS } from "./progressive-stall.ts";
+import { stalledStart, startedPlaying, START_DEADLINE_MS } from "./progressive-stall.ts";
 import { nextStreamHost } from "./stream-url";
 import { useMediaSession } from "./use-media-session";
 
@@ -100,9 +100,15 @@ export function ProgressiveAudioPlayer({
     };
     on("timeupdate", onTime);
     on("durationchange", onTime);
-    on("play", () => live.current.handleStateChange("playing"));
+    // `play` fires when `play()` is *called*, which is not the same claim as "this is playing"
+    // — see `startedPlaying`. `playing` is the event that means audio, and it fires on a resume
+    // as well as on a first start, so nothing is lost by waiting for it.
+    on("play", () => {
+      if (startedPlaying(audio)) live.current.handleStateChange("playing");
+    });
     on("playing", () => {
       started = true;
+      live.current.handleStateChange("playing");
     });
     on("pause", () => live.current.handleStateChange("paused"));
     on("ended", () => live.current.handleEnded());
