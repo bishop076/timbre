@@ -100,6 +100,10 @@ export function clampWidth(width: number, min: number, max: number): number {
  *  the row, so it is taking no width from anyone. */
 export const DOCK_MIN = 1280;
 
+/** Tailwind's `lg`, and the rail's own `lg:flex`. Below it the rail is `display: none` — not
+ *  narrow, gone — so it is no more part of the row than the floating panel is. */
+export const RAIL_DOCK_MIN = 1024;
+
 /** What the panel is costing the row right now, which is nothing at all while it floats. */
 export function dockedPanelWidth(width: number, open: boolean, viewport: number): number {
   return open && viewport >= DOCK_MIN ? width : 0;
@@ -108,13 +112,22 @@ export function dockedPanelWidth(width: number, open: boolean, viewport: number)
 /**
  * What is left for one pane once the other pane and the smallest useful main column have been
  * paid for. Both panes ask this of each other, so neither can squeeze the shelves flat.
+ *
+ * `dockedAt` is the window width below which this pane is not in the row at all, and it is the
+ * difference between a ceiling and a shredder. The answer here is not only painted: the handle
+ * commits a width that no longer fits, and committing means writing it to storage. So a window
+ * too narrow to lay the pane out — a phone, a half-screen window — was being asked what the row
+ * could spare, answering "nothing", and saving that. Someone who widened their sidebar on a
+ * desktop and then opened Timbre on their phone found it back to icons on the desktop, with
+ * nothing on the phone ever having shown a sidebar at all. A pane that is not being laid out has
+ * no width to give back.
  */
 export function roomFor(
   viewport: number,
   taken: number,
-  { max, floor }: { max: number; floor: number },
+  { max, floor, dockedAt }: { max: number; floor: number; dockedAt: number },
 ): number {
-  if (!Number.isFinite(viewport) || viewport <= 0) return max;
+  if (!Number.isFinite(viewport) || viewport <= 0 || viewport < dockedAt) return max;
   return Math.max(floor, Math.min(max, Math.round(viewport - taken - MAIN_MIN)));
 }
 
