@@ -43,22 +43,27 @@ def test_anything_else_is_refused_rather_than_raising(monkeypatch):
         assert not security.matches(presented), presented
 
 
-@pytest.mark.parametrize("value", ["x" * 31, f"{NEW},dummy"])
-def test_a_weak_secret_boots_with_a_warning(monkeypatch, value):
-    with pytest.warns(UserWarning, match="shorter than 32"):
-        load(monkeypatch, value, "app.config")
-
-
 @pytest.mark.parametrize(
     ("value", "message"),
     [
         (None, "refuses to start"),
         (" , , ", "no usable secret"),
+        # A short secret used to warn and carry on. Nothing is watching this log and nothing
+        # rate-limits the door it guards, so it refuses to boot now — including when only one
+        # entry of a rotation pair is short, which is how a rotation goes wrong in practice.
+        ("x" * 31, "shorter than 32"),
+        (f"{NEW},dummy", "shorter than 32"),
+        (f"dummy,{NEW}", "shorter than 32"),
     ],
 )
 def test_an_unusable_secret_refuses_to_boot(monkeypatch, value, message):
     with pytest.raises(Exception, match=message):
         load(monkeypatch, value, "app.config")
+
+
+@pytest.mark.parametrize("value", ["x" * 32, f"{OLD},{NEW}"])
+def test_a_long_enough_secret_boots(monkeypatch, value):
+    assert load(monkeypatch, value, "app.config").SHARED_SECRETS
 
 
 def call(app, headers: dict[str, str], chunks: list[bytes]) -> tuple[int, int]:
@@ -122,6 +127,43 @@ def test_a_refusal_is_logged_without_the_secret(monkeypatch, caplog, secret, rea
     # A near miss is still a credential; it must not reach the log.
     assert OLD not in caplog.text
     assert NEW not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [
+        # `int()` gives up past 4300 digits, so these used to raise inside the middleware
+        # and answer 500 with a traceback in the log rather than 413.
+        "9" * 5000,
+        "1" + "0" * 9999,
+        # `isdecimal()` is true of digits that are not ASCII, and `int()` converts them, so
+        # a front end that let these through would have had us read a number it had not.
+        "１７０００",
+        "١٧٠٠٠",
+        "",
+        " 12 ",
+        "12x",
+        "-1",
+    ],
+)
+def test_an_absurd_content_length_is_refused_rather_than_raising(monkeypatch, declared):
+    security = load(monkeypatch, NEW)
+    assert not security.within_cap(declared)
+
+    app = load(monkeypatch, NEW, "app.main").app
+    headers = {"x-timbre-secret": NEW, "content-length": declared}
+    assert call(app, headers, [b"{}"]) == (413, 0)
+
+
+@pytest.mark.parametrize(
+    "declared",
+    # The last of these is 4301 digits and still declares two bytes, which is what makes
+    # counting digits the wrong check on its own and stripping the padding first the right
+    # one: it used to be the 500 above, and it is a legitimate length.
+    ["0", str(LIMIT), "2", "0" * 4300 + "2"],
+)
+def test_a_sane_content_length_still_passes_the_cap(monkeypatch, declared):
+    assert load(monkeypatch, NEW).within_cap(declared)
 
 
 def test_an_oversized_body_is_refused(monkeypatch):

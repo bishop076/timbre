@@ -1,10 +1,17 @@
+import re
 from typing import Annotated
 
 from pydantic import BaseModel, Field, model_validator
 
+# What a YouTube video id is, in one place. It was spelled three times — twice as an anchored
+# pydantic pattern and once as a compiled regex in `routes/search.py` — and only two of those
+# were applied to an id arriving from YouTube rather than from the web app.
+VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+VIDEO_ID_PATTERN = rf"^{VIDEO_ID.pattern}$"
+
 
 class Track(BaseModel):
-    video_id: str
+    video_id: str = Field(pattern=VIDEO_ID_PATTERN)
     title: str
     artists: list[str] = []
     album: str | None = None
@@ -33,7 +40,7 @@ class ResolveResponse(BaseModel):
 
 
 class RadioRequest(BaseModel):
-    video_id: str = Field(pattern=r"^[A-Za-z0-9_-]{11}$")
+    video_id: str = Field(pattern=VIDEO_ID_PATTERN)
     limit: int = Field(default=25, ge=1, le=50)
 
 
@@ -43,7 +50,7 @@ class RadioResponse(BaseModel):
 
 
 class LyricsRequest(BaseModel):
-    video_ids: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{11}$")]] = Field(
+    video_ids: list[Annotated[str, Field(pattern=VIDEO_ID_PATTERN)]] = Field(
         default=[], max_length=3
     )
     title: str | None = Field(default=None, min_length=1, max_length=300)

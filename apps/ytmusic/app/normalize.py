@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from .models import Track
+from .models import VIDEO_ID, Track
 
 
 def _area(thumbnail: dict) -> int:
@@ -54,7 +54,15 @@ def to_track(raw: Any) -> Track | None:
     result_type = raw.get("resultType")
     video_id = raw.get("videoId")
     title = raw.get("title")
-    if result_type not in ("song", "video") or not isinstance(video_id, str) or not video_id:
+    # `resolve` has checked upstream's id against this pattern from the start; the four routes
+    # that reach YouTube through here did not, and this is the one field the web app puts
+    # into a URL without encoding it (packages/providers/src/ytmusic.ts:55). A trailing
+    # newline, an `&list=`, or three hundred characters therefore travelled out of a search,
+    # a radio mix or a playlist as a "video id". Drop the item, not the response — the rest
+    # of the list is fine and that is what this module promises everywhere else.
+    if result_type not in ("song", "video") or not isinstance(video_id, str):
+        return None
+    if not VIDEO_ID.fullmatch(video_id):
         return None
     if not isinstance(title, str) or not title.strip():
         return None

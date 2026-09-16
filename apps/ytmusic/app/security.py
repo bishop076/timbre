@@ -15,6 +15,22 @@ UNAUTHORIZED = "Missing or invalid shared secret."
 TOO_LARGE = "Request body too large."
 
 
+def within_cap(declared: str) -> bool:
+    """Whether a declared `Content-Length` is a plain number no larger than the cap.
+
+    `int()` refuses a string of more than 4300 digits — CPython's guard against quadratic
+    conversion, added for CVE-2020-10735 — so `int(declared) > MAX_BODY` raised `ValueError`
+    on exactly the header this check exists to refuse, and an absurd length came back a 500
+    with a traceback instead of the 413 it had earned. Count digits first: a decimal string
+    longer than the cap's own digit count cannot possibly be under it, so nothing wider than
+    five digits ever reaches the conversion.
+    """
+    if not declared.isascii() or not declared.isdecimal():
+        return False
+    digits = declared.lstrip("0")
+    return len(digits) <= len(str(MAX_BODY)) and int(digits or "0") <= MAX_BODY
+
+
 def matches(presented: str) -> bool:
     candidate = presented.encode("utf-8", "surrogateescape")
     found = False
@@ -49,8 +65,7 @@ class RequireSharedSecret:
             await refusal(scope, receive, send)
             return
 
-        length = headers.get("content-length", "0")
-        if not length.isdecimal() or int(length) > MAX_BODY:
+        if not within_cap(headers.get("content-length", "0")):
             refusal = JSONResponse({"detail": TOO_LARGE}, status.HTTP_413_CONTENT_TOO_LARGE)
             await refusal(scope, receive, send)
             return
