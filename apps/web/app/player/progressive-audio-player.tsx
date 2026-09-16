@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { proxied } from "../artwork-url";
+import { log } from "../logs.ts";
 import { useLatest, useTransport } from "./embed";
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
@@ -126,8 +127,15 @@ export function ProgressiveAudioPlayer({
       const name = cause instanceof DOMException ? cause.name : "";
       if (lifetime.signal.aborted || name === "AbortError") return;
       if (fallback && name === "NotSupportedError") return;
-      if (name === "NotAllowedError") live.current.handleStateChange("paused");
-      else report("That track wouldn't start.");
+      if (name === "NotAllowedError") {
+        // The one refusal a player can name outright, and it was the one nobody heard: this
+        // reported a plain "paused" and the reason went nowhere. The state still has to be a
+        // pause — the element *is* paused, and calling it an error would walk the ladder onto
+        // sources the same policy will refuse — but the log should say what happened, because
+        // "the queue stops between songs" reads identically to every other stall without it.
+        log("warn", "The browser refused to start this track on its own — autoplay is blocked here.");
+        live.current.handleStateChange("paused");
+      } else report("That track wouldn't start.");
     });
 
     return () => {
