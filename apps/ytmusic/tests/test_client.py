@@ -19,11 +19,16 @@ from app.client import (
 
 
 class Answered:
-    """Just enough of a `requests.Response` for the wrapper to hand back an empty body."""
+    """Just enough of a `requests.Response` to carry an empty body back up through `Session`."""
 
     def __init__(self) -> None:
         self.raw = self
         self.closed = False
+        self.status_code = 200
+        self.headers: dict = {}
+        self.history: list = []
+        self.is_redirect = False
+        self.content = b""
 
     def read1(self, _size: int, decode_content: bool = True) -> bytes:
         return b""
@@ -32,24 +37,41 @@ class Answered:
         self.closed = True
 
 
-def test_session_carries_a_timeout(monkeypatch):
-    seen: dict = {}
+def test_every_call_carries_a_timeout(monkeypatch):
+    # The timeout rides on the adapter rather than on `Session.request`, because the adapter
+    # is the layer every call reaches: `Session.request` sees a request's first call and none
+    # of the redirect hops behind it, which `Session.send` sends on the first call's clock.
+    seen: list[dict] = []
 
-    def answer(self, *args, **kwargs):
-        seen.update(kwargs)
+    def answer(self, request, **kwargs):
+        seen.append(kwargs)
         return Answered()
 
-    monkeypatch.setattr(requests.Session, "request", answer)
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", answer)
 
     bounded_session().request("GET", "http://example.invalid")
-    assert seen["timeout"] == UPSTREAM_TIMEOUT_SECONDS
-    # Without this the body is already buffered by the time the wrapper sees the response,
-    # and there is nothing left to count.
-    assert seen["stream"] is True
+    assert seen[-1]["timeout"] == UPSTREAM_TIMEOUT_SECONDS
 
-    seen.clear()
     bounded_session(2).request("GET", "http://example.invalid")
-    assert seen["timeout"] == 2
+    assert seen[-1]["timeout"] == 2
+
+
+def test_a_hop_draws_on_what_the_chain_has_already_spent(monkeypatch):
+    # Not the same as the check on the way in: that one runs once per request, and a chain of
+    # hops that each stall on connect would otherwise spend the whole bound thirty times.
+    def answer(self, request, **kwargs):
+        return Answered()
+
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", answer)
+    adapter = client._BoundedAdapter(UPSTREAM_TIMEOUT_SECONDS, MAX_UPSTREAM_BYTES)
+    prepared = requests.Request("GET", "http://example.invalid").prepare()
+
+    token = open_budget(-1)
+    try:
+        with pytest.raises(requests.exceptions.ReadTimeout, match="budget is spent"):
+            adapter.send(prepared)
+    finally:
+        client._deadline.reset(token)
 
 
 def test_the_bound_sits_above_the_caller_deadline_and_well_under_ytmusicapi_default():
@@ -281,3 +303,126 @@ def test_the_cap_is_the_size_youtube_actually_sends_with_room_over():
     largest_measured = 3_850_873
     assert MAX_UPSTREAM_BYTES > largest_measured * 2
     assert MAX_UPSTREAM_BYTES < 32 * 1024 * 1024, "a cap this loose is not a cap"
+
+
+@pytest.fixture
+def redirecting():
+    """A server whose 302 carries a body of its own, and a destination that answers plainly.
+
+    The hop's body is the thing under test. `resolve_redirects` reads it with a bare
+    `resp.content` inside `Session.send`, below the layer the session wrapper occupied, so no
+    amount of care in `Session.request` could ever have counted it.
+    """
+    listeners: list[socket.socket] = []
+
+    def start(hop, landed: bytes = b'{"ok":true}', loop: bool = False):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(8)
+        listeners.append(listener)
+        port = listener.getsockname()[1]
+        sent: list[int] = []
+
+        def handle(conn: socket.socket) -> None:
+            written = 0
+            try:
+                asked = conn.recv(65536)
+                if b"/landed" in asked and not loop:
+                    conn.sendall(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                        b"Content-Length: " + str(len(landed)).encode() + b"\r\n\r\n" + landed
+                    )
+                    return
+                where = b"/" if loop else b"/landed"
+                conn.sendall(
+                    b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:"
+                    + str(port).encode() + where
+                    + b"\r\nContent-Type: text/html\r\n\r\n"
+                )
+                for part in hop():
+                    conn.sendall(part)
+                    written += len(part)
+            except OSError:
+                pass  # the reader hung up, which is what one of these tests is about
+            finally:
+                sent.append(written)
+                conn.close()
+
+        def accept() -> None:
+            while True:
+                try:
+                    conn = listener.accept()[0]
+                except OSError:
+                    return
+                threading.Thread(target=handle, args=(conn,), daemon=True).start()
+
+        threading.Thread(target=accept, daemon=True).start()
+        return f"http://127.0.0.1:{port}/", sent
+
+    yield start
+    for one in listeners:
+        one.close()
+
+
+def hop_body():
+    """An endless body on the 302 itself, which is a shape nothing legitimate produces."""
+    block = b"a" * 65536
+    sent = 0
+    while sent < 64 * 1024 * 1024:  # a stop the test should never reach, so a failure ends
+        yield block
+        sent += len(block)
+
+
+def test_a_redirect_body_is_capped_like_the_answer_it_stands_in_front_of(redirecting):
+    # The cap lived on `Session.request`, which only ever sees a request's answer. A hop is
+    # not that answer: `requests` reads it inside `Session.send` and hands back only the last
+    # response, so a 302 that then never stopped writing was buffered whole, and up to thirty
+    # times over — 32 MB a hop, a 1.02 GB peak and 31.2s measured against the 8 MB cap and the
+    # 8s budget that were both nominally in force.
+    url, sent = redirecting(hop_body)
+    token = open_budget(30)
+    try:
+        session = bounded_session(30, max_bytes=1024 * 1024)
+        with pytest.raises(UpstreamTooLarge, match=r"more than 1 MB") as caught:
+            session.request("GET", url)
+    finally:
+        client._deadline.reset(token)
+
+    # The refusal names the hop, not the destination the chain never reached.
+    assert caught.value.response.status_code == 302
+    assert caught.value.response.raw.closed
+    until = time.monotonic() + 10
+    while not sent and time.monotonic() < until:
+        time.sleep(0.05)
+    assert sent, "the server never finished, so the connection was not released"
+    assert sent[0] < 16 * 1024 * 1024, f"{sent[0]:,} bytes left the server for a 1 MB cap"
+
+
+def test_a_redirect_is_still_followed_rather_than_refused(redirecting):
+    # Refusing redirects was the cheaper way to bound this, and this is why it was not taken:
+    # ytmusicapi fetches `music.youtube.com` for a visitor id and the plain `/playlist` page
+    # as a fallback, and a consent or region interstitial in front of either is a 302. Left
+    # unfollowed that reaches `json.loads` and reports itself as a parser fault instead.
+    payload = json.dumps({"ok": True, "where": "landed"}).encode()
+    url, _ = redirecting(lambda: iter(()), landed=payload)
+
+    response = bounded_session(30).request("GET", url)
+
+    assert response.content == payload
+    assert response.json()["where"] == "landed"
+    assert [one.status_code for one in response.history] == [302]
+
+
+def test_a_chain_stops_long_before_thirty_bodies_are_held_at_once(redirecting):
+    # Capping each hop is not capping the chain: every hop stays reachable through
+    # `resp.history` until the chain ends, so `requests`' default of 30 would let a hostile
+    # host hold thirty caps' worth at once. Nothing upstream needs more than a hop or two.
+    url, _ = redirecting(lambda: iter(()), loop=True)
+
+    with pytest.raises(requests.exceptions.TooManyRedirects) as caught:
+        bounded_session(30).request("GET", url)
+
+    assert "Exceeded 5 redirects" in str(caught.value)
+    assert len(caught.value.response.history) == 5
+    # A `RequestException`, so the routes' existing mapping makes it the flat 502 unchanged.
+    assert isinstance(caught.value, requests.exceptions.RequestException)

@@ -156,31 +156,84 @@ def _read_capped(response: requests.Response, due: float, limit: int, budget: fl
     response._content_consumed = True
 
 
-def bounded_session(
-    seconds: float = UPSTREAM_TIMEOUT_SECONDS, max_bytes: int = MAX_UPSTREAM_BYTES
-) -> requests.Session:
-    session = requests.Session()
-    inner = session.request
+class _BoundedAdapter(requests.adapters.HTTPAdapter):
+    """Reads every answer the session is given, including the ones it never hands back.
 
-    def request(*args: object, **kwargs: object) -> requests.Response:
-        left = remaining(seconds)
+    The cap above used to sit on `Session.request`, which sees a request's *answer* and
+    nothing else. A redirect's own body is not that answer: `resolve_redirects` reads each
+    hop with a bare `resp.content` (`requests/sessions.py:212`) from inside `Session.send`,
+    below the layer that wrapper occupied, and `max_redirects` is 30. So an upstream that
+    answered with a 302 and then never stopped writing was read whole, thirty times over.
+    Measured against a 302 into an endless body, with the production 8 MB cap and 8s budget
+    both nominally in force: 32 MB buffered a hop, a 1.02 GB peak and 31.2s elapsed, and the
+    only reason those numbers are not larger is that the test server itself stopped at 32 MB.
+
+    The adapter is the floor of `requests` — every call arrives here, the first and all
+    twenty-nine behind it — and `HTTPAdapter.send` always asks urllib3 for
+    `preload_content=False`, so the body is still unread when we get it. Capping at this
+    layer needs to know nothing about redirects at all, which is why it also covers whatever
+    else `requests` may decide to fetch on its own account.
+
+    **Refusing redirects outright was the other way to close this**, and it is smaller: zero
+    redirects were measured across 198 live calls, so `allow_redirects=False` would have cost
+    nothing today. It was rejected because ytmusicapi does not only call the JSON API.
+    `get_visitor_id` fetches `music.youtube.com` itself and `get_playlist` falls back to the
+    plain `/playlist` page (`ytmusicapi/ytmusic.py:253`); a consent or region interstitial in
+    front of either is a 302, which is the ordinary way Google gates a page and not an exotic
+    failure. Handed that 302 unfollowed, `_send_request` runs `json.loads` over an
+    interstitial and reports "Expecting value" (`ytmusicapi/ytmusic.py:246`) — the same
+    dishonest parser fault `_read_capped` refuses to cause by truncating, arriving through a
+    different door. A bound that holds whatever upstream does is worth more than one that is
+    correct only for as long as upstream never redirects.
+    """
+
+    def __init__(self, cap: float, max_bytes: int) -> None:
+        super().__init__()
+        self._cap = cap
+        self._max_bytes = max_bytes
+
+    def send(self, request: requests.PreparedRequest, **kwargs: object) -> requests.Response:
+        left = remaining(self._cap)
         if left <= 0:
             # Refusing here rather than passing a zero timeout keeps the reason legible in
             # the log, and every route already treats a timeout as an upstream failure: the
             # secondary calls degrade to what they have, the primary ones become a 502.
             raise requests.exceptions.ReadTimeout("this request's upstream budget is spent")
-        kwargs.setdefault("timeout", left)
-        # `stream=True` is what makes the body ours to count rather than something `requests`
-        # has already finished buffering by the time we see it. Nothing here asks to stream:
-        # ytmusicapi reads `response.text` and `response.json()`, both of which go on working
-        # because `_read_capped` fills in the content it would otherwise have read itself.
-        kwargs["stream"] = True
-        due = time.monotonic() + left
-        response = inner(*args, **kwargs)
-        _read_capped(response, due, max_bytes, left)
+        # Recomputed per hop, not per request. `Session.send` hands the first call's timeout
+        # down to every redirect it follows, so without this a chain that stalls on connect
+        # spends that timeout thirty times over; drawn from the budget instead, the whole
+        # chain costs what one hung call costs.
+        kwargs["timeout"] = left
+        response = super().send(request, **kwargs)  # type: ignore[arg-type]
+        _read_capped(response, time.monotonic() + left, self._max_bytes, left)
         return response
 
-    session.request = request  # type: ignore[method-assign]
+
+def bounded_session(
+    seconds: float = UPSTREAM_TIMEOUT_SECONDS, max_bytes: int = MAX_UPSTREAM_BYTES
+) -> requests.Session:
+    """A session that reads nothing it did not agree to, for no longer than it has left.
+
+    Nothing here asks to stream: ytmusicapi reads `response.text` and `response.json()`, and
+    both go on working because `_read_capped` has already filled in the content `requests`
+    would otherwise have buffered itself.
+    """
+    session = requests.Session()
+    adapter = _BoundedAdapter(seconds, max_bytes)
+    # Both schemes, because `Session.__init__` mounts a plain `HTTPAdapter` on each and
+    # whichever one is left in place is an unbounded read waiting for a URL to reach it.
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    # `requests` follows 30 hops by default, and every hop's body stays reachable through
+    # `resp.history` for as long as the chain runs. So the cap above bounds each hop at 8 MB
+    # and the chain at thirty times that: the one claim the cap's own reasoning makes — that
+    # bytes do not accumulate within a request, because each body is parsed and dropped before
+    # the next goes out — is exactly what a redirect chain breaks. Nothing upstream needs more
+    # than a consent or region hop or two, so five leaves any real chain clear and brings the
+    # worst a hostile host can hold at once down from 240 MB to 40 MB. Past five `requests`
+    # raises `TooManyRedirects`, a `RequestException`, so the routes' flat 502 and not a
+    # parse fault in a body nobody sent.
+    session.max_redirects = 5
     return session
 
 
