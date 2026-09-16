@@ -10,7 +10,7 @@ import { usePlayerControls } from "../player/player-context";
 import { LikedCover } from "../playlists/liked-tile";
 import { unlikeSong, useLikes } from "../playlists/likes-store";
 import { SongRow } from "../song-row";
-import { SourceBadges } from "../source-badges";
+import { ROW_BADGES, SourceBadges } from "../source-badges";
 import type { Song } from "../types";
 import { seededShuffle } from "@/lib/rotation";
 
@@ -152,10 +152,7 @@ export function LikedView() {
               subtitle={<ArtistLink artists={song.artists} />}
               trailing={
                 <>
-                  <SourceBadges
-                    song={song}
-                    className="hidden opacity-0 transition group-hover:opacity-100 @xl:flex"
-                  />
+                  <SourceBadges song={song} className={ROW_BADGES} />
 
                   <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
                     {formatDuration(song.durationMs)}

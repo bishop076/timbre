@@ -104,7 +104,7 @@ export function ArtistCard({
             className={`slab-sm tint absolute bottom-0 right-0 z-20 flex size-10 items-center justify-center rounded-[var(--r-full)] text-[var(--accent-fg)] transition duration-300 ease-[var(--ease)] ${
               playing
                 ? "translate-y-0 opacity-100"
-                : "translate-y-2 opacity-0 focus-visible:translate-y-0 focus-visible:opacity-100 group-hover:translate-y-0 group-hover:opacity-100"
+                : "translate-y-2 opacity-0 focus-visible:translate-y-0 focus-visible:opacity-100 group-hover:translate-y-0 group-hover:opacity-100 touch:translate-y-0 touch:opacity-100"
             }`}
             style={{ background: "var(--accent)" }}
           >
