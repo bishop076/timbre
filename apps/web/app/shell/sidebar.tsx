@@ -8,7 +8,7 @@ import { Artwork } from "../artwork";
 import { Equalizer } from "../equalizer";
 import { moveBetweenItems } from "../a11y/arrow-nav";
 import { useScrollEdges } from "../scroll-edges";
-import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
+import { ChevronIcon, CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { LikedCover, LikedRow } from "../playlists/liked-tile";
 import { PlaylistCover } from "../playlists/playlist-cover";
@@ -17,7 +17,7 @@ import { loadPlaylists, usePlaylists, type PlaylistSummary } from "../playlists/
 import { Avatar } from "../profile/avatar";
 import { useLocalImages } from "../profile/local-images";
 import { useLocalProfile } from "../profile/local-profile";
-import { TimbreMark, TimbreWordmark } from "./brand";
+import { TimbreMark } from "./brand";
 import {
   dockedPanelWidth,
   RAIL_DOCK_MIN,
@@ -73,6 +73,43 @@ const RAIL: RailStyle = {
   pad: "px-1 @[9rem]:px-3",
 };
 
+/**
+ * Collapse the rail to icons, or open it back out.
+ *
+ * The rail could only ever be *dragged* between its two widths, and the handle that does it is
+ * 8px of gutter with no mark on it — so there was nothing to click, and nothing to say the two
+ * states existed. This is that affordance.
+ *
+ * Hidden until the rail is hovered, which is what was asked for: the rail is chrome, and a
+ * chevron sitting on it permanently is one more thing in the corner of the eye on every page.
+ * It is *not* hidden from anyone who cannot hover — `touch:` keeps it visible on a touchscreen
+ * and `focus-visible` brings it back for the keyboard. That escape is the whole point of the
+ * `touch:` variant: eleven controls in this app were hover-only and unreachable on a phone, and
+ * adding a twelfth would have put one back the day the other eleven were fixed.
+ *
+ * Absolutely positioned rather than a flex sibling because at icon width the row is 44px of
+ * content — there is no room for the mark and a button side by side, so at that width it sits
+ * over the mark and swaps for it on hover.
+ */
+function RailToggle({ wide }: { wide: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => saveRailWidth(wide ? RAIL_ICONS : RAIL_WIDE)}
+      aria-label={wide ? "Collapse the sidebar to icons" : "Expand the sidebar"}
+      aria-expanded={wide}
+      aria-controls={RAIL_ID}
+      title={wide ? "Collapse the sidebar" : "Expand the sidebar"}
+      className="press absolute right-1 grid h-8 w-8 place-items-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg-dim)] pointer-events-none opacity-0 transition hover:bg-[var(--surface-3)] hover:text-[var(--fg)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/brand:pointer-events-auto group-hover/brand:opacity-100 touch:pointer-events-auto touch:opacity-100"
+    >
+      <ChevronIcon
+        aria-hidden
+        className={`h-4 w-4 ${wide ? "rotate-90" : "-rotate-90"}`}
+      />
+    </button>
+  );
+}
+
 function NavLinks({ rail }: { rail?: RailStyle }) {
   const pathname = usePathname();
   const { exitTheater } = usePlayerControls();
@@ -116,6 +153,9 @@ function NavLinks({ rail }: { rail?: RailStyle }) {
 export function Sidebar() {
   const { exitTheater, current, panelOpen } = usePlayerControls();
   const width = useRailWidth();
+  // The rail snaps: it is either the icon floor or something wide enough for words, never
+  // between. So one comparison tells the toggle which way it points.
+  const wide = width > RAIL_ICONS;
   const panel = usePanelWidth();
   const viewport = useViewportWidth();
   const [filter, setFilter] = useState<Filter>("Queue");
@@ -158,18 +198,19 @@ export function Sidebar() {
             boxes rather than a sidebar. They are sections inside a single surface now, separated
             by a rule instead of by air. */}
         <div className="slab flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden rounded-[var(--r-lg)] bg-[var(--shell-1)] p-1.5">
-          <Link
-            href="/"
-            onClick={exitTheater}
-            aria-label="Timbre — home"
-            className={`press flex h-12 items-center gap-2.5 rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
-          >
-            <TimbreMark aria-hidden className="h-7 w-auto shrink-0 text-[var(--accent)]" />
-            {/* The real wordmark, not the word set in the UI font. The mark is two faces — "tim"
-                in Delicious Handrawn, "bre" in Gluten — and none of that survives being typed in
-                Geist. */}
-            <TimbreWordmark className="hidden h-6 w-auto shrink-0 @[9rem]:block" />
-          </Link>
+          {/* The mark alone. The wordmark that used to sit beside it said the app's name to
+              someone already inside the app, and it was the only thing making this row wide. */}
+          <div className="group/brand relative flex h-12 items-center">
+            <Link
+              href="/"
+              onClick={exitTheater}
+              aria-label="Timbre — home"
+              className={`press flex h-12 flex-1 items-center rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
+            >
+              <TimbreMark aria-hidden className="h-7 w-auto shrink-0 text-[var(--accent)]" />
+            </Link>
+            <RailToggle wide={wide} />
+          </div>
 
           <nav aria-label="Primary" className="flex flex-col gap-0.5">
             <NavLinks rail={RAIL} />
