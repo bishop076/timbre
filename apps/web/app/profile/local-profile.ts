@@ -61,10 +61,21 @@ const store = createLocalStore<LocalProfile>({
     return profile;
   },
   initial: { id: "", name: null },
+  /**
+   * The name, and then the two paintings of it — in that order, and only if it landed.
+   *
+   * The cookie is not a second copy of the name: it is what `profile/page.tsx` renders the
+   * heading from on the server, before any of this has run. Writing it for a name `localStorage`
+   * refused left the two disagreeing about what the reader is called, so the next load came back
+   * saying the new name and replaced it with the old one a frame later — the exact flash the
+   * pre-hydration read exists to prevent, caused by it. The monogram is the same kind of thing:
+   * it is replayed before paint, and should describe the stored name rather than a refused one.
+   */
   write: (profile) => {
-    writeItem(NAME_KEY, profile.name);
+    if (!writeItem(NAME_KEY, profile.name)) return false;
     writeNameCookie(profile.name);
     recordMonogram(profile);
+    return true;
   },
   keys: [ID_KEY, NAME_KEY],
   onFirstRead: ({ name }) => {
@@ -80,7 +91,17 @@ export function getDisplayName(): string | null {
   return store.getSnapshot().name;
 }
 
-export function setDisplayName(input: string): void {
+/** Saves the name, and answers whether this browser took it. False means nothing changed. */
+export function setDisplayName(input: string): boolean {
   const name = input.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 64).trim();
-  store.save({ ...store.getSnapshot(), name: name || null });
+  const previous = store.getSnapshot();
+  if (store.save({ ...previous, name: name || null })) return true;
+
+  // Refused. `save` publishes either way, which is right for a preference that is still live in
+  // this tab — but a display name is not that: it is rendered from the cookie on the next load,
+  // and the cookie did not move. Publishing it would put a name in the heading that exists only
+  // until the page is reloaded, and say nothing about it. Put the stored one back, and let the
+  // caller tell the reader.
+  store.publish(previous);
+  return false;
 }

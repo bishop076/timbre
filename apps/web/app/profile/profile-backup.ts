@@ -50,10 +50,10 @@ export async function hasLocalProfile(): Promise<boolean> {
  */
 export async function applyProfile(profile: ProfileExport): Promise<(keyof ProfileExport)[]> {
   const applied: (keyof ProfileExport)[] = [];
-  if (profile.name) {
-    setDisplayName(profile.name);
-    applied.push("name");
-  }
+  // `setDisplayName` answers now, and the answer belongs here: this list is what the notice in
+  // library-view.tsx reads out, and a browser that refused the write would otherwise be told its
+  // name had been replaced by one that is not stored anywhere.
+  if (profile.name && setDisplayName(profile.name)) applied.push("name");
 
   let refused: unknown = null;
   for (const kind of ["avatar", "banner"] as const) {
