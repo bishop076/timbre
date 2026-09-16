@@ -19,6 +19,7 @@ import { ROW_BADGES } from "./source-badges.tsx";
 const read = (name: string) => readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
 
 const SITES = [
+  "search-suggestions.tsx",
   "song-card.tsx",
   "song-row.tsx",
   "tile-cards.tsx",
