@@ -46,9 +46,20 @@ export const ALLOWED_HOSTS = new Set([
 // back — the route returns 404 unless the reply is a raster image — but the request still
 // goes, which is a bound worth keeping tight. Both shapes are the ones the providers
 // actually mint: archive.ts:70 and song-shape.ts's Audius rewrite.
+// A third host that is not a CDN either: `thumbnailer.mixcloud.com` is a renderer, and the size
+// is in the path. `/unsafe/100x100/…` is 13 KB; the same cover asked for as `/unsafe/4000x4000/…`
+// came back through this route as 976 KB, and `/unsafe/6000x6000/…` as 1.2 MB after holding a
+// server slot for 6.1 seconds — all of it answered `immutable` for a year, at 300 requests a
+// minute per address. That is a caller choosing how much Timbre spends on a cover.
+//
+// Mixcloud's own `pictures` map publishes ten square sizes and stops at 1024, and `sized()` only
+// ever shrinks a minted URL, so nothing this app produces asks for more. Sampled over 80 live
+// cloudcasts: 25, 50, 80, 100, 300, 320, 600, 640, 768 and 1024, square every time, under
+// `profile/` or `extaudio/`. The rest of the path is left free — it is a storage key, not a lever.
 export const ALLOWED_PATHS: Record<string, RegExp> = {
   "api.audius.co": /^\/content\/[A-Za-z0-9]+\/(?:150x150|480x480|1000x1000)\.jpg$/,
   "archive.org": /^\/services\/img\/[^/]+$/,
+  "thumbnailer.mixcloud.com": /^\/unsafe\/(?:\d{1,3}|1024)x(?:\d{1,3}|1024)\/\S+$/,
 };
 
 // A path pattern bounds *segments*, and `new URL` leaves `%2f` and `%5c` encoded rather than
