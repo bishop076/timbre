@@ -45,6 +45,25 @@ test("a Deezer refusal on the album list is never cached as an empty discography
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
+// The reproduction that closed `queryRoute`'s missing `try`, kept here because it is the one
+// input that reaches the platform rather than the route: Deezer up, answering 200, one album row
+// with no `title` — that read goes through a TypeScript `interface` and a cast, never zod, so
+// `album.title.trim()` throws a `TypeError` and this route's own catch rethrows anything that is
+// not a `DeezerUnavailable`. On a production build that was `500`, empty body, no
+// `cache-control`. Timbre really did break here, so it stays a 500 — but a said one.
+test("a break that is Timbre's own is a 500 that says so, and is still never cached", async () => {
+  upstream((url) =>
+    url.pathname.startsWith("/search/")
+      ? Response.json(RADIOHEAD)
+      : Response.json({ data: [{ id: 1, release_date: "2000-10-02" }] }),
+  );
+  const response = await ask("name=Radiohead&full=1");
+
+  assert.equal(response.status, 500);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.match(((await response.json()) as { error: string }).error, /Timbre broke/);
+});
+
 test("a name nobody answers to is still an answer, not a failure", async () => {
   upstream(() => Response.json({ data: [] }));
   const response = await ask("name=Radiohead");
