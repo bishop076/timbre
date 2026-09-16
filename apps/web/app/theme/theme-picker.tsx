@@ -14,12 +14,9 @@ import {
   setBackgroundImage,
   subscribeBackground,
 } from "./background";
-import { contrastRatio, normaliseHex } from "./color";
+import { contrastRatio, normaliseHex, readableOn } from "./color";
 import {
-  accentFor,
-  accentForeground,
   CYCLE_STEP_MS,
-  GROUND,
   MAX_DIM,
   MIN_DIM,
   PRESETS,
@@ -31,6 +28,7 @@ import {
   type Ground,
   type Theme,
 } from "./custom-theme";
+import { buildPalette } from "./palette";
 import { ACCEPT as ACCEPT_FONT, clearCustomFont, FONTS, setCustomFont, type FontId } from "./fonts";
 import { prefersDark } from "./theme-css";
 import {
@@ -287,7 +285,7 @@ function Dot({
       className={`press flex size-7 items-center justify-center rounded-[var(--r-full)] border-[length:var(--edge)] transition sm:size-8 ${
         active ? "scale-110 border-[var(--fg)]" : "border-[var(--ink)]"
       }`}
-      style={{ background: hex, color: accentForeground(hex) }}
+      style={{ background: hex, color: readableOn(hex) }}
     >
       {active && <CheckIcon className="size-3.5" />}
     </button>
@@ -332,13 +330,18 @@ function Swatches({ accent, onPick }: { accent: string; onPick: (hex: string) =>
   );
 }
 
-function Readout({ theme, light }: { theme: Theme; light: boolean }) {
+function Readout({ theme }: { theme: Theme }) {
   // The live seed, not the stored one: in "from the cover" and "slowly changing" they are two
   // different colours, and the reader is owed the one they are actually looking at. The store
   // keeps it, so nothing here has to read a clock during a render.
   const seed = useAccentSeed();
-  const accent = accentFor(seed, light ? "light" : "dark", theme.contrast);
-  const ratio = contrastRatio(accent, GROUND[light ? "light" : "dark"]);
+
+  // Built by the same function that paints the page, from the same input, rather than by a
+  // second formula that agrees with it until one of them is edited. What this row reports is
+  // by construction what is on screen.
+  const palette = buildPalette(null, { ...theme, customSeed: seed });
+  const accent = palette["--accent"];
+  const ratio = contrastRatio(accent, palette["--accent-fg"]);
 
   // The swatch and the hex are the *used* colour, not the chosen one, because that is what the
   // reader is looking at everywhere else in the app. Where the two differ, the chosen one is
@@ -349,13 +352,13 @@ function Readout({ theme, light }: { theme: Theme; light: boolean }) {
     <div className="mt-2.5 flex flex-wrap items-center gap-2">
       <span
         className="slab-sm rounded-[var(--r-full)] px-3 py-1 text-[12px] font-bold"
-        style={{ background: accent, color: accentForeground(accent) }}
+        style={{ background: accent, color: palette["--accent-fg"] }}
       >
         Aa
       </span>
       <span className="font-mono text-[11px] text-[var(--fg-faint)]">{accent}</span>
       <span className="text-[11px] text-[var(--fg-dim)]">
-        {ratio.toFixed(1)}:1 on the background
+        {ratio.toFixed(1)}:1 for text on it
         {moved && ` · adjusted from ${seed}`}
       </span>
     </div>
@@ -549,7 +552,7 @@ export function ThemePicker() {
           <ColourField accent={theme.accent} />
         </div>
 
-        <Readout theme={theme} light={light} />
+        <Readout theme={theme} />
 
         <label className="mt-3 flex items-center gap-2.5 text-[12px] font-semibold">
           <input
