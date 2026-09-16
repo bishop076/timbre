@@ -155,6 +155,17 @@ await check("Self-repair sources", async () => {
 });
 
 const ICON = { ok: "✅", warn: "⚠️", fail: "❌" };
+// Every `detail` is third-party text — a track title, an artist name, an upstream error —
+// and this report becomes the body of an issue on a **public** repository, so it is
+// published and an `@mention` in it notifies a real stranger. S-19 accepted this line partly
+// because the repository was private and a mention would reach nobody; it is not, and one
+// would. What actually holds, and the reason to leave this alone, is that the text never
+// leaves a code span: backticks and every run of whitespace — newlines included — collapse
+// to a space, and `|` is escaped so the cell cannot split. GitHub renders neither a mention
+// nor a link nor an image inside a code span, whoever is reading. The `fix` text below is
+// deliberately *not* escaped, because the only part of it that is not a constant is a
+// persisted query hash, and those are matched as [0-9a-f]{64} (DEFINITIONS in
+// spotify-web.ts) long before they reach the ``` fence.
 const code = (text: string) => `\`${text.replace(/[`\s]+/g, " ").trim().replace(/\|/g, "\\|")}\``;
 const failed = results.filter((result) => result.level === "fail");
 const warned = results.filter((result) => result.level === "warn");
