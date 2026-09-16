@@ -55,7 +55,9 @@ export function PlaylistGrid({
             <PlaylistActions
               id={playlist.id}
               name={playlist.name}
-              className="absolute right-3 top-3 z-10 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+              // Over a cover collage rather than the tile's hover panel once touch stops
+              // hiding it, so it needs a ground of its own or it is a dark glyph on dark art.
+              className="absolute right-3 top-3 z-10 rounded-[var(--r-full)] opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 touch:bg-[var(--surface-1)] touch:opacity-100 touch:shadow-[var(--drop-sm)]"
             />
           )}
           <Link
