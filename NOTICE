@@ -1,0 +1,36 @@
+Timbre
+Copyright (C) 2026 bishop076
+
+This program is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+The full text is in LICENSE.
+
+Because Timbre is normally used over a network, section 13 of the AGPL applies: if
+you run a modified version and let other people use it, you must offer those users
+the source of your modified version.
+
+
+THE NAME AND THE MARK ARE NOT COVERED BY THAT LICENCE
+
+The AGPL covers the code. It does not grant any right to the name "Timbre", the
+Timbre wordmark, the app icon, or artwork derived from them. Those remain the
+author's.
+
+The icons and the wordmark paths in this repository are here because the application
+will not build or render without them -- not as a grant to reuse them.
+
+If you fork this and run it for other people, give it your own name and your own
+mark. That is the only condition, and it exists so nobody can be misled about which
+deployment is the author's and which is yours.
+
+
+WHAT THIS PROGRAM IS, AND WHAT IT IS NOT
+
+Timbre hosts no audio. It is a shell around other services' own players: audio
+streams from the service it belongs to, through that service's player, so their ads
+run and artists are paid exactly as they would be otherwise. Nothing is downloaded,
+cached, proxied or re-hosted.
+
+Anything built on this that changes that is not this project, and the name should
+not travel with it.
