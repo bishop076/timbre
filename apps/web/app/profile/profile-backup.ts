@@ -1,7 +1,7 @@
 "use client";
 
 import { dataUrlToBlob, type ProfileExport } from "./profile-file";
-import { hasLocalImage, readLocalImage, setLocalImage, type ImageKind } from "./local-images";
+import { readLocalImage, setLocalImage, type ImageKind } from "./local-images";
 import { getDisplayName, setDisplayName } from "./local-profile";
 
 async function picture(kind: ImageKind): Promise<string | null> {
@@ -21,8 +21,22 @@ export async function exportProfile(): Promise<ProfileExport | null> {
   return name || avatar || banner ? { name, avatar, banner } : null;
 }
 
-export function hasLocalProfile(): boolean {
-  return Boolean(getDisplayName()) || hasLocalImage("avatar") || hasLocalImage("banner");
+/**
+ * Whether this browser already has a profile of its own.
+ *
+ * This is the flag `library-view.tsx` reads to decide whether the profile inside a backup
+ * replaces the local one **without asking**, so it has to be right about the pictures. It asked
+ * `hasLocalImage`, which answered from the thumbnail in `localStorage` — and the thumbnail is a
+ * painting of the picture rather than the picture, which lives in IndexedDB. A `localStorage`
+ * with no room left is precisely the case where the two disagree: `setLocalImage` stores the
+ * picture, `writeThumb` cannot store its copy and says so in the log, and from then on this
+ * answered "no profile here". The next backup imported then handed someone else's avatar and
+ * name over yours with nothing asked and no undo anywhere. Ask the store that holds the picture.
+ */
+export async function hasLocalProfile(): Promise<boolean> {
+  if (getDisplayName()) return true;
+  const [avatar, banner] = await Promise.all([readLocalImage("avatar"), readLocalImage("banner")]);
+  return Boolean(avatar ?? banner);
 }
 
 /**
