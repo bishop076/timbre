@@ -10,6 +10,28 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.25.0 — 16 September 2026
+
+### Added
+
+- **ui** — the rail says its own name to someone already inside it, and cannot be folded away
+- **search** — the strip of hints outgrew the box, and remembered nothing you typed
+
+### Fixed
+
+- **player** — the queue stopped between two songs and had nothing to say about it
+- **profile** — the picture you replaced, painted again on every load
+- **home** — pressing play could replace the home page with "This page stopped working."
+- **profile** — a name this browser refused, shown in the heading as though it had saved
+- **explore** — a genre chart Deezer refused dropped out of the mix as a genre nobody charted
+- **sidecar** — a redirect on the way to an answer was still read until the memory ran out
+- **search** — a search result nothing told a cache how long it could keep
+- **explore** — two For-you shelves that shimmered on for a list that was never coming
+- **artist** — one album Deezer sent without a name took the whole discography with it
+- **explore** — the genre and station rows left the page when Deezer wouldn't answer for them
+
+4 further changes under the hood — refactoring, docs and tests.
+
 ## 0.24.0 — 16 September 2026
 
 ### Added
