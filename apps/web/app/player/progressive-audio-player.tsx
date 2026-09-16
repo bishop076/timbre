@@ -6,7 +6,7 @@ import { proxied } from "../artwork-url";
 import { useLatest, useTransport } from "./embed";
 import { useSpeed } from "./playback-speed.ts";
 import { usePlayerControls } from "./player-context";
-import { stalledStart, START_DEADLINE_MS } from "./progressive-stall.ts";
+import { stalledStart, startedPlaying, START_DEADLINE_MS } from "./progressive-stall.ts";
 import { nextStreamHost } from "./stream-url";
 import { useMediaSession } from "./use-media-session";
 
@@ -59,7 +59,11 @@ export function ProgressiveAudioPlayer({
     const audio = audioRef.current;
     if (!audio || !streamUrl || !src) return;
 
-    const fallback = src === streamUrl ? nextStreamHost(src) : null;
+    // Asked of the url being *tried*, not of the one the song shipped with. `src === streamUrl`
+    // is true only on the first attempt, so the walk stopped dead after one hop: the second and
+    // third fallbacks `nextStreamHost` exists to reach were never asked for, and a track whose
+    // first two Audius nodes were down gave up with two of its four addresses untried.
+    const fallback = nextStreamHost(src);
     let started = false;
 
     // A media resource that fails to load fires the element's `error` event *and* rejects the
@@ -96,9 +100,15 @@ export function ProgressiveAudioPlayer({
     };
     on("timeupdate", onTime);
     on("durationchange", onTime);
-    on("play", () => live.current.handleStateChange("playing"));
+    // `play` fires when `play()` is *called*, which is not the same claim as "this is playing"
+    // — see `startedPlaying`. `playing` is the event that means audio, and it fires on a resume
+    // as well as on a first start, so nothing is lost by waiting for it.
+    on("play", () => {
+      if (startedPlaying(audio)) live.current.handleStateChange("playing");
+    });
     on("playing", () => {
       started = true;
+      live.current.handleStateChange("playing");
     });
     on("pause", () => live.current.handleStateChange("paused"));
     on("ended", () => live.current.handleEnded());

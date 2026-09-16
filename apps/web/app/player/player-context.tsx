@@ -16,7 +16,7 @@ import { SkipLink } from "../a11y/skip-link";
 import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
 import { log } from "../logs.ts";
 import { addSourcesToSong } from "../playlists/store";
-import { getSpotifyTokens } from "../spotify/token-store.ts";
+import { getSpotifyTokens, useSpotifyTokens } from "../spotify/token-store.ts";
 import type { Song, SongsResponse } from "../types";
 import { judgeDeadTrack } from "./dead-track";
 import { drawRadio } from "./draw-radio";
@@ -33,6 +33,7 @@ import { forgetFailedSource, pickSource, rememberedSource } from "./source-choic
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import { describeVerdict, judgePause, RESUME_DELAY_MS } from "./unasked-pause";
 import { useTabSync } from "./use-tab-sync";
+import { volumeOutOfReach } from "./volume-reach.ts";
 import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
 import { whyLeftYouTube, type LeftYouTube, type YouTubeFailures } from "./youtube-refusal";
 
@@ -143,7 +144,7 @@ const GAVE_UP_ON_YOUTUBE: Record<LeftYouTube, string> = {
   refused: "YouTube refused this connection (a VPN, maybe), and nothing else could play it.",
 };
 
-function giveUpReason(
+export function giveUpReason(
   youtubeCopies: number,
   triedProgressive: boolean,
   left: LeftYouTube | null = null,
@@ -157,7 +158,10 @@ function giveUpReason(
       ? "The only copy on YouTube wouldn't play here, and nothing else could either."
       : `None of the ${youtubeCopies} copies on YouTube would play here, and nothing else could either.`;
   }
-  if (triedProgressive) return "This track wouldn't stream, and there's no copy on YouTube.";
+  // Not "there's no copy on YouTube". This line is reached with `attempted` empty, which is not
+  // an absence anybody checked — a search that failed outright leaves exactly this state, and
+  // asserting a cause the app never verified is B-6's mistake in a different sentence.
+  if (triedProgressive) return "This track wouldn't stream, and nothing else here would play it.";
   return "No source here could play this one.";
 }
 
@@ -202,6 +206,34 @@ export function playbackFrom(song: Song, source: string): "queue" | "manual" | "
 
 function spentKey(chosen: ChosenSource): string {
   return chosen.kind === "spotify" ? `spotify:${chosen.id}` : chosen.kind;
+}
+
+/**
+ * The exact thing that was tried, as opposed to the rung that was used.
+ *
+ * `spentKey` answers "has the SoundCloud rung had its turn", which is the right question for the
+ * ladder and the wrong one for the rescue below it. The rescue's whole job is to find *another*
+ * copy, and the search it draws from routinely returns this very track first — so `adoptElsewhere`
+ * handed `start` the identical url that had just failed. Nothing about the player's props changed,
+ * so no effect re-ran, no deadline was armed and nothing raised an error; and `rescued` closed the
+ * ladder behind it. The track sat on "SoundCloud 0:00" for ever with the play button showing Play.
+ *
+ * Kept in the same set as `spentKey`, because both are answers to "what has this attempt done" and
+ * a second set would be one more thing for `load` to remember to clear.
+ */
+export function attemptKey(chosen: ChosenSource): string {
+  switch (chosen.kind) {
+    case "soundcloud":
+      return `soundcloud:${chosen.url}`;
+    case "progressive":
+      return `progressive:${chosen.source}:${chosen.sourceId}`;
+    case "preview":
+      return `preview:${chosen.source}:${chosen.url}`;
+    case "subscription":
+      return `subscription:${chosen.source}:${chosen.id}`;
+    default:
+      return `${chosen.kind}:${chosen.id}`;
+  }
 }
 
 function problemFor(chosen: ChosenSource): string | null {
@@ -278,6 +310,7 @@ function usePlayerValue() {
   const { shuffle, repeat } = useLocalStore(modeStore);
   const { continueWithRadio } = usePlaybackPrefs();
   const { volume, muted } = useVolume();
+  const spotifyTokens = useSpotifyTokens();
 
   const queueRef = useRef<Song[]>([]);
   const stateRef = useRef<PlayState>("idle");
@@ -316,6 +349,9 @@ function usePlayerValue() {
   const spotifyTrackId = playing?.kind === "spotify" ? playing.id : null;
   const subscriptionTrack = playing?.kind === "subscription" ? playing : null;
   const playingPreview = playing?.kind === "preview";
+  // Why the volume control cannot reach this source, if it cannot. Null for the five players
+  // that take a level, which is every source but Spotify's embed and the two subscription ones.
+  const volumeUnreachable = volumeOutOfReach(playing?.kind ?? null, spotifyTokens !== null);
   const streamUrl =
     playing?.kind === "progressive"
       ? streamUrlFor(playing.source, playing.sourceId)
@@ -361,7 +397,7 @@ function usePlayerValue() {
 
   const start = useCallback((chosen: ChosenSource) => {
     if (chosen.kind === "ytmusic") attempted.current.add(chosen.id);
-    else spent.current.add(spentKey(chosen));
+    else spent.current.add(spentKey(chosen)).add(attemptKey(chosen));
     // Every route to a playing source comes through here, which makes it the one place that
     // knows when the thing about to report pauses was handed its track. `judgePause` needs that
     // to tell a source starting up from a source giving up.
@@ -391,11 +427,17 @@ function usePlayerValue() {
     (song: Song, matches: Song[], { mixcloud }: { mixcloud: boolean }): boolean => {
       if (rescued.current.has(song.id)) return false;
 
+      // Each option is tested against what this attempt has already tried, which is not the
+      // question the rungs above ask: those ask whether a *kind* has had its turn, and every
+      // rescue is a second helping of one. A copy offering nothing but the url that just failed
+      // is not a rescue, and taking it ends the ladder — see `attemptKey`.
       const playable = (match: Song) =>
-        progressiveOf(match) ??
-        (mixcloud ? chosenSource(match, "mixcloud") : null) ??
-        chosenSource(match, "soundcloud") ??
-        chosenSource(match, "spotify");
+        [
+          progressiveOf(match),
+          mixcloud ? chosenSource(match, "mixcloud") : null,
+          chosenSource(match, "soundcloud"),
+          chosenSource(match, "spotify"),
+        ].find((found) => found !== null && !spent.current.has(attemptKey(found))) ?? null;
       const elsewhere = matches.find(playable);
       const chosen = elsewhere && playable(elsewhere);
       if (!elsewhere || !chosen) return false;
@@ -1041,8 +1083,13 @@ function usePlayerValue() {
             return start({ kind: "ytmusic", id: shipped });
           }
 
-          const onYouTube = song.sources.some((source) => source.source === "ytmusic");
-          if (onYouTube && candidates.current.length === 0) {
+          // Asked for whatever this song is, which used to be `onYouTube &&` — so a song with
+          // no YouTube source of its own could never reach YouTube from here, though `load`
+          // reaches it by exactly this route for a song with nothing playable at all. An
+          // Audius-only track whose four nodes were all refused gave up while the very search
+          // the rescue runs twenty lines below was answering with two YouTube copies of it.
+          // `whyLeftYouTube` above still keeps a walled connection out of this block entirely.
+          if (candidates.current.length === 0) {
             candidates.current = youtubeIds(await findMatches(song, renew(resolving).signal));
           }
           const alternative = candidates.current.find((id) => !attempted.current.has(id));
@@ -1150,6 +1197,7 @@ function usePlayerValue() {
     problem,
     volume,
     muted,
+    volumeUnreachable,
     radio,
     shuffle,
     repeat,
