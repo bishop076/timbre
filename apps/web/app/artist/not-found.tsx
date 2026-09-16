@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { FailurePanel, PRIMARY } from "@/app/failure-panel";
 
+/** One segment above `[name]`, for the reason written out in `app/album/not-found.tsx`. */
 export const metadata = { title: "Artist not found — Timbre" };
 
 export default function ArtistNotFound() {
