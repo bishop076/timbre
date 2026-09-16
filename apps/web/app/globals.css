@@ -18,6 +18,27 @@
 @custom-variant sideways (@media (min-width: 40rem) and (max-height: 34rem));
 
 /* ---------------------------------------------------------------------------
+   A screen with nothing to hover with.
+
+   Eleven controls in this app were drawn at `opacity: 0` and brought back by
+   `group-hover` — a tile's queue and playlist buttons, a row's trailing
+   actions, the source badges, a playlist's own menu, the move and remove
+   buttons in a playlist. A touch screen never hovers, so none of them ever
+   appeared. `opacity: 0` does not stop a tap either, so the top-right corner of
+   every tile held a live "add to a playlist" button that nothing on screen said
+   was there: unreachable if you didn't know, and a surprise if you did.
+
+   `(hover: none)` asks about the PRIMARY input, which is the question worth
+   asking. `any-hover`/`any-pointer` would also match a touchscreen laptop with
+   a trackpad attached — a machine that hovers perfectly well — and would push
+   the dense layout onto the one screen that never needed it.
+
+   Three files already wrote this out as `[@media(hover:none)]:`; the fourth
+   occurrence is where it earns a name.
+   --------------------------------------------------------------------------- */
+@custom-variant touch (@media (hover: none));
+
+/* ---------------------------------------------------------------------------
    Registered colour tokens.
 
    An unregistered custom property is an untyped string to the engine: it flips

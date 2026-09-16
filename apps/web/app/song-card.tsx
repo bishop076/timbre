@@ -171,6 +171,12 @@ export function SongCard({
             className="focus-ring-inset absolute inset-0 z-10 cursor-pointer rounded-[var(--r-md)]"
           />
 
+          {/* Hover-only on purpose, and the `touch:` escape the two buttons below carry is
+              deliberately absent here. This is a picture of what a click would do, not a thing
+              you can press — `pointer-events-none`, `aria-hidden`, and the whole cover is already
+              the Play button. Drawn always on a phone it is a 40px disc over a 150px cover that
+              does nothing you could not do by tapping the artwork, and it was the single biggest
+              thing in the way once the real controls came back. */}
           <span
             aria-hidden
             className={`slab-sm tint pointer-events-none absolute bottom-2 right-2 z-20 flex size-10 items-center justify-center rounded-[var(--r-full)] text-[var(--accent-fg)] transition duration-300 ease-[var(--ease)] ${
@@ -192,7 +198,7 @@ export function SongCard({
             className={`slab-sm absolute bottom-2 left-2 z-20 flex size-8 items-center justify-center rounded-[var(--r-full)] bg-[var(--surface-1)] text-[var(--fg)] transition duration-300 ease-[var(--ease)] disabled:cursor-default disabled:text-[var(--fg-dim)] ${
               isQueued
                 ? "translate-y-0 opacity-100"
-                : "translate-y-2 opacity-0 hover:bg-[var(--surface-2)] group-hover:translate-y-0 group-hover:opacity-100 focus-visible:translate-y-0 focus-visible:opacity-100"
+                : "translate-y-2 opacity-0 hover:bg-[var(--surface-2)] group-hover:translate-y-0 group-hover:opacity-100 focus-visible:translate-y-0 focus-visible:opacity-100 touch:translate-y-0 touch:opacity-100"
             }`}
           >
             {isQueued ? <CheckIcon className="size-4" /> : <PlusIcon className="size-4" />}
@@ -203,7 +209,12 @@ export function SongCard({
             not where it comes: putting it ahead of the artwork made it the first thing a keyboard
             reached, and arrow-walking a shelf landed on "save to a playlist" for every tile
             instead of on Play. Play is the tile, so Play goes first. */}
-        <div className="absolute right-2 top-2 z-30 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+        {/* On a pointer this glyph appears over a tile that has just gone `hover:bg-surface-2`,
+            so it always has something to sit on. Drawn at rest on a touch screen it is a bare
+            `--fg-dim` mark on whatever the cover happens to be, and on a bright one it vanishes —
+            revealed but still no sign it is there. So on touch it gets the same chip the queue
+            button beside it already wears. */}
+        <div className="absolute right-2 top-2 z-30 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 touch:rounded-[var(--r-full)] touch:bg-[var(--surface-1)] touch:opacity-100 touch:shadow-[var(--drop-sm)]">
           <AddToPlaylist song={song} />
         </div>
       </div>
