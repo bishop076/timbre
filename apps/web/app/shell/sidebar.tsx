@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Artwork } from "../artwork";
 import { Equalizer } from "../equalizer";
 import { moveBetweenItems } from "../a11y/arrow-nav";
 import { useScrollEdges } from "../scroll-edges";
-import { CloseIcon, CompassIcon, HomeIcon, LibraryIcon } from "../icons";
+import { CompassIcon, HomeIcon, LibraryIcon } from "../icons";
 import { usePlayerControls } from "../player/player-context";
 import { LikedCover, LikedRow } from "../playlists/liked-tile";
 import { PlaylistCover } from "../playlists/playlist-cover";
@@ -73,14 +73,6 @@ const RAIL: RailStyle = {
   pad: "px-1 @[9rem]:px-3",
 };
 
-const LABELLED: RailStyle = {
-  label: "",
-  wide: "flex",
-  narrow: "hidden",
-  row: "justify-start",
-  pad: "px-3",
-};
-
 function NavLinks({ rail }: { rail?: RailStyle }) {
   const pathname = usePathname();
   const { exitTheater } = usePlayerControls();
@@ -127,7 +119,6 @@ export function Sidebar() {
   const panel = usePanelWidth();
   const viewport = useViewportWidth();
   const [filter, setFilter] = useState<Filter>("Queue");
-  const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
     void loadPlaylists();
@@ -147,8 +138,7 @@ export function Sidebar() {
   const resolve = (raw: number) => resolveRailWidth(raw, ceiling);
 
   return (
-    <>
-      <aside
+    <aside
         // Two <aside> elements are two "complementary" landmarks, and an unnamed one is
         // announced as just "complementary". The now-playing panel names itself; this one has
         // to as well or a reader cannot tell the two apart in a landmark list.
@@ -156,8 +146,7 @@ export function Sidebar() {
         id={RAIL_ID}
         // `@container` here is what lets the labels follow the dragged width. It also makes this
         // element the containing block for any `position: fixed` inside it — the trap the page
-        // wrappers already set — which is safe only because nothing in the rail is fixed. The
-        // library drawer below is a `<dialog>` in the top layer, and it is not in here anyway.
+        // wrappers already set — which is safe only because nothing in the rail is fixed.
         style={{ "--rail-w": `${width}px` } as React.CSSProperties}
         // `p-2` all round, not `p-2 pb-1.5`. The main column and the now-playing panel both
         // stop 8px short of the row, so a 6px bottom left this card's edge two pixels lower
@@ -188,12 +177,7 @@ export function Sidebar() {
 
           <hr className="my-1.5 border-0 border-t border-[var(--line)]" />
 
-          <LibraryCard
-            style={RAIL}
-            filter={filter}
-            onFilter={setFilter}
-            onExpand={() => setDrawer(true)}
-          />
+          <LibraryCard style={RAIL} filter={filter} onFilter={setFilter} />
         </div>
 
         {/* Pinned over the rail's own right-hand padding, so the gutter between the rail and the
@@ -212,14 +196,6 @@ export function Sidebar() {
           className="bottom-2 right-0 top-2"
         />
       </aside>
-
-      <LibraryDrawer
-        open={drawer}
-        onClose={() => setDrawer(false)}
-        filter={filter}
-        onFilter={setFilter}
-      />
-    </>
   );
 }
 
@@ -227,14 +203,10 @@ function LibraryCard({
   style,
   filter,
   onFilter,
-  onExpand,
-  onNavigate,
 }: {
   style: RailStyle;
   filter: Filter;
   onFilter: (filter: Filter) => void;
-  onExpand?: () => void;
-  onNavigate?: () => void;
 }) {
   const { queue, current, play, exitTheater } = usePlayerControls();
   const { playlists, settled } = usePlaylists();
@@ -246,10 +218,7 @@ function LibraryCard({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <Link
         href="/library"
-        onClick={() => {
-          exitTheater();
-          onNavigate?.();
-        }}
+        onClick={exitTheater}
         // `.focus-ring-inset`, for the same reason a tile's cover art uses it. This link is a
         // flex child of the `overflow: hidden` box above with no padding between them, so it is
         // flush left, right and top — and the ordinary ring is drawn *outside* the border box,
@@ -270,10 +239,7 @@ function LibraryCard({
           taking you anywhere. A library is a place; navigate to it. */}
       <Link
         href="/library"
-        onClick={() => {
-          exitTheater();
-          onNavigate?.();
-        }}
+        onClick={exitTheater}
         aria-label="Your library"
         title="Your library"
         className={`focus-ring-inset press ${style.narrow} shrink-0 items-center justify-center rounded-[var(--r-md)] px-2 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
@@ -320,7 +286,6 @@ function LibraryCard({
             </div>
             <Link
               href="/liked"
-              onClick={onNavigate}
               title="Liked songs"
               className={`${style.narrow} mb-0.5 w-full items-center justify-center rounded-[var(--r-md)] p-1.5 hover:bg-[var(--surface-2)]`}
             >
@@ -329,12 +294,7 @@ function LibraryCard({
                 iconClassName="size-4"
               />
             </Link>
-            <PlaylistRows
-              playlists={playlists}
-              settled={settled}
-              style={style}
-              onNavigate={onNavigate}
-            />
+            <PlaylistRows playlists={playlists} settled={settled} style={style} />
           </>
         ) : queue.length === 0 ? (
           <p className={`${style.wide} px-2 py-6 text-xs leading-relaxed text-[var(--fg-faint)]`}>
@@ -351,10 +311,7 @@ function LibraryCard({
                 <li key={song.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      play(song, queue);
-                      onNavigate?.();
-                    }}
+                    onClick={() => play(song, queue)}
                     title={song.title}
                     className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${style.row} ${
                       isCurrent ? "tint" : "hover:bg-[var(--surface-2)]"
@@ -389,64 +346,6 @@ function LibraryCard({
   );
 }
 
-// A `<dialog>` rather than a fixed panel of our own: the top layer is outside every containing
-// block on the page, so none of the `@container` page wrappers can capture it the way they
-// capture a `position: fixed` child, and Escape and the focus trap come for free.
-function LibraryDrawer({
-  open,
-  onClose,
-  filter,
-  onFilter,
-}: {
-  open: boolean;
-  onClose: () => void;
-  filter: Filter;
-  onFilter: (filter: Filter) => void;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const el = dialog.current;
-    if (!el) return;
-    if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
-  }, [open]);
-
-  return (
-    <dialog
-      ref={dialog}
-      aria-label="Your library"
-      onClose={onClose}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) event.currentTarget.close();
-      }}
-      className="fixed inset-0 m-0 size-full max-h-none max-w-none items-stretch justify-start overflow-hidden bg-transparent p-0 text-[var(--fg)] backdrop:bg-[rgb(0_0_0/50%)] backdrop:backdrop-blur-[6px] open:flex"
-    >
-      {open && (
-        <div className="rise flex h-full w-[19rem] max-w-[86vw] flex-col gap-1.5 p-2 pl-[calc(0.5rem+var(--safe-l))]">
-          <div className="flex h-10 shrink-0 items-center gap-2 px-1.5">
-            <span className="text-[15px] font-extrabold tracking-tight">Your library</span>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close library"
-              className="press ml-auto flex size-8 items-center justify-center rounded-[var(--r-md)] text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
-            >
-              <CloseIcon className="size-4" />
-            </button>
-          </div>
-          <LibraryCard
-            style={LABELLED}
-            filter={filter}
-            onFilter={onFilter}
-            onNavigate={onClose}
-          />
-        </div>
-      )}
-    </dialog>
-  );
-}
-
 // Whether a scroll box has more above or below what it shows, so `.edge-fade` softens only an
 // edge with something past it. Watched, not measured once: the queue grows, and switching tabs
 // swaps the box's contents without resizing the box.
@@ -455,12 +354,10 @@ function PlaylistRows({
   playlists,
   settled,
   style,
-  onNavigate,
 }: {
   playlists: PlaylistSummary[] | null;
   settled: boolean;
   style: RailStyle;
-  onNavigate?: () => void;
 }) {
   const { queueOrigin, state } = usePlayerControls();
   const uploaded = usePlaylistImages();
@@ -489,7 +386,6 @@ function PlaylistRows({
           <li key={playlist.id}>
             <Link
               href={`/playlist/${playlist.id}`}
-              onClick={onNavigate}
               title={playlist.name}
               className={`flex w-full items-center gap-2.5 rounded-[var(--r-md)] p-1.5 text-left ${style.row} ${
                 playing ? "tint" : "hover:bg-[var(--surface-2)]"
