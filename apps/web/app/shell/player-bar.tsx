@@ -232,8 +232,16 @@ export function PlayerBar() {
         {/* The heart belongs to the track, not to the transport. It was wedged between repeat
             and the volume group, four identical-weight glyphs in a row where three of them
             control playback and one changes your library — so it was easy to hit by accident and
-            hard to find on purpose. Out here it sits beside the title it acts on, with space. */}
-        <div className="flex min-w-0 items-center gap-3">
+            hard to find on purpose. Out here it sits beside the title it acts on, with space.
+
+            `w-fit` is what makes "beside" true. This is a grid cell, so the group stretched to
+            fill its whole 1fr share, and `meta` is `flex-1` inside it — which put the heart at
+            the far end of the column, 416px from the end of the title and 16px from shuffle.
+            Two glyph-sized controls a finger apart, one of which plays and one of which writes
+            to your library. Sized to its contents, the group ends where the text ends and the
+            heart follows the name it acts on; a title long enough to fill the cell truncates
+            exactly as before, because `fit-content` is still capped by what is available. */}
+        <div className="flex w-fit min-w-0 items-center gap-3">
           {artwork}
           {meta}
           {current ? (
