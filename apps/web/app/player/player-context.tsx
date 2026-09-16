@@ -204,6 +204,34 @@ function spentKey(chosen: ChosenSource): string {
   return chosen.kind === "spotify" ? `spotify:${chosen.id}` : chosen.kind;
 }
 
+/**
+ * The exact thing that was tried, as opposed to the rung that was used.
+ *
+ * `spentKey` answers "has the SoundCloud rung had its turn", which is the right question for the
+ * ladder and the wrong one for the rescue below it. The rescue's whole job is to find *another*
+ * copy, and the search it draws from routinely returns this very track first — so `adoptElsewhere`
+ * handed `start` the identical url that had just failed. Nothing about the player's props changed,
+ * so no effect re-ran, no deadline was armed and nothing raised an error; and `rescued` closed the
+ * ladder behind it. The track sat on "SoundCloud 0:00" for ever with the play button showing Play.
+ *
+ * Kept in the same set as `spentKey`, because both are answers to "what has this attempt done" and
+ * a second set would be one more thing for `load` to remember to clear.
+ */
+export function attemptKey(chosen: ChosenSource): string {
+  switch (chosen.kind) {
+    case "soundcloud":
+      return `soundcloud:${chosen.url}`;
+    case "progressive":
+      return `progressive:${chosen.source}:${chosen.sourceId}`;
+    case "preview":
+      return `preview:${chosen.source}:${chosen.url}`;
+    case "subscription":
+      return `subscription:${chosen.source}:${chosen.id}`;
+    default:
+      return `${chosen.kind}:${chosen.id}`;
+  }
+}
+
 function problemFor(chosen: ChosenSource): string | null {
   if (chosen.kind === "preview") return "Only a 30-second preview — nothing can play this one in full.";
   if (chosen.kind !== "subscription") return null;
@@ -361,7 +389,7 @@ function usePlayerValue() {
 
   const start = useCallback((chosen: ChosenSource) => {
     if (chosen.kind === "ytmusic") attempted.current.add(chosen.id);
-    else spent.current.add(spentKey(chosen));
+    else spent.current.add(spentKey(chosen)).add(attemptKey(chosen));
     // Every route to a playing source comes through here, which makes it the one place that
     // knows when the thing about to report pauses was handed its track. `judgePause` needs that
     // to tell a source starting up from a source giving up.
@@ -391,11 +419,17 @@ function usePlayerValue() {
     (song: Song, matches: Song[], { mixcloud }: { mixcloud: boolean }): boolean => {
       if (rescued.current.has(song.id)) return false;
 
+      // Each option is tested against what this attempt has already tried, which is not the
+      // question the rungs above ask: those ask whether a *kind* has had its turn, and every
+      // rescue is a second helping of one. A copy offering nothing but the url that just failed
+      // is not a rescue, and taking it ends the ladder — see `attemptKey`.
       const playable = (match: Song) =>
-        progressiveOf(match) ??
-        (mixcloud ? chosenSource(match, "mixcloud") : null) ??
-        chosenSource(match, "soundcloud") ??
-        chosenSource(match, "spotify");
+        [
+          progressiveOf(match),
+          mixcloud ? chosenSource(match, "mixcloud") : null,
+          chosenSource(match, "soundcloud"),
+          chosenSource(match, "spotify"),
+        ].find((found) => found !== null && !spent.current.has(attemptKey(found))) ?? null;
       const elsewhere = matches.find(playable);
       const chosen = elsewhere && playable(elsewhere);
       if (!elsewhere || !chosen) return false;
