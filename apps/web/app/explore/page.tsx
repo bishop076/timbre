@@ -68,8 +68,10 @@ export default async function ExplorePage() {
  *   last whole page keeps being served `STALE`, and the next request tries again. The reader gets
  *   the last Explore that was true rather than a thinner one.
  *
- * Nothing on screen moves. What a refused genre looks like is exactly what was settled for the
- * For-you shelves and is not restated here; this closes the half of it that is about caching.
+ * The probe now also reaches the screen. It was left server-side on the grounds that nothing on
+ * the page moves, which was true and was the bug: a refused genre still dropped out of the genre
+ * mix without a word, so the chart read as the whole week's mix while missing its three largest
+ * columns. `RankingsView` and `GenreMixView` take the same flag and say so, in the same words.
  */
 async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
   const probe: FeedProbe = { failed: false };
@@ -87,7 +89,8 @@ async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
       genreNames={Object.fromEntries(genreCharts.map((chart) => [chart.id, chart.genre]))}
       share={shareByArtist(rankings.songs)}
       agree={agreement(rankings)}
-      genreMix={<GenreMixView mix={mixGenres(genreCharts, rankings.songs)} />}
+      genresRefused={probe.failed}
+      genreMix={<GenreMixView mix={mixGenres(genreCharts, rankings.songs)} refused={probe.failed} />}
       chart={chart}
     />
   );
