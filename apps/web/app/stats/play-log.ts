@@ -1,7 +1,7 @@
 import { createJsonStore, useLocalStore } from "../local-store.ts";
 import { log } from "../logs.ts";
 import type { PlayedSong } from "../player/history-store";
-import { usableArtwork } from "../song-shape.ts";
+import { usableArtwork, usableContext, usableSourceUrl } from "../song-shape.ts";
 
 export interface PlayLog {
   plays: [id: string, at: number][];
@@ -25,23 +25,44 @@ export function loggedSong(log: PlayLog, id: string): PlayedSong | undefined {
  * `songFromHistory` into `<ArtistLink>` — where `artists.join(", ")` throws and takes the page
  * down. One rule, applied by both, or the weaker one decides.
  *
+ * Everything a reader goes on to use is built here rather than copied through. `source`,
+ * `sourceId`, `url`, `videoId` and `from` used to be waved past on the strength of the four
+ * fields above them, and `songFromHistory` turns all five straight into a `Song` — so the one
+ * stored song `usableSong` never sees was also the one nothing checked. That gap is what this
+ * rebuild closes; the fields it rejects are dropped from the record, never the record itself.
+ *
  * It lives here rather than next to `PlayedSong` because `history-store.ts` already imports this
  * module for `logPlay`; a value import the other way would be a cycle.
  */
 export function playedSong(value: unknown): PlayedSong | null {
   if (typeof value !== "object" || value === null) return null;
-  const entry = value as Partial<PlayedSong>;
+  const entry = value as Partial<PlayedSong> & Record<string, unknown>;
   if (typeof entry.id !== "string" || !entry.id || typeof entry.title !== "string") return null;
   if (!Array.isArray(entry.artists)) return null;
   if (!entry.artists.every((artist) => typeof artist === "string")) return null;
   if (entry.artworkUrl != null && typeof entry.artworkUrl !== "string") return null;
 
-  // A playlist and a liked song are read back through `usableSong`, which keeps a cover only on a
-  // host `/api/art` serves. Hold a played song to the same rule, so a cover this browser stored
-  // before that rule existed stops being fetched from a third-party host on every visit.
-  const song = entry as PlayedSong;
-  const artworkUrl = usableArtwork(song.artworkUrl);
-  return artworkUrl === song.artworkUrl ? song : { ...song, artworkUrl };
+  const source = typeof entry.source === "string" ? entry.source : null;
+  const from = usableContext(entry.from);
+  return {
+    id: entry.id,
+    title: entry.title,
+    artists: entry.artists,
+    // A playlist and a liked song are read back through `usableSong`, which keeps a cover only on
+    // a host `/api/art` serves. Hold a played song to the same rule, so a cover this browser
+    // stored before that rule existed stops being fetched from a third-party host on every visit.
+    artworkUrl: usableArtwork(entry.artworkUrl),
+    videoId: typeof entry.videoId === "string" ? entry.videoId : null,
+    ...(source === null ? {} : { source }),
+    ...(typeof entry.sourceId === "string" ? { sourceId: entry.sourceId } : {}),
+    // The same host rule `usableSong` applies, and for the same reason: `songFromHistory` hands
+    // this string to the player as a source link, and the now-playing panel renders it as the
+    // `<a href>` behind "Can't play this here". A hand-edited history entry pointed that link at
+    // any address at all — which is exactly what the rule beside it has refused for a playlist
+    // and a liked song for some time.
+    ...(source === null ? {} : { url: usableSourceUrl(source, entry.url) }),
+    ...(from ? { from } : {}),
+  };
 }
 
 /**

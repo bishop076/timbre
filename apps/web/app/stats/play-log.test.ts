@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { listeningStats, playsFrom } from "./listening-stats.ts";
-import { appendPlay, EMPTY_LOG, parsePlayLog, PLAY_LOG_LIMIT } from "./play-log.ts";
+import { appendPlay, EMPTY_LOG, parsePlayLog, playedSong, PLAY_LOG_LIMIT } from "./play-log.ts";
 
 const CID = "baeaaaiqsecd464n7qxtqqo67upgngf2fcajvoo34d77qqipyxnu2vpqazrwom";
 
@@ -94,6 +94,90 @@ test("a stored song whose artists are not a list is dropped, not handed to the p
   for (const [id] of parsed.plays) {
     assert.doesNotThrow(() => parsed.songs[id]!.artists.join(", "));
   }
+});
+
+/* ---------------------------------------------------------------------------
+   The three fields the log used to wave past: a source, its link, and the
+   artist a song was played from.
+   --------------------------------------------------------------------------- */
+
+const played = (extra: Record<string, unknown>) => ({
+  id: "audius:abc",
+  title: "Delilah",
+  artists: ["Someone"],
+  artworkUrl: null,
+  videoId: null,
+  ...extra,
+});
+
+test("a played song Timbre wrote comes back with every field it had", () => {
+  // The guard on everything below: this rule is only allowed to refuse what a reader could not
+  // have got from a provider in the first place.
+  const real = played({
+    source: "soundcloud",
+    sourceId: "1",
+    url: "https://soundcloud.com/flume/never-be-like-you",
+    videoId: "dQw4w9WgXcQ",
+    from: { kind: "artist", name: "Flume", imageUrl: null },
+  });
+  assert.deepEqual(playedSong(real), real);
+});
+
+test("a stored link that does not belong to its source is dropped, and the play kept", () => {
+  // `songFromHistory` turns this straight into `Song.sources[0].url`, and the now-playing panel
+  // renders that as the `<a href>` behind "Can't play this here". Proven on a production build:
+  // one hand-edited `timbre:history` entry pointed that link at https://evil.example/. The same
+  // string in a playlist has been refused for some time — only history never asked.
+  for (const url of [
+    "javascript:void(0)",
+    "https://evil.example/phishing-login",
+    "http://soundcloud.com/a/b",
+    "https://soundcloud.com.evil.example/a/b",
+  ]) {
+    const song = playedSong(played({ source: "soundcloud", sourceId: "1", url }));
+    assert.equal(song?.title, "Delilah", `${url} must not cost the play`);
+    assert.equal(song?.url, null, `${url} names no host SoundCloud serves`);
+  }
+
+  const kept = "https://soundcloud.com/flume/never-be-like-you";
+  assert.equal(playedSong(played({ source: "soundcloud", sourceId: "1", url: kept }))?.url, kept);
+});
+
+test("a played source named after a property of Object keeps no link either", () => {
+  // The same class of bug, on the reader that never had the guard. The host table answers "constructor"
+  // with a function rather than with nothing, so the check has to be `Object.hasOwn` on both
+  // sides of it or the second reader reintroduces what the first one fixed.
+  for (const name of ["constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"]) {
+    const song = playedSong(played({ source: name, sourceId: "x", url: "https://soundcloud.com/a/b" }));
+    assert.equal(song?.source, name, `${name} should survive as a name`);
+    assert.equal(song?.url, null, `${name} names no host, so it keeps no link`);
+  }
+});
+
+test("a play context the page cannot render is dropped, not passed on", () => {
+  // `songFromHistory` copies `from` into the `Song`, and the "Recently played" shelf reads
+  // `current.from.name.toLowerCase()` on every render while something is playing. A stored
+  // `{ kind: "artist", name: 5 }` made that a TypeError: on a production build, pressing play
+  // on the entry replaced the whole home page with "This page stopped working."
+  assert.equal(playedSong(played({ from: { kind: "artist", name: 5 } }))?.from, undefined);
+  assert.equal(playedSong(played({ from: { kind: "album", name: "x" } }))?.from, undefined);
+  assert.equal(playedSong(played({ from: "Oasis" }))?.from, undefined);
+  assert.deepEqual(playedSong(played({ from: { kind: "artist", name: "Oasis" } }))?.from, {
+    kind: "artist",
+    name: "Oasis",
+    imageUrl: null,
+  });
+  // And what the shelf then does with it does not throw.
+  const from = playedSong(played({ from: { kind: "artist", name: 5 } }))?.from;
+  assert.doesNotThrow(() => from?.kind === "artist" && from.name.toLowerCase());
+});
+
+test("a video id that is not a string is no video id", () => {
+  // `songFromHistory` interpolates this into a watch URL and the home shelf puts it in a
+  // /api/radio query; `PlayedSong` says `string | null` and nothing held it to that.
+  assert.equal(playedSong(played({ videoId: { toString: "no" } }))?.videoId, null);
+  assert.equal(playedSong(played({ videoId: 7 }))?.videoId, null);
+  assert.equal(playedSong(played({ videoId: "dQw4w9WgXcQ" }))?.videoId, "dQw4w9WgXcQ");
 });
 
 test("a time no Date can represent is not a time", () => {
