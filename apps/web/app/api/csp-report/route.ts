@@ -45,8 +45,18 @@ export async function POST(request: Request): Promise<Response> {
   // invites it to retry.
   const accepted = new Response(null, { status: 204 });
 
+  // The only route in the app that reads a body, and the cap was on the wrong side of the read:
+  // `request.text()` materialises whatever arrives before anything can measure it, so a 64 MB
+  // POST was buffered in full and then thrown away by the length check — measured at 17 seconds
+  // against a production build, twenty times a minute per address, on a runtime whose heap is the
+  // instance's. A declared length is the one bound available before a byte is taken, and Node's
+  // parser holds a non-chunked body to it, so a report that will not say how big it is does not
+  // get read. Every browser that sends one of these sends a fixed JSON body and declares it.
+  const declared = Number(request.headers.get("content-length"));
+  if (!Number.isInteger(declared) || declared <= 0 || declared > MAX_BYTES) return accepted;
+
   const text = await request.text().catch(() => "");
-  if (!text || text.length > MAX_BYTES) return accepted;
+  if (!text) return accepted;
 
   let parsed: unknown;
   try {

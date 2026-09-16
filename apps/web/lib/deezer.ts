@@ -100,6 +100,28 @@ export async function deezerList<T>(path: string, revalidateSeconds?: number): P
   return (await deezer<{ data?: T[] }>(path, revalidateSeconds))?.data ?? [];
 }
 
+/**
+ * What a route says when a strict read throws: a 502 nothing is allowed to remember.
+ *
+ * `deezerOrFail` exists so a page can tell an outage from an absence, and the two routes reading
+ * through it had no `catch` at all — so Deezer rate limiting this deployment left `/api/artist`
+ * and `/api/taste` as a bare 500 with an empty body and no cache directives, from a request that
+ * was perfectly well formed. A 500 says Timbre broke; this says Deezer would not answer, which
+ * is what happened, and `no-store` keeps the CDN from holding that answer over the outage.
+ *
+ * Returns `null` for anything that is not a Deezer outage, so a caller rethrows what it cannot
+ * explain rather than dressing it up as one.
+ */
+export function deezerRefusal(error: unknown): Response | null {
+  if (!(error instanceof DeezerUnavailable)) return null;
+
+  log("warn", "deezer_route_failed", { reason: error.reason, message: scrub(error.message) });
+  return Response.json(
+    { error: "Deezer wouldn't answer for this just now. Try again shortly." },
+    { status: 502, headers: { "cache-control": "no-store" } },
+  );
+}
+
 export async function fetchChartTracks(genre: number | string): Promise<RawTrack[]> {
   const chart = await deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${genre}?limit=50`, 3_600);
   return chart?.tracks?.data ?? [];

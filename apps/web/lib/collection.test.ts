@@ -62,3 +62,28 @@ test("the mood page opens the playlist that was picked", async () => {
   assert.match(collection!.subtitle, /^Sleep Sequence · /);
   assert.deepEqual(collection?.tracks.map((track) => track.title), ["Weightless"]);
 });
+
+// The last of S-10's swallowed failures. `/collection/spotify-album/[id]` is `force-static` with
+// a fifteen-minute `revalidate` and turns `null` into `notFound()`, so a Spotify outage published
+// "no such album" about an album that exists — and kept it. Measured before the fix: a real id
+// came back `null` after two failed requests.
+test("a Spotify outage is not an album that does not exist", async () => {
+  process.env.YTMUSIC_SHARED_SECRET ??= "test-secret";
+  globalThis.fetch = (async () => {
+    throw new TypeError("fetch failed");
+  }) as typeof fetch;
+
+  await assert.rejects(() => fetchCollection("spotify-album", "4m2880jivSbbyEGAKfITCa"));
+});
+
+// And the distinction still works the other way: Spotify answering "there is no such thing" is
+// an absence, and `notFound()` is the right page for it.
+test("a Spotify id nothing answers to is still an absence", async () => {
+  process.env.YTMUSIC_SHARED_SECRET ??= "test-secret";
+  globalThis.fetch = (async () =>
+    new Response("not found", { status: 404 })) as typeof fetch;
+
+  assert.equal(await fetchCollection("spotify-album", "4m2880jivSbbyEGAKfITCa"), null);
+  // An id that is not a Spotify id never leaves the building.
+  assert.equal(await fetchCollection("spotify-album", "nope"), null);
+});

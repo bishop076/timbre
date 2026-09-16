@@ -134,3 +134,55 @@ test("LRCLIB's literal 'undefined' album is not an album", async () => {
     [null, null, "Badlands"],
   );
 });
+
+// LRCLIB's rows used to be an `interface` and two `as` casts. Fed these field types the route
+// answered 200 and copied every one of them into `lyrics`, under a day of `s-maxage` — the
+// client's own checks were the only thing keeping them off the screen.
+test("a row whose fields are not what LRCLIB promises is not served as lyrics", async () => {
+  const response = await withUpstream(
+    () =>
+      Response.json({
+        id: "not-a-number",
+        trackName: { a: 1 },
+        artistName: ["x"],
+        instrumental: "yes",
+        plainLyrics: { nested: true },
+        syncedLyrics: null,
+      }),
+    () => ask("title=Ghost&artist=Halsey&id=5"),
+  );
+
+  assert.equal(response.status, 502);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.deepEqual(await response.json(), { lyrics: null, error: "LRCLIB did not answer." });
+});
+
+test("a search that is not a list is a failure, not an empty list of versions", async () => {
+  const response = await withUpstream(
+    () => Response.json({ not: "an array" }),
+    () => ask("title=Ghost&artist=Halsey&alternatives=1"),
+  );
+
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: "LRCLIB did not answer." });
+});
+
+// One unreadable row in a list of versions is one row, not the whole lookup.
+test("a bad row inside a good list is dropped, and the rest still answer", async () => {
+  const response = await withUpstream(
+    () =>
+      Response.json([
+        null,
+        { id: 1, trackName: "Ghost", artistName: "Halsey", instrumental: false, plainLyrics: "x", syncedLyrics: null },
+        { id: "two", trackName: "Ghost", artistName: "Halsey" },
+      ]),
+    () => ask("title=Ghost&artist=Halsey&alternatives=1"),
+  );
+
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { alternatives: { id: number }[] };
+  assert.deepEqual(
+    body.alternatives.map((option) => option.id),
+    [1],
+  );
+});
