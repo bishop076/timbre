@@ -13,6 +13,7 @@
  * with a background sees the flat theme for one frame on every single load.
  */
 
+import { isReplayableImage } from "../customise/replay.ts";
 import { createNotifier, readItem, writeItem } from "../local-store.ts";
 import { openImageStore } from "../profile/image-store.ts";
 import { backgroundVars, type BackgroundPrefs } from "./custom-theme.ts";
@@ -39,9 +40,27 @@ function onStorage(event: StorageEvent): void {
   void load();
 }
 
+/**
+ * The stored thumbnail, but only if it is a value the pre-paint script would also have replayed.
+ *
+ * This used to be `raw?.startsWith("data:image/")`, a check on the first eleven characters of a
+ * string whose last characters are the dangerous ones, with no cap on its length — and the value
+ * goes straight into `paint()`, which splices it into `--app-bg-image` as `url(...)`. The boot
+ * script in layout.tsx reads the *same key* and has always required base64 of a raster type under
+ * 700,000 characters, so the hydrated path was accepting values the pre-paint path refused: the
+ * exact divergence that makes a hardened boot script stop being worth anything. `local-images.ts`
+ * was moved onto the shared rule for the profile pictures; this is the last key still on the
+ * prefix check.
+ *
+ * Nothing the reader can choose is lost by this. `setBackgroundImage` is the only writer, and it
+ * stores `canvas.toDataURL("image/webp"|"image/jpeg", 0.5)` of a canvas capped at 512x512 — always
+ * base64, always one of the accepted types. Measured in Chrome, the largest that encoder will
+ * produce at that size is 539,787 characters, for 512x512 of pure random RGBA noise; a photograph
+ * is opaque and comes in under 200,000.
+ */
 function thumb(): string | null {
   const raw = readItem(THUMB_KEY);
-  return raw?.startsWith("data:image/") ? raw : null;
+  return isReplayableImage(raw) ? raw : null;
 }
 
 /** The URL of the background, or null. The thumbnail first, the full picture once it is read. */
