@@ -1,5 +1,6 @@
 import type { SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
+import { previewOn } from "./preview-url.ts";
 import { createRequester } from "./request.ts";
 
 interface ITunesTrack {
@@ -38,7 +39,7 @@ function fromSearch(raw: ITunesTrack): SourceTrack | null {
     url: raw.trackViewUrl ?? null,
     artworkUrl: upsizeArtwork(raw.artworkUrl100),
     playback: "link",
-    previewUrl: raw.previewUrl || null,
+    previewUrl: previewOn("apple", raw.previewUrl),
   };
 }
 

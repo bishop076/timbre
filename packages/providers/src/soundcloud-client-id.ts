@@ -1,3 +1,5 @@
+import { MAX_SCRIPT_BYTES, readCapped } from "./request.ts";
+
 const TTL_MS = 4 * 60 * 60 * 1000;
 const CRAWL_BUDGET_MS = 15_000;
 const RETRY_AFTER_MS = 5 * 60 * 1000;
@@ -14,10 +16,14 @@ export function clientIdFrom(javascript: string): string | null {
   return CLIENT_ID_PATTERN.exec(javascript)?.[1] ?? null;
 }
 
+// The second pass below drops the range header and reads whole bundles: measured 2026-09-15,
+// SoundCloud's nine asset scripts come to 5.9 MB, the largest one 2.9 MB. `readCapped` turns
+// "however much it sends" into a bound, and a breach lands in the `catch` here as no script —
+// which is what this crawler already says for every other way a read can fail.
 async function text(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<string | null> {
   try {
     const response = await fetch(url, { headers, cache: "no-store", signal });
-    return response.ok ? await response.text() : null;
+    return response.ok ? await readCapped(response, "soundcloud", "SoundCloud", MAX_SCRIPT_BYTES) : null;
   } catch {
     return null;
   }

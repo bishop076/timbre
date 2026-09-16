@@ -120,3 +120,42 @@ test("playlist ids: albums and editorial lists pass, mixes and personal lists do
 test("the provider is recognisable in the registry", () => {
   assert.ok(isYtMusicProvider(provider));
 });
+
+/**
+ * The sidecar declares a `response_model` on every route, so a healthy one cannot send any of
+ * these. That is an argument for the shape being reliable, not for trusting it: the URL is
+ * configuration, and until this was checked a single track with a null `artists` did not fail
+ * the YouTube Music provider — it failed the whole search. `searchAll` catches what a provider
+ * throws, then ranks and merges the pooled result *outside* that guard, so Apple's and Deezer's
+ * good answers went down with it.
+ */
+const misshapen: [string, unknown, () => Promise<unknown>][] = [
+  ["search with no list at all", {}, () => provider.search(ctx, "x", 5)],
+  ["search with a null list", { items: null }, () => provider.search(ctx, "x", 5)],
+  ["radio with no lists", {}, () => provider.radio!(ctx, { sourceId: "v" }, 5)],
+  ["a playlist with no track list", { ...PLAYLIST, tracks: "all of them" }, () => provider.playlist(ctx, PLAYLIST.id, 5)],
+];
+
+for (const [name, body, ask] of misshapen) {
+  test(`${name} is this source failing, not a TypeError out of the search route`, () =>
+    withSidecar(200, body, async () => {
+      await assert.rejects(ask(), (error: unknown) => {
+        assert.ok(error instanceof ProviderError, `got ${(error as Error)?.constructor?.name}`);
+        assert.equal(error.provider, "ytmusic");
+        assert.match(error.message, /YouTube Music sidecar/);
+        return true;
+      });
+    }));
+}
+
+test("one unreadable track is dropped, and the rest of the page still arrives", () =>
+  withSidecar(
+    200,
+    { items: [{ ...PLAYLIST.tracks[0], artists: null }, { video_id: null, title: "No id" }, { title: "No id either" }] },
+    async () => {
+      const tracks = await provider.search(ctx, "x", 5);
+      assert.equal(tracks.length, 1, "the two tracks with no id are dropped, the readable one is not");
+      assert.deepEqual(tracks[0]?.artists, [], "a null credit list becomes no credits, not a crash downstream");
+      assert.equal(tracks[0]?.title, "ceiling duty");
+    },
+  ));

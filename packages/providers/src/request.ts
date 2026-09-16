@@ -4,6 +4,24 @@ import type { SearchContext, SourceId } from "./types.ts";
 
 const DEADLINE_MS = 6_000;
 
+/**
+ * How much of an answer any source is allowed to be.
+ *
+ * A deadline bounds how long a source may take; nothing bounded how much it could send, so a
+ * host that kept writing filled the heap instead of the clock. Measured against the live
+ * services on 2026-09-15: the largest JSON any provider returns is 615 KB (Audius, 100 tracks),
+ * and the largest page read is 162 KB (`open.spotify.com/search`). Four megabytes leaves every
+ * one of those six times over.
+ *
+ * Vendor *scripts* are the exception and carry their own bound below: Spotify's web-player
+ * bundle measured 4.3 MB and SoundCloud's largest asset bundle 2.9 MB, so lifting the shared
+ * limit to fit them would have given every JSON endpoint the same room for no reason.
+ */
+export const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+/** The bound for the two hash/client-id crawls, which really do read vendor bundles. */
+export const MAX_SCRIPT_BYTES = 8 * 1024 * 1024;
+
 export interface RequesterOptions {
   id: SourceId;
   label: string;
@@ -12,11 +30,80 @@ export interface RequesterOptions {
   softStatuses?: readonly number[];
   checkBody?: (body: unknown) => void;
   deadlineMs?: number;
+  maxBytes?: number;
 }
 
 export function deadlineSignal(caller: AbortSignal | undefined, ms: number = DEADLINE_MS): AbortSignal {
   const timeout = AbortSignal.timeout(ms);
   return caller ? AbortSignal.any([caller, timeout]) : timeout;
+}
+
+/**
+ * `fetch`, with the failure typed and named rather than left as a `DOMException`.
+ *
+ * Third occurrence: the requester below, Spotify's page fetches and Spotify's oEmbed/MusicBrainz
+ * lookups all need the same three-way split — the caller's own abort passes through untouched, a
+ * deadline is reported as a deadline, and anything else is the host being unreachable. The two
+ * Spotify paths did not go through the requester and so had none of it, and threw the raw
+ * `TimeoutError` at callers that only catch `ProviderError`.
+ */
+export async function fetchOrFail(
+  target: string | URL,
+  init: RequestInit,
+  id: SourceId,
+  label: string,
+  ms: number = DEADLINE_MS,
+): Promise<Response> {
+  try {
+    return await fetch(target, init);
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
+    const timedOut = cause instanceof DOMException && cause.name === "TimeoutError";
+    const message = timedOut ? `${label} did not answer within ${ms / 1000}s.` : `${label} unreachable.`;
+    throw new ProviderError(id, "transient", message, { cause });
+  }
+}
+
+/**
+ * The body as text, or this source's error if there is more of it than we agreed to read.
+ *
+ * Counting after the fact would mean the bytes were already here, so this reads the stream and
+ * stops at the first chunk that crosses the line — the connection is cancelled, nothing further
+ * is decoded, and the caller is told plainly. Truncating instead would be worse than either: a
+ * half-read body fails a `JSON.parse` or a regex and reports itself as "the source sent
+ * nonsense", which sends whoever reads the log to the wrong service.
+ */
+const asSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${Math.round(bytes / 1024 / 1024)} MB` : `${Math.round(bytes / 1024)} KB`;
+
+export async function readCapped(
+  response: Response,
+  id: SourceId,
+  label: string,
+  maxBytes = MAX_BODY_BYTES,
+): Promise<string> {
+  const stream = response.body;
+  if (!stream) return "";
+
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let read = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      read += value.byteLength;
+      if (read > maxBytes) {
+        await reader.cancel();
+        throw new ProviderError(id, "transient", `${label} sent more than ${asSize(maxBytes)}; the read was stopped.`);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return text + decoder.decode();
 }
 
 export async function takeSlot(
@@ -44,6 +131,7 @@ export function createRequester({
   softStatuses,
   checkBody,
   deadlineMs = DEADLINE_MS,
+  maxBytes = MAX_BODY_BYTES,
 }: RequesterOptions): SoftRequester {
   return async <T>(ctx: SearchContext, target: string | URL, extra?: RequestInit): Promise<T | null> => {
     ctx.signal?.throwIfAborted();
@@ -71,15 +159,7 @@ export function createRequester({
     }
     const signal = deadlineSignal(ctx.signal, left);
 
-    let response: Response;
-    try {
-      response = await fetch(target, { signal, ...init(ctx), ...extra });
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
-      const timedOut = cause instanceof DOMException && cause.name === "TimeoutError";
-      const message = timedOut ? `${label} did not answer within ${deadlineMs / 1000}s.` : `${label} unreachable.`;
-      throw new ProviderError(id, "transient", message, { cause });
-    }
+    const response = await fetchOrFail(target, { signal, ...init(ctx), ...extra }, id, label, deadlineMs);
 
     if (softStatuses?.includes(response.status)) return null;
     if (!response.ok) {
@@ -90,8 +170,11 @@ export function createRequester({
 
     let body: T;
     try {
-      body = (await response.json()) as T;
+      body = JSON.parse(await readCapped(response, id, label, maxBytes)) as T;
     } catch (cause) {
+      // An oversized body has already said what went wrong, in this source's name. Wrapping it
+      // as "an unreadable body" would blame the shape of the answer for its size.
+      if (cause instanceof ProviderError) throw cause;
       throw new ProviderError(id, "transient", `${label} returned an unreadable body.`, { cause });
     }
     checkBody?.(body);

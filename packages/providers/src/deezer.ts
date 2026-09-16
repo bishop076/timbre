@@ -2,6 +2,7 @@ import { ProviderError } from "@timbre/core";
 
 import type { RankedList, SearchContext, SearchProvider, SourceTrack } from "./types.ts";
 import { cachePolicy } from "./cache-policy.ts";
+import { previewOn } from "./preview-url.ts";
 import { createRequester } from "./request.ts";
 
 const SIMILAR_ARTISTS = 3;
@@ -35,7 +36,7 @@ function toSourceTrack(raw: DeezerTrack): SourceTrack {
     url: raw.link ?? `https://www.deezer.com/track/${raw.id}`,
     artworkUrl: raw.album?.cover_big ?? raw.album?.cover_medium ?? null,
     playback: "link",
-    previewUrl: raw.preview || null,
+    previewUrl: previewOn("deezer", raw.preview),
   };
 }
 
