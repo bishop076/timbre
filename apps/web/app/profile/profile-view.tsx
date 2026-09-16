@@ -65,6 +65,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [refused, setRefused] = useState(false);
 
   useEffect(() => {
     loadPlaylists();
@@ -115,9 +116,22 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
   const onDark = Boolean(local.banner) || !light;
   const strong = onDark ? "text-white" : "text-[var(--fg)]";
 
+  /**
+   * The form stays open when the browser refuses the name.
+   *
+   * `setDisplayName` used to be a `void` call and the editor closed on the assumption that it
+   * had worked, so a full `localStorage` — or a browser with site data blocked — swallowed the
+   * name and showed the heading as if it had taken. It answers now, and a refusal is the one
+   * thing worth saying out loud here: there is no server copy of this, so what is not stored is
+   * simply gone.
+   */
   function save(event: React.FormEvent) {
     event.preventDefault();
-    setDisplayName(draft);
+    if (!setDisplayName(draft)) {
+      setRefused(true);
+      return;
+    }
+    setRefused(false);
     setEditing(false);
   }
 
@@ -188,12 +202,25 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                     onKeyDown={(event) => {
                       if (event.key === "Escape") setEditing(false);
                     }}
+                    aria-invalid={refused || undefined}
                     maxLength={60}
                     autoFocus
                     aria-label="Display name"
                     placeholder="What should we call you?"
                     className="slab w-full rounded-[var(--r-md)] bg-[var(--surface-1)] px-3.5 py-2.5 text-[length:var(--text-title)] font-extrabold tracking-[var(--track-title)] outline-none transition placeholder:font-medium placeholder:text-[var(--fg-faint)] focus:bg-[var(--surface-2)]"
                   />
+                  {refused && (
+                    <p
+                      role="alert"
+                      // --danger, not a Tailwind red: it is the token that tracks the surface,
+                      // and this sits on --surface-1 in every theme.
+                      className="text-[length:var(--text-meta)] leading-relaxed text-[var(--danger)]"
+                    >
+                      This browser is out of storage, so the name wasn&rsquo;t saved. Remove a
+                      picture or some playlists and try again.
+                    </p>
+                  )}
+
                   <div className="flex gap-2">
                     <button
                       type="submit"
@@ -236,6 +263,7 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
                       type="button"
                       onClick={() => {
                         setDraft(profile.name ?? "");
+                        setRefused(false);
                         setEditing(true);
                       }}
                       aria-label="Edit display name"

@@ -134,6 +134,7 @@ export function useLocalImages(): LocalImages {
 }
 
 async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
+  let stored = false;
   try {
     const bitmap = await createImageBitmap(blob);
     const scale = Math.min(1, THUMB_SIZE[kind] / Math.max(bitmap.width, bitmap.height));
@@ -150,6 +151,7 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
     const encoded = webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/jpeg", 0.72);
 
     window.localStorage.setItem(THUMB_KEY[kind], encoded);
+    stored = true;
     window.localStorage.setItem(THUMB_VERSION_KEY, THUMB_VERSION);
     paintThumbVariables(kind);
   } catch (cause) {
@@ -157,6 +159,17 @@ async function writeThumb(kind: ImageKind, blob: Blob): Promise<void> {
     // throw. The picture itself is safe in IndexedDB by the time this runs; what is lost is
     // the pre-hydration painting, so the name and avatar flash in on load instead of being
     // there. Worth saying out loud, not worth failing the save over.
+    //
+    // And the thumbnail beside it goes, because it is now a picture of nothing: it was drawn
+    // from the picture this one replaced. Leaving it there meant every later load painted the
+    // *old* face before first paint and swapped to the new one once IndexedDB answered — and
+    // it never repaired itself, because `load()` only redraws a thumbnail when there is none.
+    // Dropping it costs one frame of monogram and makes the next load put the right one back.
+    //
+    // Only when the new one did not land. A thumbnail that stored and then failed on the tiny
+    // version marker beside it is still a picture of the picture, and throwing it away would
+    // cost the pre-paint frame for nothing.
+    if (!stored) dropThumb(kind);
     log("warn", `Profile ${kind}: the thumbnail could not be stored — ${describe(cause)}`);
   }
 }

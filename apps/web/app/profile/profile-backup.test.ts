@@ -63,7 +63,7 @@ const objectStore = {
     }),
 };
 
-const { hasLocalProfile } = await import("./profile-backup.ts");
+const { applyProfile, hasLocalProfile } = await import("./profile-backup.ts");
 const { setDisplayName } = await import("./local-profile.ts");
 
 test("a browser with nothing of its own says so", async () => {
@@ -88,4 +88,21 @@ test("a display name alone is a profile", async () => {
 
   setDisplayName("Ren");
   assert.equal(await hasLocalProfile(), true);
+});
+
+test("an imported name this browser cannot store is not reported as applied", async () => {
+  // `applyProfile` returns the fields it set, and library-view.tsx reads that list out to the
+  // reader. It used to push "name" on the strength of having called `setDisplayName`, which
+  // said nothing about whether the write landed — so a full localStorage was told its profile
+  // had been replaced by a name that is stored nowhere.
+  const real = window.localStorage.setItem;
+  window.localStorage.setItem = () => {
+    throw new DOMException("out of room", "QuotaExceededError");
+  };
+
+  const applied = await applyProfile({ name: "Imported", avatar: null, banner: null });
+  window.localStorage.setItem = real;
+
+  assert.deepEqual(applied, []);
+  assert.notEqual(backing["timbre:profile-name"], "Imported");
 });
