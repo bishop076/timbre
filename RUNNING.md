@@ -56,7 +56,10 @@ own directory in a monorepo, which is why `apps/web`'s scripts all start with
 > On the sidecar side the variable is read as a **comma-separated list**, so a secret can be
 > rotated without downtime: add the new one alongside the old, move the web app across, then
 > drop the old. Order does not matter — `app/security.py` compares against every entry — and
-> locally one value is all you need. A value under 32 characters boots but warns.
+> locally one value is all you need. **A value under 32 characters is refused at boot** — since
+> `1b657a0` it raises `ConfigError` rather than warning and starting, because a short secret in
+> front of a service with no rate limit and no alert on a run of 401s is a door rather than a
+> warning. `openssl rand -hex 32` gives 64.
 
 ### Everything else is optional
 
@@ -158,6 +161,11 @@ netstat -ano | grep :8787      # nothing listening = that is your answer
 You ran `python -m uvicorn ...` directly. Nothing loads `.env` in that path — `pnpm
 dev:ytmusic` wraps the command in `dotenv-cli`, which is what supplies it. Use the script.
 
+**`ConfigError: YTMUSIC_SHARED_SECRET holds a secret shorter than 32 characters`.**
+Exactly what it says, and it is deliberate: the sidecar refuses to start rather than warning
+and carrying on. Generate one with `openssl rand -hex 32`. If you are rotating, every entry in
+the comma-separated list has to clear 32 — one short value in the list refuses the whole boot.
+
 **500s from the sidecar with nothing in the log, or code changes having no effect.**
 `pnpm dev:ytmusic` spawns a uvicorn reloader *and* a child. Killing the parent orphans the
 child, which keeps 8787 bound and serves stale code. The script now clears the port before
@@ -217,8 +225,9 @@ ignores unknown keys — so they are harmless, just misleading about what the ap
 
 ```bash
 pnpm test          # every workspace package, plus scripts/*.test.mts
-pnpm typecheck     # runs next typegen first; a fresh clone fails without it. Also scripts/ and the service worker
-pnpm typecheck:fast   # same checks, ~3x quicker — see below
+pnpm typecheck     # every package, plus scripts/ and the service worker. Runs next typegen
+                   # first inside apps/web; a fresh clone fails without it
+pnpm typecheck:fast   # the same projects through tsgo — see below
 pnpm lint
 
 cd apps/ytmusic && .venv/Scripts/python.exe -m pytest -q
@@ -227,13 +236,34 @@ cd apps/ytmusic && .venv/Scripts/python.exe -m pytest -q
 Changing a Python dependency means re-running `uv lock` and committing the result, or CI
 fails on `--locked`.
 
+### Why `typecheck` and `test` are two halves each
+
+Neither is one command. `pnpm typecheck` used to be `pnpm -r typecheck && tsc -p scripts`, and
+the whole job of that `&&` is to *skip* the second half when the first is red — so while
+`apps/web` was failing, `tsc -p scripts` did not run for three weeks and a canary script that no
+longer compiled went unnoticed. Both gates now run every half through
+`scripts/run-gate.mts`, which reports each one and exits non-zero if any failed:
+
+```
+[gate] ok typecheck:packages   ok typecheck:scripts
+```
+
+Each half is a script you can run on its own when that is the half you are fixing —
+`pnpm typecheck:packages`, `pnpm typecheck:scripts`, `pnpm test:packages`, `pnpm test:scripts`,
+and inside `apps/web`, `typecheck:app` and `typecheck:sw`. Do not rejoin them with `&&`, and do
+not reach for `;` either: package scripts run under `cmd.exe` on Windows, where the `;` and
+everything after it arrive as *arguments to the first command* — the second half never runs and
+the whole thing exits 0.
+
 ### Why there are two typecheck commands
 
 Almost all of `pnpm typecheck` is `tsc` starting up rather than checking anything —
 `packages/core` is a handful of files and still took 4.4s, and the repo pays that four
 times over (core, providers, web, the service worker). `typecheck:fast` runs the same
 projects through `tsgo`, the native Go build of TypeScript 7, which has no Node startup to
-pay: 17.7s → 6.0s, with `next typegen` (3.5s, unavoidable) now the largest piece left.
+pay: 17.7s → 6.0s, with `next typegen` (3.5s, unavoidable) now the largest piece left. Since
+the split above it is **5.6s**, and checking strictly more: `run-gate.mts` drives each half with
+`node --run`, which starts in 0.44s where `pnpm run` takes 2.69s.
 
 **`pnpm typecheck` is still the gate, and CI runs that one.** `tsgo` ships as a preview, so
 it checks your work while you write it and `tsc` has the last word before anything merges.
