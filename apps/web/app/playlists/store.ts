@@ -279,7 +279,26 @@ export function readBackupFile(text: string): unknown {
   }
 }
 
-export function importPlaylists(data: unknown): number {
+/**
+ * What an import did, for a caller that has to describe it.
+ *
+ * A single count could only ever describe the half that worked. The two refusals are separate
+ * numbers because they are separate things: an entry the file called a playlist that nothing
+ * could read, and a song inside one that did land. Neither says what it was. The name of an
+ * entry we would not parse is the one field there is no reason to trust, and a file only reaches
+ * this state by hand — so there is nobody to tell who does not already know which list they
+ * edited, and no reason to put their text on the library page under the word "Imported".
+ */
+export interface ImportSummary {
+  /** Playlists that landed — new lists and merges into lists this browser already had. */
+  imported: number;
+  /** Entries the file called playlists that nothing could read. */
+  unreadablePlaylists: number;
+  /** Songs inside the playlists that did land that nothing could read. */
+  unreadableSongs: number;
+}
+
+export function importPlaylists(data: unknown): ImportSummary {
   const file = data as Record<string, unknown> | null;
   if (!file || file.format !== "timbre.playlists" || !Array.isArray(file.playlists)) {
     throw new Error("That isn't a Timbre playlist export.");
@@ -289,14 +308,25 @@ export function importPlaylists(data: unknown): number {
     (playlist): playlist is LocalPlaylist =>
       typeof playlist?.name === "string" && Array.isArray(playlist.songs),
   );
+  // Everything this filter refuses left by a silent door, and the number that came back counted
+  // only what survived it: a file of four playlists with three of them mangled landed one and
+  // answered "Imported 1 playlist", which is true and is not the whole truth. The rest of this
+  // path was made to land whole or change nothing and say which; this was the corner where it
+  // still landed part and said it had landed.
+  const unreadablePlaylists = file.playlists.length - incoming.length;
   if (incoming.length === 0) {
     const carriesSomething =
       readProfileExport(file.profile) ||
       (Array.isArray(file.liked) && file.liked.length > 0) ||
       (Array.isArray(file.history) && file.history.length > 0) ||
       Boolean(file.plays);
-    if (carriesSomething) return 0;
-    throw new Error("That file has no playlists in it.");
+    if (carriesSomething) return { imported: 0, unreadablePlaylists, unreadableSongs: 0 };
+    // "No playlists in it" is true of an empty list and false of four unreadable ones.
+    throw new Error(
+      unreadablePlaylists > 0
+        ? "Nothing in that file could be read as a playlist."
+        : "That file has no playlists in it.",
+    );
   }
 
   const now = new Date().toISOString();
@@ -319,10 +349,14 @@ export function importPlaylists(data: unknown): number {
   const byName = new Map(existing.map((playlist) => [playlist.name.toLowerCase(), playlist]));
 
   const added: LocalPlaylist[] = [];
+  let unreadableSongs = 0;
   for (const playlist of incoming) {
     const id = typeof playlist.id === "string" && playlist.id ? playlist.id.slice(0, 120) : null;
     const name = playlist.name.trim().slice(0, 120) || "Imported playlist";
     const songs = usableSongs(playlist.songs);
+    // A song goes the same way an entry above does: `usableSongs` drops what it cannot read, and
+    // the playlist arrives shorter than the file described it with nothing on screen to say so.
+    unreadableSongs += playlist.songs.length - songs.length;
     // `exportPlaylists` writes `all` out whole, `coverUrl` included, and the import dropped it
     // on the floor: a list saved from a Spotify collection came back from a backup with the
     // four-song collage in place of its own art, and nothing anywhere could put it back —
@@ -379,5 +413,5 @@ export function importPlaylists(data: unknown): number {
       "There isn't room in this browser for that file. Remove a playlist or a picture, then try again.",
     );
   }
-  return incoming.length;
+  return { imported: incoming.length, unreadablePlaylists, unreadableSongs };
 }

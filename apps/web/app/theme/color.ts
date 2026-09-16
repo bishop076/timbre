@@ -273,6 +273,20 @@ export function ensureContrast(colour: Oklch, against: Rgb | string, target: num
   return { ...colour, l: colour.l + (end - colour.l) * high };
 }
 
+/**
+ * The OKLCH hue angle an HSL hue lands on.
+ *
+ * The two wheels do not line up: the banner's violet is 258 in HSL and roughly 293 in OKLCH,
+ * and OKLCH 120 is a yellow-green where HSL 120 is the green somebody picked. A hue sampled in
+ * one space and used in the other rotates every colour it touches, silently — which is what
+ * `artworkSeed` was doing to every album cover. Only for talking to code that thinks in HSL:
+ * the cover sampler in app/hue.ts is the one producer left.
+ */
+export function oklchHueFromHsl(degrees: number): number {
+  const wheel = ((degrees % 360) + 360) % 360;
+  return rgbToOklch(parseColor(`hsl(${wheel} 90% 50%)`) ?? BLACK).h;
+}
+
 /** Rotates the hue, holding lightness and chroma — the one move that keeps contrast intact. */
 export function rotateHue(hex: string, degrees: number): string {
   const colour = hexToOklch(hex);

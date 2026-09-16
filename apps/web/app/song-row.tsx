@@ -88,6 +88,9 @@ export function SongRow({
               noteClassName="text-[var(--fg-dim)]"
             />
             <span
+              // No `touch:` here, unlike the trailing buttons: this is a scrim, not a control.
+              // Tapping the row plays it. Drawn at rest on a phone it darkens every thumbnail in
+              // every list for no action you could not already take.
               className={`absolute inset-0 flex items-center justify-center rounded-[var(--r-sm)] bg-black/55 transition ${
                 showing
                   ? "opacity-100"
@@ -184,12 +187,12 @@ function AddButtons({ song, queue }: { song: Song; queue: boolean }) {
       {queue && (
         <AddToQueue
           song={song}
-          className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100"
+          className="shrink-0 opacity-0 transition focus-visible:opacity-100 group-hover:opacity-100 touch:opacity-100"
         />
       )}
       <AddToPlaylist
         song={song}
-        className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100"
+        className="mr-1 shrink-0 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100"
       />
     </>
   );

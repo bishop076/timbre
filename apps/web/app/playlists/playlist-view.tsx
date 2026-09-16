@@ -11,7 +11,7 @@ import { EmptyNotice, Notice, Page, PageHeader } from "../page-chrome";
 import { SearchField } from "../search-field";
 import { usePlayerControls } from "../player/player-context";
 import { SongRow } from "../song-row";
-import { SourceBadges } from "../source-badges";
+import { ROW_BADGES, SourceBadges } from "../source-badges";
 import { PlaylistActions } from "./playlist-actions";
 import { PlaylistCover } from "./playlist-cover";
 import { usePlaylistImages } from "./playlist-image";
@@ -165,16 +165,13 @@ export function PlaylistView({ id }: { id: string }) {
               subtitle={<ArtistLink artists={song.artists} />}
               trailing={
                 <>
-                  <SourceBadges
-                    song={song}
-                    className="hidden opacity-0 transition group-hover:opacity-100 @xl:flex"
-                  />
+                  <SourceBadges song={song} className={ROW_BADGES} />
 
                   <span className="hidden w-12 shrink-0 text-right font-mono text-sm tabular-nums text-[var(--fg-dim)] @md:block">
                     {formatDuration(song.durationMs)}
                   </span>
 
-                  <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                  <div className="flex shrink-0 items-center opacity-0 transition focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100">
                     {term === "" &&
                       [-1, 1].map((step) => (
                         <button

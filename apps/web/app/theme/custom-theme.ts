@@ -13,22 +13,37 @@ import {
   chromaOf,
   clamp,
   contrastRatio,
-  ensureContrast,
-  hexToOklch,
   hslHue,
   normaliseHex,
+  oklchHueFromHsl,
   oklchToHex,
-  readableOn,
   rotateHue,
 } from "./color.ts";
 import { cleanFamily, isFontId, type FontId } from "./fonts.ts";
 
-/** The legacy view. palette.ts still consumes exactly this, and is free to stop. */
+/**
+ * What the ramp needs in order to paint, and nothing else.
+ *
+ * This began as a four-field mirror of the three template modes the redesign replaced, and it
+ * carried a hue — one number — which is why a reader could pick any colour in the world and
+ * only its angle on the wheel ever reached the page. Violet and lilac are a degree apart in
+ * hue and nothing else, so they painted the same app; a chosen grey came out cornflower blue,
+ * because the hue survived and the "this has almost no colour in it" part did not.
+ *
+ * So the seed itself is in here now, as a hex, and so are the two switches the ramp has to
+ * obey. `palette.ts` reads this and only this.
+ */
 export interface ThemeState {
   mode: "album" | "pastel" | "custom";
+  /** The colour on screen right now, #rrggbb — all three of its coordinates, not just the hue. */
+  customSeed: string;
+  /** The seed's HSL angle. Nothing paints from it; it is a cheap key for "the colour moved". */
   customHue: number;
   customLight: boolean;
   customNeutral: boolean;
+  contrast: Contrast;
+  /** Whether the greys take the seed's colour, or stay grey. */
+  tintSurfaces: boolean;
 }
 
 export type Ground = "system" | "light" | "dark";
@@ -55,11 +70,8 @@ export interface Theme extends ThemeState {
   v: number;
   ground: Ground;
   accentSource: AccentSource;
-  /** The seed, #rrggbb. Everything colourful is derived from this one value. */
+  /** The seed as *stored*. In "album art" and "cycling" the colour on screen drifts off it. */
   accent: string;
-  contrast: Contrast;
-  /** Whether the seed tints the greys too, or only the accent itself. */
-  tintSurfaces: boolean;
   /** Root font size multiplier, 0.85–1.5. */
   textScale: number;
   background: BackgroundPrefs;
@@ -168,9 +180,11 @@ export const DEFAULT_THEME: Theme = {
   background: DEFAULT_BACKGROUND,
   font: { id: "default", family: "" },
 
-  // The legacy mirror, kept in the same object so nothing that reads a ThemeState has to know
-  // any of the above exists. `legacyMirror` recomputes these on every save.
+  // What the ramp reads, kept in the same object so nothing holding a ThemeState has to know
+  // the rest of this exists. `legacyMirror` recomputes these on every save, off the colour
+  // that is actually on screen rather than the one in storage.
   mode: "custom",
+  customSeed: DEFAULT_ACCENT,
   customHue: hslHue(DEFAULT_ACCENT),
   customLight: false,
   customNeutral: false,
@@ -203,19 +217,12 @@ export const resolveGround = (theme: Theme, systemDark: boolean): "light" | "dar
   theme.ground === "system" ? (systemDark ? "dark" : "light") : theme.ground;
 
 /**
- * The reader's seed, corrected until it can actually be seen on the ground it will sit on.
- *
- * This is the fix for the old ramp's real bug: it authored --accent and --accent-fg from
- * separate formulas and hoped. Here the accent is moved in lightness until it clears the
- * target against the ground, and the foreground on it is then *derived* from the result.
+ * Which ground the ramp is painting on. "pastel" and a light custom ground are both simply a
+ * light ground now, but the mirror keeps saying it in the old words.
  */
-export function accentFor(seed: string, ground: "light" | "dark", contrast: Contrast): string {
-  const target = CONTRAST_TARGET[contrast];
-  return oklchToHex(ensureContrast(hexToOklch(seed), GROUND[ground], target));
+export function isLightTheme(theme: ThemeState): boolean {
+  return theme.mode === "pastel" || (theme.mode === "custom" && theme.customLight);
 }
-
-/** Black or white on the accent — whichever is legible. Never authored by hand. */
-export const accentForeground = (accent: string) => readableOn(accent);
 
 /** How long one colour is held before it drifts to the next, in "cycle". */
 export const CYCLE_STEP_MS = 45_000;
@@ -245,24 +252,33 @@ export function seedAt(theme: Theme, now: number, artwork?: string | null): stri
 /** When the cycle next moves, so a timer can sleep exactly that long. */
 export const msToNextStep = (now: number) => CYCLE_STEP_MS - (now % CYCLE_STEP_MS);
 
-/** A cover's dominant hue and saturation, turned into a seed. */
+/**
+ * A cover's dominant hue and saturation, turned into a seed.
+ *
+ * The sampler in app/hue.ts reads pixels in HSL, so its hue is an HSL angle and has to be
+ * converted rather than reinterpreted — it was being fed straight into OKLCH, which rotated
+ * every cover by up to 35 degrees toward blue before anything else touched it.
+ */
 export function artworkSeed({ h, s }: { h: number; s: number }, ground: "light" | "dark"): string {
   const chroma = clamp(s, 0.18, 0.72) * 0.22;
   const lightness = ground === "light" ? 0.52 : 0.68;
-  return oklchToHex({ l: lightness, c: chroma, h: ((h * 360) % 360 + 360) % 360 });
+  return oklchToHex({ l: lightness, c: chroma, h: oklchHueFromHsl(h * 360) });
 }
 
 /**
- * The four fields palette.ts reads, recomputed from the seed. Keeping them inside the stored
- * object is what lets the ramp, the pre-paint script and the artwork sampler all carry on
- * working untouched while the layer above them is replaced.
+ * The ramp's view of the theme, recomputed from the live seed. Keeping it inside the stored
+ * object is what lets the ramp, the pre-paint script and the artwork sampler all read one
+ * value rather than each deriving their own.
  */
 export function legacyMirror(theme: Theme, seed: string, light: boolean): ThemeState {
   return {
     mode: theme.accentSource === "artwork" ? (light ? "pastel" : "album") : "custom",
+    customSeed: seed,
     customHue: hslHue(seed),
     customLight: light,
     customNeutral: !theme.tintSurfaces && isNeutralSeed(seed),
+    contrast: theme.contrast,
+    tintSurfaces: theme.tintSurfaces,
   };
 }
 
@@ -382,17 +398,16 @@ export function withMirror(theme: Theme, systemDark = theme.ground !== "light"):
 /* ------------------------------------------------------------------ what gets painted */
 
 /**
- * The custom properties this layer owns. Deliberately none of the ramp's own tokens: the
- * artwork sampler writes those inline on the same element, and two writers on one property is
- * a race nobody can debug. The ramp reads --accent-seed and derives the rest.
+ * The one custom property this layer still owns on its own.
+ *
+ * It used to publish --accent-seed and --accent-seed-fg beside it, on every single change, and
+ * nothing anywhere read either: zero `var(--accent-seed)` in the built stylesheet. The seed is
+ * not something the page needs a copy of — it is the input the ramp is built from, and the
+ * ramp paints every token that comes out of it (palette.ts). The scale is a different kind of
+ * thing: the stylesheet genuinely multiplies by it and the pre-paint script replays it.
  */
-export function themeVars(theme: Theme, seed: string, light: boolean): Record<string, string> {
-  const accent = accentFor(seed, light ? "light" : "dark", theme.contrast);
-  return {
-    "--accent-seed": accent,
-    "--accent-seed-fg": accentForeground(accent),
-    "--ui-scale": String(theme.textScale),
-  };
+export function themeVars(theme: Theme): Record<string, string> {
+  return { "--ui-scale": String(theme.textScale) };
 }
 
 /**
