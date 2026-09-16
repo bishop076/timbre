@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
 import { fetchCollection, pickMoodPlaylist } from "./collection.ts";
+import { DeezerUnavailable } from "./deezer.ts";
 
 const real = globalThis.fetch;
 afterEach(() => {
@@ -86,4 +87,88 @@ test("a Spotify id nothing answers to is still an absence", async () => {
   assert.equal(await fetchCollection("spotify-album", "4m2880jivSbbyEGAKfITCa"), null);
   // An id that is not a Spotify id never leaves the building.
   assert.equal(await fetchCollection("spotify-album", "nope"), null);
+});
+
+/**
+ * Everything answers, except the paths named — those come back 503, which is how Deezer looks
+ * when it is having a bad minute. `deezerOrFail` turns that into `DeezerUnavailable`; what
+ * these tests ask is what the page does with it. Routes are matched in the order written, so
+ * the specific ones go above the prefixes they share.
+ */
+function servingExcept(routes: [string, unknown][], refusing: string[]) {
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    const path = `${url.pathname}${url.search}`;
+    if (refusing.some((prefix) => path.startsWith(prefix))) {
+      return new Response("upstream is busy", { status: 503 });
+    }
+    const found = routes.find(([route]) => path.startsWith(route));
+    assert.ok(found, `unexpected request to ${path}`);
+    return new Response(JSON.stringify(found[1]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+}
+
+const POP: [string, unknown][] = [
+  ["/genre/132/radios", { data: [] }],
+  ["/genre", { data: [{ id: 132, name: "Pop" }] }],
+  ["/chart/132", { tracks: { data: [] } }],
+  ["/editorial/132/selection", { data: [] }],
+];
+
+test("a genre Deezer would not list is not a genre that does not exist", async () => {
+  // The page turns `null` into notFound() — "That collection has gone … taken down where it
+  // lived" — and `force-static` then serves that from the cache for fifteen minutes. Deezer's
+  // genre list is a fixed catalogue, so an empty one is a refusal and never an answer, exactly
+  // as `/api/genre-feed` already had it. The throw reaches error.tsx, which offers a retry.
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const path = new URL(String(input)).pathname;
+    if (path === "/genre") return new Response("upstream is busy", { status: 503 });
+    return new Response(JSON.stringify({ data: [], tracks: { data: [] } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  await assert.rejects(() => fetchCollection("genre", "132"), DeezerUnavailable);
+});
+
+test("a genre that really is not in the catalogue is still not found", async () => {
+  servingExcept(
+    [
+      ["/genre/999/radios", { data: [] }],
+      ["/genre", { data: [{ id: 132, name: "Pop" }] }],
+      ["/chart/999", { tracks: { data: [] } }],
+      ["/editorial/999/selection", { data: [] }],
+    ],
+    [],
+  );
+
+  assert.equal(await fetchCollection("genre", "999"), null);
+});
+
+test("a genre whose every feed was refused says so rather than emptying the page", async () => {
+  servingExcept(POP, ["/chart/132", "/editorial/132/selection", "/genre/132/radios"]);
+
+  await assert.rejects(() => fetchCollection("genre", "132"), DeezerUnavailable);
+});
+
+test("a mood whose search was refused is not a mood nobody has a playlist for", async () => {
+  servingExcept([], ["/search/playlist"]);
+
+  await assert.rejects(() => fetchCollection("mood", "sleep"), DeezerUnavailable);
+});
+
+test("a station that answered but would not say what is on it is not a station that has gone", async () => {
+  servingExcept(
+    [
+      ["/radio/genres", { data: [] }],
+      ["/radio/37151", { title: "Pop Hits" }],
+    ],
+    ["/radio/37151/tracks"],
+  );
+
+  await assert.rejects(() => fetchCollection("radio", "37151"), DeezerUnavailable);
 });
