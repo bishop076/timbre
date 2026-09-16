@@ -50,7 +50,9 @@ test("an import keeps well-formed songs, drops hostile ones, and persists", asyn
     exportFile([{ name: "mixed", songs: [...hostile, song("bbbbbbbbbbb")] }]),
   );
 
-  assert.equal(added, 1);
+  // The three hostile entries are counted now rather than swallowed: the playlist landed three
+  // songs shorter than the file described it, and that number is what lets the page say so.
+  assert.deepEqual(added, { imported: 1, unreadablePlaylists: 0, unreadableSongs: 3 });
   const [stored] = JSON.parse(backing[KEY]!);
   assert.equal(stored.name, "mixed");
   assert.deepEqual(stored.songs, [song("bbbbbbbbbbb")]);
@@ -88,6 +90,44 @@ test("a file that is not an export is refused by name", async () => {
   assert.throws(() => store.importPlaylists(exportFile([])), /no playlists in it/);
 });
 
+test("a half-readable file says how much of it was dropped, not just what landed", async () => {
+  const { store } = await fresh();
+
+  // Only hand-editing produces a file like this, and for a long time the only thing it produced
+  // on screen was "Imported 1 playlist." — the three that never arrived went unmentioned, in a
+  // path whose whole rule is that an import lands whole or changes nothing and says which.
+  const summary = store.importPlaylists(
+    exportFile([
+      { name: "Evening", songs: [song("aaaaaaaaaaa")] },
+      { name: "Morning", songs: "not an array" },
+      { songs: [song("bbbbbbbbbbb")] },
+      null,
+    ]),
+  );
+
+  assert.deepEqual(summary, { imported: 1, unreadablePlaylists: 3, unreadableSongs: 0 });
+  assert.equal(store.allPlaylists().length, 1);
+});
+
+test("a file nothing in which could be read is not reported as an empty one", async () => {
+  const { store } = await fresh();
+
+  // "That file has no playlists in it" is true of `playlists: []` and false of this, which has
+  // three and can read none of them.
+  assert.throws(
+    () => store.importPlaylists(exportFile([null, { name: 7 }, { name: "x", songs: 3 }])),
+    /Nothing in that file could be read as a playlist/,
+  );
+  assert.equal(store.allPlaylists().length, 0);
+
+  // A file carrying something else still imports that much, and still owns up to the rest.
+  assert.deepEqual(store.importPlaylists({ ...exportFile([null]), liked: [song("l")] }), {
+    imported: 0,
+    unreadablePlaylists: 1,
+    unreadableSongs: 0,
+  });
+});
+
 test("a rescued song gains the copies that played, beside the ones it had", async () => {
   const youtube = { source: "ytmusic", sourceId: "y1", url: null, playback: "queue" };
   const saved = { ...song("a"), sources: [youtube] };
@@ -117,7 +157,7 @@ test("a backup carries liked songs, and a file holding only those still imports"
   assert.equal(file.liked.length, 1);
   assert.equal("liked" in store.exportPlaylists({ liked: [] }), false);
 
-  assert.equal(store.importPlaylists({ ...exportFile([]), liked: [song("l")] }), 0);
+  assert.equal(store.importPlaylists({ ...exportFile([]), liked: [song("l")] }).imported, 0);
   assert.throws(() => store.importPlaylists({ ...exportFile([]), liked: [] }), /no playlists/);
 });
 
@@ -134,7 +174,7 @@ test("a backup carries the listening history and the play log it promises to", a
   // Version 2 said nothing about either, and a file holding only them is still a real backup.
   assert.equal("history" in store.exportPlaylists({ history: [] }), false);
   assert.equal("plays" in store.exportPlaylists({}), false);
-  assert.equal(store.importPlaylists({ ...exportFile([]), history }), 0);
+  assert.equal(store.importPlaylists({ ...exportFile([]), history }).imported, 0);
 });
 
 test("importing the same backup twice does not duplicate the library", async () => {
@@ -143,8 +183,8 @@ test("importing the same backup twice does not duplicate the library", async () 
     { id: "p1", name: "Evening", createdAt: "2026-01-01", songs: [song("a"), song("b")] },
   ]);
 
-  assert.equal(store.importPlaylists(file), 1);
-  assert.equal(store.importPlaylists(file), 1);
+  assert.equal(store.importPlaylists(file).imported, 1);
+  assert.equal(store.importPlaylists(file).imported, 1);
 
   const lists = store.allPlaylists();
   assert.equal(lists.length, 1);
@@ -315,6 +355,6 @@ test("a readable file still parses through to the importer", async () => {
   const file = exportFile([{ name: "From a file", songs: [] }]);
 
   assert.deepEqual(store.readBackupFile(JSON.stringify(file)), file);
-  assert.equal(store.importPlaylists(store.readBackupFile(JSON.stringify(file))), 1);
+  assert.equal(store.importPlaylists(store.readBackupFile(JSON.stringify(file))).imported, 1);
   assert.equal(store.readBackupFile("null"), null);
 });

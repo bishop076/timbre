@@ -211,3 +211,23 @@ test("peeling trailing tags one at a time reads the same titles as swallowing th
   assert.equal(parseTitle("Wonderwall Remastered   ").base, "wonderwall");
   assert.equal(parseTitle("Remastered").base, "remastered", "a title that is only a tag stays");
 });
+
+test("a title made entirely of punctuation is still a title", () => {
+  // `normalizeLoose` throws away everything that is not a letter or a number, so `...` and `???`
+  // both came back as the empty string — and an empty string compares equal to every other one.
+  // `mergeTracks` keys on this, and filed two unrelated songs as one row.
+  assert.notEqual(dedupeKey("...", ["Wallace Cleaver"]), dedupeKey("???", ["Wallace Cleaver"]));
+  assert.equal(parseTitle("...").base, "...");
+  assert.equal(parseTitle("★").base, "★");
+});
+
+test("the marks are folded for spacing and credits like any other title", () => {
+  assert.equal(dedupeKey("☆ (feat. Oklou)", ["Namasenda"]), dedupeKey("☆", ["Namasenda", "Oklou"]));
+  assert.equal(parseTitle("  ***  ").base, "***");
+});
+
+test("a title with no characters in it at all still has no base", () => {
+  assert.equal(parseTitle("   ").base, "");
+  assert.equal(parseTitle("(Nice Dream)").base, "", "a bracket is carried as a variant, not a base");
+  assert.deepEqual(parseTitle("(Nice Dream)").variants, ["nice dream"]);
+});
