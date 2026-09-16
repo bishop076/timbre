@@ -10,6 +10,23 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.23.1 — 16 September 2026
+
+### Fixed
+
+- **touch** — eleven controls that waited for a hover a phone cannot give
+- **library** — the first row in the rail lost the top of its focus ring
+- **ui** — a focused artist name on a tile wore a flat band, not a ring
+- **player** — the now-playing panel shut, and kept 8px of the window anyway
+- **player** — the heart sat 416px from the song it saves, and a finger from shuffle
+- **theme** — a colour you picked arrived with only its hue, so half of Appearance did nothing
+- **library** — a file three quarters of which could not be read said only what landed
+- **search** — one recording filed as two because two catalogues time it differently
+- **search** — two songs called nothing but punctuation came back as one row
+- **routes** — an album, an artist and a collection that had gone all answered "200 OK"
+
+3 further changes under the hood — refactoring, docs and tests.
+
 ## 0.23.0 — 16 September 2026
 
 ### Added
