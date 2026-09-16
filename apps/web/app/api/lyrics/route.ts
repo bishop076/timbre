@@ -35,16 +35,31 @@ function busy(seconds: number, alternatives: boolean): Response {
   );
 }
 
-interface LrcLibTrack {
-  id: number;
-  trackName: string;
-  artistName: string;
-  albumName?: string;
-  duration?: number;
-  instrumental: boolean;
-  plainLyrics: string | null;
-  syncedLyrics: string | null;
-}
+/**
+ * LRCLIB's rows, parsed rather than asserted.
+ *
+ * This was an `interface` and two `as` casts, which is a promise about somebody else's server.
+ * Fed `{ id: "not-a-number", trackName: {a:1}, instrumental: "yes", plainLyrics: {nested:true} }`
+ * the route answered 200 with all of it copied into `lyrics`, under a day of `s-maxage` — the
+ * client's own checks are what kept that off the screen, one layer past where the repo says the
+ * line is. Two other shapes reached the `catch` below as a `TypeError` and were reported as
+ * "LRCLIB did not answer", which was true by accident.
+ *
+ * Only the three fields the response is built around are required; everything optional is
+ * `nullish`, because a lyrics row legitimately has no album, no duration and no synced text.
+ */
+const trackSchema = z.object({
+  id: z.number(),
+  trackName: z.string(),
+  artistName: z.string(),
+  albumName: z.string().nullish(),
+  duration: z.number().nullish(),
+  instrumental: z.boolean().nullish(),
+  plainLyrics: z.string().nullish(),
+  syncedLyrics: z.string().nullish(),
+});
+
+type LrcLibTrack = z.output<typeof trackSchema>;
 
 function parseLrc(body: string): { at: number; text: string }[] {
   const lines: { at: number; text: string }[] = [];
@@ -99,11 +114,26 @@ function answeredOrFail(response: Response): Response {
   return response;
 }
 
+/** A body LRCLIB sent that this route cannot read is LRCLIB failing, not a song without words. */
+class LrclibUnreadable extends Error {
+  constructor() {
+    super("LRCLIB sent something that is not a lyrics row.");
+  }
+}
+
+async function body(response: Response): Promise<unknown> {
+  return response.json().catch(() => {
+    throw new LrclibUnreadable();
+  });
+}
+
 async function lookup(path: string, params?: Record<string, string | undefined>) {
   const response = answeredOrFail(await lrclib(path, params));
   if (!response.ok) return null;
-  const body = (await response.json()) as unknown;
-  return body && typeof body === "object" ? (body as LrcLibTrack) : null;
+
+  const parsed = trackSchema.safeParse(await body(response));
+  if (!parsed.success) throw new LrclibUnreadable();
+  return parsed.data;
 }
 
 /**
@@ -113,16 +143,29 @@ async function lookup(path: string, params?: Record<string, string | undefined>)
  * between the artist and the duration. Empty and whitespace-only names are the same kind of
  * non-answer, and the line already drops nulls.
  */
-function albumOf(name: string | undefined): string | null {
+function albumOf(name: string | null | undefined): string | null {
   const trimmed = name?.trim();
   return !trimmed || trimmed === "undefined" || trimmed === "null" ? null : trimmed;
 }
 
+/**
+ * A search that is not a list is LRCLIB failing; a row inside one that is not a track is one bad
+ * row. Dropping the row rather than the answer is how `usableSongs` treats the same problem, and
+ * it is the difference between "no other versions" and "that lookup did not happen".
+ */
 async function search(track: string, artist: string): Promise<LrcLibTrack[]> {
   const response = answeredOrFail(
     await lrclib("search", { track_name: track, artist_name: artist }),
   );
-  return response.ok ? ((await response.json()) as LrcLibTrack[]) : [];
+  if (!response.ok) return [];
+
+  const rows = await body(response);
+  if (!Array.isArray(rows)) throw new LrclibUnreadable();
+
+  return rows.flatMap((row) => {
+    const parsed = trackSchema.safeParse(row);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 async function bestMatch(track: string, artist: string, album?: string, duration?: number) {
@@ -179,9 +222,9 @@ export const GET = queryRoute(
       return json(
         {
           lyrics: {
-            instrumental: track.instrumental,
+            instrumental: track.instrumental === true,
             synced: track.syncedLyrics ? parseLrc(track.syncedLyrics) : null,
-            plain: track.plainLyrics,
+            plain: track.plainLyrics ?? null,
             matchedTitle: track.trackName,
             matchedArtist: track.artistName,
             // LRCLIB's id for the track that answered, not the `id` the query asked with — which
