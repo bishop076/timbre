@@ -10,6 +10,16 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.26.0 — 16 September 2026
+
+### Added
+
+- **ui** — a frame for the picture, an expand that moves, and the arrow that hides the panel
+
+### Fixed
+
+- **ui** — the picture sat closer to the panel's edge than anything else in it
+
 ## 0.25.0 — 16 September 2026
 
 ### Added
