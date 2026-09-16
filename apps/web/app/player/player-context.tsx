@@ -32,6 +32,7 @@ import { plausiblySameSong, rankMatches, sameTrack } from "./song-match";
 import { forgetFailedSource, pickSource, rememberedSource } from "./source-choice";
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import { describeVerdict, judgePause, RESUME_DELAY_MS } from "./unasked-pause";
+import { judgeStart, MOST_RESTARTS, REFUSED_START, UNSTARTED_MS } from "./unstarted-track.ts";
 import { useTabSync } from "./use-tab-sync";
 import { volumeOutOfReach } from "./volume-reach.ts";
 import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
@@ -339,6 +340,11 @@ function usePlayerValue() {
   // played, which is what bounds the skipping on a queue where nothing works.
   const handPicked = useRef(false);
   const deadSkips = useRef(0);
+  // Whether audio has arrived for the attempt now running — see `unstarted-track.ts`. Scoped to
+  // the attempt rather than to the track, because every rung of the ladder is its own attempt:
+  // a song that played on one source and then failed is still a song the next source has to
+  // start from nothing.
+  const played = useRef(false);
   const warmed = useRef(new Map<string, { matches: Promise<Song[]>; aborter: AbortController }>());
 
   const current = queue[index] ?? null;
@@ -402,6 +408,7 @@ function usePlayerValue() {
     // knows when the thing about to report pauses was handed its track. `judgePause` needs that
     // to tell a source starting up from a source giving up.
     sourceStartedAt = Date.now();
+    played.current = false;
     setPlaying(chosen);
     setProblem(problemFor(chosen));
     writeState(chosen.kind === "subscription" ? "paused" : "loading");
@@ -1021,8 +1028,13 @@ function usePlayerValue() {
 
       // A track that reached "playing" is proof the queue is getting somewhere, which is what
       // the dead-track skip's allowance is counted from — not from reaching a position, or a
-      // playlist of alternating good and dead songs would never spend it and never stop.
-      if (next === "playing") deadSkips.current = 0;
+      // playlist of alternating good and dead songs would never spend it and never stop. It is
+      // also the one thing that tells a source starting slowly from a source that was told to
+      // play and stayed paused, which is what `judgeStart` reads it for.
+      if (next === "playing") {
+        deadSkips.current = 0;
+        played.current = true;
+      }
 
       if (next !== "playing" || !current || recorded.current === current.id) return;
       recorded.current = current.id;
@@ -1152,6 +1164,57 @@ function usePlayerValue() {
     },
     [adoptElsewhere, start, writeState],
   );
+
+  // A pause from a source that never played this track is not a pause, it is a refusal — and it
+  // was the one way playback could stop that nothing here was watching for. `handleStateChange`
+  // writes it down and moves on; the rescue under it only ever asks about a pause that
+  // *interrupted* playing, so a track the browser would not autoplay sat at 0:00 with the play
+  // button showing Play, no log line, no deadline and no rung of the ladder, until someone came
+  // back and pressed it. Measured in `unstarted-track.ts`.
+  //
+  // Hung off the state for the same reason the dead-track skip below `load` is: four players
+  // report this the same way and none of them knows it is a refusal — the element's
+  // `NotAllowedError`, Mixcloud's `getIsPaused()`, YouTube's `CUED`, SoundCloud's `PAUSE` — so
+  // the place that sees all four is the only place that can hold one deadline over them. A
+  // subscription embed is left out: `start` parks those on "paused" deliberately, because
+  // nobody can play them here without pressing the embed itself.
+  useEffect(() => {
+    if (state !== "paused" || !playing || playing.kind === "subscription") return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    // Scoped to this pause. A source that starts and then refuses again later is a fresh
+    // refusal, not the tail of the last one — a guard outliving its attempt, inverted.
+    let restarts = 0;
+    const source = "source" in playing ? playing.source : playing.kind;
+    const title = songRef.current?.title ?? "this track";
+
+    const watch = () => {
+      timer = setTimeout(() => {
+        const verdict = judgeStart({
+          played: played.current,
+          askedAt: asked.current,
+          startedAt: sourceStartedAt,
+          restarts,
+        });
+        if (verdict === "restart") {
+          restarts += 1;
+          log("warn", `“${title}” never started on ${source} — putting it back on (${restarts} of ${MOST_RESTARTS})`);
+          toggleRef.current?.();
+          watch();
+          return;
+        }
+        if (verdict !== "refused") return;
+        log("error", `“${title}” stayed paused on ${source} without ever playing — leaving it`);
+        void handleError(REFUSED_START, true);
+      }, UNSTARTED_MS);
+    };
+
+    watch();
+    return () => clearTimeout(timer);
+    // `handleError` is left out on purpose: it takes a new identity whenever the queue moves,
+    // and re-running this would restart the deadline on a pause that has already been judged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, state]);
 
   const registerToggle = useCallback((fn: (() => void) | null) => {
     toggleRef.current = fn;
