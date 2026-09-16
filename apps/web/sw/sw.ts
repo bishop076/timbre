@@ -156,6 +156,15 @@ async function keep(name: string, request: Request, response: Response): Promise
   // not `ok`, so it is passed straight through to the browser to follow instead.
   if (!response.ok || response.redirected) return;
 
+  // And the answer the server already gave to "may this be kept", rather than a guess at which
+  // routes would give it. The skip list in `fetch` is that guess, written when /profile was the
+  // only `no-store` document, and the app has outgrown it: /playlist/[id] is a dynamic route,
+  // so Next answers it `private, no-cache, no-store, max-age=0, must-revalidate` — and every
+  // playlist page a reader opened was written to disk here regardless, where it outlives the
+  // tab and the "no-store" that was supposed to mean it never touched one. A list of paths
+  // cannot keep up with a header; the header can.
+  if ((response.headers.get("cache-control") ?? "").toLowerCase().includes("no-store")) return;
+
   const cache = await caches.open(name);
   await cache.put(request, response);
   if (name === ASSETS) await trim(ASSETS, ASSET_LIMIT);
@@ -167,7 +176,11 @@ async function keep(name: string, request: Request, response: Response): Promise
  * for content-hashed URLs, is what most likely belongs to a build nobody is running.
  *
  * `protect` is the three routes installed with the worker: they are the ones worth having offline
- * whatever else a reader has been doing since.
+ * whatever else a reader has been doing since. It is matched against the *whole* URL and not just
+ * the path, because an entry's key here is the whole URL: `/?from=somewhere` is its own copy of
+ * the home page, and while "is the pathname `/`?" was the question, every one of those copies was
+ * protected. Fifty navigations carrying any query at all and the cap stopped being a cap — the
+ * filter left nothing to delete and `trim` deleted nothing, quietly, on every write after that.
  */
 async function trim(name: string, limit: number, protect: readonly string[] = []): Promise<void> {
   const cache = await caches.open(name);
@@ -175,9 +188,12 @@ async function trim(name: string, limit: number, protect: readonly string[] = []
   const excess = keys.length - limit;
   if (excess <= 0) return;
 
-  const victims = keys
-    .filter((key) => !protect.includes(new URL(key.url).pathname))
-    .slice(0, excess);
+  const installed = (key: Request) => {
+    const url = new URL(key.url);
+    return url.search === "" && protect.includes(url.pathname);
+  };
+
+  const victims = keys.filter((key) => !installed(key)).slice(0, excess);
   await Promise.all(victims.map((key) => cache.delete(key)));
 }
 
