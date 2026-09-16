@@ -10,6 +10,109 @@ cut, so it is briefer and closer to the language of the change itself.
 Everything Timbre knows about you lives in your browser. Nothing in here ever moved that
 somewhere else.
 
+## 0.23.0 — 16 September 2026
+
+### Added
+
+- **theme** — rewrite the Appearance copy, cut the presets to eight, remember three colours
+- **ui** — the panel collapses to a rail you click open, and the official wordmark replaces the word
+- **ui** — hidden means hidden, and one button in the corner instead of two meanings
+- **ui** — drag the now-playing panel away, and a button that looks like what it opens
+- **ui** — drag both sidebars, and shelves that reflow against the panel instead of the window
+- **ui** — the now-playing panel says what is playing and what is next
+- **ui** — the app is pink, and it keeps its own colour
+- **brand** — the wordmark as files — mark, lockup and avatar, light and dark
+- **theme** — a seed colour, a picture and a font, instead of three templates
+- **ui** — rebuild the colour layer so Timbre reads like a player, not a sticker book
+
+### Fixed
+
+- **api** — a route that broke answered with nothing at all, and nothing telling the CDN not to keep it
+- **explore** — a genre Deezer refused was baked into the page as a genre with nothing in it
+- **theme** — the background the boot script refused, drawn a moment later anyway
+- **library** — a saved song whose source was named "constructor" wore a blank chip
+- **spotify** — a refused sign-in that came back as a panel with nothing written on it
+- **sidecar** — an answer from YouTube that never ended was read until the memory ran out
+- **ui** — the pane dividers were a third of the width a finger needs
+- **ui** — on a touch screen the only way into Settings was invisible
+- **ui** — the settings list stopped at About, and there was nothing to scroll
+- **player** — a phone on its side opened the full-screen player with no way out of it
+- **ui** — a sidebar you widened on a desktop came back as icons after one look on a phone
+- **ui** — every heading in Settings was the size of the words beside it
+- **ui** — the page's own bottom edge dissolved along with the scroll fade
+- **ui** — the sidebar sat two pixels low, and its library button's focus ring was a bar
+- **theme** — the picture you chose was wiped a frame after it was drawn
+- **settings** — the Search shortcut works everywhere, not on the three pages listed
+- **profile** — an imported backup replaced your picture and your name without asking
+- **library** — someone else's playlist vanished into yours, and a file with no room said it had landed
+- **collection** — a source that could not be reached was reported as one that had gone
+- **search** — a pasted soft hyphen and a long paste both came back "Search failed"
+- **artist** — the page for a name Deezer only guessed at was somebody else's
+- **explore** — a Deezer outage took the For-you shelves away instead of saying so
+- **player** — a song with no YouTube copy of its own could never be offered one
+- **player** — giving up on a stream claimed there was no copy on YouTube, having never looked
+- **player** — the volume slider moved on three sources that cannot hear it
+- **player** — a stream that never arrived was counted as played
+- **player** — three of the four addresses a stream could be tried at were never asked for
+- **player** — a second SoundCloud track handed to a widget that never loaded said nothing
+- **player** — the rescue handed the track back the very copy that had just failed
+- **sidecar** — a route that gives up seven times still waited a minute to say so
+- **sidecar** — a "video id" that was not one went out in a link you could click
+- **sidecar** — a Content-Length too long to be a number crashed the request that sent it
+- **security** — the sidecar started happily on a secret short enough to guess
+- **pwa** — the offline copy kept pages the server said to keep nowhere, and stopped forgetting old ones
+- **library** — one saved song could put "This page stopped working." on your library for good
+- **theme** — typing a colour name into Appearance could take the whole page down
+- **collection** — a Spotify album that exists was published as one that does not
+- **lyrics** — whatever LRCLIB sent was copied into the answer and kept for a day
+- **reports** — the one route that reads a body read all of it before deciding not to
+- **art** — a cover that failed could be remembered as a cover that does not exist
+- **artist** — a Deezer outage came back as a crash, or as an artist with no albums
+- **providers** — one odd track from the sidecar took down the whole search, not just YouTube Music
+- **providers** — SoundCloud being down looked exactly like SoundCloud having nothing
+- **providers** — a search could wait forty seconds on a path whose deadline is six
+- **providers** — a preview clip played from whatever host the provider named
+- **providers** — no answer had a size limit, and one Spotify page could hold the server for half a minute
+- **search** — a song title that says 'remaster' enough times stops the server answering anybody
+- **web** — eight commits shipped only half of what they needed to compile
+- **theme** — a background picture was painting behind a wall
+- **ui** — a detent you cannot cross by accident, and panes that stop growing sooner
+- **ui** — the panel resists at its minimum before it collapses, and can never render under it
+- **ui** — reopening the panel gave you a 28px sliver, because React never took its width back
+- **ui** — the panel snaps shut under the pointer instead of following it down
+- **ui** — the panel collapses at its minimum, not fifty pixels past it
+- **player** — collapsing the panel stopped the music, because the players live inside it
+- **ui** — the hover zoom eases in and snaps back, because the curve only suits one direction
+- **ui** — the artist comes first, the top fade stops eating headings, and the toggle stays put
+- **ui** — the speed button goes back beside the volume, and the panel stops guillotining its content
+- **player** — a stall check that asked the channel that had gone quiet
+- **player** — put speed and the sleep timer back — I removed the only way to reach them
+- **storage** — nine ways a stored value could take the app down or quietly lose your data
+- **a11y** — the focus ring was being squared off by a line that did nothing else
+- **ui** — tiles that divide the row, a player bar with four controls, and a ground the theme owns
+- the defects twenty agents found in each other's files and nobody owned
+- **ui** — back to the banner's violet — the references were about the look, not the hue
+- **ui** — an icon rail you can expand, a bar that is the search box, and stored themes that go pink
+- **pwa** — a deploy could not update the service worker, and offline lied about where you were
+- **security** — the avatar's thumbnail check let a value break out of its url(), and prove it
+- **ui** — the gradient the way Spotify actually builds it, and a search bar on the centre line
+- **player** — a track that will not play no longer stops the whole playlist
+- **theme** — the background scrim was still the colour of the old dark page
+- **search** — rank the studio recording above the covers, where the app already knew how
+- **api** — three routes reported an outage as an answer, and /explore fanned 30 calls at a bucket of 20
+- **search** — invisible characters searched for real, and mood picked the longest playlist
+- **providers** — our own rate limit looked like a host outage, and Spotify's self-heal gave up without looking
+- **player** — four ways a track could die quietly instead of falling to the next source
+- **sidecar** — the radio endpoint could answer "no recommendations" when it simply had not looked
+- **a11y** — muted text failed AA in every theme, and the focus ring had two holes
+- **ui** — portal two trapped menus and stop pages reserving height they cannot spare
+
+### Faster
+
+- **art** — the caller chose how big a Mixcloud cover Timbre paid to render
+
+11 further changes under the hood — refactoring, docs and tests.
+
 ## 0.22.0 — 15 September 2026
 
 ### Added
