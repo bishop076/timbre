@@ -267,7 +267,7 @@ export function NowPlayingPanel() {
   // is why there is no `!` on it.
   const shell = expanded
     ? "flex min-h-0 min-w-0 flex-1 p-2 lg:pl-0"
-    : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+var(--safe-b)+0.75rem)] right-[calc(0.75rem+var(--safe-r))] z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+var(--safe-b)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:p-2 xl:pl-0 xl:transition-[width] [[data-resizing]_&]:transition-none ${
+    : `fixed bottom-[calc(var(--bar-h)+var(--nav-h)+var(--safe-b)+0.75rem)] right-[calc(0.75rem+var(--safe-r))] z-40 transition-all duration-300 ease-[var(--ease)] lg:bottom-[calc(var(--bar-h)+var(--safe-b)+0.75rem)] xl:static xl:z-auto xl:shrink-0 xl:overflow-hidden xl:transition-[width] [[data-resizing]_&]:transition-none ${
         streamUrl ? "hidden xl:block" : ""
       } ${
         open
@@ -276,8 +276,17 @@ export function NowPlayingPanel() {
             // amount of care in the commit path will catch — and when it did, the panel rendered
             // at 28px with the embed's "Privacy policy" squeezed into it. An open panel is never
             // narrower than PANEL_MIN now, whatever the variable says.
-            "translate-y-0 opacity-100 xl:w-[var(--np-w,23rem)] xl:min-w-[18rem]"
-          : "pointer-events-none translate-y-3 opacity-0 xl:w-0 xl:p-0"
+            //
+            // The gutter padding is here rather than in the line above, and that is the whole of
+            // it. `xl:p-2 xl:pl-0` and `xl:p-0` are the same property at the same specificity in
+            // the same media query, so which one wins is decided by the order Tailwind emits
+            // them — and it emits `p-0` first. The closed panel kept its 8px of padding, and
+            // `box-sizing: border-box` turns `width: 0` into an 8px box: 4px of the card's own
+            // slab border painted at the window's edge and 4px of padding beside it, a sliver
+            // glued to the right of the screen with the panel shut. Padding only the open state
+            // leaves nothing to lose the argument with.
+            "translate-y-0 opacity-100 xl:w-[var(--np-w,23rem)] xl:min-w-[18rem] xl:p-2 xl:pl-0"
+          : "pointer-events-none translate-y-3 opacity-0 xl:w-0"
       }`;
 
   // Below `xl` the expanded player is a column: the picture, then the transport under it. The
