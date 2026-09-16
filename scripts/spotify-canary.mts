@@ -116,7 +116,13 @@ results.push(
 );
 
 await check("Self-repair sources", async () => {
-  const { hashes, from } = await discoverHashesFrom(ctx, true);
+  // No second argument: that parameter used to mean "crawl even if there is a reading
+  // cached", and now means "the hash the caller has just been refused". `true` still forced
+  // a crawl by accident — `Set.has(true)` is never satisfied — but it stopped typechecking,
+  // which is what red-lit `pnpm typecheck`. Nothing is lost by dropping it: this process runs
+  // once, so either nothing has crawled yet and this call does, or a check above already
+  // healed a hash seconds ago and its reading is the one worth reporting.
+  const { hashes, from } = await discoverHashesFrom(ctx);
   const keys = Object.keys(SPOTIFY_OPERATIONS) as OperationKey[];
   const missing = keys.filter((key) => !hashes[key]);
   const upstreamOnly = keys.filter((key) => from[key] === "upstream");
