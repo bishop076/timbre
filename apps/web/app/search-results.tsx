@@ -12,6 +12,7 @@ import { EYEBROW } from "./page-chrome";
 import { usePlayerControls } from "./player/player-context";
 import { RowSkeletons } from "./row-skeleton";
 import { AlbumResults, ArtistResult, useArtistMatch } from "./search/search-facets";
+import { rememberSearch } from "./search-history.ts";
 import { setSearchQuery, useSearchQuery } from "./search-store";
 import { askedFor, readSearchQuery } from "./search-url";
 import { SongActions, SongRow } from "./song-row";
@@ -111,6 +112,12 @@ export function SearchResults() {
         .then((data) => {
           setResults({ key: trimmed, data });
           setLoading(false);
+
+          // Recorded here rather than where the box is typed in, because this is the point at
+          // which a query stopped being keystrokes and became a search something answered. A
+          // pasted link is left out: it is resolved rather than searched, and a 200-character
+          // URL in a hint strip is a chip nobody can read.
+          if (!link) rememberSearch(trimmed);
 
           const answered = (data.attempted ?? 1) - data.failures.length;
           log(
