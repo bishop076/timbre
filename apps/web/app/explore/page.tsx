@@ -1,6 +1,8 @@
+import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { fetchDiscover, type ChartTrack } from "@/lib/discover";
+import type { FeedProbe } from "@/lib/genre-feed";
 import { fetchRadios } from "@/lib/radios";
 import { currentRotation } from "@/lib/rotation";
 import {
@@ -42,8 +44,41 @@ export default async function ExplorePage() {
   );
 }
 
+/**
+ * The genre shelves, and the one thing this page must not remember.
+ *
+ * Thirty genre charts are read here, and `fetchChartTracks` forgives a refusal into `[]` — so a
+ * genre Deezer would not answer for is indistinguishable from a genre no charting song belongs
+ * to. It drops out of the genre mix and off every song's chips, and the page is `revalidate =
+ * 3600` over a year of `stale-while-revalidate`, so that gap is what everyone is served until a
+ * revalidation replaces it. Measured on a production build with one genre's chart refused:
+ * `cache-control: s-maxage=3600, stale-while-revalidate=31532400`, `x-nextjs-cache: HIT`.
+ *
+ * `connection()` is the whole fix and it is deliberately after the reads: it is reached only when
+ * a read was refused, and reaching it takes this render off the static path. Deezer answering
+ * normally is the ordinary case and still prerenders, unchanged.
+ *
+ * It lands in the two places a refusal can happen, and neither of them keeps it, which is the
+ * point:
+ *
+ * - **Refused while the build prerenders.** The route is built dynamic and every reader gets a
+ *   fresh render: `private, no-cache, no-store, max-age=0, must-revalidate`.
+ * - **Refused on a revalidation an hour in**, which is the common one. The revalidation declines
+ *   — `digest: DYNAMIC_SERVER_USAGE`, one line under the `deezer_unavailable` that says why — the
+ *   last whole page keeps being served `STALE`, and the next request tries again. The reader gets
+ *   the last Explore that was true rather than a thinner one.
+ *
+ * Nothing on screen moves. What a refused genre looks like is exactly what B-54 settled for the
+ * For-you shelves and is not restated here; this closes the half of it that is about caching.
+ */
 async function RankingsSection({ chart }: { chart: ChartTrack[] }) {
-  const [rankings, genreCharts] = await Promise.all([fetchRankings(100), fetchGenreCharts(30)]);
+  const probe: FeedProbe = { failed: false };
+  const [rankings, genreCharts] = await Promise.all([
+    fetchRankings(100),
+    fetchGenreCharts(30, probe),
+  ]);
+
+  if (probe.failed) await connection();
 
   return (
     <RankingsView

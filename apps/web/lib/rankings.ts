@@ -4,6 +4,7 @@ import { listProviders, scoreCandidates, type RankedList } from "@timbre/provide
 
 import { fetchChartTracks } from "./deezer";
 import { fetchGenres, type LinkedSong } from "./discover";
+import type { FeedProbe } from "./genre-feed";
 import { DEEZER_AT_ONCE, mapPool } from "./pool";
 import { bandOf } from "./rank-bands";
 import { getProviderRuntime } from "./providers";
@@ -101,14 +102,23 @@ export async function fetchRankings(limit = 100): Promise<Rankings> {
  * song belongs to: it drops out of the genre mix and off the songs entirely, silently, and the
  * page is `revalidate = 3600` so the gap stays for an hour. Same fan-out, same queue as
  * `genre-feed.ts`.
+ *
+ * `mapPool` made the refusal much less likely and that is the cause; the hour of ISR is what
+ * turns one refusal into an hour of a genre that charted nothing, and that half was left open
+ * as S-30's last corner. A caller passing a probe can tell the two apart — the shape
+ * `/api/genre-feed` already uses for the same reads — and `app/explore/page.tsx` uses it to
+ * keep a page thinned by a refusal out of the cache.
  */
-export async function fetchGenreCharts(genres: number): Promise<GenreChart[]> {
+export async function fetchGenreCharts(
+  genres: number,
+  probe?: FeedProbe,
+): Promise<GenreChart[]> {
   const candidates = (await fetchGenres()).filter((entry) => entry.id !== 0).slice(0, genres);
 
   return mapPool(candidates, DEEZER_AT_ONCE, async ({ id, name }) => ({
     id,
     genre: name,
-    trackIds: (await fetchChartTracks(id)).map((track) => String(track.id)),
+    trackIds: (await fetchChartTracks(id, probe)).map((track) => String(track.id)),
   }));
 }
 

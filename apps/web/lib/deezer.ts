@@ -83,13 +83,22 @@ export async function deezerOrFail<T>(path: string, revalidateSeconds = 86_400):
  * and a genre page renders as "nothing fresh in this genre" under fifteen minutes of
  * `s-maxage`. Nothing anywhere said the deployment had been rate limited. The caller still
  * gets its `null`; the operator now gets a line saying why.
+ *
+ * A caller that also has to *act* on the difference passes a probe — `FeedProbe` in
+ * `./genre-feed`, taken here by shape rather than by import so the forgiving read stays below
+ * the module built on top of it. Everything about a caller that passes none is unchanged.
  */
-export async function deezer<T>(path: string, revalidateSeconds = 86_400): Promise<T | null> {
+export async function deezer<T>(
+  path: string,
+  revalidateSeconds = 86_400,
+  probe?: { failed: boolean },
+): Promise<T | null> {
   try {
     return await deezerOrFail<T>(path, revalidateSeconds);
   } catch (cause) {
     if (cause instanceof DeezerUnavailable) {
       log("warn", "deezer_unavailable", { path, message: scrub(cause.message) });
+      if (probe) probe.failed = true;
       return null;
     }
     throw cause;
@@ -122,8 +131,15 @@ export function deezerRefusal(error: unknown): Response | null {
   );
 }
 
-export async function fetchChartTracks(genre: number | string): Promise<RawTrack[]> {
-  const chart = await deezer<{ tracks?: { data?: RawTrack[] } }>(`/chart/${genre}?limit=50`, 3_600);
+export async function fetchChartTracks(
+  genre: number | string,
+  probe?: { failed: boolean },
+): Promise<RawTrack[]> {
+  const chart = await deezer<{ tracks?: { data?: RawTrack[] } }>(
+    `/chart/${genre}?limit=50`,
+    3_600,
+    probe,
+  );
   return chart?.tracks?.data ?? [];
 }
 
