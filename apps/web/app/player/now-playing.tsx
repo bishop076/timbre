@@ -327,18 +327,35 @@ export function NowPlayingPanel() {
   // a square cover is fitted inside it and keeps its own shape, which is the trade in the
   // direction that costs least. The other way round — a square frame — would letterbox every
   // video and spend 340px of a 690px window on the picture before the queue got a row.
+  //
+  // `p-3.5` is the panel's own gutter, the one the title and the queue already sit on. At `p-2`
+  // the picture stopped 8px short of the card's inner edge and 10px short of its border — which
+  // is the line the eye reads as the panel's boundary — while the track title under it started
+  // at 14px. So the picture reached further into the margin than anything else in the panel did,
+  // and against a video, which fills the box corner to corner, that read as stuck to the rule.
+  // On the same gutter its left edge lines up with the title's, and the gap is the panel's own.
   const videoBox = expanded
     ? "slab relative min-h-[min(200px,45dvh)] w-full shrink overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video sideways:aspect-auto sideways:h-full sideways:min-h-0 sideways:w-auto sideways:min-w-0 sideways:flex-1 xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
-    : "shrink-0 p-2";
+    : "shrink-0 p-3.5";
 
-  // The floor is the one number a ratio cannot argue with. SoundCloud's widget is an iframe with
-  // a fixed intrinsic 166px, whatever box it is handed, so any 16:9 frame narrower than ~295px
-  // cuts it — at the panel's 288px minimum it lost 20px and its "Privacy policy" line with them.
-  // The floor is a property of the panel's width, not of what is playing, so the promise that
-  // matters still holds: the frame never changes size because the source changed.
+  // The floor is the one number a ratio cannot argue with, and it is not ours: **YouTube's own
+  // script writes `min-height: 200px; min-width: 200px` onto the element it mounts into.** A 16:9
+  // frame is only 200px tall once it is 356px wide, so at every ordinary panel width the player
+  // stood taller than the box and `overflow-hidden` took the difference off the bottom of the
+  // video — 19px of it at the default. That is where the old `h-[200px]` came from; it was
+  // YouTube's minimum wearing the clothes of a layout choice, and dropping it dropped the reason.
+  // SoundCloud's fixed 166px iframe is under the same floor, so one number covers both.
+  //
+  // `200px + 2 * --edge` rather than 200: the box is `border-box`, so a flat `min-h-[200px]`
+  // spends the frame's own 2px edge out of the 200 and hands the player 196 — which still cut
+  // 4px off the bottom of the video, measured. Written as the sum so the number stays legible as
+  // "YouTube's minimum, plus our own edge" instead of becoming an unexplained 204.
+  //
+  // It is still a property of the panel's width and never of what is playing, which is the
+  // promise that matters: the frame does not resize because the queue moved on.
   const frame = expanded
     ? "relative h-full w-full"
-    : "slab-sm relative aspect-video w-full min-h-[166px] overflow-hidden rounded-[var(--r-md)] bg-black";
+    : "slab-sm relative aspect-video w-full min-h-[calc(200px+2*var(--edge))] overflow-hidden rounded-[var(--r-md)] bg-black";
 
   // Every player already fits its own content — `object-contain` on the covers, the provider's
   // own layout in the iframes — so inside the frame they all get the same instruction, and the

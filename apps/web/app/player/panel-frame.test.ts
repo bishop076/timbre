@@ -18,21 +18,41 @@ const read = (path: string) =>
 
 const source = read("./now-playing.tsx");
 
+/**
+ * The source with its prose taken out — block comments and whole-line `//` comments.
+ *
+ * The comments around the frame quote the old class names on purpose, and a sweep that cannot
+ * tell a class from a sentence would forbid explaining them. Whole lines only, so the `//` in a
+ * URL inside a template literal survives.
+ */
+function code(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+}
+
 test("the docked media sits in one frame, not a height per source", () => {
   // Six sources, five hard-coded heights: 166 for SoundCloud, 200 for YouTube, Audius and
   // Spotify, 280 for Mixcloud, 300 for a Deezer embed. The panel's whole top third resized
   // whenever the ladder resolved the next track somewhere else, and everything under it — the
   // title, the queue, Credits — moved with it.
+  const heights = [...code(source).matchAll(/(?:min-)?h-\[\d+px\]/g)].map((match) => match[0]);
+  assert.deepEqual(heights, [], `the media box still carries a height per source: ${heights}`);
+
+  // What survives instead is a floor, and it is the same floor whatever is playing: YouTube's
+  // iframe API writes `min-height: 200px` onto the element it mounts into, and a 16:9 frame is
+  // only that tall once it is 356px wide — so at every ordinary panel width the player stood
+  // proud of the box and `overflow-hidden` took the difference off the bottom of the video, 19px
+  // of it at the default. SoundCloud's fixed 166px widget sits under the same floor.
   //
-  // One pixel height survives and it is not one of those: `min-h-[166px]` is a floor on the
-  // frame, the same whatever is playing. It is here because SoundCloud's iframe is a fixed 166px
-  // that no box can talk out of it, so a 16:9 frame narrower than ~295px cuts the widget — 20px
-  // of it at the panel's own minimum width.
-  const heights = [...source.matchAll(/(?:min-)?h-\[\d+px\]/g)].map((match) => match[0]);
-  assert.deepEqual(
-    heights,
-    ["min-h-[166px]"],
-    `the media box carries a height it should not: ${heights}`,
+  // The `2 * --edge` is the frame's own border: the box is `border-box`, so a flat 200 leaves the
+  // player 196 and still cuts 4px. Losing either half of this sum is losing a video's bottom
+  // edge, which is why it is pinned here rather than left to whoever tidies the class list next.
+  assert.ok(
+    source.includes("min-h-[calc(200px+2*var(--edge))]"),
+    "the frame's floor no longer clears YouTube's own minimum",
   );
 
   // One ratio for all of them, and the gutter that makes it a frame inside the panel rather than
@@ -40,13 +60,16 @@ test("the docked media sits in one frame, not a height per source", () => {
   // frame left to speak of.
   assert.ok(
     source.includes(
-      'const frame = expanded\n    ? "relative h-full w-full"\n    : "slab-sm relative aspect-video w-full min-h-[166px] overflow-hidden rounded-[var(--r-md)] bg-black";',
+      'const frame = expanded\n    ? "relative h-full w-full"\n    : "slab-sm relative aspect-video w-full min-h-[calc(200px+2*var(--edge))] overflow-hidden rounded-[var(--r-md)] bg-black";',
     ),
     "the docked frame is no longer one box with one ratio",
   );
+  // The gutter, and specifically the panel's own: `p-3.5` is what the heading and the queue are
+  // already inset by, so the picture's left edge lines up with the title's rather than reaching
+  // 6px further into the margin than anything else in the panel.
   assert.ok(
-    source.includes('    : "shrink-0 p-2";'),
-    "the frame has lost the panel's padding around it",
+    source.includes('    : "shrink-0 p-3.5";'),
+    "the frame has lost the panel's gutter around it",
   );
 
   // Every player is told the same thing, because the frame is what decides the size now.
