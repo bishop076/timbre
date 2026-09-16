@@ -8,9 +8,9 @@ import {
 } from "@timbre/providers";
 
 import { cached } from "./api";
-import { deezerList, deezerOrFail, fetchChartTracks, type RawTrack } from "./deezer";
-import { coversOf, fetchGenres, toTrackByOrder, type ChartTrack } from "./discover";
-import { drawStation, drawStations, fetchFresh } from "./genre-feed";
+import { DeezerUnavailable, deezerOrFail, type RawTrack } from "./deezer";
+import { coversOf, toTrackByOrder, type ChartTrack } from "./discover";
+import { drawStation, drawStations, fetchFresh, type FeedProbe } from "./genre-feed";
 import { listNames } from "./genre-tally";
 import { getProviderRuntime } from "./providers";
 import { genreOfStation } from "./radios";
@@ -76,6 +76,28 @@ function joined(...parts: (string | null)[]): string {
   return parts.filter(Boolean).join(" · ");
 }
 
+/**
+ * The strict list read, which is the only kind this file may use.
+ *
+ * `deezerList` forgives every outage into `[]`, and every caller below turns "nothing" into
+ * `null`, which the page turns into `notFound()` — *"That collection has gone. Either the
+ * address names a kind of collection Timbre does not serve, or the playlist, station or chart
+ * behind it was taken down where it lived."* None of that is established by a request that
+ * timed out, and the page is `force-static` with fifteen minutes of `revalidate`, so the
+ * accusation was then served from the cache to everyone who asked. `/api/genre-feed` had
+ * already reasoned this out for the same data — *"Deezer's genre list is a fixed catalogue, so
+ * an empty one is never an answer"* — and the page it links to had not. Throwing reaches
+ * `collection/[kind]/[id]/error.tsx`, which offers a retry and is not cached.
+ */
+async function listOrFail<T>(path: string, revalidateSeconds?: number): Promise<T[]> {
+  return (await deezerOrFail<{ data?: T[] }>(path, revalidateSeconds))?.data ?? [];
+}
+
+/** Nothing came back and something had failed, so "there is nothing here" is not the answer. */
+function nothingToShow(path: string): DeezerUnavailable {
+  return new DeezerUnavailable(path, "could not fill this page");
+}
+
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
@@ -107,13 +129,15 @@ async function fromGenre(id: string): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
   const genre = Number(id);
   const overall = genre === 0;
+  const probe: FeedProbe = { failed: false };
 
-  const [charted, genres, fresh, drawn] = await Promise.all([
-    fetchChartTracks(id),
-    fetchGenres(),
-    overall ? [] : fetchFresh(genre),
-    overall ? { stations: [], tracks: [] } : drawStations(genre),
+  const [chartBody, genres, fresh, drawn] = await Promise.all([
+    deezerOrFail<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
+    listOrFail<{ id: number; name: string }>("/genre", 604_800),
+    overall ? [] : fetchFresh(genre, probe),
+    overall ? { stations: [], tracks: [] } : drawStations(genre, probe),
   ]);
+  const charted = chartBody?.tracks?.data ?? [];
 
   const name = genres.find((entry) => entry.id === genre)?.name;
   if (!overall && name === undefined) return null;
@@ -140,7 +164,10 @@ async function fromGenre(id: string): Promise<Collection | null> {
       ranked: true,
     },
   ]);
-  if (shelf.tracks.length === 0) return null;
+  if (shelf.tracks.length === 0) {
+    if (probe.failed) throw nothingToShow(`/genre/${id}`);
+    return null;
+  }
 
   const fresher = newest.length + onAir.length;
 
@@ -187,7 +214,7 @@ export function pickMoodPlaylist<T extends { nb_tracks?: number }>(
 }
 
 async function fromMood(term: string): Promise<Collection | null> {
-  const found = await deezerList<{ id: number; nb_tracks?: number }>(
+  const found = await listOrFail<{ id: number; nb_tracks?: number }>(
     `/search/playlist?q=${encodeURIComponent(term)}&limit=10`,
   );
   const best = pickMoodPlaylist(found);
@@ -211,14 +238,18 @@ async function fromMood(term: string): Promise<Collection | null> {
 async function fromRadio(id: string): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
+  const probe: FeedProbe = { failed: false };
   const [meta, onAir, genre] = await Promise.all([
     deezerOrFail<{ title?: string; picture_big?: string }>(`/radio/${id}`),
-    drawStation(Number(id)),
+    drawStation(Number(id), probe),
     genreOfStation(Number(id)),
   ]);
-  if (onAir.length === 0) return null;
+  if (onAir.length === 0) {
+    if (probe.failed) throw nothingToShow(`/radio/${id}`);
+    return null;
+  }
 
-  const fresh = genre ? without(await fetchFresh(genre.id), onAir) : [];
+  const fresh = genre ? without(await fetchFresh(genre.id, probe), onAir) : [];
 
   return {
     kind: "radio",

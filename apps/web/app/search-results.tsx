@@ -13,7 +13,7 @@ import { usePlayerControls } from "./player/player-context";
 import { RowSkeletons } from "./row-skeleton";
 import { AlbumResults, ArtistResult, useArtistMatch } from "./search/search-facets";
 import { setSearchQuery, useSearchQuery } from "./search-store";
-import { readSearchQuery } from "./search-url";
+import { askedFor, readSearchQuery } from "./search-url";
 import { SongActions, SongRow } from "./song-row";
 import { SourceBadges } from "./source-badges";
 import { sourceStyle } from "./sources";
@@ -75,7 +75,7 @@ export function SearchResults() {
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    const trimmed = query.trim();
+    const trimmed = askedFor(query);
 
     const timer = setTimeout(() => {
       controller.current?.abort();
@@ -138,10 +138,10 @@ export function SearchResults() {
     };
   }, [query]);
 
-  const trimmed = query.trim();
+  const trimmed = askedFor(query);
   const hasQuery = trimmed.length > 0;
-  const pastedCollection = pastedCollectionOf(query);
-  const artistMatch = useArtistMatch(query);
+  const pastedCollection = pastedCollectionOf(trimmed);
+  const artistMatch = useArtistMatch(trimmed);
 
   const data = hasQuery ? results?.data : undefined;
   const songs = data?.songs ?? [];
@@ -294,7 +294,7 @@ export function SearchResults() {
           "nothing found" copy above already tells the reader it answers last, and now it does. */}
       {!loading && (
         <SpotifySection
-          query={query}
+          query={trimmed}
           render={(found) => (
             <ResultList songs={found} className="divide-y divide-[var(--line)]" />
           )}

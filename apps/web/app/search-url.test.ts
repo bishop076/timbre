@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MAX_QUERY, readSearchQuery, searchPath } from "./search-url.ts";
+import { MAX_QUERY, askedFor, readSearchQuery, searchPath } from "./search-url.ts";
 
 test("a query becomes a shareable path", () => {
   assert.equal(searchPath("Burial"), "/search?q=Burial");
@@ -46,4 +46,32 @@ test("both ends cap at what /api/search would accept", () => {
   const long = "x".repeat(MAX_QUERY + 50);
   assert.equal(readSearchQuery(`?q=${long}`).length, MAX_QUERY);
   assert.equal(searchPath(long), `/search?q=${"x".repeat(MAX_QUERY)}`);
+});
+
+test("what is invisible in the box is not a query", () => {
+  // `trim()` walks straight past a format character, so a pasted soft hyphen or zero-width
+  // space used to reach /api/search, come back 400, and be reported as "Search failed (400)".
+  // It is an empty box, and an empty box is the empty state.
+  assert.equal(askedFor("­"), "");
+  assert.equal(askedFor("​​​"), "");
+  assert.equal(askedFor("‎ daft​punk ‏"), "daftpunk");
+  assert.equal(searchPath("​"), "/search");
+  assert.equal(readSearchQuery("?q=%E2%80%8B"), "");
+});
+
+test("the same question is not two different ones", () => {
+  // /api/search keys its two-minute cache on the text it parsed, so the page has to ask in
+  // the same spelling: interior runs of space collapse and an accent arrives composed.
+  assert.equal(askedFor("daft   punk"), "daft punk");
+  assert.equal(askedFor("daft punk"), "daft punk");
+  assert.equal(askedFor("Björk"), "Björk");
+  assert.equal(askedFor("Ｆｌｕｍｅ"), "Flume");
+});
+
+test("a long paste is searched, not refused", () => {
+  // The box sent whatever was in it while the address bar sent 200, so a paste over the cap
+  // came back "Search failed (400)" from a route that had told the URL what it accepts.
+  const long = `${"x".repeat(MAX_QUERY)}yyyy`;
+  assert.equal(askedFor(long).length, MAX_QUERY);
+  assert.equal(askedFor(long), "x".repeat(MAX_QUERY));
 });
