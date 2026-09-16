@@ -42,6 +42,7 @@ export function RankingsView({
   genreNames,
   share,
   agree,
+  genresRefused,
   genreMix,
   chart,
 }: {
@@ -50,6 +51,8 @@ export function RankingsView({
   genreNames: Record<number, string>;
   share: Share;
   agree: Agreement;
+  /** Deezer would not answer for at least one genre chart — see `GenreMixView`. */
+  genresRefused: boolean;
   genreMix: ReactNode;
   chart: ChartTrack[];
 }) {
@@ -109,7 +112,12 @@ export function RankingsView({
 
               <div className="mt-4">
                 {view === "yours" && (
-                  <YoursView rankings={rankings} songGenres={songGenres} genreNames={genreNames} />
+                  <YoursView
+                    rankings={rankings}
+                    songGenres={songGenres}
+                    genreNames={genreNames}
+                    genresRefused={genresRefused}
+                  />
                 )}
                 {view === "mix" && genreMix}
                 {view === "spread" && <SpreadView chart={chart} />}
@@ -125,14 +133,27 @@ export function RankingsView({
   );
 }
 
+/**
+ * The ranking narrowed to what you play — and what that narrowing is missing.
+ *
+ * A pick is a song by an artist you have played, or a song on one of your top genres' charts.
+ * The second half is `songGenres`, built from the thirty genre charts, and a chart Deezer
+ * refused contributes nothing to it. So a refusal thinned the list silently, and when it
+ * emptied it entirely the panel said "Nothing in this week's top 100 is in Pop, or by anyone
+ * you have played" — a claim about the chart, made out of a claim Deezer declined to make.
+ * That is the one thing this project names outright: never blame the listener for a provider's
+ * refusal.
+ */
 function YoursView({
   rankings,
   songGenres,
   genreNames,
+  genresRefused,
 }: {
   rankings: Rankings;
   songGenres: Record<string, number[]>;
   genreNames: Record<number, string>;
+  genresRefused: boolean;
 }) {
   const taste = useTaste();
   const top = taste.genres.slice(0, 3).map((genre) => genre.id);
@@ -162,9 +183,11 @@ function YoursView({
       <Notice>
         {taste.genres.length === 0
           ? "Still working out the genres you play — this fills in as it does."
-          : `Nothing in this week's top ${rankings.songs.length} is in ${
-              topNames || "your genres"
-            }, or by anyone you have played.`}
+          : genresRefused
+            ? `Deezer wouldn’t answer for its genre charts just now, so this could only go on the artists you have played, and none of them are in this week’s top ${rankings.songs.length}. Whether ${topNames || "your genres"} reached it is something Timbre was not told.`
+            : `Nothing in this week's top ${rankings.songs.length} is in ${
+                topNames || "your genres"
+              }, or by anyone you have played.`}
       </Notice>
     );
   }
@@ -174,6 +197,8 @@ function YoursView({
       <Caption className="mb-3">
         {picks.length} of the top {rankings.songs.length}, numbered by their place overall.
         {topNames && ` Your genres, by what you played lately: ${topNames}.`}
+        {genresRefused &&
+          " Deezer wouldn’t answer for some of its genre charts, so this is short of whatever they held."}
       </Caption>
 
       <RankedList
