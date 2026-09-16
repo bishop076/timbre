@@ -66,8 +66,18 @@ export function deezerIdFrom(url: string | null | undefined): string | null {
   return match ? match[1]! : null;
 }
 
+/**
+ * Strict, for the same reason `deezerListOrFail` exists above. The album list *is* the answer to
+ * "what has this artist released" — `/api/artist?full=1` fills the search page's Albums panel
+ * from it and `/api/taste` its release shelf, and both serve it under a day of `s-maxage` with a
+ * week of `stale-while-revalidate` behind that. Forgiven into `[]`, one Deezer blip on this one
+ * read published "this artist has released nothing" to every reader for a day. The related-artist
+ * shelf below stays forgiving: an empty shelf is a shelf, an empty discography is a claim.
+ */
 export async function fetchArtistAlbums(id: string): Promise<DeezerAlbum[]> {
-  return (await deezerList<DeezerAlbum>(`/artist/${id}/albums?limit=100`)).toSorted(newestFirst);
+  return (await deezerListOrFail<DeezerAlbum>(`/artist/${id}/albums?limit=100`)).toSorted(
+    newestFirst,
+  );
 }
 
 export async function fetchDiscography(
