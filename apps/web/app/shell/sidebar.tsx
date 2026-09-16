@@ -20,6 +20,7 @@ import { useLocalProfile } from "../profile/local-profile";
 import { TimbreMark, TimbreWordmark } from "./brand";
 import {
   dockedPanelWidth,
+  RAIL_DOCK_MIN,
   RAIL_ICONS,
   RAIL_MAX,
   RAIL_WIDE,
@@ -141,7 +142,7 @@ export function Sidebar() {
   const ceiling = roomFor(
     viewport,
     dockedPanelWidth(panel, current !== null && panelOpen, viewport),
-    { max: RAIL_MAX, floor: RAIL_ICONS },
+    { max: RAIL_MAX, floor: RAIL_ICONS, dockedAt: RAIL_DOCK_MIN },
   );
   const resolve = (raw: number) => resolveRailWidth(raw, ceiling);
 

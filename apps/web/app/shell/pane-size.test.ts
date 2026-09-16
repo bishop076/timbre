@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   clampWidth,
   dockedPanelWidth,
+  DOCK_MIN,
   MAIN_MIN,
   PANEL_DEFAULT,
   PANEL_MAX,
@@ -11,6 +12,7 @@ import {
   parsePanelWidth,
   parseRailWidth,
   railIsCollapsed,
+  RAIL_DOCK_MIN,
   RAIL_ICONS,
   RAIL_MAX,
   RAIL_MIN,
@@ -89,21 +91,43 @@ test("the panel clamps rather than snaps", () => {
   assert.equal(resolvePanelWidth(9000, 420), 420);
 });
 
+const PANEL_ROOM = { max: PANEL_MAX, floor: PANEL_MIN, dockedAt: DOCK_MIN };
+const RAIL_ROOM = { max: RAIL_MAX, floor: RAIL_ICONS, dockedAt: RAIL_DOCK_MIN };
+
 test("neither pane may eat the main column", () => {
   // 1536x690 with the icon rail: the panel can have its full range.
-  assert.equal(roomFor(1536, RAIL_ICONS, { max: PANEL_MAX, floor: PANEL_MIN }), PANEL_MAX);
+  assert.equal(roomFor(1536, RAIL_ICONS, PANEL_ROOM), PANEL_MAX);
   // A shorter window with the rail dragged wide: the panel loses the difference.
   // Whichever binds first — the room left over, or the pane's own ceiling. Writing only the
   // subtraction here made the test quietly assume the room was always the tighter of the two,
   // so lowering PANEL_MAX broke a test that was about something else entirely.
   assert.equal(
-    roomFor(1400, RAIL_MAX, { max: PANEL_MAX, floor: PANEL_MIN }),
+    roomFor(1400, RAIL_MAX, PANEL_ROOM),
     Math.min(PANEL_MAX, 1400 - RAIL_MAX - MAIN_MIN),
   );
   // A narrow laptop with a wide panel: the rail is held to what is left.
-  assert.equal(roomFor(1280, 480, { max: RAIL_MAX, floor: RAIL_ICONS }), 1280 - 480 - MAIN_MIN);
+  assert.equal(roomFor(1280, 480, RAIL_ROOM), 1280 - 480 - MAIN_MIN);
   // And when there is nothing left, the floor holds rather than going negative.
-  assert.equal(roomFor(700, 400, { max: RAIL_MAX, floor: RAIL_ICONS }), RAIL_ICONS);
+  assert.equal(roomFor(1030, 400, RAIL_ROOM), RAIL_ICONS);
+});
+
+test("a window too narrow to lay the pane out takes nothing back from it", () => {
+  // The rail is `lg:flex`. On a phone it is not narrow, it is gone, so there is no honest
+  // answer to "what can the row spare for it" — and the handle would have written that answer
+  // to storage. A sidebar widened on a desktop used to come back as icons after one visit
+  // from a phone, with no sidebar ever having been on screen in between.
+  assert.equal(roomFor(390, 0, RAIL_ROOM), RAIL_MAX);
+  assert.equal(roomFor(1023, 0, RAIL_ROOM), RAIL_MAX);
+  assert.equal(resolveRailWidth(RAIL_WIDE, roomFor(390, 0, RAIL_ROOM)), RAIL_WIDE);
+
+  // Same for the panel below `xl`, where it is a floating card whose width comes from CSS.
+  assert.equal(roomFor(390, 0, PANEL_ROOM), PANEL_MAX);
+  assert.equal(roomFor(1279, RAIL_ICONS, PANEL_ROOM), PANEL_MAX);
+  assert.equal(resolvePanelWidth(PANEL_MAX, roomFor(844, 0, PANEL_ROOM)), PANEL_MAX);
+
+  // At the width where each one does join the row, the arithmetic comes back.
+  assert.equal(roomFor(1024, 200, RAIL_ROOM), 1024 - 200 - MAIN_MIN);
+  assert.equal(roomFor(1280, RAIL_MAX, PANEL_ROOM), 1280 - RAIL_MAX - MAIN_MIN);
 });
 
 test("a floating panel takes no room from the rail", () => {

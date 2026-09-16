@@ -16,6 +16,7 @@ import { setSearchQuery, useSearchQuery } from "../search-store";
 import { SearchSuggestions } from "../search-suggestions";
 import { searchPath } from "../search-url";
 import {
+  DOCK_MIN,
   PANEL_DEFAULT,
   PANEL_MAX,
   PANEL_RESIST,
@@ -165,7 +166,11 @@ function PanelEdge() {
 
   // The rail is already taking its share of the row, so the panel's ceiling is what is left of
   // the window once the rail and the main column's minimum have been paid for.
-  const ceiling = roomFor(viewport, rail, { max: PANEL_MAX, floor: PANEL_MIN });
+  const ceiling = roomFor(viewport, rail, {
+    max: PANEL_MAX,
+    floor: PANEL_MIN,
+    dockedAt: DOCK_MIN,
+  });
 
   return (
     <div className="relative hidden w-0 shrink-0 xl:block">
