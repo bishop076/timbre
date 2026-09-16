@@ -270,3 +270,31 @@ test("the address filter covers the ranges a literal can name", async () => {
   assert.equal(await followsTo(audius, `https://100.63.0.1${COVER}`), true);
   assert.equal(await followsTo(audius, `https://100.128.0.1${COVER}`), true);
 });
+
+// `thumbnailer.mixcloud.com` renders to the size in the path. Measured through /api/art against a
+// production build: 100x100 is 13 KB, 4000x4000 is 976 KB, and 6000x6000 is 1.2 MB after holding
+// the connection for 6.1 seconds — 300 a minute per address, each one `immutable` for a year.
+test("the thumbnailer is pinned to the sizes Mixcloud itself publishes", () => {
+  for (const side of [25, 50, 80, 100, 300, 320, 600, 640, 768, 1024]) {
+    const url = new URL(`https://thumbnailer.mixcloud.com/unsafe/${side}x${side}/extaudio/4/7/1/8/abc-def`);
+    assert.equal(allowed(url), true, `${side}x${side} is a size Mixcloud serves`);
+  }
+  assert.equal(
+    allowed(new URL("https://thumbnailer.mixcloud.com/unsafe/320x320/profile/a/a/2/7/abc-def")),
+    true,
+  );
+
+  // Anything past Mixcloud's own ceiling is the caller choosing what Timbre spends.
+  for (const size of ["4000x4000", "6000x6000", "16000x16000", "1025x1025", "100x9999"]) {
+    assert.equal(
+      allowed(new URL(`https://thumbnailer.mixcloud.com/unsafe/${size}/extaudio/4/7/1/8/abc-def`)),
+      false,
+      `${size} is not a size Mixcloud serves`,
+    );
+  }
+
+  // And the prefix is still the shape, so the renderer cannot be aimed at a URL of someone's
+  // choosing even if it ever grows a loader that would take one.
+  assert.equal(allowed(new URL("https://thumbnailer.mixcloud.com/unsafe/100x100/")), false);
+  assert.equal(allowed(new URL("https://thumbnailer.mixcloud.com/anything/else")), false);
+});
