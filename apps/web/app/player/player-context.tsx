@@ -144,7 +144,7 @@ const GAVE_UP_ON_YOUTUBE: Record<LeftYouTube, string> = {
   refused: "YouTube refused this connection (a VPN, maybe), and nothing else could play it.",
 };
 
-function giveUpReason(
+export function giveUpReason(
   youtubeCopies: number,
   triedProgressive: boolean,
   left: LeftYouTube | null = null,
@@ -158,7 +158,10 @@ function giveUpReason(
       ? "The only copy on YouTube wouldn't play here, and nothing else could either."
       : `None of the ${youtubeCopies} copies on YouTube would play here, and nothing else could either.`;
   }
-  if (triedProgressive) return "This track wouldn't stream, and there's no copy on YouTube.";
+  // Not "there's no copy on YouTube". This line is reached with `attempted` empty, which is not
+  // an absence anybody checked — a search that failed outright leaves exactly this state, and
+  // asserting a cause the app never verified is B-6's mistake in a different sentence.
+  if (triedProgressive) return "This track wouldn't stream, and nothing else here would play it.";
   return "No source here could play this one.";
 }
 
