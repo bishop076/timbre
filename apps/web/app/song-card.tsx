@@ -231,8 +231,15 @@ export function SongCard({
         </p>
       </button>
 
-      <p className={TILE_SUBTITLE}>
-        <ArtistLink artists={song.artists} />
+      {/* Spelled out rather than `TILE_SUBTITLE`, for one class: this is the only tile subtitle
+          that is a link, and `truncate` is `overflow: hidden`. The ring is a box-shadow drawn 4px
+          outside the border box, so the paragraph clipped it off top, bottom and left, and a
+          focused artist name wore a flat band with square ends instead of a ring. The link
+          truncates itself instead — `max-w-full` is the same ellipsis at the same place, and
+          `align-top` keeps an inline-block from sitting on the baseline and making the line 3px
+          taller than every other tile's. Everything else is TILE_SUBTITLE to the letter. */}
+      <p className="mt-0.5 text-xs leading-4 text-[var(--fg-dim)]">
+        <ArtistLink artists={song.artists} className="inline-block max-w-full truncate align-top" />
       </p>
     </div>
   );
