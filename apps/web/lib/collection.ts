@@ -6,9 +6,17 @@ import {
   listProviders,
   type SpotifyCollectionKind,
 } from "@timbre/providers";
+import { z } from "zod";
 
 import { cached } from "./api";
-import { DeezerUnavailable, deezerOrFail, type RawTrack } from "./deezer";
+import {
+  DeezerUnavailable,
+  deezerListOrFail,
+  deezerOrFail,
+  deezerRows,
+  deezerShelf,
+  rawTrackSchema,
+} from "./deezer";
 import { coversOf, toTrackByOrder, type ChartTrack } from "./discover";
 import { drawStation, drawStations, fetchFresh, type FeedProbe } from "./genre-feed";
 import { listNames } from "./genre-tally";
@@ -87,11 +95,29 @@ function joined(...parts: (string | null)[]): string {
  * accusation was then served from the cache to everyone who asked. `/api/genre-feed` had
  * already reasoned this out for the same data — *"Deezer's genre list is a fixed catalogue, so
  * an empty one is never an answer"* — and the page it links to had not. Throwing reaches
- * `collection/[kind]/[id]/error.tsx`, which offers a retry and is not cached.
+ * `collection/[kind]/[id]/error.tsx`, which offers a retry and is not cached. That reader is
+ * `deezerListOrFail`, and it now takes the row schema below with it.
+ *
+ * The rows themselves were asserted rather than parsed, and `toTrackByOrder` reads `raw.id` on
+ * each one it is handed: a single row of `null` in a playlist's `tracks.data` threw
+ * `Cannot read properties of null (reading 'id')`, which is that same error boundary over a
+ * playlist that arrived otherwise whole. A row this cannot read is one song shorter.
  */
-async function listOrFail<T>(path: string, revalidateSeconds?: number): Promise<T[]> {
-  return (await deezerOrFail<{ data?: T[] }>(path, revalidateSeconds))?.data ?? [];
-}
+const playlistSchema = z.object({
+  title: z.string(),
+  nb_tracks: z.number().nullish(),
+  picture_big: z.string().nullish(),
+  creator: z.object({ name: z.string().nullish() }).nullish(),
+  tracks: deezerRows(rawTrackSchema).nullish(),
+});
+
+const chartSchema = z.object({ tracks: deezerShelf(rawTrackSchema) });
+
+const genreSchema = z.object({ id: z.number(), name: z.string() });
+
+const moodSchema = z.object({ id: z.number(), nb_tracks: z.number().nullish() });
+
+const radioSchema = z.object({ title: z.string().nullish(), picture_big: z.string().nullish() });
 
 /** Nothing came back and something had failed, so "there is nothing here" is not the answer. */
 function nothingToShow(path: string): DeezerUnavailable {
@@ -101,16 +127,12 @@ function nothingToShow(path: string): DeezerUnavailable {
 async function fromPlaylist(id: string, kind: CollectionKind): Promise<Collection | null> {
   if (!/^\d+$/.test(id)) return null;
 
-  const raw = await deezerOrFail<{
-    title: string;
-    nb_tracks?: number;
-    picture_big?: string;
-    creator?: { name?: string };
-    tracks?: { data?: RawTrack[] };
-  }>(`/playlist/${id}`);
-  if (!raw?.title) return null;
+  const body = await deezerOrFail<unknown>(`/playlist/${id}`);
+  const parsed = playlistSchema.safeParse(body);
+  if (!parsed.success) return null;
 
-  const tracks = (raw.tracks?.data ?? []).slice(0, 100).map(toTrackByOrder);
+  const raw = parsed.data;
+  const tracks = (raw.tracks ?? []).slice(0, 100).map(toTrackByOrder);
   const by = raw.creator?.name;
 
   return {
@@ -132,12 +154,13 @@ async function fromGenre(id: string): Promise<Collection | null> {
   const probe: FeedProbe = { failed: false };
 
   const [chartBody, genres, fresh, drawn] = await Promise.all([
-    deezerOrFail<{ tracks?: { data?: RawTrack[] } }>(`/chart/${id}?limit=50`, 3_600),
-    listOrFail<{ id: number; name: string }>("/genre", 604_800),
+    deezerOrFail<unknown>(`/chart/${id}?limit=50`, 3_600),
+    deezerListOrFail("/genre", genreSchema, 604_800),
     overall ? [] : fetchFresh(genre, probe),
     overall ? { stations: [], tracks: [] } : drawStations(genre, probe),
   ]);
-  const charted = chartBody?.tracks?.data ?? [];
+  const chartRead = chartSchema.safeParse(chartBody);
+  const charted = chartRead.success ? (chartRead.data.tracks ?? []) : [];
 
   const name = genres.find((entry) => entry.id === genre)?.name;
   if (!overall && name === undefined) return null;
@@ -204,7 +227,7 @@ async function fromGenre(id: string): Promise<Collection | null> {
  */
 const MOOD_MINIMUM_TRACKS = 15;
 
-export function pickMoodPlaylist<T extends { nb_tracks?: number }>(
+export function pickMoodPlaylist<T extends { nb_tracks?: number | null }>(
   candidates: readonly T[],
 ): T | undefined {
   return (
@@ -214,8 +237,9 @@ export function pickMoodPlaylist<T extends { nb_tracks?: number }>(
 }
 
 async function fromMood(term: string): Promise<Collection | null> {
-  const found = await listOrFail<{ id: number; nb_tracks?: number }>(
+  const found = await deezerListOrFail(
     `/search/playlist?q=${encodeURIComponent(term)}&limit=10`,
+    moodSchema,
   );
   const best = pickMoodPlaylist(found);
   if (!best) return null;
@@ -240,7 +264,7 @@ async function fromRadio(id: string): Promise<Collection | null> {
 
   const probe: FeedProbe = { failed: false };
   const [meta, onAir, genre] = await Promise.all([
-    deezerOrFail<{ title?: string; picture_big?: string }>(`/radio/${id}`),
+    deezerOrFail<unknown>(`/radio/${id}`).then((body) => radioSchema.safeParse(body)),
     drawStation(Number(id), probe),
     genreOfStation(Number(id)),
   ]);
@@ -254,13 +278,13 @@ async function fromRadio(id: string): Promise<Collection | null> {
   return {
     kind: "radio",
     id,
-    title: meta?.title ?? "Radio",
+    title: (meta.success ? meta.data.title : null) ?? "Radio",
     subtitle: joined(
       `${onAir.length} songs on air`,
       fresh.length ? `${fresh.length} new` : null,
       "Deezer radio",
     ),
-    coverUrl: meta?.picture_big ?? null,
+    coverUrl: (meta.success ? meta.data.picture_big : null) ?? null,
     ...sectioned([
       {
         key: "on-air",

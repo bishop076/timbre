@@ -45,23 +45,44 @@ test("a Deezer refusal on the album list is never cached as an empty discography
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
-// The reproduction that closed `queryRoute`'s missing `try`, kept here because it is the one
-// input that reaches the platform rather than the route: Deezer up, answering 200, one album row
-// with no `title` — that read goes through a TypeScript `interface` and a cast, never zod, so
-// `album.title.trim()` throws a `TypeError` and this route's own catch rethrows anything that is
-// not a `DeezerUnavailable`. On a production build that was `500`, empty body, no
-// `cache-control`. Timbre really did break here, so it stays a 500 — but a said one.
-test("a break that is Timbre's own is a 500 that says so, and is still never cached", async () => {
+// The input that closed `queryRoute`'s missing `try`, and then the boundary underneath it:
+// Deezer up, answering 200, one album row with no `title`. That read went through a TypeScript
+// `interface` and a cast, never zod, so `album.title.trim()` threw a `TypeError` — a `500` on a
+// production build, from a request that was perfectly well formed, over a discography Deezer had
+// sent in full bar one row. The row is now parsed and dropped, which is the answer: one release
+// short, served and cacheable, rather than the whole artist page broken.
+test("one album row Deezer garbled is one release missing, not a broken artist", async () => {
   upstream((url) =>
     url.pathname.startsWith("/search/")
       ? Response.json(RADIOHEAD)
-      : Response.json({ data: [{ id: 1, release_date: "2000-10-02" }] }),
+      : Response.json({
+          data: [{ id: 1, release_date: "2000-10-02" }, { id: 2, title: "Kid A" }],
+        }),
   );
   const response = await ask("name=Radiohead&full=1");
 
-  assert.equal(response.status, 500);
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { releases: { title: string }[] };
+  assert.deepEqual(
+    body.releases.map((release) => release.title),
+    ["Kid A"],
+  );
+});
+
+// A row that cannot be read is one row; a body that is not a list of rows is Deezer failing, and
+// this panel is served with a day of `s-maxage` behind a week of `stale-while-revalidate`. Read
+// as "Radiohead has released nothing" it would have published that to every reader for the day.
+test("an album list that is not a list is a 502, never an empty discography", async () => {
+  upstream((url) =>
+    url.pathname.startsWith("/search/")
+      ? Response.json(RADIOHEAD)
+      : Response.json({ data: "not a list" }),
+  );
+  const response = await ask("name=Radiohead&full=1");
+
+  assert.equal(response.status, 502);
   assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.match(((await response.json()) as { error: string }).error, /Timbre broke/);
+  assert.match(((await response.json()) as { error: string }).error, /Deezer/);
 });
 
 test("a name nobody answers to is still an answer, not a failure", async () => {
