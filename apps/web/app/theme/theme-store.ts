@@ -17,6 +17,7 @@ import { applyBackgroundPrefs, paint as paintBackground } from "./background.ts"
 import {
   artworkSeed,
   DEFAULT_THEME,
+  isLightTheme,
   msToNextStep,
   parseTheme,
   resolveGround,
@@ -31,6 +32,7 @@ import {
   type ThemeState,
 } from "./custom-theme.ts";
 import { applyFont, type FontId } from "./fonts.ts";
+import { buildPalette } from "./palette.ts";
 import {
   prefersDark,
   prefersReducedMotion,
@@ -137,15 +139,10 @@ export function chooseAccent(accent: string): void {
   update({ accent, accentSource: cycling ? "cycle" : "fixed" });
 }
 
-/* ------------------------------------------------------------------ the legacy view */
+/* ------------------------------------------------------------------ the ramp's view */
 
-/**
- * Unchanged, and still the question palette.ts asks. "pastel" and a light custom ground are
- * both simply a light ground now, but the mirror keeps saying it in the old words.
- */
-export function isLightTheme(theme: ThemeState): boolean {
-  return theme.mode === "pastel" || (theme.mode === "custom" && theme.customLight);
-}
+/** Re-exported from where it belongs, so the ramp can ask without importing this module. */
+export { isLightTheme };
 
 /* ------------------------------------------------------------------ the runtime */
 
@@ -153,8 +150,18 @@ let started = false;
 let cycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Everything this layer paints. Never the ramp's own tokens: the artwork sampler writes those
- * inline on the same element, and two writers on one custom property is a race.
+ * Everything this layer paints — the ramp included, which is new and is the point.
+ *
+ * The ramp used to be painted only by player/use-artwork-accent.ts, whose effect re-runs when
+ * a cover changes or when one of four legacy mirror fields does. Neither "High contrast" nor
+ * "Tint the greys" is one of those, and two seeds a degree apart in hue are not either — so
+ * half of Appearance saved a choice, published it, and repainted nothing. This runs on every
+ * change, so every control moves pixels.
+ *
+ * That makes two writers of the same tokens, which is exactly what the comment here used to
+ * forbid. It is safe for the same reason data-theme already is: both derive the ramp from one
+ * function and one seed — the sampler stores the swatch this module reads back — so they
+ * cannot disagree about what to paint, only about who gets there first.
  */
 function apply(theme: Theme): void {
   if (typeof document === "undefined") return;
@@ -175,7 +182,8 @@ function apply(theme: Theme): void {
   setFlag("theme", light ? "light" : "dark");
   setColorScheme(light);
 
-  setVars(themeVars(theme, liveSeed, light));
+  paintRamp(theme, light);
+  setVars(themeVars(theme));
   setFlag("contrast", theme.contrast === "high" ? "high" : null);
   setFlag("tint", theme.tintSurfaces ? null : "off");
   setTextScale(theme.textScale);
@@ -183,6 +191,30 @@ function apply(theme: Theme): void {
   applyBackgroundPrefs(theme.background, light);
   paintBackground();
   scheduleCycle(theme);
+}
+
+/** What the pre-paint script replays, as player/use-artwork-accent.ts also writes it. */
+const PALETTE_KEY = "timbre:palette";
+
+/**
+ * The ramp, and the copy of it the boot script reads back before the first frame.
+ *
+ * `liveSeed` rather than the mirror's `customSeed`: the mirror is recomputed on save, before
+ * the cover has been consulted, so on "Album art" it holds the stored colour rather than the
+ * one on screen. This is the value the reader is looking at.
+ */
+function paintRamp(theme: Theme, light: boolean): void {
+  const state: ThemeState = { ...theme, customSeed: liveSeed };
+  const vars = buildPalette(null, state);
+  setVars(vars);
+  setFlag("mode", state.mode);
+  setFlag("neutral", String(state.mode === "custom" && state.customNeutral));
+  writeJson(PALETTE_KEY, {
+    vars,
+    theme: light ? "light" : "dark",
+    mode: state.mode,
+    neutral: state.mode === "custom" && state.customNeutral,
+  });
 }
 
 /**
