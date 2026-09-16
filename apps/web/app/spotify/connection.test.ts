@@ -152,3 +152,59 @@ test("a client id is one run of letters and digits, and nothing else", () => {
   assert.equal(looksLikeClientId("https://developer.spotify.com/app/abc"), false);
   assert.equal(looksLikeClientId("short"), false);
 });
+
+/**
+ * The names `Object.prototype` answers to, whatever the table holds. `__proto__` comes back as
+ * the prototype itself rather than as a function, so it is not nullish either.
+ */
+const INHERITED = ["constructor", "__proto__", "toString", "valueOf", "hasOwnProperty", "isPrototypeOf"];
+
+/**
+ * `?error=banana` was refused properly; `?error=constructor` put a panel on the screen with no
+ * heading and no sentence under it, because `REDIRECT_FAILURES[denied]` handed back the `Object`
+ * constructor and `?? REFUSED` only fires on nullish. Anyone can hand out that link.
+ */
+test("an error parameter naming a property of Object is refused exactly like any other", async () => {
+  for (const error of ["banana", ...INHERITED]) {
+    signingIn();
+    const failure = await completeConnect(new URLSearchParams({ error, state: "STATE" }));
+    assert.equal(typeof failure, "object", `?error=${error} came back as something else`);
+    assert.equal(failure?.title, "Spotify refused the sign-in", `?error=${error} had no heading`);
+    assert.equal(typeof failure?.detail, "string", `?error=${error} had no explanation`);
+    assert.equal(failure?.retry, true, `?error=${error} could not be retried`);
+  }
+});
+
+/** The same table shape one step later: `SpotifyAuthError` carries `data.error` through verbatim. */
+test("a token-endpoint error code naming a property of Object still gets a written sentence", async () => {
+  for (const code of INHERITED) {
+    signingIn();
+    const restore = spotifyAnswers({ error: code });
+    try {
+      const failure = await completeConnect(new URLSearchParams({ code: "CODE", state: "STATE" }));
+      assert.equal(failure?.title, "Spotify refused the sign-in", `error=${code} had no heading`);
+      assert.equal(typeof failure?.detail, "string", `error=${code} had no explanation`);
+      assert.equal(failure?.retry, true);
+    } finally {
+      restore();
+    }
+  }
+});
+
+/** And the codes that do have a sentence still get theirs. */
+test("the exchange codes Timbre writes sentences for keep them", async () => {
+  for (const [code, title] of [
+    ["invalid_grant", "That sign-in expired before it finished"],
+    ["invalid_client", "Spotify does not recognise that client id"],
+    ["invalid_request", "Spotify rejected the sign-in request"],
+  ] as const) {
+    signingIn();
+    const restore = spotifyAnswers({ error: code });
+    try {
+      const failure = await completeConnect(new URLSearchParams({ code: "CODE", state: "STATE" }));
+      assert.equal(failure?.title, title);
+    } finally {
+      restore();
+    }
+  }
+});
