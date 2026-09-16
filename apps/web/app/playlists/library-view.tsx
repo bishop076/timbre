@@ -84,6 +84,8 @@ export function PlaylistGrid({
 const listOf = (names: string[]) =>
   names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
 export function LibraryView() {
   const { playlists, settled, error } = usePlaylists();
   const profile = useLocalProfile();
@@ -100,29 +102,40 @@ export function LibraryView() {
       history?: unknown;
       plays?: unknown;
     };
-    const added = importPlaylists(data);
+    const { imported: added, unreadablePlaylists, unreadableSongs } = importPlaylists(data);
     const likes = importLikedSongs(data.liked);
     // Version 2 files carry neither, and say so by leaving the keys out.
     const played = importHistory(data.history) + importPlayLog(data.plays);
     const lists = [
-      added > 0 || likes === 0 ? `${added} playlist${added === 1 ? "" : "s"}` : null,
-      likes > 0 ? `${likes} liked song${likes === 1 ? "" : "s"}` : null,
-      played > 0 ? `${played} play${played === 1 ? "" : "s"}` : null,
+      added > 0 || likes === 0 ? count(added, "playlist") : null,
+      likes > 0 ? count(likes, "liked song") : null,
+      played > 0 ? count(played, "play") : null,
     ]
       .filter(Boolean)
       .join(", ");
+    // A file whose entries are partly malformed lands the readable ones, and this said only that:
+    // four playlists in, "Imported 1 playlist." out, and no mention anywhere of the other three.
+    // A count is all it says. What an entry nothing could parse called itself is not a name we
+    // read, and it is not going on the page under the word "Imported".
+    const unreadable = listOf(
+      [
+        unreadablePlaylists > 0 ? count(unreadablePlaylists, "playlist") : null,
+        unreadableSongs > 0 ? count(unreadableSongs, "song") : null,
+      ].filter((part): part is string => part !== null),
+    );
+    const dropped = unreadable ? ` ${unreadable} in that file couldn't be read.` : "";
     const incoming = readProfileExport(data.profile);
 
     if (incoming && !(await hasLocalProfile())) {
       await applyProfile(incoming);
       setNotice(
-        added > 0 || likes > 0 || played > 0
+        (added > 0 || likes > 0 || played > 0
           ? `Imported ${lists}, and your profile.`
-          : "Imported your profile.",
+          : "Imported your profile.") + dropped,
       );
     } else {
       setOffered(incoming);
-      setNotice(`Imported ${lists}.`);
+      setNotice(`Imported ${lists}.${dropped}`);
     }
   });
 
