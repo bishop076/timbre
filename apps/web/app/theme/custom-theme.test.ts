@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chromaOf, contrastRatio, hexToOklch, hslHue } from "./color.ts";
+import { chromaOf, contrastRatio, hexToOklch, hslHue, oklchHueFromHsl } from "./color.ts";
+import { buildPalette } from "./palette.ts";
 import {
-  accentFor,
-  accentForeground,
   artworkSeed,
   BANNER,
   SKIN,
@@ -16,7 +15,6 @@ import {
   DEFAULT_ACCENT,
   DEFAULT_BACKGROUND,
   DEFAULT_THEME,
-  GROUND,
   isNeutralSeed,
   legacyMirror,
   MAX_DIM,
@@ -30,6 +28,7 @@ import {
   seedAt,
   themeVars,
   withMirror,
+  type Contrast,
   type Theme,
 } from "./custom-theme.ts";
 
@@ -102,36 +101,50 @@ test("the presets are a shortcut, not a catalogue", () => {
   }
 });
 
-test("the seed already clears both grounds, so it is used as chosen", () => {
-  // The banner violet carries white at 6.72:1 on the light page and clears the dark ground too,
-  // which the pink this briefly was did not — that needed walking down to #c33675 before it
-  // could hold a word. A seed that already passes should come through untouched.
-  const light = accentFor(DEFAULT_ACCENT, "light", "normal");
-  assert.ok(
-    contrastRatio(light, GROUND.light) >= 4.5,
-    `${light} on ${GROUND.light} is ${contrastRatio(light, GROUND.light).toFixed(2)}`,
-  );
-  assert.ok(Math.abs(hslHue(light) - hslHue(DEFAULT_ACCENT)) <= 8, "the hue is held");
+/** The ramp, for a seed on a ground — the one place an accent is derived. */
+const ramp = (seed: string, ground: "light" | "dark", contrast: Contrast = "normal") =>
+  buildPalette(null, {
+    ...withMirror({ ...DEFAULT_THEME, accent: seed, contrast, ground }),
+    customSeed: seed,
+  });
 
-  // The dark ground needs no such rescue: the seed already clears it.
-  const dark = accentFor(DEFAULT_ACCENT, "dark", "normal");
-  assert.ok(contrastRatio(dark, GROUND.dark) >= 4.5);
-  assert.ok(Math.abs(hslHue(dark) - hslHue(DEFAULT_ACCENT)) <= 8);
+test("the seed is used as chosen, on both grounds", () => {
+  // It used to be walked until it cleared 4.5:1 against the *page*, which is a rule for words
+  // and not for fills: it turned a chosen peach into a mid orange and flattened lilac onto the
+  // violet beside it. The fill is the colour; the word on the page is --accent-text.
+  for (const ground of ["light", "dark"] as const) {
+    for (const preset of PRESETS) {
+      const palette = ramp(preset.hex, ground);
+      const chosen = hexToOklch(preset.hex);
+      const painted = hexToOklch(palette["--accent"]);
+      // Hue and chroma are held exactly. Lightness is the only coordinate the ramp may move,
+      // and only for Peach on light, which is 1.22:1 against the page as chosen and comes out
+      // at #eec898 — a deeper peach, not the mid orange the old forced lightness produced.
+      assert.ok(
+        Math.abs(painted.c - chosen.c) < 0.01 && Math.abs(painted.h - chosen.h) < 1.5,
+        `${preset.name} on ${ground} changed colour: ${palette["--accent"]}`,
+      );
+      assert.ok(
+        Math.abs(painted.l - chosen.l) < 0.07,
+        `${preset.name} on ${ground} arrived as ${palette["--accent"]}`,
+      );
+    }
+  }
 });
 
 test("every offered colour, on every ground, at every contrast, is readable", () => {
   for (const preset of PRESETS) {
     for (const ground of ["light", "dark"] as const) {
       for (const contrast of ["normal", "high"] as const) {
-        const accent = accentFor(preset.hex, ground, contrast);
-        const ratio = contrastRatio(accent, GROUND[ground]);
+        const palette = ramp(preset.hex, ground, contrast);
+        const target = CONTRAST_TARGET[contrast];
         assert.ok(
-          ratio >= CONTRAST_TARGET[contrast] - 0.02,
-          `${preset.name} on ${ground} at ${contrast}: ${ratio.toFixed(2)}:1`,
+          contrastRatio(palette["--accent"], palette["--accent-fg"]) >= target,
+          `${preset.name} on ${ground} at ${contrast}: the label on the fill falls short`,
         );
         assert.ok(
-          contrastRatio(accent, accentForeground(accent)) >= 4.5,
-          `${preset.name}: the text on the accent is not readable`,
+          contrastRatio(palette["--accent-text"], palette["--surface-1"]) >= target,
+          `${preset.name} on ${ground} at ${contrast}: the accent as a word falls short`,
         );
       }
     }
@@ -142,10 +155,14 @@ test("a colour chosen at random is held to the same bar", () => {
   for (let h = 0; h < 360; h += 7) {
     for (const ground of ["light", "dark"] as const) {
       const seed = artworkSeed({ h: h / 360, s: 0.9 }, ground);
-      const accent = accentFor(seed, ground, "high");
+      const palette = ramp(seed, ground, "high");
       assert.ok(
-        contrastRatio(accent, GROUND[ground]) >= 7 - 0.02,
-        `hue ${h} on ${ground} fell short`,
+        contrastRatio(palette["--accent"], palette["--accent-fg"]) >= 7,
+        `hue ${h} on ${ground} fell short on the fill`,
+      );
+      assert.ok(
+        contrastRatio(palette["--accent-text"], palette["--surface-1"]) >= 7,
+        `hue ${h} on ${ground} fell short as a word`,
       );
     }
   }
@@ -153,10 +170,25 @@ test("a colour chosen at random is held to the same bar", () => {
 
 test("the foreground on the accent is derived, never authored", () => {
   for (const seed of ["#ffffff", "#000000", "#ffd9a8", "#1b1140", "#3f9d5a", "#e2476d"]) {
-    const accent = accentFor(seed, "dark", "normal");
-    const foreground = accentForeground(accent);
-    assert.ok(["#ffffff", "#000000"].includes(foreground));
-    assert.ok(contrastRatio(accent, foreground) >= 4.5, `${seed} produced unreadable accent text`);
+    const palette = ramp(seed, "dark");
+    assert.ok(["#ffffff", "#000000"].includes(palette["--accent-fg"]));
+    assert.ok(
+      contrastRatio(palette["--accent"], palette["--accent-fg"]) >= 4.5,
+      `${seed} produced unreadable accent text`,
+    );
+  }
+});
+
+test("a cover's hue is converted out of HSL before it is used as an OKLCH angle", () => {
+  // The sampler in app/hue.ts reads pixels in HSL. Its hue was being handed straight to
+  // oklchToHex, which rotated every cover by up to 35 degrees — a green album came out teal.
+  for (const hsl of [0, 60, 120, 190, 258]) {
+    const seed = artworkSeed({ h: hsl / 360, s: 0.9 }, "dark");
+    assert.equal(
+      Math.round(hexToOklch(seed).h),
+      Math.round(oklchHueFromHsl(hsl)),
+      `HSL ${hsl} landed on the wrong OKLCH angle`,
+    );
   }
 });
 
@@ -316,7 +348,8 @@ test("a cover's colour arrives as a usable seed, however grey or garish the cove
     for (const ground of ["light", "dark"] as const) {
       const seed = artworkSeed({ h: 0.6, s }, ground);
       assert.match(seed, /^#[0-9a-f]{6}$/);
-      assert.ok(contrastRatio(accentFor(seed, ground, "normal"), GROUND[ground]) >= 4.4);
+      const palette = ramp(seed, ground);
+      assert.ok(contrastRatio(palette["--accent"], palette["--accent-fg"]) >= 4.5);
     }
   }
 });
@@ -354,12 +387,10 @@ test("mixing is what compositing a scrim actually does", () => {
 });
 
 test("the variables this layer paints are only its own", () => {
-  const vars = themeVars(theme({ accent: "#3f9d5a" }), "#3f9d5a", false);
-  assert.deepEqual(Object.keys(vars).sort(), ["--accent-seed", "--accent-seed-fg", "--ui-scale"]);
-  assert.match(vars["--accent-seed"], /^#[0-9a-f]{6}$/);
-  assert.ok(contrastRatio(vars["--accent-seed"], vars["--accent-seed-fg"]) >= 4.5);
-  assert.ok(
-    !Object.keys(vars).some((name) => ["--bg", "--fg", "--accent", "--accent-fg"].includes(name)),
-    "the ramp's own tokens have one writer, and it is not this",
-  );
+  // --accent-seed and --accent-seed-fg used to be here, written on every change and read by
+  // nothing — zero `var(--accent-seed)` in the built stylesheet. The seed is an input to the
+  // ramp, not a token, and publishing a copy of it only made a second thing to keep in step.
+  const vars = themeVars(theme({ accent: "#3f9d5a", textScale: 1.2 }));
+  assert.deepEqual(Object.keys(vars), ["--ui-scale"]);
+  assert.equal(vars["--ui-scale"], "1.2");
 });

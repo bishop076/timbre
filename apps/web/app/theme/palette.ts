@@ -1,4 +1,23 @@
-import { isLightTheme, type ThemeState } from "./theme-store.ts";
+import {
+  BLACK,
+  clamp,
+  contrastRatio,
+  ensureContrast,
+  hexToOklch,
+  oklchToHex,
+  oklchToRgb,
+  readableOn,
+  WHITE,
+  type Oklch,
+  type Rgb,
+} from "./color.ts";
+import {
+  artworkSeed,
+  CONTRAST_TARGET,
+  DEFAULT_ACCENT,
+  isLightTheme,
+  type ThemeState,
+} from "./custom-theme.ts";
 
 export interface Swatch {
   hue: number;
@@ -7,240 +26,222 @@ export interface Swatch {
 
 export type Palette = Record<string, string>;
 
-function clamp(value: number, low: number, high: number): number {
-  return Math.min(high, Math.max(low, value));
-}
-
 /* ---------------------------------------------------------------------------
-   Colour maths.
+   The ramp: one seed colour in, every surface and every text token out.
 
-   The ramp is built in OKLCH rather than HSL. In HSL, "lightness 50%" means
-   something different at every hue — a yellow at 50% is far brighter than a blue
-   at 50% — so a palette built by holding L fixed across hues drifts in apparent
-   contrast as the accent moves. That is exactly what happens here: the accent
-   hue is sampled from album artwork, so it is whatever the artwork happens to
-   be. OKLCH's L is perceptual, so the same number is the same brightness at
-   every hue and the ramp holds together for any input.
+   This is the colour layer's single source of truth. It is TypeScript rather
+   than a stylesheet for one reason that settles the argument: the floor under
+   all of this is a *measured* WCAG ratio, and CSS cannot measure. `oklch(from
+   var(--fg) …)` can push a lightness around, but it cannot ask whether the
+   result still clears 4.5 against the surface it will sit on, so it cannot stop
+   before it breaks. Everything here can, and does — see `accentFill` and
+   `--accent-text` below. The two knob blocks globals.css used to carry (surface
+   tinting and high contrast) are gone; they were dead twice over, being both
+   self-referential — `--bg: oklch(from var(--bg) l 0 h)` is a custom-property
+   cycle, which resolves to the property's @property initial-value, not to the
+   colour you were hoping to strip — and outranked by this file, which writes
+   inline on <html>. Both knobs are inputs to this function now.
 
-   We still take the hue in HSL degrees, because that is what the artwork sampler
-   produces, so it is converted rather than reinterpreted — HSL 258 (violet) is
-   OKLCH ~293, and using the number unconverted would shift every theme.
+   What reaches the page is sRGB hex, not `oklch()`. The gamut mapping in
+   color.ts pulls an out-of-range colour back by dropping chroma, which holds
+   the hue; a browser resolving `oklch()` for us would clip channels instead and
+   land a chosen blue on screen as purple. Converting here also means the number
+   the contrast sweep measures is the number the screen shows.
    --------------------------------------------------------------------------- */
 
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  return [f(0), f(8), f(4)];
+/**
+ * Where the greys stop taking more of the seed's colour.
+ *
+ * A seed at this chroma or above tints them as hard as they are ever tinted; below it,
+ * proportionally. That proportionality is the point: it is what makes a chosen grey produce a
+ * grey app instead of a cornflower-blue one, without anybody having to declare the colour
+ * "neutral" first. 0.15 sits a little under a fully saturated screen colour, so an ordinary
+ * bright seed reaches the top of the range and a muted one honestly does not.
+ */
+const TINT_FULL = 0.15;
+
+/**
+ * The least a fill may differ from the page behind it.
+ *
+ * Deliberately not a text bar, and deliberately not WCAG 1.4.11's 3:1 either. The label on a
+ * fill gets its own derived colour, and what identifies a control here is the 2px --ink edge
+ * the references draw around it, which is the thing 1.4.11 is actually about. Holding a fill
+ * to 3:1 against the page is what turned a chosen peach into a mid orange. This is the much
+ * lower bar below which a block of colour stops reading as a block at all — it exists so that
+ * somebody who types a near-black into the picker on the dark ground still sees a button.
+ */
+const FILL_FLOOR = 1.5;
+
+/**
+ * The rungs: a lightness and the most chroma that rung may carry.
+ *
+ * The lightnesses are not adjustable and not a matter of taste — they are what 36bd71d solved
+ * for when --fg-faint was failing AA in every theme, and the whole contrast floor rests on
+ * them. What the seed moves is the chroma beside each one, and the accent, which has no rung.
+ */
+interface Rung {
+  /** Perceptual lightness, 0–1. */
+  l: number;
+  /** The chroma this rung carries at full tint. */
+  c: number;
+  /** Opacity, where the token is a veil rather than a colour. */
+  a?: number;
 }
 
-const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const toGamma = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055);
-
-function linearToOklab(r: number, g: number, b: number): [number, number, number] {
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  return [
-    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
-    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
-  ];
+interface Rungs {
+  bg: Rung;
+  surface1: Rung;
+  surface2: Rung;
+  surface3: Rung;
+  fg: Rung;
+  dim: Rung;
+  faint: Rung;
+  ink: Rung;
+  line: Rung;
+  /** The shadow colour, and the two alphas the contact and ambient layers use. */
+  drop: Rung & { far: number };
+  /** How strongly the accent's own veil sits over a surface. */
+  wash: number;
 }
 
-function oklabToLinear(L: number, a: number, b: number): [number, number, number] {
-  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
-  ];
-}
+const RUNGS: Record<"dark" | "light" | "pastel", Rungs> = {
+  dark: {
+    bg: { l: 0.155, c: 0.017 },
+    surface1: { l: 0.192, c: 0.02 },
+    surface2: { l: 0.232, c: 0.022 },
+    surface3: { l: 0.283, c: 0.025 },
+    fg: { l: 0.965, c: 0.007 },
+    dim: { l: 0.762, c: 0.01 },
+    faint: { l: 0.665, c: 0.011 },
+    ink: { l: 0.88, c: 0.031, a: 0.24 },
+    line: { l: 0.99, c: 0.006, a: 0.09 },
+    drop: { l: 0.02, c: 0, a: 0.4, far: 0.45 },
+    wash: 0.16,
+  },
+  light: {
+    // The page is a hair off white rather than white itself. At L 1 a colour has nowhere to
+    // put its chroma — white is white at every hue — so a pure-white page is the one surface
+    // "tint the greys" could never have changed.
+    bg: { l: 0.985, c: 0.01 },
+    surface1: { l: 0.974, c: 0.022 },
+    surface2: { l: 0.952, c: 0.028 },
+    surface3: { l: 0.922, c: 0.034 },
+    fg: { l: 0.22, c: 0.031 },
+    dim: { l: 0.48, c: 0.025 },
+    faint: { l: 0.5, c: 0.022 },
+    ink: { l: 0.22, c: 0.05, a: 1 },
+    line: { l: 0.3, c: 0.037, a: 0.22 },
+    drop: { l: 0.25, c: 0.037, a: 0.05, far: 0.06 },
+    wash: 0.1,
+  },
+  // Pastel is what "colour from the album art" looks like on a light ground: white cards on a
+  // tinted page, and more air between the rungs. The gentleness lives in the surfaces now —
+  // the accent is the reader's colour here exactly as it is everywhere else.
+  pastel: {
+    bg: { l: 0.972, c: 0.031 },
+    surface1: { l: 1, c: 0 },
+    surface2: { l: 0.948, c: 0.037 },
+    surface3: { l: 0.912, c: 0.047 },
+    fg: { l: 0.26, c: 0.056 },
+    dim: { l: 0.49, c: 0.031 },
+    faint: { l: 0.495, c: 0.025 },
+    ink: { l: 0.26, c: 0.062, a: 0.5 },
+    line: { l: 0.45, c: 0.05, a: 0.12 },
+    drop: { l: 0.45, c: 0.05, a: 0.06, far: 0.08 },
+    wash: 0.14,
+  },
+};
 
-/** The OKLCH hue angle matching an HSL hue at a reference tone. */
-export function hslHueToOklch(hslHue: number): number {
-  const [r, g, b] = hslToRgb(((hslHue % 360) + 360) % 360, 0.9, 0.5);
-  const [, a, bb] = linearToOklab(toLinear(r), toLinear(g), toLinear(b));
-  return ((Math.atan2(bb, a) * 180) / Math.PI + 360) % 360;
-}
+const rgba = ({ r, g, b }: Rgb, alpha: number): string =>
+  `rgb(${[r, g, b].map((channel) => Math.round(clamp(channel, 0, 1) * 255)).join(" ")} / ${alpha})`;
 
-/** sRGB channels for an OKLCH triple, clipped to gamut. */
-export function oklchToRgb(L: number, C: number, hDeg: number): [number, number, number] {
-  const h = (hDeg * Math.PI) / 180;
-  const [r, g, b] = oklabToLinear(L, C * Math.cos(h), C * Math.sin(h));
-  return [toGamma(r), toGamma(g), toGamma(b)].map((c) => clamp(c, 0, 1)) as [
-    number,
-    number,
-    number,
-  ];
-}
-
-/** WCAG relative luminance. */
-function luminance(rgb: [number, number, number]): number {
-  const [r, g, b] = rgb.map(toLinear);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/** WCAG contrast between two sRGB triples. */
-export function contrastOf(a: [number, number, number], b: [number, number, number]): number {
-  return contrast(luminance(a), luminance(b));
-}
-
-function contrast(a: number, b: number): number {
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+/** The colour on screen right now: the cover's, if a cover is what the reader asked for. */
+function seedOf(swatch: Swatch | null, theme: ThemeState, light: boolean): string {
+  if (theme.mode !== "custom" && swatch) {
+    return artworkSeed({ h: swatch.hue / 360, s: swatch.sat }, light ? "light" : "dark");
+  }
+  return theme.customSeed || DEFAULT_ACCENT;
 }
 
 /**
- * The readable foreground for a background, picked rather than guessed.
+ * The seed as a fill, moved as little as two floors allow.
  *
- * This is the bug that used to live here. `--accent-fg` was authored as its own
- * tone — `tone(0.98, …)` in light mode, `tone(0.08, …)` in dark — independent of
- * whatever `--accent` had become. Since the accent hue and saturation come from
- * album artwork, the two could drift into each other and the text on a button
- * would fall below AA with nothing to catch it.
- *
- * It is now derived. For every sRGB colour, max(contrast vs white, contrast vs
- * black) >= 4.5 — the two curves cross at luminance 0.1791, where both sides are
- * 4.54 — so simply taking the better of the two can never fail AA. Returning the
- * measured ratio as well lets callers and tests assert it.
+ * Both floors push the same way — away from the page — so the second can never undo the first.
+ * The second one is free at AA: for every sRGB colour the better of black and white is at
+ * least 4.54:1, so a reader on "Normal" gets the exact colour they chose, lightness, chroma
+ * and all. At AAA it is not free, and that is most of what "High contrast" visibly does to the
+ * accent: the fill is pushed away from the ground until the label on it clears 7:1.
  */
-export function readableOn(rgb: [number, number, number]): { fg: string; ratio: number } {
-  const bg = luminance(rgb);
-
-  // Preferred pair first: white, and the brand's near-black rather than a flat
-  // #000, which is what the rest of the UI uses. Near-black is *not* black
-  // though, so it carries slightly less contrast and the guarantee below does
-  // not cover it — measure it rather than assume it.
-  const candidates: [string, number][] = [
-    ["#ffffff", contrast(bg, 1)],
-    ["#0b0a14", contrast(bg, luminance([0.043, 0.039, 0.078]))],
-  ];
-  const best = candidates.reduce((a, b) => (b[1] > a[1] ? b : a));
-  if (best[1] >= 4.5) return { fg: best[0], ratio: best[1] };
-
-  // Only pure white and pure black are guaranteed: their contrast curves cross
-  // at luminance 0.1791, where both sit at 4.54, so the better of the two is
-  // never below 4.5. Fall back to them when the softer pair is not enough.
-  const onWhite = contrast(bg, 1);
-  const onBlack = contrast(bg, 0);
-  return onWhite >= onBlack
-    ? { fg: "#ffffff", ratio: onWhite }
-    : { fg: "#000000", ratio: onBlack };
+function accentFill(seed: Oklch, page: string, target: number, light: boolean): Oklch {
+  const lifted = ensureContrast(seed, page, FILL_FLOOR);
+  const shown = oklchToHex(lifted);
+  if (contrastRatio(shown, readableOn(shown)) >= target) return lifted;
+  return ensureContrast(lifted, light ? WHITE : BLACK, target);
 }
 
 export function buildPalette(swatch: Swatch | null, theme: ThemeState): Palette {
   const light = isLightTheme(theme);
-  const custom = theme.mode === "custom";
-  const neutral = custom && theme.customNeutral;
+  const seed = hexToOklch(seedOf(swatch, theme, light));
+  const rungs = RUNGS[theme.mode === "pastel" ? "pastel" : light ? "light" : "dark"];
 
-  const hslHue = Math.round(custom ? theme.customHue : (swatch?.hue ?? (light ? 262 : 258)));
-  const hue = hslHueToOklch(hslHue);
-  const sat = neutral ? 0.04 : custom ? 0.62 : swatch ? clamp(swatch.sat, 0.3, 0.7) : 0.5;
+  const high = theme.contrast === "high";
+  const target = CONTRAST_TARGET[theme.contrast];
 
-  // Chroma in OKLCH is an absolute distance, not a percentage: ~0.03 is a barely
-  // tinted grey and ~0.2 is as saturated as sRGB reaches. Surfaces stay near the
-  // bottom of that range so the page reads as neutral with a cast, the way both
-  // reference apps do, rather than as a coloured page.
-  const chroma = (amount: number) => Math.round(clamp(amount, 0, 0.37) * 1000) / 1000;
-  const tone = (L: number, C: number) => `oklch(${L.toFixed(3)} ${chroma(C)} ${hue.toFixed(1)})`;
-  const veil = (L: number, C: number, alpha: number) =>
-    `oklch(${L.toFixed(3)} ${chroma(C)} ${hue.toFixed(1)} / ${alpha})`;
+  // How much of the seed's colour the greys are allowed to carry. Zero when the reader has
+  // switched tinting off — which is the whole of that switch, and the reason it now moves
+  // pixels for any seed rather than only for one that was already grey.
+  const tint = theme.tintSurfaces ? clamp(seed.c / TINT_FULL, 0, 1) : 0;
 
-  // --ink and --line are no longer the same thing. --line is the quiet divider
-  // between rows; --ink is the drawn edge around a card, which the references
-  // put back. They were identical while the design was chasing a hairline-only
-  // look, and leaving them identical here silently cancelled the 2px edge that
-  // globals.css had gone back to — this file wins, because it writes inline.
-  //
-  // Shadows stay ambient, not the hard `Npx Npx 0` offset that made every
-  // surface look like a sticker. Two layers: a tight contact shadow and a wide
-  // soft one, which is what reads as "lifted" rather than "drawn".
-  const drops = (L: number, C: number, a1: number, a2: number) => ({
-    "--drop": `0 1px 2px ${veil(L, C, a1)}, 0 4px 14px ${veil(L, C, a2)}`,
-    "--drop-sm": `0 1px 2px ${veil(L, C, a1 + 0.01)}`,
-    "--drop-lg": `0 10px 32px ${veil(L, C, a2 + 0.04)}`,
-  });
+  const tone = ({ l, c }: Rung, at = l) => oklchToHex({ l: at, c: tint * c, h: seed.h });
+  const veil = ({ l, c }: Rung, alpha: number) =>
+    rgba(oklchToRgb({ l, c: tint * c, h: seed.h }), alpha);
 
-  const accentChroma = neutral ? sat * 0.06 : clamp(sat * 0.28, 0.08, 0.2);
+  // High contrast, which until now wrote one custom property that nothing read. The stretch is
+  // the curve the dead stylesheet block asked for; the rest is the same idea applied where CSS
+  // could not reach it. Every move is away from the surface behind it, so the AA floor can only
+  // get further away, never closer.
+  const stretch = (l: number) => (high ? clamp((l - 0.5) * 1.35 + 0.5, 0, 1) : l);
+  const fgL = stretch(rungs.fg.l);
+  const edge = (alpha: number) => (high ? Math.min(0.95, alpha * 1.8) : alpha);
 
-  function withAccent(accentL: number, rest: Palette, chromaScale = 1): Palette {
-    const C = chroma(accentChroma * chromaScale);
-    const { fg } = readableOn(oklchToRgb(accentL, C, hue));
+  const bg = tone(rungs.bg);
+  const surface1 = tone(rungs.surface1);
 
-    // --accent is a fill and --accent-text is a text colour, and on a light ground they cannot
-    // be the same value: a hot pink that carries black beautifully at 6.99:1 is 2.2:1 as a word
-    // on the page behind it. Walk the lightness until it clears AA against the surface it will
-    // sit on, holding hue and chroma so it still reads as the same colour.
-    const ground = rest["--surface-1"];
-    const groundParts = /oklch\(([\d.]+) ([\d.]+) ([\d.]+)/.exec(ground);
-    const groundRgb = groundParts
-      ? oklchToRgb(Number(groundParts[1]), Number(groundParts[2]), Number(groundParts[3]))
-      : ([1, 1, 1] as [number, number, number]);
-    const step = light ? -0.02 : 0.02;
-    let textL = accentL;
-    for (let i = 0; i < 48; i++) {
-      if (contrastOf(oklchToRgb(textL, C, hue), groundRgb) >= 4.6) break;
-      textL = clamp(textL + step, 0.06, 0.98);
-    }
+  const fill = accentFill(seed, bg, target, light);
+  const accent = oklchToHex(fill);
 
-    return {
-      ...rest,
-      "--accent": tone(accentL, C),
-      "--accent-fg": fg,
-      "--accent-text": tone(textL, C),
-    };
-  }
+  // --accent is a fill and --accent-text is a word, and on a light ground they cannot be the
+  // same value: a pale peach that carries black beautifully is invisible as text on the page
+  // behind it. Same hue, same chroma, walked in lightness until it clears the target against
+  // the surface it sits on — and measured after the rounding to eight bits, because that is
+  // what the browser will actually show.
+  const text = oklchToHex(ensureContrast(fill, surface1, target));
 
-  if (theme.mode === "pastel") {
-    // Pastel is the gentle ramp: the same hue, held back off full chroma.
-    return withAccent(
-      0.72,
-      {
-        "--bg": tone(0.972, sat * 0.05),
-        "--surface-1": tone(1, 0),
-        "--surface-2": tone(0.948, sat * 0.06),
-        "--surface-3": tone(0.912, sat * 0.075),
-        "--fg": tone(0.26, sat * 0.09),
-        "--fg-dim": tone(0.49, sat * 0.05),
-        "--fg-faint": tone(0.495, sat * 0.04),
-        "--ink": veil(0.26, sat * 0.1, 0.5),
-        "--line": veil(0.45, sat * 0.08, 0.12),
-        "--accent-wash": veil(0.72, accentChroma * 0.72, 0.14),
-        ...drops(0.45, sat * 0.08, 0.06, 0.08),
-      },
-      0.72,
-    );
-  }
-
-  if (light) {
-    return withAccent(neutral ? 0.36 : 0.54, {
-      "--bg": tone(1, 0),
-      "--surface-1": tone(0.974, sat * 0.035),
-      "--surface-2": tone(0.952, sat * 0.045),
-      "--surface-3": tone(0.922, sat * 0.055),
-      "--fg": tone(0.22, sat * 0.05),
-      "--fg-dim": tone(0.48, sat * 0.04),
-      "--fg-faint": tone(0.5, sat * 0.035),
-      "--ink": tone(0.22, sat * 0.08),
-      "--line": veil(0.3, sat * 0.06, 0.22),
-      "--accent-wash": veil(0.54, accentChroma, 0.1),
-      ...drops(0.25, sat * 0.06, 0.05, 0.06),
-    });
-  }
-
-  return withAccent(0.74, {
-    "--bg": tone(0.155, sat * 0.028),
-    "--surface-1": tone(0.192, sat * 0.032),
-    "--surface-2": tone(0.232, sat * 0.036),
-    "--surface-3": tone(0.283, sat * 0.04),
-    "--fg": tone(0.965, sat * 0.012),
-    "--fg-dim": tone(0.762, sat * 0.016),
-    "--fg-faint": tone(0.665, sat * 0.018),
-    "--ink": veil(0.88, sat * 0.05, 0.24),
-    "--line": veil(0.99, sat * 0.01, 0.09),
-    "--accent-wash": veil(0.74, accentChroma, 0.16),
-    ...drops(0.02, 0, 0.4, 0.45),
-  });
+  return {
+    "--bg": bg,
+    "--surface-1": surface1,
+    "--surface-2": tone(rungs.surface2),
+    "--surface-3": tone(rungs.surface3),
+    "--fg": tone(rungs.fg, fgL),
+    // The stylesheet's dead block said `--fg-dim: var(--fg)` in high contrast, and meant it:
+    // at that setting there is no such thing as a quieter label.
+    "--fg-dim": tone(rungs.dim, high ? fgL : rungs.dim.l),
+    // The faint rung is the caption and track-count colour at 10–12px, so it is never exempt
+    // as large text. High contrast takes it half the way to --fg rather than all of it, which
+    // keeps the three tiers distinguishable while still visibly moving.
+    "--fg-faint": tone(rungs.faint, high ? (rungs.faint.l + fgL) / 2 : rungs.faint.l),
+    // --ink is the drawn edge around a card; --line is the quiet divider between rows. They
+    // were identical once and that silently cancelled the 2px edge globals.css asks for.
+    "--ink": rungs.ink.a === 1 ? tone(rungs.ink) : veil(rungs.ink, edge(rungs.ink.a ?? 1)),
+    "--line": veil(rungs.line, edge(rungs.line.a ?? 1)),
+    "--accent": accent,
+    "--accent-fg": readableOn(accent),
+    "--accent-text": text,
+    "--accent-wash": rgba(oklchToRgb(fill), rungs.wash),
+    // Ambient, not the hard `Npx Npx 0` offset that made every surface look like a sticker:
+    // a tight contact shadow and a wide soft one, which is what reads as lifted.
+    "--drop": `0 1px 2px ${veil(rungs.drop, rungs.drop.a ?? 0)}, 0 4px 14px ${veil(rungs.drop, rungs.drop.far)}`,
+    "--drop-sm": `0 1px 2px ${veil(rungs.drop, (rungs.drop.a ?? 0) + 0.01)}`,
+    "--drop-lg": `0 10px 32px ${veil(rungs.drop, rungs.drop.far + 0.04)}`,
+  };
 }

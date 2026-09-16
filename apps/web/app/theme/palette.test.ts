@@ -1,251 +1,291 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  buildPalette,
-  hslHueToOklch,
-  oklchToRgb,
-  readableOn,
-  type Palette,
-  type Swatch,
-} from "./palette.ts";
-import type { ThemeState } from "./theme-store.ts";
+import { chromaOf, contrastRatio, hexToOklch, oklchHueFromHsl } from "./color.ts";
+import { buildPalette, type Palette, type Swatch } from "./palette.ts";
+import { CONTRAST_TARGET, PRESETS, type ThemeState } from "./custom-theme.ts";
 
-const ALBUM: ThemeState = { mode: "album", customHue: 258, customLight: false, customNeutral: false };
-const PASTEL: ThemeState = { ...ALBUM, mode: "pastel" };
-const CUSTOM_DARK: ThemeState = { ...ALBUM, mode: "custom", customHue: 12 };
-const CUSTOM_LIGHT: ThemeState = { ...CUSTOM_DARK, customLight: true };
-const NEUTRAL_DARK: ThemeState = { ...ALBUM, mode: "custom", customHue: 200, customNeutral: true };
-const NEUTRAL_LIGHT: ThemeState = { ...NEUTRAL_DARK, customLight: true };
-const ALL = [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT, NEUTRAL_DARK, NEUTRAL_LIGHT];
+const BASE: ThemeState = {
+  mode: "custom",
+  customSeed: "#5b3fd6",
+  customHue: 251,
+  customLight: false,
+  customNeutral: false,
+  contrast: "normal",
+  tintSurfaces: true,
+};
+
+const ALBUM: ThemeState = { ...BASE, mode: "album" };
+const PASTEL: ThemeState = { ...BASE, mode: "pastel" };
+const CUSTOM_DARK: ThemeState = BASE;
+const CUSTOM_LIGHT: ThemeState = { ...BASE, customLight: true };
+const ALL = [ALBUM, PASTEL, CUSTOM_DARK, CUSTOM_LIGHT];
 
 const COVER: Swatch = { hue: 190, sat: 0.55 };
 const VIVID: Swatch = { hue: 300, sat: 0.7 };
 
-// The ramp is OKLCH now: `oklch(L C H)` or `oklch(L C H / a)`. L is 0–1 perceptual
-// lightness, C is an absolute chroma distance (0 grey, ~0.37 the sRGB edge), H is
-// degrees on the OKLCH wheel — NOT the HSL wheel the swatch arrives on, which is
-// why the hue assertions below convert before comparing.
-const OKLCH = /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\s*\)/;
+/** Every seed the presets offer, plus the three ends of the range a reader can reach. */
+const SEEDS = [
+  ...PRESETS.map((preset) => preset.hex),
+  "#ffffff",
+  "#000000",
+  "#2a1a5c",
+];
 
-function parts(palette: Palette, token: string) {
-  const match = OKLCH.exec(palette[token]);
-  assert.ok(match, `${token} should be an oklch() colour, got ${palette[token]}`);
-  return {
-    L: Number(match[1]),
-    C: Number(match[2]),
-    H: Number(match[3]),
-    alpha: match[4] === undefined ? 1 : Number(match[4]),
-  };
-}
+/**
+ * The tokens that carry text, and what each of them is drawn on. Eleven pairs, which is the
+ * sweep 36bd71d's fix was verified with and the floor this file exists to hold.
+ */
+const PAIRS: [string, string][] = [
+  ["--fg", "--bg"],
+  ["--fg", "--surface-1"],
+  ["--fg", "--surface-2"],
+  ["--fg", "--surface-3"],
+  ["--fg-dim", "--surface-1"],
+  ["--fg-dim", "--surface-2"],
+  ["--fg-dim", "--surface-3"],
+  ["--fg-faint", "--surface-1"],
+  ["--fg-faint", "--surface-2"],
+  ["--fg-faint", "--surface-3"],
+  ["--accent-fg", "--accent"],
+];
 
-const light = (palette: Palette, token: string) => parts(palette, token).L;
-const chroma = (palette: Palette, token: string) => parts(palette, token).C;
-const gap = (palette: Palette, a: string, b: string) => Math.abs(light(palette, a) - light(palette, b));
+const HEX = /^#[0-9a-f]{6}$/;
 
-function hues(palette: Palette): number[] {
-  return Object.values(palette).flatMap((value) => {
-    const all = [...value.matchAll(new RegExp(OKLCH, "g"))];
-    return all.map((m) => Number(m[3]));
-  });
-}
+const lightnessOf = (palette: Palette, token: string) => hexToOklch(palette[token]).l;
+const ratio = (palette: Palette, a: string, b: string) => contrastRatio(palette[a], palette[b]);
 
-/** WCAG contrast between a token and a plain hex, both resolved to sRGB. */
-function ratioAgainstHex(palette: Palette, token: string, hex: string): number {
-  const { L, C, H } = parts(palette, token);
-  const rgb = oklchToRgb(L, C, H);
-  const hexRgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [
-    number,
-    number,
-    number,
+function grounds(seed: string, contrast: "normal" | "high" = "normal", tint = true) {
+  const state = { ...BASE, customSeed: seed, contrast, tintSurfaces: tint };
+  return [
+    { name: "dark", palette: buildPalette(null, state) },
+    { name: "light", palette: buildPalette(null, { ...state, customLight: true }) },
   ];
-  const lum = (c: [number, number, number]) => {
-    const [r, g, b] = c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  };
-  const a = lum(rgb);
-  const b = lum(hexRgb);
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-test("album takes its hue from the cover", () => {
-  const expected = Number(hslHueToOklch(190).toFixed(1));
-  const coloured = hues(buildPalette(COVER, ALBUM)).filter((hue) => hue !== 0);
-  assert.deepEqual(new Set(coloured), new Set([expected]), "the whole ramp is one hue");
-});
-
-test("the hue is converted from HSL, not reused as an OKLCH angle", () => {
-  // Violet is 258 in HSL and roughly 293 on the OKLCH wheel. Reusing the number
-  // unconverted would rotate every theme toward blue, silently.
-  const converted = hslHueToOklch(258);
-  assert.ok(Math.abs(converted - 258) > 20, `258 should move, landed at ${converted}`);
-  assert.ok(converted > 270 && converted < 315, `258 should read violet, got ${converted}`);
-  assert.equal(Math.round(hslHueToOklch(0)), 29, "red maps to the OKLCH red angle");
-});
-
-test("custom and neutral ignore the cover entirely", () => {
-  for (const theme of [CUSTOM_DARK, NEUTRAL_DARK]) {
-    assert.deepEqual(buildPalette({ hue: 12, sat: 0.9 }, theme), buildPalette(null, theme));
-    assert.deepEqual(buildPalette(COVER, theme), buildPalette(null, theme));
-  }
-  const chosen = Number(hslHueToOklch(12).toFixed(1));
-  const cover = Number(hslHueToOklch(190).toFixed(1));
-  assert.ok(hues(buildPalette(COVER, CUSTOM_DARK)).includes(chosen), "custom uses the chosen hue");
-  assert.ok(!hues(buildPalette(COVER, CUSTOM_DARK)).includes(cover));
-});
-
-test("a missing swatch still yields a usable palette", () => {
-  for (const theme of [ALBUM, PASTEL]) {
-    const palette = buildPalette(null, theme);
-    assert.ok(Object.keys(palette).length > 10, `${theme.mode} produced a full palette`);
-    assert.ok(light(palette, "--fg") >= 0 && light(palette, "--fg") <= 1);
-  }
-});
-
-test("dark grounds are dark and light grounds are light", () => {
-  const cases: [ThemeState, number, number][] = [
-    [ALBUM, 0, 0.3],
-    [CUSTOM_DARK, 0, 0.3],
-    [NEUTRAL_DARK, 0, 0.3],
-    [PASTEL, 0.9, 1],
-    [CUSTOM_LIGHT, 0.9, 1],
-    [NEUTRAL_LIGHT, 0.9, 1],
-  ];
-  for (const [theme, low, high] of cases) {
-    const bg = light(buildPalette(COVER, theme), "--bg");
-    assert.ok(bg > low && bg <= high, `${theme.mode}: --bg at L ${bg} is outside ${low}–${high}`);
-  }
-  assert.ok(light(buildPalette(VIVID, ALBUM), "--bg") <= 0.2, "the album ground is genuinely dark");
-});
-
-test("every ramp's body text clears AA against the surface it sits on", () => {
-  // The old version of this test compared HSL lightness numbers, which is not
-  // contrast — two colours 40 points apart in HSL L can still fail AA. This
-  // measures the actual WCAG ratio.
+test("the whole ramp is sRGB, so what is measured is what is shown", () => {
   for (const theme of ALL) {
     const palette = buildPalette(COVER, theme);
-    const surface = parts(palette, "--surface-1");
-    const surfaceHex = oklchToRgb(surface.L, surface.C, surface.H);
-    const asHex =
-      "#" +
-      surfaceHex.map((c) => Math.round(c * 255).toString(16).padStart(2, "0")).join("");
-    const fg = ratioAgainstHex(palette, "--fg", asHex);
-    assert.ok(fg >= 4.5, `${theme.mode}: --fg on --surface-1 is ${fg.toFixed(2)}:1, needs 4.5`);
-  }
-});
-
-test("muted text clears AA on the busiest surface it is used on", () => {
-  // --fg-faint is the caption/eyebrow/track-count colour and it is used at
-  // 10-12px, so it is never exempt as large text. It was failing AA in all
-  // three static themes when this was measured (2.62-3.24 against --surface-3);
-  // the generated ramp has to hold the line the static tokens now hold.
-  for (const theme of ALL) {
-    const palette = buildPalette(COVER, theme);
-    for (const surface of ["--surface-1", "--surface-2", "--surface-3"]) {
-      const s = parts(palette, surface);
-      const hex =
-        "#" +
-        oklchToRgb(s.L, s.C, s.H)
-          .map((c) => Math.round(c * 255).toString(16).padStart(2, "0"))
-          .join("");
-      const ratio = ratioAgainstHex(palette, "--fg-faint", hex);
-      assert.ok(
-        ratio >= 4.5,
-        `${theme.mode}: --fg-faint on ${surface} is ${ratio.toFixed(2)}:1, needs 4.5`,
-      );
+    for (const token of ["--bg", "--surface-1", "--surface-3", "--fg", "--accent", "--accent-text"]) {
+      assert.match(palette[token], HEX, `${theme.mode} ${token}`);
+    }
+    for (const token of ["--line", "--accent-wash"]) {
+      assert.match(palette[token], /^rgb\(\d+ \d+ \d+ \/ [\d.]+\)$/, `${theme.mode} ${token}`);
     }
   }
 });
 
-test("--accent-text can carry a word on the surface, in every mode and at every hue", () => {
-  // --accent is a fill and clears AA against the label ON it. --accent-text is the same colour
-  // walked until it clears AA against the surface BEHIND it. Conflating the two is how a "now
-  // playing" title ended up at 2.2:1 on the blush page.
-  for (let hue = 0; hue < 360; hue += 11) {
-    for (const theme of ALL) {
-      const palette = buildPalette({ hue, sat: 0.7 }, { ...theme, customHue: hue });
-      const s = parts(palette, "--surface-1");
-      const hex =
-        "#" +
-        oklchToRgb(s.L, s.C, s.H)
-          .map((c) => Math.round(c * 255).toString(16).padStart(2, "0"))
-          .join("");
-      const ratio = ratioAgainstHex(palette, "--accent-text", hex);
+test("a chosen colour paints as chosen, not as its hue with somebody else's lightness", () => {
+  // The bug this file was rewritten for. --accent was oklch(0.74 0.174 h) on the dark ground
+  // for every seed in the world, so the only thing a reader could actually change was h.
+  for (const hex of ["#5b3fd6", "#8f74ff", "#ffd9a8", "#6b7280"]) {
+    const seed = hexToOklch(hex);
+    const accent = hexToOklch(buildPalette(null, { ...BASE, customSeed: hex })["--accent"]);
+    assert.ok(
+      Math.abs(accent.l - seed.l) < 0.02,
+      `${hex}: lightness arrived as ${accent.l.toFixed(3)}, was chosen as ${seed.l.toFixed(3)}`,
+    );
+    assert.ok(
+      Math.abs(accent.c - seed.c) < 0.01,
+      `${hex}: chroma arrived as ${accent.c.toFixed(3)}, was chosen as ${seed.c.toFixed(3)}`,
+    );
+  }
+});
+
+test("violet and lilac are not the same app", () => {
+  // They are one degree apart in hue and nothing else, which is why they used to paint
+  // identically: a ramp that reads only the hue cannot tell them apart.
+  for (const light of [false, true]) {
+    const violet = buildPalette(null, { ...BASE, customSeed: "#5b3fd6", customLight: light });
+    const lilac = buildPalette(null, { ...BASE, customSeed: "#8f74ff", customLight: light });
+    assert.notEqual(violet["--accent"], lilac["--accent"], light ? "light" : "dark");
+    assert.ok(
+      Math.abs(hexToOklch(violet["--accent"]).l - hexToOklch(lilac["--accent"]).l) > 0.1,
+      "and not by a rounding error",
+    );
+  }
+});
+
+test("a grey seed makes a grey app, and a pale one stays pale", () => {
+  for (const { name, palette } of grounds("#6b7280")) {
+    // Slate's own chroma is 0.023. The ramp used to hand it 0.174 — a cornflower blue — because
+    // it took the hue and threw the "there is almost no colour in this" part away.
+    for (const token of ["--accent", "--bg", "--surface-2", "--fg"]) {
       assert.ok(
-        ratio >= 4.5,
-        `${theme.mode} at hue ${hue}: --accent-text on --surface-1 is ${ratio.toFixed(2)}:1`,
+        chromaOf(palette[token]) <= 0.025,
+        `${name}: Slate left ${token} at chroma ${chromaOf(palette[token]).toFixed(3)}`,
       );
+    }
+  }
+  // Peach is a light, quiet colour. It used to arrive as a saturated orange because the ramp
+  // replaced both of those coordinates with constants.
+  for (const { name, palette } of grounds("#ffd9a8")) {
+    const accent = hexToOklch(palette["--accent"]);
+    assert.ok(accent.l > 0.8, `${name}: peach came out at lightness ${accent.l.toFixed(3)}`);
+    assert.ok(accent.c < 0.12, `${name}: peach came out at chroma ${accent.c.toFixed(3)}`);
+  }
+});
+
+test("switching the tint off moves pixels for any seed that has colour in it", () => {
+  for (const hex of ["#5b3fd6", "#ffd9a8", "#1f9e9a"]) {
+    for (const light of [false, true]) {
+      const on = buildPalette(null, { ...BASE, customSeed: hex, customLight: light });
+      const off = buildPalette(null, {
+        ...BASE,
+        customSeed: hex,
+        customLight: light,
+        tintSurfaces: false,
+      });
+      for (const token of ["--bg", "--surface-1", "--surface-2", "--surface-3", "--fg"]) {
+        assert.notEqual(on[token], off[token], `${hex} ${token}`);
+        assert.ok(chromaOf(off[token]) < 0.001, `${token} should be grey with the tint off`);
+      }
+      // The accent is the one thing tinting does not touch: the switch says "the greys", and
+      // a reader who wants a grey page with a coloured button is exactly who asks for it.
+      assert.equal(on["--accent"], off["--accent"], `${hex}: the accent is not a grey`);
     }
   }
 });
 
-test("accent text is derived from the accent, so it can never fail AA", () => {
-  // This is the regression that mattered: --accent-fg used to be authored on its
-  // own ramp, independent of --accent, so an artwork-driven accent could drift
-  // until the label on a button became unreadable. Sweep every hue.
-  for (let hue = 0; hue < 360; hue += 7) {
-    for (const theme of ALL) {
-      const palette = buildPalette({ hue, sat: 0.7 }, { ...theme, customHue: hue });
-      const accent = parts(palette, "--accent");
-      const ratio = ratioAgainstHex(palette, "--accent", palette["--accent-fg"]);
-      assert.ok(
-        ratio >= 4.5,
-        `${theme.mode} at hue ${hue}: accent-fg on accent is ${ratio.toFixed(2)}:1 (accent L ${accent.L})`,
-      );
-    }
-  }
-});
-
-test("readableOn always finds a foreground clearing AA, for any colour", () => {
-  // The proof this relies on: the white-contrast and black-contrast curves cross
-  // at luminance 0.1791, where both are 4.54 — so the better of the two is never
-  // below 4.5. Sample the cube rather than trusting the algebra.
-  for (let r = 0; r <= 1.0001; r += 0.25) {
-    for (let g = 0; g <= 1.0001; g += 0.25) {
-      for (let b = 0; b <= 1.0001; b += 0.25) {
-        const { ratio } = readableOn([r, g, b]);
-        assert.ok(ratio >= 4.5, `rgb(${r},${g},${b}) only reached ${ratio.toFixed(2)}:1`);
+test("high contrast moves pixels, in the direction it says", () => {
+  for (const hex of ["#5b3fd6", "#6b7280"]) {
+    for (const { name, palette } of grounds(hex)) {
+      const high = buildPalette(null, {
+        ...BASE,
+        customSeed: hex,
+        customLight: name === "light",
+        contrast: "high",
+      });
+      for (const token of ["--fg", "--fg-dim", "--fg-faint"]) {
+        assert.notEqual(palette[token], high[token], `${name} ${hex} ${token}`);
+        const moved = lightnessOf(high, token) - lightnessOf(palette, token);
+        assert.ok(
+          name === "light" ? moved < 0 : moved > 0,
+          `${name} ${token} moved ${moved.toFixed(3)}, the wrong way`,
+        );
+      }
+      for (const [fg, bg] of PAIRS) {
+        assert.ok(
+          ratio(high, fg, bg) >= ratio(palette, fg, bg) - 0.01,
+          `${name} ${hex}: ${fg} on ${bg} got worse under high contrast`,
+        );
       }
     }
   }
 });
 
-test("surfaces step in a consistent direction", () => {
-  const dark = buildPalette(COVER, ALBUM);
-  assert.ok(light(dark, "--bg") < light(dark, "--surface-1"));
-  assert.ok(light(dark, "--surface-1") < light(dark, "--surface-2"));
-  assert.ok(light(dark, "--surface-2") < light(dark, "--surface-3"));
-
-  const pastel = buildPalette(COVER, PASTEL);
-  assert.ok(light(pastel, "--surface-1") > light(pastel, "--surface-2"));
-  assert.ok(light(pastel, "--surface-2") > light(pastel, "--surface-3"));
+test("every text pair clears its target, for every seed, on both grounds", () => {
+  // Eleven seeds, two grounds, eleven pairs. This is the measurement the muted-text fix was
+  // signed off with, and letting the seed's own lightness through is only allowed while it
+  // still passes.
+  for (const contrast of ["normal", "high"] as const) {
+    const target = CONTRAST_TARGET[contrast];
+    for (const seed of SEEDS) {
+      for (const tint of [true, false]) {
+        for (const { name, palette } of grounds(seed, contrast, tint)) {
+          for (const [fg, bg] of PAIRS) {
+            const measured = ratio(palette, fg, bg);
+            assert.ok(
+              measured >= target,
+              `${seed} ${name} ${contrast}${tint ? "" : " untinted"}: ${fg} on ${bg} is ${measured.toFixed(2)}:1, needs ${target}`,
+            );
+          }
+          const text = contrastRatio(palette["--accent-text"], palette["--surface-1"]);
+          assert.ok(
+            text >= target,
+            `${seed} ${name} ${contrast}: --accent-text on --surface-1 is ${text.toFixed(2)}:1`,
+          );
+        }
+      }
+    }
+  }
 });
 
-test("pastel is gentler than the album ramp at the same hue", () => {
-  const pastel = chroma(buildPalette(COVER, PASTEL), "--accent");
-  const album = chroma(buildPalette(COVER, ALBUM), "--accent");
-  assert.ok(pastel < album, `pastel accent chroma ${pastel} should be under ${album}`);
+test("the same holds for an album cover at any hue", () => {
+  for (let hue = 0; hue < 360; hue += 11) {
+    for (const theme of [ALBUM, PASTEL]) {
+      const palette = buildPalette({ hue, sat: 0.7 }, theme);
+      for (const [fg, bg] of PAIRS) {
+        const measured = ratio(palette, fg, bg);
+        assert.ok(measured >= 4.5, `${theme.mode} at ${hue}: ${fg} on ${bg} is ${measured.toFixed(2)}`);
+      }
+      const text = contrastRatio(palette["--accent-text"], palette["--surface-1"]);
+      assert.ok(text >= 4.5, `${theme.mode} at ${hue}: --accent-text is ${text.toFixed(2)}:1`);
+    }
+  }
+});
+
+test("a cover's hue is converted from HSL, not reused as an OKLCH angle", () => {
+  // 258 in HSL is roughly 293 in OKLCH. The sampler in app/hue.ts reads pixels in HSL, so a
+  // number carried across unconverted rotates every cover toward blue.
+  const converted = oklchHueFromHsl(258);
+  assert.ok(converted > 270 && converted < 315, `258 should read violet, got ${converted}`);
+  assert.equal(Math.round(oklchHueFromHsl(0)), 29, "red maps to the OKLCH red angle");
+
+  const palette = buildPalette(COVER, ALBUM);
+  const accent = hexToOklch(palette["--accent"]);
+  assert.ok(
+    Math.abs(accent.h - oklchHueFromHsl(190)) < 2,
+    `a cover at HSL 190 landed on OKLCH ${accent.h.toFixed(1)}`,
+  );
+});
+
+test("custom modes ignore the cover entirely", () => {
+  assert.deepEqual(buildPalette({ hue: 12, sat: 0.9 }, CUSTOM_DARK), buildPalette(null, CUSTOM_DARK));
+  assert.deepEqual(buildPalette(COVER, CUSTOM_LIGHT), buildPalette(null, CUSTOM_LIGHT));
+});
+
+test("dark grounds are dark and light grounds are light", () => {
+  for (const theme of [ALBUM, CUSTOM_DARK]) {
+    const bg = lightnessOf(buildPalette(COVER, theme), "--bg");
+    assert.ok(bg > 0 && bg <= 0.3, `${theme.mode}: --bg at L ${bg}`);
+  }
+  for (const theme of [PASTEL, CUSTOM_LIGHT]) {
+    const bg = lightnessOf(buildPalette(COVER, theme), "--bg");
+    assert.ok(bg >= 0.9 && bg <= 1, `${theme.mode}: --bg at L ${bg}`);
+  }
+  assert.ok(lightnessOf(buildPalette(VIVID, ALBUM), "--bg") <= 0.2, "genuinely dark");
+});
+
+test("surfaces step in a consistent direction", () => {
+  const dark = buildPalette(COVER, ALBUM);
+  assert.ok(lightnessOf(dark, "--bg") < lightnessOf(dark, "--surface-1"));
+  assert.ok(lightnessOf(dark, "--surface-1") < lightnessOf(dark, "--surface-2"));
+  assert.ok(lightnessOf(dark, "--surface-2") < lightnessOf(dark, "--surface-3"));
+
+  for (const theme of [PASTEL, CUSTOM_LIGHT]) {
+    const palette = buildPalette(COVER, theme);
+    assert.ok(lightnessOf(palette, "--surface-1") > lightnessOf(palette, "--surface-2"));
+    assert.ok(lightnessOf(palette, "--surface-2") > lightnessOf(palette, "--surface-3"));
+  }
+});
+
+test("pastel is gentler than the light ramp, in the surfaces rather than the accent", () => {
+  // Pastel used to hold the accent back off full chroma as well. It no longer does: a reader
+  // who picked a colour picked it on every ground, and what makes pastel soft is the page.
+  const pastel = buildPalette(COVER, PASTEL);
+  const solid = buildPalette(COVER, CUSTOM_LIGHT);
+  assert.ok(lightnessOf(pastel, "--surface-1") > 0.999, "pastel's cards are white");
+  assert.ok(lightnessOf(pastel, "--bg") < lightnessOf(pastel, "--surface-1"), "on a tinted page");
+  assert.ok(lightnessOf(solid, "--bg") > lightnessOf(solid, "--surface-1"), "the other way round");
+});
+
+test("surfaces carry far less colour than the accent", () => {
+  const palette = buildPalette(VIVID, ALBUM);
+  assert.ok(chromaOf(palette["--bg"]) < chromaOf(palette["--accent"]) / 2);
+  assert.ok(chromaOf(palette["--fg"]) < 0.03, "labels are near-neutral, not tinted");
 });
 
 test("--ink is a drawn edge and --line is a quiet divider, and they are not the same", () => {
-  // They used to be identical, from a pass that was chasing a hairline-only look. That silently
-  // cancelled the 2px ink edge globals.css had gone back to, because this file writes inline and
-  // inline wins — the app drew hairlines everywhere while the stylesheet asked for an outline.
   for (const theme of ALL) {
     const palette = buildPalette(COVER, theme);
-    assert.notEqual(
-      palette["--ink"],
-      palette["--line"],
-      `${theme.mode}: an edge and a divider are different jobs`,
-    );
-
-    const ink = parts(palette, "--ink");
-    const line = parts(palette, "--line");
+    assert.notEqual(palette["--ink"], palette["--line"], theme.mode);
+    const alpha = (value: string) => Number(/\/ ([\d.]+)\)/.exec(value)?.[1] ?? 1);
     assert.ok(
-      ink.alpha > line.alpha,
-      `${theme.mode}: --ink at ${ink.alpha} is no more visible than --line at ${line.alpha}`,
+      alpha(palette["--ink"]) > alpha(palette["--line"]),
+      `${theme.mode}: --ink is no more visible than --line`,
     );
-    assert.ok(ink.alpha >= 0.2, `${theme.mode}: --ink at ${ink.alpha} will not read as an edge`);
+    assert.ok(alpha(palette["--ink"]) >= 0.2, `${theme.mode}: --ink will not read as an edge`);
   }
 });
 
@@ -253,50 +293,20 @@ test("shadows are ambient, not hard offsets", () => {
   for (const theme of ALL) {
     const palette = buildPalette(COVER, theme);
     for (const token of ["--drop", "--drop-sm", "--drop-lg"]) {
-      const value = palette[token];
-      const lengths = /^(-?[\d.]+(?:px)?)\s+(-?[\d.]+px)\s+(-?[\d.]+px)/.exec(value);
-      assert.ok(lengths, `${theme.mode} ${token}: expected three lengths, got ${value}`);
-      assert.equal(
-        Number(lengths[1].replace("px", "")),
-        0,
-        `${theme.mode} ${token}: should not offset sideways`,
-      );
-      assert.ok(
-        Number(lengths[3].replace("px", "")) > 0,
-        `${theme.mode} ${token}: blur is 0, that is the sticker shadow`,
-      );
+      const lengths = /^(-?[\d.]+(?:px)?)\s+(-?[\d.]+px)\s+(-?[\d.]+px)/.exec(palette[token]);
+      assert.ok(lengths, `${theme.mode} ${token}: expected three lengths, got ${palette[token]}`);
+      assert.equal(Number(lengths[1].replace("px", "")), 0, `${token} should not offset sideways`);
+      assert.ok(Number(lengths[3].replace("px", "")) > 0, `${token}: blur 0 is the sticker shadow`);
     }
-    const blur = (token: string) => Number(/\s(-?[\d.]+)px\s+oklch/.exec(palette[token])?.[1]);
+    const blur = (token: string) => Number(/\s(-?[\d.]+)px\s+rgb/.exec(palette[token])?.[1]);
     assert.ok(blur("--drop-lg") > blur("--drop-sm"), `${theme.mode}: -lg should throw further`);
   }
 });
 
-test("an extreme swatch is pulled back into a usable range", () => {
-  assert.ok(chroma(buildPalette({ hue: 300, sat: 1 }, ALBUM), "--bg") <= 0.03, "clamped down");
-  assert.ok(chroma(buildPalette({ hue: 300, sat: 0 }, ALBUM), "--bg") > 0.005, "and still not grey");
-});
-
-test("surfaces carry far less hue than the accent", () => {
-  const palette = buildPalette(VIVID, ALBUM);
+test("a near-black seed on the dark ground still produces a button you can see", () => {
+  const palette = buildPalette(null, { ...BASE, customSeed: "#0d0718" });
   assert.ok(
-    chroma(palette, "--bg") < chroma(palette, "--accent") / 2,
-    "--bg is well under the accent",
+    contrastRatio(palette["--accent"], palette["--bg"]) >= 1.5,
+    `the accent sank into the page at ${contrastRatio(palette["--accent"], palette["--bg"]).toFixed(2)}:1`,
   );
-  assert.ok(chroma(palette, "--fg") < 0.03, "labels are near-neutral, not tinted");
-});
-
-test("neutral has no colour, on either ground", () => {
-  for (const theme of [NEUTRAL_DARK, NEUTRAL_LIGHT]) {
-    const palette = buildPalette(COVER, theme);
-    for (const token of ["--bg", "--surface-1", "--fg", "--accent"]) {
-      const c = chroma(palette, token);
-      assert.ok(c <= 0.02, `${token} at chroma ${c} is not neutral`);
-    }
-  }
-});
-
-test("custom hue wraps rather than producing an invalid colour", () => {
-  for (const hue of hues(buildPalette(null, { ...CUSTOM_DARK, customHue: 359 }))) {
-    assert.ok(hue >= 0 && hue < 360, `hue ${hue} is out of range`);
-  }
 });

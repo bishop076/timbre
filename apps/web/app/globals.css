@@ -107,17 +107,6 @@
   initial-value: #7a4f00;
 }
 
-/* The customisation layer's seed. */
-@property --accent-seed {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: #5b3fd6;
-}
-@property --accent-seed-fg {
-  syntax: "<color>";
-  inherits: true;
-  initial-value: #ffffff;
-}
 @property --app-bg-dim {
   syntax: "<number>";
   inherits: true;
@@ -392,8 +381,6 @@
     --fg-faint var(--tint-ms) var(--ease),
     --line var(--tint-ms) var(--ease),
     --ink var(--tint-ms) var(--ease),
-    --accent-seed var(--tint-ms) var(--ease),
-    --accent-seed-fg var(--tint-ms) var(--ease),
     /* The scrim fades; the blur does not. Animating a blur radius repaints the
        whole viewport every frame for the length of the transition. */
     --app-bg-dim 0.4s var(--ease);
@@ -775,26 +762,19 @@ body {
   font-family: var(--font-ui, var(--font-geist-sans), system-ui, -apple-system, sans-serif);
 }
 
-/* Surface tinting off: the accent stays, the surfaces go neutral. For readers
-   who want the colour on controls but a plain grey page behind their work. */
-html[data-tint="off"] {
-  --bg: oklch(from var(--bg) l 0 h);
-  --surface-1: oklch(from var(--surface-1) l 0 h);
-  --surface-2: oklch(from var(--surface-2) l 0 h);
-  --surface-3: oklch(from var(--surface-3) l 0 h);
-  --fg: oklch(from var(--fg) l 0 h);
-  --fg-dim: oklch(from var(--fg-dim) l 0 h);
-  --fg-faint: oklch(from var(--fg-faint) l 0 h);
-}
+/* Surface tinting and high contrast used to be two blocks of declarations here,
+   and both were dead twice over.
 
-/* High contrast: push text to the ends of the range and make the hairline a
-   real line. The accent is corrected to 7:1 by the customisation layer, so it
-   is deliberately not touched here. */
-html[data-contrast="high"] {
-  --fg: oklch(from var(--fg) clamp(0, calc((l - 0.5) * 1.35 + 0.5), 1) c h);
-  --fg-dim: var(--fg);
-  --fg-faint: oklch(from var(--fg-faint) clamp(0, calc((l - 0.5) * 1.25 + 0.5), 1) c h);
-  --line: color-mix(in oklab, var(--fg) 45%, transparent);
-  --ink: var(--line);
-  --edge: 2px;
-}
+   Every declaration in them was self-referential — `--bg: oklch(from var(--bg)
+   l 0 h)` is a custom property whose value reads itself, which is a cycle, and a
+   cycle makes the property invalid at computed-value time. For a registered
+   property that does not mean "leave it alone", it means "fall back to the
+   @property initial-value", so switching tinting off on the dark ground would
+   have repainted the page with the *light* theme's defaults. It never got the
+   chance, because every one of these tokens is also written inline on <html> by
+   theme/palette.ts, and an inline style beats a stylesheet rule whatever its
+   selector says.
+
+   Both knobs are inputs to palette.ts now. The contrast floor they have to hold
+   is a measured WCAG ratio and CSS has no way to measure one, so the stylesheet
+   was never the right place for either of them. */
