@@ -119,3 +119,11 @@ An `&&` between them puts back exactly the masking that shape exists to remove.
 
 `ytmusicapi` is unofficial and can break when YouTube changes its web client — it's pinned
 and isolated in its own service, but budget for maintenance.
+
+## Licence
+
+[AGPL-3.0](LICENSE). The code is free software; if you run a modified Timbre for other
+people, section 13 means you owe those users your source.
+
+The name and the mark are not covered — see [NOTICE](NOTICE). Fork it and run it, but give
+it your own name.
