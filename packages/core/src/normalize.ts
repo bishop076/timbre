@@ -111,6 +111,26 @@ export function normalizeLoose(input: string): string {
 }
 
 /**
+ * A title that `normalizeLoose` has nothing left of.
+ *
+ * `...`, `???` and `★` are titles. `normalizeLoose` deletes everything that is not a letter or a
+ * number, which is right when there is a word underneath and wrong when the marks *are* the name:
+ * it leaves every such title equal to the empty string, and so equal to every other one.
+ * `mergeTracks` compares bases for equality and filed two unrelated songs as a single row, whose
+ * lead source then played the other song; the likes store and `song-match` saw an empty key and
+ * gave up on the song entirely. Where the loose form is empty the marks are all there is, so they
+ * are kept, folded for case, accents and spacing and nothing else.
+ */
+function marksOnly(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/**
  * The version tags a piece of free text claims, and the text left once they are taken out.
  *
  * Both halves answer a question the search ranker asks. A result carrying a tag the query never
@@ -193,7 +213,7 @@ export function parseTitle(raw: string, credits: string[] = []) {
 
   const base = stripTrailingNoise(stripFeature(main, FEATURE_PATTERN));
   return {
-    base: normalizeLoose(base),
+    base: normalizeLoose(base) || marksOnly(base),
     variants: [...variants].sort(),
     featured: [...new Set(featured.map(normalizeLoose).filter(Boolean))],
   };

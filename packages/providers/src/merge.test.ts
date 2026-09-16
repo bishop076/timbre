@@ -271,3 +271,134 @@ test("a free-text isrc field that is not an ISRC decides nothing", () => {
     [null, null],
   );
 });
+
+// The catalogues do not agree about how long a recording is. Deezer reports whole seconds, Apple
+// milliseconds, and the two are measuring masters cut years apart: over 4,906 tracks from both,
+// the same studio take differs by up to 5.6 seconds. Every pair below is one recording, and the
+// three-second guard filed each of them as two rows, each holding one source.
+const rejoined: [string, SourceTrack[]][] = [
+  [
+    "one album track, five and a half seconds apart in two catalogues, is one song",
+    [
+      track({ source: "apple", title: "The Boxer", artists: ["Simon & Garfunkel"], album: "Bridge Over Troubled Water", durationMs: 312_578 }),
+      track({ source: "deezer", title: "The Boxer", artists: ["Simon & Garfunkel"], album: "Bridge Over Troubled Water", durationMs: 307_000, isrc: "USSM17000075" }),
+    ],
+  ],
+  [
+    "the same recording on the album and on the best-of is still one song",
+    [
+      track({ source: "apple", title: "Bleecker Street", artists: ["Simon & Garfunkel"], album: "Wednesday Morning, 3 A.M.", durationMs: 167_894 }),
+      track({ source: "deezer", title: "Bleecker Street", artists: ["Simon & Garfunkel"], album: "The Essential Simon & Garfunkel", durationMs: 163_000 }),
+    ],
+  ],
+  [
+    "one catalogue spelling the remaster into the title does not make a second recording",
+    [
+      track({ source: "apple", title: "Changes", artists: ["David Bowie"], album: "Hunky Dory (2015 Remaster)", durationMs: 217_152 }),
+      track({ source: "deezer", title: "Changes (2015 Remaster)", artists: ["David Bowie"], album: "Hunky Dory (2015 Remaster)", durationMs: 212_000 }),
+    ],
+  ],
+  [
+    "a guest named by one catalogue and not the other does not split the album track",
+    [
+      track({ source: "apple", title: "Over", artists: ["Portishead", "Nick Ingman & Orchestra"], album: "Portishead", durationMs: 235_533 }),
+      track({ source: "deezer", title: "Over", artists: ["Portishead"], album: "Portishead", durationMs: 240_000 }),
+    ],
+  ],
+];
+
+for (const [name, input] of rejoined) {
+  test(name, () => {
+    const songs = mergeTracks(input);
+    assert.equal(songs.length, 1, name);
+    assert.equal(songs[0]!.sources.length, 2);
+  });
+}
+
+// The other half of the same trade. Nothing here may merge, and the wider window is what would
+// have let it: each pair agrees on the normalised title, the version tags and the credits, and
+// the only thing holding it apart is that the duration disagrees by more than three seconds.
+const keptApart: [string, SourceTrack[]][] = [
+  [
+    "a remaster on another album is not corroborated by the album, and stays apart",
+    [
+      track({ source: "apple", title: "Everywhere", artists: ["Fleetwood Mac"], album: "Greatest Hits", durationMs: 222_733 }),
+      track({ source: "deezer", title: "Everywhere (2017 Remaster)", artists: ["Fleetwood Mac"], album: "Tango in the Night (2017 Remaster) [Deluxe Edition]", durationMs: 226_667 }),
+    ],
+  ],
+  [
+    "two remixes off one EP agree on everything the grouping compares, and still do not merge",
+    // Both reduce to `marvin gaye` + `remix`, and they share an album, so only the titles
+    // themselves say these are two records. The gap is put inside the widened window on purpose;
+    // on the shelf these two are seventeen seconds apart.
+    [
+      track({ source: "apple", title: "Marvin Gaye (feat. Meghan Trainor) [Boehm Remix]", artists: ["Charlie Puth"], album: "Marvin Gaye (feat. Meghan Trainor) [Remixes] - EP", durationMs: 194_500 }),
+      track({ source: "deezer", title: "Marvin Gaye (feat. Meghan Trainor) [Cahill Remix]", artists: ["Charlie Puth"], album: "Marvin Gaye (feat. Meghan Trainor) [Remixes] - EP", durationMs: 189_500 }),
+    ],
+  ],
+  [
+    "a radio edit is minutes short of the album cut, and nothing corroborates it back together",
+    [
+      track({ source: "apple", title: "Layla", artists: ["Derek & The Dominos"], album: "Layla and Other Assorted Love Songs", durationMs: 425_000 }),
+      track({ source: "deezer", title: "Layla (Radio Edit)", artists: ["Derek & The Dominos"], album: "Layla and Other Assorted Love Songs", durationMs: 178_000 }),
+    ],
+  ],
+  [
+    "a music video with an intro carries no album and its own title, so nothing widens the window",
+    [
+      track({ source: "apple", title: "Thriller", artists: ["Michael Jackson"], album: "Thriller", durationMs: 357_000 }),
+      track({ source: "ytmusic", title: "Michael Jackson - Thriller (Official Video)", artists: ["Michael Jackson"], album: null, durationMs: 363_000 }),
+    ],
+  ],
+  [
+    "two takes of one song on one album are two songs, however alike the sleeve makes them look",
+    // `Planet Waves` closes with a second, slower reading of the opener. Same title, same credits,
+    // same album: the widened window is what keeps them apart, by being a window and not a door.
+    [
+      track({ source: "apple", title: "Forever Young", artists: ["Bob Dylan"], album: "Planet Waves", durationMs: 297_103 }),
+      track({ source: "deezer", title: "Forever Young", artists: ["Bob Dylan"], album: "Planet Waves", durationMs: 168_216, isrc: "USSM17300253" }),
+    ],
+  ],
+  [
+    "five seconds apart, one title, two singers is two recordings",
+    [
+      track({ source: "apple", title: "Hallelujah", artists: ["Jeff Buckley"], album: "Grace", durationMs: 414_000 }),
+      track({ source: "deezer", title: "Hallelujah", artists: ["Rufus Wainwright"], album: "Shrek", durationMs: 409_000 }),
+    ],
+  ],
+];
+
+for (const [name, input] of keptApart) {
+  test(name, () => assert.equal(mergeTracks(input).length, 2, name));
+}
+
+test("a title that is nothing but punctuation is not a name two songs can share", () => {
+  // `...` and `???` both normalise away to nothing. Compared for equality, that nothing matched,
+  // so two unrelated songs by one artist came out as one row — whose lead source then played the
+  // other song.
+  const songs = mergeTracks([
+    track({ source: "apple", title: "...", artists: ["Wallace Cleaver"], album: "merci", durationMs: 122_000, sourceId: "dots" }),
+    track({ source: "deezer", title: "???", artists: ["Wallace Cleaver"], album: "Marcel", durationMs: 122_400, sourceId: "marks" }),
+  ]);
+  assert.equal(songs.length, 2, "an empty title is not evidence that two recordings are one");
+  assert.equal(new Set(songs.map((song) => song.id)).size, 2);
+});
+
+test("a title that is all brackets still groups on what the brackets say", () => {
+  // `(Nice Dream)` leaves an empty base too, but the bracket is kept as a variant, and a variant
+  // is something two sources can be compared on.
+  const songs = mergeTracks([
+    track({ source: "apple", title: "(Nice Dream)", artists: ["Radiohead"], album: "The Bends", durationMs: 233_227 }),
+    track({ source: "deezer", title: "(Nice Dream)", artists: ["Radiohead"], album: "The Bends", durationMs: 233_000 }),
+  ]);
+  assert.equal(songs.length, 1);
+  assert.deepEqual(sourcesOf(songs[0]!), ["apple", "deezer"]);
+});
+
+test("an ISRC still carries a song whose title says nothing", () => {
+  const songs = mergeTracks([
+    track({ source: "deezer", title: "★", artists: ["David Bowie"], album: "Blackstar", durationMs: 597_000, isrc: "GBBKS1500214" }),
+    track({ source: "soundcloud", title: "…", artists: ["David Bowie"], album: null, durationMs: 597_933, isrc: "gb-bks-15-00214" }),
+  ]);
+  assert.equal(songs.length, 1, "identity the title could not supply came from the ISRC");
+});
