@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { hideWhenBroken } from "../artwork";
 import { proxied } from "../artwork-url";
-import { blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
+import { blockedReason, blockedTimer, loadGlobal, useLatest, useTransport } from "./embed";
 import { usePlayerControls } from "./player-context";
-import { widgetStep } from "./soundcloud-handshake.ts";
+import { widgetHandoff, widgetStep } from "./soundcloud-handshake.ts";
 import { judgeSoundCloudStart, type StartReading } from "./soundcloud-stall.ts";
 
 interface SCWidget {
@@ -80,6 +80,10 @@ export function SoundCloudPlayer({
   const holdingUrl = useRef<string | null>(null);
   const stallTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const answerTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // This mount's verdict on the widget, kept for the same reason `apiBlocked` is kept for the
+  // page in `youtube-player.tsx`: the deadline that reaches it runs once, and this is the one
+  // player the ladder can hand a second url without remounting. See `widgetHandoff`.
+  const failed = useRef(false);
 
   const live = useLatest({ ...controls, level });
 
@@ -161,9 +165,10 @@ export function SoundCloudPlayer({
     container.append(host);
 
     let cancelled = false;
-    const clearBlocked = blockedTimer("SoundCloud", (reason) =>
-      live.current.handleError(reason, true),
-    );
+    const clearBlocked = blockedTimer("SoundCloud", (reason) => {
+      failed.current = true;
+      live.current.handleError(reason, true);
+    });
 
     loadApi()
       .then((SC) => {
@@ -174,6 +179,8 @@ export function SoundCloudPlayer({
 
         widget.bind(Events.READY, () => {
           clearBlocked();
+          // A widget that turned up late is a working widget, whatever the deadline decided.
+          failed.current = false;
           readyRef.current = true;
           widget.setVolume(live.current.level);
           apply(widget);
@@ -189,6 +196,7 @@ export function SoundCloudPlayer({
       .catch(() => {
         if (cancelled) return;
         clearBlocked();
+        failed.current = true;
         live.current.handleError("Couldn't load SoundCloud's player.", true);
       });
 
@@ -228,9 +236,16 @@ export function SoundCloudPlayer({
   useEffect(() => {
     wantedUrl.current = trackUrl;
     const widget = widgetRef.current;
-    if (!trackUrl || !readyRef.current || !widget) return;
-    apply(widget);
-  }, [apply, trackUrl]);
+    const handoff = widgetHandoff(trackUrl, {
+      ready: readyRef.current && widget !== null,
+      failed: failed.current,
+    });
+    if (handoff === "apply" && widget) apply(widget);
+    // Nothing here can load this url and no deadline is left to say so, so say it now rather
+    // than leave the track on "SoundCloud 0:00" with the ladder waiting on a widget that is
+    // not coming. Retryable: SoundCloud being unreachable says nothing about the rungs below it.
+    else if (handoff === "report") live.current.handleError(blockedReason("SoundCloud"), true);
+  }, [apply, live, trackUrl]);
 
   useTransport({
     toggle: () => {
