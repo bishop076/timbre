@@ -9,10 +9,37 @@ const NOISE_PATTERNS: RegExp[] = [
   /\bfrom\s+["“][^"”]+["”]/i,
 ];
 
+/**
+ * One trailing tag, anchored to the end of the string — and peeled off one at a time.
+ *
+ * The obvious spelling is the whole run in a single pattern,
+ * `(?:\s+(?:<tag>|<tag>|…))+\s*$`, and that one backtracks catastrophically. The first
+ * alternative ends in two optional groups, `(?:\s+\d{4})?` and
+ * `(?:\s+(?:version|edition|remaster(?:ed)?))?`, so `remaster remaster` is both one
+ * repetition of it and two — and N of them are 2^N different ways to divide the same text.
+ * On a title that ends in something the run cannot swallow the engine tries all of them:
+ * `"song" + " remaster".repeat(32) + " zz"` is 300 characters, the exact cap
+ * `/api/lyrics` already enforces on its `title`, and it took 3.0 seconds to say no.
+ * `dedupeKey` on 367 characters of it — the search merge path, which has no cap at all —
+ * took 139 seconds. Both block the event loop for the whole instance.
+ *
+ * Without the `+` there is nothing to divide: each pass tries the alternation once per
+ * starting position and stops. The result is the same string, because a run of tags is the
+ * same whether it comes off in one piece or in several.
+ */
 const TRAILING_NOISE = new RegExp(
-  `(?:\\s+(?:${NOISE_PATTERNS.map((pattern) => pattern.source).join("|")}))+\\s*$`,
+  `\\s+(?:${NOISE_PATTERNS.map((pattern) => pattern.source).join("|")})\\s*$`,
   "i",
 );
+
+function stripTrailingNoise(text: string): string {
+  let rest = text;
+  for (;;) {
+    const stripped = rest.replace(TRAILING_NOISE, "");
+    if (stripped === rest) return rest;
+    rest = stripped;
+  }
+}
 
 /**
  * The ways a recording says it is not the plain studio take.
@@ -55,6 +82,18 @@ const EVERY_VARIANT = VARIANT_PATTERNS.map(({ pattern, tag }) => ({
   pattern: new RegExp(pattern.source, "gi"),
   tag,
 }));
+
+/**
+ * How much of a title `parseTitle` will read.
+ *
+ * Nothing upstream bounds one. `mergeTracks` hands it every `title` a provider returns, and
+ * SoundCloud, Audius, Archive and Mixcloud titles are typed by whoever uploaded the track;
+ * `/api/lyrics` caps its own query at 300 characters but nothing caps that path. The bracket
+ * scan below is quadratic in what it is given — `"(".repeat(40_000)` costs 7.3 seconds in the
+ * regex alone, on the one thread answering everybody — so the length has to stop somewhere.
+ * 500 is well past the longest real title and leaves the scan at about a thousandth of that.
+ */
+const MAX_TITLE = 500;
 
 const FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?)\s+(.+)$/i;
 const SEGMENT_FEATURE_PATTERN = /\b(?:feat\.?|featuring|ft\.?|with)\s+(.+)$/i;
@@ -110,6 +149,7 @@ export function versionTags(text: string): string[] {
  * dash really is saying something about the recording.
  */
 export function parseTitle(raw: string, credits: string[] = []) {
+  const title = raw.slice(0, MAX_TITLE);
   const variants = new Set<string>();
   const featured: string[] = [];
   const stripFeature = (text: string, pattern: RegExp): string => {
@@ -120,7 +160,7 @@ export function parseTitle(raw: string, credits: string[] = []) {
   };
 
   const segments: string[] = [];
-  const unbracketed = raw.replace(/[([{]([^)\]}]*)[)\]}]/g, (_match, inner: string) => {
+  const unbracketed = title.replace(/[([{]([^)\]}]*)[)\]}]/g, (_match, inner: string) => {
     segments.push(inner);
     return " ";
   });
@@ -151,7 +191,7 @@ export function parseTitle(raw: string, credits: string[] = []) {
     if (normalized) variants.add(normalized);
   }
 
-  const base = stripFeature(main, FEATURE_PATTERN).replace(TRAILING_NOISE, "");
+  const base = stripTrailingNoise(stripFeature(main, FEATURE_PATTERN));
   return {
     base: normalizeLoose(base),
     variants: [...variants].sort(),
