@@ -107,7 +107,14 @@ export function parseColor(input: string): Rgb | null {
   const text = input.trim().toLowerCase();
   if (!text) return null;
 
-  const named = NAMED[text];
+  // `NAMED[text]` alone is a lookup that Object.prototype also answers: "constructor" comes
+  // back as the Object constructor and "__proto__" as the prototype itself, and `.slice(1)` on
+  // either is a TypeError out of a function whose whole contract is "or null". The colour
+  // field in theme-picker.tsx invites exactly that — its label is "Colour, as hex, rgb() or a
+  // name" — so typing `constructor` into Appearance replaced the page with "This page stopped
+  // working.", and a stored `timbre:accents` of ["constructor"] threw on every load of the one
+  // panel that can put the colour back.
+  const named = Object.hasOwn(NAMED, text) ? NAMED[text] : null;
   if (named) return hexDigits(named.slice(1));
 
   if (text.startsWith("#")) return hexDigits(text.slice(1));
