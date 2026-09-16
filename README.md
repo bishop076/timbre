@@ -56,10 +56,11 @@ artists are paid exactly as they would be otherwise.
 - A profile name, avatar and banner — resized in the browser, never uploaded
 - Installs as a PWA, works on a phone, and has no sign-up, no telemetry and no database
 
-> **The look is mid-redesign** (`feat/redesign`). The colour, background and typeface
-> controls above are in the tree and working; the surrounding layout is still moving towards
-> something closer to Spotify and Apple Music. Read anything about visual design here as work
-> in progress rather than as what a fresh clone looks like.
+> **The look is mid-redesign, and it is now on `main`** — `feat/redesign` converged with it at
+> `4fde241`, so a fresh clone gets the redesign rather than the layout that preceded it. The
+> colour, background and typeface controls above are in the tree and working; the surrounding
+> layout is still moving towards something closer to Spotify and Apple Music. Read anything
+> about visual design here as work in progress.
 
 ## What it deliberately doesn't do
 
@@ -108,8 +109,13 @@ makes this free to host. The matching engine in `packages/core` is the heart of 
 one song across several sources *is* a matching problem.
 
 ```bash
-pnpm test && pnpm typecheck
+pnpm test
+pnpm typecheck
 ```
+
+Two lines rather than `&&`, deliberately: each of those is itself two halves run by
+`scripts/run-gate.mts` — every half runs, each reports, and the gate fails if any of them did.
+An `&&` between them puts back exactly the masking that shape exists to remove.
 
 `ytmusicapi` is unofficial and can break when YouTube changes its web client — it's pinned
 and isolated in its own service, but budget for maintenance.
