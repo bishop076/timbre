@@ -163,3 +163,51 @@ test("duration tolerance absorbs provider disagreement but not real differences"
   assert.ok(!durationsMatch(201_000, 260_000), "a minute apart is not");
   assert.ok(durationsMatch(201_000, null), "unknown duration is not evidence against a match");
 });
+
+// The numbers in the comments are what the old code did on this machine, measured the same
+// way. The budgets are deliberately loose — a hundred-fold margin over what the fixed code
+// costs — because this asserts "not catastrophic", not "fast".
+const millis = (work: () => unknown): number => {
+  const started = process.hrtime.bigint();
+  work();
+  return Number(process.hrtime.bigint() - started) / 1e6;
+};
+
+test("a title made of repeated tags is answered, not chewed on", () => {
+  // `(?:\s+(?:<tag>|…))+\s*$` read N repetitions 2^N ways. At the 300 characters
+  // /api/lyrics already allows on its `title`, that was 3.0 seconds of blocked event loop
+  // for one GET; through dedupeKey, which nothing caps, 367 characters cost 139 seconds.
+  const atTheCap = ("song" + " remaster".repeat(33)).slice(0, 297) + " zz";
+  assert.equal(atTheCap.length, 300);
+  assert.ok(
+    millis(() => parseTitle(atTheCap)) < 100,
+    "parseTitle backtracks catastrophically on a run of trailing tags",
+  );
+  assert.ok(
+    millis(() => dedupeKey("song" + " remaster".repeat(40) + " zz", ["x"])) < 100,
+    "dedupeKey backtracks catastrophically on a run of trailing tags",
+  );
+});
+
+test("a title long enough to be a payload is read as far as a title goes", () => {
+  // The bracket scan is quadratic: 40,000 open brackets cost 7.3 seconds in the regex alone.
+  // `mergeTracks` hands it whatever an uploader typed, so the length stops at MAX_TITLE.
+  assert.ok(
+    millis(() => parseTitle("(".repeat(100_000))) < 100,
+    "parseTitle scans an unbounded title quadratically",
+  );
+  assert.equal(
+    parseTitle("Wonderwall" + " ".repeat(2_000) + "(Live)").variants.length,
+    0,
+    "past the cap there is nothing left to read",
+  );
+  assert.equal(parseTitle("Wonderwall (Live)".padEnd(400, "!")).base.startsWith("wonderwall"), true);
+});
+
+test("peeling trailing tags one at a time reads the same titles as swallowing them whole", () => {
+  assert.equal(parseTitle("Wonderwall - Remastered 2011").base, "wonderwall");
+  assert.equal(parseTitle("Wonderwall Deluxe Remaster").base, "wonderwall");
+  assert.equal(parseTitle("Wonderwall Official Video HD Explicit").base, "wonderwall");
+  assert.equal(parseTitle("Wonderwall Remastered   ").base, "wonderwall");
+  assert.equal(parseTitle("Remastered").base, "remastered", "a title that is only a tag stays");
+});
