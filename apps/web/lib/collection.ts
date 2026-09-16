@@ -246,7 +246,14 @@ async function fromRadio(id: string): Promise<Collection | null> {
 }
 
 async function fromSpotify(kind: SpotifyCollectionKind, id: string): Promise<Collection | null> {
-  const found = await fetchSpotifyCollection(getProviderRuntime(), kind, id).catch(() => null);
+  // No catch, for the reason `fromYouTube` has none. This one was the last of S-10's swallowed
+  // failures: `fetchSpotifyCollection` already falls back from the pathfinder to the embed page
+  // and answers `null` only when Spotify says there is no such thing, so the blanket `.catch`
+  // here caught exactly the cases that are not that — a timeout, a refused token bootstrap, the
+  // embed host unreachable. Measured with Spotify unreachable, a real album id came back `null`
+  // after two failed requests, which this page is `force-static` about: `notFound()`, cached as
+  // the answer for fifteen minutes. A throw reaches `error.tsx` instead, and is not cached.
+  const found = await fetchSpotifyCollection(getProviderRuntime(), kind, id);
   if (!found || found.tracks.length === 0) return null;
 
   const tracks: ChartTrack[] = found.tracks.map((track, index) => ({
