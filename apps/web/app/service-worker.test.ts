@@ -181,6 +181,30 @@ test("the three routes installed with the worker survive a shelf that overflows"
   }
 });
 
+test("taking over from an older build drops that build's documents and keeps the hashed assets", async () => {
+  // The other half of 7e2adec, checked rather than assumed, because `activate` is the only place
+  // an old cache is ever dropped and this file now has tests that could notice if it stopped.
+  const sw = harness(() => page({ "cache-control": "s-maxage=31536000" }));
+  const old = await sw.cacheStorage.open("timbre-shell-1.0.0-oldbuild");
+  await old.put(new Request(`${ORIGIN}/`), page());
+  const theirs = await sw.cacheStorage.open("some-other-app");
+  await theirs.put(new Request(`${ORIGIN}/`), page());
+
+  const waited: Promise<unknown>[] = [];
+  sw.listeners.get("activate")?.({ waitUntil: (value: Promise<unknown>) => waited.push(value) });
+  await Promise.allSettled(waited);
+
+  const names = await sw.cacheStorage.keys();
+  assert.ok(!names.includes("timbre-shell-1.0.0-oldbuild"), "the previous build's documents are gone");
+  assert.ok(names.includes("some-other-app"), "a cache this worker did not make is not ours to delete");
+  // Field by field, not deepEqual: the message is minted inside the VM's realm, so its prototype
+  // is a different Object than this file's and a structural compare fails on that alone.
+  assert.equal(sw.posted.length, 1, "the open pages are told once");
+  const [message] = sw.posted as { type?: string; build?: string }[];
+  assert.equal(message?.type, "timbre:sw-updated");
+  assert.equal(message?.build, BUILD);
+});
+
 test("a page that is not in the cache and not on the network says so, and is not stored", async () => {
   const sw = harness(() => {
     throw new TypeError("Failed to fetch");
