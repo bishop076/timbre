@@ -9,13 +9,35 @@ import { cover as coverSrc } from "./artwork-url";
 import { Collage } from "./collage";
 import { ExploreForYou, kindLabel } from "./explore-for-you";
 import { ShuffleIcon } from "./icons";
-import { SectionHeader } from "./page-chrome";
+import { EmptyNotice, SectionHeader } from "./page-chrome";
 import { Shelf } from "./shelf";
 import { COVER_EMPTY, TILE_BOX } from "./song-card";
 import { useTaste } from "./taste-store";
-import type { Discover } from "@/lib/discover";
+import type { Discover, Genre } from "@/lib/discover";
+import { listNames } from "@/lib/genre-tally";
 import type { Radio } from "@/lib/radios";
 import { interleaveBy, seededShuffle } from "@/lib/rotation";
+
+/**
+ * The two Deezer catalogues on this page that cannot honestly be empty.
+ *
+ * `/genre` is twenty-odd fixed genres and `/radio/genres` a few hundred fixed stations;
+ * neither has ever answered with nothing. `deezerList` forgives a refusal into `[]`, so a rate
+ * limited read arrives here as a catalogue with nothing in it — and every section built from
+ * one then removes itself. Both pill rows `return null`, and `Featured` falls back to the genre
+ * list whenever the chart and the editorial picks are thin, so it goes with them. What a reader
+ * got on a Deezer outage was the word "Explore", two shelves of shimmer, and the rankings a
+ * screen and a half further down.
+ *
+ * It is one notice for both rather than one each, and it is the reason `ExploreForYou` stands
+ * down when the genre list is empty: on a 690px window a second apology box is another 150px of
+ * the screen spent saying the same thing, and the page already carries one for the shelves.
+ */
+function missingCatalogues(genres: Genre[], radios: Radio[]): string[] {
+  return [genres.length === 0 ? "genres" : null, radios.length === 0 ? "stations" : null].filter(
+    (name): name is string => name !== null,
+  );
+}
 
 export function DiscoverView({
   initial,
@@ -30,6 +52,7 @@ export function DiscoverView({
 }) {
   const taste = useTaste();
   const yours = taste.genres.map((genre) => genre.id);
+  const missing = missingCatalogues(initial.genres, radios);
 
   return (
     <div className="@container mx-auto w-full max-w-6xl px-4 pb-16 pt-2 sm:px-7 sm:pb-20 sm:pt-4">
@@ -42,6 +65,14 @@ export function DiscoverView({
       <ExploreForYou genres={initial.genres} />
 
       <Featured data={initial} />
+
+      {missing.length > 0 && (
+        <EmptyNotice className="mb-6 @xl:mb-9">
+          Deezer wouldn&rsquo;t answer for {listNames(missing)} just now, so{" "}
+          {missing.length === 1 ? "that row is" : "those rows are"} missing rather than empty.
+          Search still works, and Explore fills itself back in the next time you open it.
+        </EmptyNotice>
+      )}
 
       <PillSection
         title="Genres"
