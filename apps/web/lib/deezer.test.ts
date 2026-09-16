@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
-import { deezer, deezerOrFail, DeezerUnavailable } from "./deezer.ts";
+import { z } from "zod";
+
+import {
+  deezer,
+  deezerList,
+  deezerListOrFail,
+  deezerOrFail,
+  DeezerUnavailable,
+  fetchChartTracks,
+} from "./deezer.ts";
 
 const real = globalThis.fetch;
 afterEach(() => {
@@ -87,4 +96,54 @@ test("every read pins the language, whatever the exit IP geolocates to", async (
 
   assert.equal(seen.length, 2);
   for (const headers of seen) assert.equal(headers?.get("accept-language"), "en-US,en;q=0.9");
+});
+
+// `deezerRows` and the two readers over it. Every list read in `lib/` used to be an `interface`
+// and a cast, so a row Deezer sent that is not the row the interface described reached the
+// mapper untouched: `null` in a chart threw `Cannot read properties of null (reading 'id')`, and
+// a `data` that is an object rather than a list threw `list is not iterable` before any row was
+// read at all. Both were 500s and broken pages out of requests that were perfectly well formed.
+const row = z.object({ id: z.number(), title: z.string() });
+
+test("a row Deezer garbled is dropped; the rows around it still arrive", async () => {
+  answering({ data: [{ id: 1, title: "Kid A" }, null, { id: 2 }, "nope", { id: 3, title: "Amnesiac" }] });
+
+  assert.deepEqual(await deezerList("/artist/399/albums", row), [
+    { id: 1, title: "Kid A" },
+    { id: 3, title: "Amnesiac" },
+  ]);
+  assert.deepEqual(await deezerListOrFail("/artist/399/albums", row), [
+    { id: 1, title: "Kid A" },
+    { id: 3, title: "Amnesiac" },
+  ]);
+});
+
+test("a body that is not a list is an empty shelf to one reader and a failure to the other", async () => {
+  for (const body of [{ data: { nope: true } }, { data: "not a list" }, {}, [], "text"]) {
+    answering(body);
+    assert.deepEqual(await deezerList("/radio/genres", row), [], JSON.stringify(body));
+    await assert.rejects(
+      () => deezerListOrFail("/genre", row),
+      DeezerUnavailable,
+      JSON.stringify(body),
+    );
+  }
+});
+
+// `deezerOrFail` answers null when Deezer said there is no such thing, and that is an absence
+// rather than a body this could not read — the strict reader must not turn it into a failure.
+test("'no data' is still an absence through the strict list read", async () => {
+  answering(NO_DATA);
+  assert.deepEqual(await deezerListOrFail("/artist/99999999999/albums", row), []);
+});
+
+test("a chart whose track rows are junk is the tracks that are not", async () => {
+  answering({ tracks: { data: [null, { id: 7, title: "Idioteque" }] } });
+  assert.deepEqual(
+    (await fetchChartTracks(0)).map((track) => track.title),
+    ["Idioteque"],
+  );
+
+  answering({ tracks: { data: "not a list" } });
+  assert.deepEqual(await fetchChartTracks(0), []);
 });

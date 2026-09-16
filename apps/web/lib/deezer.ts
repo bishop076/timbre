@@ -1,18 +1,43 @@
 import "server-only";
 
+import { z } from "zod";
+
 import { log, scrub } from "./log.ts";
 
-export interface RawTrack {
-  id: number;
-  title: string;
-  duration?: number;
-  isrc?: string;
-  rank?: number;
-  position?: number;
-  link?: string;
-  artist?: { name?: string };
-  album?: { title?: string; cover_medium?: string; cover_big?: string };
-}
+/**
+ * Deezer's track rows, parsed rather than asserted.
+ *
+ * This was an `interface`, which is a promise about somebody else's server, and every read
+ * below reached it through an `as`. One row of `null` in `/chart/0` — or in a playlist, or in
+ * a station's `/radio/<id>/tracks` — reached `toTrack` in `./discover` and threw
+ * `Cannot read properties of null (reading 'id')`, which is `/explore`, `/collection/...` and
+ * `/api/genre-feed` all breaking on a row nobody looks at. The same shape one level up, a
+ * `data` that is an object rather than a list, threw `list is not iterable` before any row
+ * was read at all.
+ *
+ * Only `id` and `title` are required, because they are the two fields every caller builds an
+ * entry around. Everything else is `nullish`: a Deezer track legitimately has no ISRC, no rank
+ * and no album.
+ */
+export const rawTrackSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  duration: z.number().nullish(),
+  isrc: z.string().nullish(),
+  rank: z.number().nullish(),
+  position: z.number().nullish(),
+  link: z.string().nullish(),
+  artist: z.object({ name: z.string().nullish() }).nullish(),
+  album: z
+    .object({
+      title: z.string().nullish(),
+      cover_medium: z.string().nullish(),
+      cover_big: z.string().nullish(),
+    })
+    .nullish(),
+});
+
+export type RawTrack = z.output<typeof rawTrackSchema>;
 
 // Deezer localises names — artists, genres, editorial titles — to whatever country it
 // geolocates the caller to, and it reads that from the request IP alone: `country=US` is
@@ -105,8 +130,75 @@ export async function deezer<T>(
   }
 }
 
-export async function deezerList<T>(path: string, revalidateSeconds?: number): Promise<T[]> {
-  return (await deezer<{ data?: T[] }>(path, revalidateSeconds))?.data ?? [];
+/**
+ * A Deezer list of rows, wherever one appears — at the top of a body under `data`, or nested
+ * under `tracks`, `albums`, `artists`, `playlists`.
+ *
+ * One parser, not one per caller: `lib/` reads eleven Deezer lists and every one of them used
+ * a TypeScript `interface` and a cast, so a row Deezer sent that is not the row the interface
+ * described reached the mapper untouched. Rows that fail are dropped rather than taken down
+ * with the answer, the way `/api/lyrics` treats a bad row in a search result — one unreadable
+ * album is one album missing, not a discography that failed. A body whose `data` is not a list
+ * at all is a different thing, and the two readers below take opposite views of it.
+ */
+export function deezerRowList<T>(row: z.ZodType<T>) {
+  return z.array(z.unknown()).transform((rows) =>
+    rows.flatMap((raw) => {
+      const parsed = row.safeParse(raw);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+}
+
+/** The same, for the usual Deezer shape: the rows under a `data` key. */
+export function deezerRows<T>(row: z.ZodType<T>) {
+  return z.object({ data: deezerRowList(row) }).transform((body) => body.data);
+}
+
+/**
+ * A nested list that is allowed to be missing, or to be something this cannot read.
+ *
+ * `/chart/<id>` is four independent shelves in one body — tracks, albums, artists, playlists —
+ * and reading it as one object meant an `albums.data` Deezer garbled emptied the other three
+ * as well. A shelf that cannot be read is an empty shelf; the body it arrived in is still the
+ * chart. The strict readers above take the opposite view, and the difference is whether the
+ * answer is a shelf or a claim.
+ */
+export function deezerShelf<T>(row: z.ZodType<T>) {
+  return deezerRows(row).nullish().catch(undefined);
+}
+
+/** The forgiving list read: a body that is not a list of rows is no rows. */
+export async function deezerList<T>(
+  path: string,
+  row: z.ZodType<T>,
+  revalidateSeconds?: number,
+  probe?: { failed: boolean },
+): Promise<T[]> {
+  const parsed = deezerRows(row).safeParse(await deezer<unknown>(path, revalidateSeconds, probe));
+  return parsed.success ? parsed.data : [];
+}
+
+/**
+ * The strict list read: a body that is not a list of rows is Deezer failing.
+ *
+ * `deezerList` turns any failure into `[]`, which is the right forgiveness for a shelf of
+ * related artists and the wrong one for the read that decides whether a thing exists at all —
+ * those pages are `force-static`, so a body read as "there is nothing here" is served as one
+ * for the rest of the revalidate window. Throwing reaches the segment's `error.tsx`, which is
+ * both true and not cached, and reaches `deezerRefusal` on the routes.
+ */
+export async function deezerListOrFail<T>(
+  path: string,
+  row: z.ZodType<T>,
+  revalidateSeconds?: number,
+): Promise<T[]> {
+  const body = await deezerOrFail<unknown>(path, revalidateSeconds);
+  if (body === null) return [];
+
+  const parsed = deezerRows(row).safeParse(body);
+  if (!parsed.success) throw new DeezerUnavailable(path, "sent something that is not a list");
+  return parsed.data;
 }
 
 /**
@@ -131,18 +223,19 @@ export function deezerRefusal(error: unknown): Response | null {
   );
 }
 
+const chartTracks = z.object({ tracks: deezerShelf(rawTrackSchema) });
+
 export async function fetchChartTracks(
   genre: number | string,
   probe?: { failed: boolean },
 ): Promise<RawTrack[]> {
-  const chart = await deezer<{ tracks?: { data?: RawTrack[] } }>(
-    `/chart/${genre}?limit=50`,
-    3_600,
-    probe,
-  );
-  return chart?.tracks?.data ?? [];
+  const chart = chartTracks.safeParse(await deezer<unknown>(`/chart/${genre}?limit=50`, 3_600, probe));
+  return chart.success ? (chart.data.tracks ?? []) : [];
 }
 
-export function newestFirst(a: { release_date?: string }, b: { release_date?: string }): number {
+export function newestFirst(
+  a: { release_date?: string | null },
+  b: { release_date?: string | null },
+): number {
   return (b.release_date ?? "").localeCompare(a.release_date ?? "");
 }

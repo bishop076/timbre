@@ -1,6 +1,8 @@
 import "server-only";
 
-import { deezer, deezerList, type RawTrack } from "./deezer";
+import { z } from "zod";
+
+import { deezer, deezerList, deezerShelf, rawTrackSchema, type RawTrack } from "./deezer";
 import { seededShuffle } from "./rotation";
 
 export interface Genre {
@@ -50,30 +52,48 @@ export interface Discover {
   }[];
 }
 
-interface RawAlbum {
-  id: number;
-  title: string;
-  record_type?: string;
-  cover_medium?: string;
-  artist?: { name?: string };
-}
+/**
+ * The chart, parsed rather than asserted — every list in it, and every row in every list.
+ *
+ * All five of these were `interface`s reached through a cast. Deezer answering `200` with
+ * `albums.data` as an object rather than a list threw `list is not iterable` out of the loop
+ * below, and one row of `null` in `tracks.data` threw `Cannot read properties of null
+ * (reading 'id')` in `toTrack`; either is `/explore` rendering its error boundary over a chart
+ * that arrived otherwise whole. Rows that fail are dropped, so a chart missing one entry is a
+ * chart missing one entry.
+ */
+const rawAlbumSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  record_type: z.string().nullish(),
+  cover_medium: z.string().nullish(),
+  artist: z.object({ name: z.string().nullish() }).nullish(),
+});
 
-interface RawChart {
-  tracks?: { data?: RawTrack[] };
-  albums?: { data?: RawAlbum[] };
-  artists?: { data?: { name: string; picture_medium?: string }[] };
-  playlists?: {
-    data?: {
-      id: number;
-      title: string;
-      nb_tracks?: number;
-      picture_medium?: string;
-      picture_big?: string;
-      user?: { name?: string };
-      creator?: { name?: string };
-    }[];
-  };
-}
+const chartArtistSchema = z.object({ name: z.string(), picture_medium: z.string().nullish() });
+
+const chartPlaylistSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  nb_tracks: z.number().nullish(),
+  picture_medium: z.string().nullish(),
+  picture_big: z.string().nullish(),
+  user: z.object({ name: z.string().nullish() }).nullish(),
+  creator: z.object({ name: z.string().nullish() }).nullish(),
+});
+
+const chartSchema = z.object({
+  tracks: deezerShelf(rawTrackSchema),
+  albums: deezerShelf(rawAlbumSchema),
+  artists: deezerShelf(chartArtistSchema),
+  playlists: deezerShelf(chartPlaylistSchema),
+});
+
+const genreSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  picture_medium: z.string().nullish(),
+});
 
 function toTrack(raw: RawTrack, index: number): ChartTrack {
   return {
@@ -106,10 +126,7 @@ export function coversOf(covers: (string | null | undefined)[], max: number): st
 }
 
 export async function fetchGenres(): Promise<Genre[]> {
-  const genres = await deezerList<{ id: number; name: string; picture_medium?: string }>(
-    "/genre",
-    604_800,
-  );
+  const genres = await deezerList("/genre", genreSchema, 604_800);
   return genres.map(({ id, name, picture_medium }) => ({
     id,
     name,
@@ -118,16 +135,18 @@ export async function fetchGenres(): Promise<Genre[]> {
 }
 
 export async function fetchDiscover(genre: number, rotation = 0): Promise<Discover> {
-  const [genres, chart, picks] = await Promise.all([
+  const [genres, body, picks] = await Promise.all([
     fetchGenres(),
-    deezer<RawChart>(`/chart/${genre}?limit=25`, 3_600),
-    deezerList<RawAlbum>(`/editorial/${genre}/selection`, 21_600),
+    deezer<unknown>(`/chart/${genre}?limit=25`, 3_600),
+    deezerList(`/editorial/${genre}/selection`, rawAlbumSchema, 21_600),
   ]);
+  const read = chartSchema.safeParse(body);
+  const chart = read.success ? read.data : null;
 
   const albums = new Map<number, ChartAlbum>();
   for (const [list, fresh] of [
     [picks, true],
-    [chart?.albums?.data ?? [], false],
+    [chart?.albums ?? [], false],
   ] as const) {
     for (const raw of list) {
       if (albums.has(raw.id)) continue;
@@ -142,19 +161,19 @@ export async function fetchDiscover(genre: number, rotation = 0): Promise<Discov
     }
   }
 
-  const playlists = seededShuffle(chart?.playlists?.data ?? [], rotation * 7 + 3).slice(0, 6);
+  const playlists = seededShuffle(chart?.playlists ?? [], rotation * 7 + 3).slice(0, 6);
 
   return {
     genres,
-    tracks: (chart?.tracks?.data ?? []).map(toTrack),
+    tracks: (chart?.tracks ?? []).map(toTrack),
     albums: seededShuffle([...albums.values()], rotation),
-    artists: (chart?.artists?.data ?? []).map((raw) => ({
+    artists: (chart?.artists ?? []).map((raw) => ({
       name: raw.name,
       imageUrl: raw.picture_medium ?? null,
     })),
     playlists: await Promise.all(
       playlists.map(async (playlist) => {
-        const tracks = await deezerList<RawTrack>(`/playlist/${playlist.id}/tracks?limit=8`);
+        const tracks = await deezerList(`/playlist/${playlist.id}/tracks?limit=8`, rawTrackSchema);
         return {
           id: playlist.id,
           title: playlist.title,

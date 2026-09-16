@@ -1,8 +1,17 @@
 import "server-only";
 
 import { normalizeLoose } from "@timbre/core";
+import { z } from "zod";
 
-import { deezerList, deezerOrFail, newestFirst, type RawTrack } from "./deezer";
+import {
+  deezerList,
+  deezerListOrFail,
+  deezerOrFail,
+  deezerRows,
+  DeezerUnavailable,
+  newestFirst,
+  rawTrackSchema,
+} from "./deezer";
 import type { LinkedSong } from "./discover";
 
 export interface Release {
@@ -25,41 +34,47 @@ export interface AlbumDetail extends Omit<Release, "trackCount"> {
   songs: LinkedSong[];
 }
 
-interface DeezerAlbum {
-  id: number;
-  title: string;
-  genre_id?: number;
-  record_type?: string;
-  release_date?: string;
-  cover_medium?: string;
-  nb_tracks?: number;
-}
-
-interface DeezerAlbumDetail extends DeezerAlbum {
-  cover_big?: string;
-  artist?: { name?: string };
-  tracks?: { data?: RawTrack[] };
-}
-
-interface DeezerArtist {
-  name: string;
-  picture_medium?: string;
-  picture_xl?: string;
-  nb_fan?: number;
-  link?: string;
-}
-
 /**
- * The strict list read. `deezerList` turns any failure into `[]`, which is the right forgiveness
- * for a shelf of related artists and the wrong one for the search that decides whether this
- * artist exists at all: the page is `force-static` with an hour's `revalidate`, so a timeout
- * read as "no such artist" is served as one for the rest of that hour. Throwing instead reaches
- * `artist/[name]/error.tsx` — "None of the sources answered for this artist. Try again" — which
- * is both true and not cached.
+ * Deezer's album rows, parsed rather than asserted.
+ *
+ * This was an `interface` and a cast, which is a promise about somebody else's server, and
+ * `/artist/<id>/albums` broke it: Deezer answered `200` with one row carrying no `title`, and
+ * the dedupe below reads `album.title.trim()` on every row before anything else looks at one.
+ * `TypeError: Cannot read properties of undefined (reading 'trim')` out of a well-formed
+ * request is `/api/artist?full=1` and `/api/taste` answering `500`, and `/artist/<name>`
+ * rendering its error boundary, over a discography Deezer sent in full bar one row.
+ *
+ * `id` and `title` are required because every entry below is built around them; a row without
+ * one is dropped, one release short rather than the whole shelf. Everything else is `nullish`,
+ * because an album legitimately has no release date, no genre and no cover.
  */
-async function deezerListOrFail<T>(path: string): Promise<T[]> {
-  return (await deezerOrFail<{ data?: T[] }>(path))?.data ?? [];
-}
+const albumSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  genre_id: z.number().nullish(),
+  record_type: z.string().nullish(),
+  release_date: z.string().nullish(),
+  cover_medium: z.string().nullish(),
+  nb_tracks: z.number().nullish(),
+});
+
+export type DeezerAlbum = z.output<typeof albumSchema>;
+
+const albumDetailSchema = albumSchema.extend({
+  cover_big: z.string().nullish(),
+  artist: z.object({ name: z.string().nullish() }).nullish(),
+  tracks: deezerRows(rawTrackSchema).nullish(),
+});
+
+const relatedSchema = z.object({ name: z.string(), picture_medium: z.string().nullish() });
+
+const artistSchema = z.object({
+  name: z.string(),
+  picture_medium: z.string().nullish(),
+  picture_xl: z.string().nullish(),
+  nb_fan: z.number().nullish(),
+  link: z.string().nullish(),
+});
 
 export function deezerIdFrom(url: string | null | undefined): string | null {
   const match = url ? /deezer\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/.exec(url) : null;
@@ -75,9 +90,9 @@ export function deezerIdFrom(url: string | null | undefined): string | null {
  * shelf below stays forgiving: an empty shelf is a shelf, an empty discography is a claim.
  */
 export async function fetchArtistAlbums(id: string): Promise<DeezerAlbum[]> {
-  return (await deezerListOrFail<DeezerAlbum>(`/artist/${id}/albums?limit=100`)).toSorted(
-    newestFirst,
-  );
+  return (
+    await deezerListOrFail(`/artist/${id}/albums?limit=100`, albumSchema)
+  ).toSorted(newestFirst);
 }
 
 export async function fetchDiscography(
@@ -88,7 +103,7 @@ export async function fetchDiscography(
 
   const [albums, related] = await Promise.all([
     fetchArtistAlbums(id),
-    deezerList<{ name: string; picture_medium?: string }>(`/artist/${id}/related?limit=12`),
+    deezerList(`/artist/${id}/related?limit=12`, relatedSchema),
   ]);
 
   const seen = new Set<string>();
@@ -116,12 +131,19 @@ export async function fetchAlbum(id: string): Promise<AlbumDetail | null> {
   if (!/^\d+$/.test(id)) return null;
 
   // Strict: the caller turns null into notFound() on a force-static page, so a timeout must
-  // not read as "no such album" and get cached as one.
-  const album = await deezerOrFail<DeezerAlbumDetail>(`/album/${id}`);
-  if (!album) return null;
+  // not read as "no such album" and get cached as one. A body Deezer sent that is not an album
+  // is the same kind of non-answer, and gets the same verdict rather than `notFound()`.
+  const body = await deezerOrFail<unknown>(`/album/${id}`);
+  if (body === null) return null;
 
+  const parsed = albumDetailSchema.safeParse(body);
+  if (!parsed.success) {
+    throw new DeezerUnavailable(`/album/${id}`, "sent something that is not an album");
+  }
+
+  const album = parsed.data;
   const artist = album.artist?.name ?? "";
-  const tracks = album.tracks?.data ?? [];
+  const tracks = album.tracks ?? [];
 
   return {
     id: album.id,
@@ -170,8 +192,9 @@ export async function findArtist(name: string) {
   const query = name.trim();
   if (!query) return null;
 
-  const results = await deezerListOrFail<DeezerArtist>(
+  const results = await deezerListOrFail(
     `/search/artist?q=${encodeURIComponent(query)}&limit=25`,
+    artistSchema,
   );
   if (results.length === 0) return null;
 
