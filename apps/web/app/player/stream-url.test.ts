@@ -27,3 +27,20 @@ test("the last host, and a source with one host, have nowhere to go", () => {
   );
   assert.equal(nextStreamHost(streamUrlFor("archive", "some-show/track01.mp3")), null);
 });
+
+test("the walk reaches every Audius host and then stops", () => {
+  // `progressive-audio-player.tsx` asked this of the url the song shipped with rather than of
+  // the one it was trying, so it only ever took the first of these steps and hosts three and
+  // four were unreachable. The chain has to be walked from wherever the attempt currently is.
+  const visited = [streamUrlFor("audius", "jaKgV")];
+  for (let next = nextStreamHost(visited[0]!); next; next = nextStreamHost(next)) visited.push(next);
+  assert.deepEqual(
+    visited.map((url) => new URL(url).host),
+    [
+      "api.audius.co",
+      "discoveryprovider.audius.co",
+      "discoveryprovider2.audius.co",
+      "discoveryprovider3.audius.co",
+    ],
+  );
+});
