@@ -107,3 +107,29 @@ test("the two smallest controls in the app are 24px to a finger", () => {
     /before:absolute before:-inset-y-\[7px\] before:-left-1 before:-right-2\.5 before:content-\[''\]/,
   );
 });
+
+/**
+ * The twelfth. The now-playing panel's hide control was removed in `4d80344` because it and the
+ * player bar's toggle were two permanent buttons for one job; it is back as a hover-revealed one,
+ * which makes the corner empty at rest again and the button discoverable with a pointer. That
+ * trade only holds if "hover" is the mouse's answer and not everybody's — a phone has no hover at
+ * all, and the panel's only other way out is a drag on a handle that does not exist below `xl`.
+ *
+ * Named group, so the sweep above does not see it: `group-hover/panel:` is not
+ * `group-hover:`. This asserts the same rule at the one site that spells it differently.
+ */
+test("the now-playing panel's hide control is reachable without a pointer", () => {
+  const revealing = quoted(read("player/now-playing.tsx")).filter((value) =>
+    value.includes("group-hover/panel:opacity-100"),
+  );
+
+  assert.equal(revealing.length, 1, "the panel reveals more than the one control on hover");
+
+  for (const value of revealing) {
+    assert.ok(value.includes("touch:opacity-100"), `hover-only on a screen with no hover:\n  ${value}`);
+    assert.ok(
+      value.includes("focus-visible:opacity-100"),
+      `hover-only from a keyboard:\n  ${value}`,
+    );
+  }
+});

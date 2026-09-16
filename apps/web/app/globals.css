@@ -194,6 +194,10 @@
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --tint-ms: 420ms;
+  /* How long the now-playing panel takes to arrive in its other layout. Long
+     enough to read as a move rather than a cut, short enough that a second
+     click on the expand control is never waiting on it. */
+  --expand-ms: 280ms;
 
   --bar-h: 6rem;
   --nav-h: 4rem;
@@ -569,6 +573,44 @@ input[type="search"]::-webkit-search-results-decoration {
 
 .rise {
   animation: rise 0.32s var(--ease) both;
+}
+
+/* ---------------------------------------------------------------------------
+   Expanding the now-playing panel.
+
+   Theater is a different layout, not a bigger version of the same one: the main
+   column goes `hidden` and the panel stops being a card pinned beside it. No
+   property interpolates across that — `position` and `display` do not animate —
+   so what is animated is the arrival, and the card grows or settles into place
+   instead of cutting to it.
+
+   Two names for what could be one animation, because changing `animation-name`
+   is what restarts it. The element is never remounted and must not be: every
+   embed player lives inside it, and a remount would stop the music mid-track.
+
+   No `fill-mode`. A transform that outlives its animation makes the card a
+   containing block for every fixed-position descendant, permanently.
+   --------------------------------------------------------------------------- */
+@keyframes into-theater {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes into-dock {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+.into-theater {
+  animation: into-theater var(--expand-ms) var(--ease);
+}
+
+.into-dock {
+  animation: into-dock var(--expand-ms) var(--ease);
 }
 
 @keyframes bounce-bar {
