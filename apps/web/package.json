@@ -8,8 +8,12 @@
     "start": "dotenv -e ../../.env -- next start",
     "lint": "eslint",
     "test": "node --import ./test-hooks.mjs --test \"app/**/*.test.{ts,tsx}\" \"lib/**/*.test.{ts,tsx}\"",
-    "typecheck": "next typegen && tsc --noEmit && tsc -p sw",
-    "typecheck:fast": "next typegen && tsgo --noEmit && tsgo -p sw"
+    "typecheck": "next typegen && node ../../scripts/run-gate.mts typecheck:app typecheck:sw",
+    "typecheck:app": "tsc --noEmit",
+    "typecheck:sw": "tsc -p sw",
+    "typecheck:fast": "next typegen && node ../../scripts/run-gate.mts typecheck:fast:app typecheck:fast:sw",
+    "typecheck:fast:app": "tsgo --noEmit",
+    "typecheck:fast:sw": "tsgo -p sw"
   },
   "postcss": {
     "plugins": {
