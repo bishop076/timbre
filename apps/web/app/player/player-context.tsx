@@ -1083,8 +1083,13 @@ function usePlayerValue() {
             return start({ kind: "ytmusic", id: shipped });
           }
 
-          const onYouTube = song.sources.some((source) => source.source === "ytmusic");
-          if (onYouTube && candidates.current.length === 0) {
+          // Asked for whatever this song is, which used to be `onYouTube &&` — so a song with
+          // no YouTube source of its own could never reach YouTube from here, though `load`
+          // reaches it by exactly this route for a song with nothing playable at all. An
+          // Audius-only track whose four nodes were all refused gave up while the very search
+          // the rescue runs twenty lines below was answering with two YouTube copies of it.
+          // `whyLeftYouTube` above still keeps a walled connection out of this block entirely.
+          if (candidates.current.length === 0) {
             candidates.current = youtubeIds(await findMatches(song, renew(resolving).signal));
           }
           const alternative = candidates.current.find((id) => !attempted.current.has(id));
