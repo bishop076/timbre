@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 
 import { moveBetweenItems } from "../a11y/arrow-nav";
+import { useReducedMotion } from "../a11y/use-reduced-motion";
 import { ArtistLink } from "../artist-link";
 import { Artwork } from "../artwork";
 import { formatDuration } from "../duration";
@@ -300,11 +301,54 @@ export function NowPlayingPanel() {
     ? "flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto sideways:flex-row sideways:overflow-hidden xl:flex-row xl:overflow-y-visible"
     : "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--shell-1)] xl:h-full xl:w-full xl:max-w-none";
 
+  // Expanding is a change of layout, not of size: the main column goes `hidden` and this card
+  // stops being a fixed box beside it and becomes the stage. Nothing transitions across that —
+  // `position` and `display` do not interpolate — so the arrival is what gets animated, and the
+  // two directions are two animation names because swapping the name is what restarts the
+  // animation on an element that is never unmounted. It must never be unmounted: every embed
+  // player lives inside it, and remounting would stop the music.
+  //
+  // Gated in JS rather than left to the blanket `prefers-reduced-motion` rule in globals.css.
+  // That rule collapses every duration to 0.01ms, which would still run this — a scale from 0.94
+  // in a single frame is a flash, and a flash is the one thing someone who asked for less motion
+  // is asking not to get. With the class off there is no animation to shorten.
+  const reducedMotion = useReducedMotion();
+  const arrival = reducedMotion ? "" : expanded ? "into-theater" : "into-dock";
+
+  // Theater keeps the media as the whole stage. Docked it sits in a FRAME instead — one box, one
+  // ratio, the panel's own padding around it — rather than bleeding to both edges of the column.
+  //
+  // It used to be full width with a height per source: 166px for SoundCloud, 200 for YouTube and
+  // Audius, 280 for Mixcloud, 300 for a Deezer embed. So the top of the panel resized every time
+  // the queue moved on to a track the ladder resolved somewhere else, and everything under it —
+  // the title, the queue, Credits — jumped with it.
+  //
+  // 16:9 is the frame because that is the shape the videos already are. A video fills it exactly;
+  // a square cover is fitted inside it and keeps its own shape, which is the trade in the
+  // direction that costs least. The other way round — a square frame — would letterbox every
+  // video and spend 340px of a 690px window on the picture before the queue got a row.
   const videoBox = expanded
     ? "slab relative min-h-[min(200px,45dvh)] w-full shrink overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video sideways:aspect-auto sideways:h-full sideways:min-h-0 sideways:w-auto sideways:min-w-0 sideways:flex-1 xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
-    : "relative shrink-0 bg-black";
+    : "shrink-0 p-2";
 
-  const size = (docked: string) => (expanded ? "h-full w-full" : `${docked} w-full`);
+  // The floor is the one number a ratio cannot argue with. SoundCloud's widget is an iframe with
+  // a fixed intrinsic 166px, whatever box it is handed, so any 16:9 frame narrower than ~295px
+  // cuts it — at the panel's 288px minimum it lost 20px and its "Privacy policy" line with them.
+  // The floor is a property of the panel's width, not of what is playing, so the promise that
+  // matters still holds: the frame never changes size because the source changed.
+  const frame = expanded
+    ? "relative h-full w-full"
+    : "slab-sm relative aspect-video w-full min-h-[166px] overflow-hidden rounded-[var(--r-md)] bg-black";
+
+  // Every player already fits its own content — `object-contain` on the covers, the provider's
+  // own layout in the iframes — so inside the frame they all get the same instruction, and the
+  // frame is the only thing that decides how much room that is.
+  //
+  // `justify-center` is for the one player that does not fill what it is given: SoundCloud's
+  // widget is a fixed 166px whatever the box around it, and top-aligned in a 191px frame it
+  // reads as a white panel resting on a black shelf rather than as a thing inside a frame.
+  // Every other player is already centred, or is not a flex container at all.
+  const size = "h-full w-full justify-center";
   const artworkUrl = current?.artworkUrl ?? null;
 
   const listBox = expanded
@@ -319,10 +363,36 @@ export function NowPlayingPanel() {
   // opening bracket, and two lines costs ~22px against knowing what is playing.
   const heading = (variant: "docked" | "theater") => (
     <div
+      // `pr-11` on the docked header reserves the corner the hide control sits in. Without it a
+      // long title runs straight under a button that is invisible until you hover, which is the
+      // worst of both — you cannot see the control and you cannot read the title either.
       className={`relative shrink-0 border-b-[length:var(--edge)] border-[var(--ink)] px-3.5 pb-2.5 ${
-        variant === "docked" ? "pt-3" : "pt-3.5"
+        variant === "docked" ? "pr-11 pt-3" : "pt-3.5"
       }`}
     >
+      {/* The panel's own way out, back in the corner Spotify puts it. Dragging the edge to its
+          limit still closes it and is the nicer gesture, but a gesture is not discoverable and
+          cannot be found from a keyboard at all — which is why this button existed, and the only
+          reason it came out again was that it and the player bar's toggle were two buttons in two
+          places for one thing. Revealed on hover, it is not a second permanent control: at rest
+          the corner is as empty as it has been, and the panel's edge is still the thing you see.
+
+          Hover is for a mouse only, never the whole story. `touch:` is `(hover: none)`, so a
+          phone gets it drawn at rest — eleven controls in this app were hover-only and therefore
+          unreachable there, and `focus-visible` is the same promise for a keyboard. */}
+      {variant === "docked" ? (
+        <button
+          type="button"
+          onClick={togglePanel}
+          aria-label="Hide now playing"
+          aria-expanded={true}
+          aria-controls={NOW_PLAYING_ID}
+          title="Hide now playing"
+          className="press absolute right-2 top-2 flex size-7 items-center justify-center rounded-[var(--r-full)] text-[var(--fg-dim)] opacity-0 transition-opacity duration-200 ease-[var(--ease)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)] focus-visible:opacity-100 group-hover/panel:opacity-100 touch:opacity-100"
+        >
+          <ChevronIcon className="size-4 -rotate-90" />
+        </button>
+      ) : null}
       <p
         className={`line-clamp-2 font-bold tracking-[var(--track-title)] ${
           variant === "docked"
@@ -376,63 +446,58 @@ export function NowPlayingPanel() {
       inert={!open}
       aria-label="Now playing"
     >
-      <div className={card}>
+      <div className={`group/panel ${card} ${arrival}`}>
         <div className={videoBox}>
-          {state === "unplayable" && elsewhereUrl && (
-            <a
-              href={elsewhereUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="absolute inset-x-0 top-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-2)] px-3 py-2.5 text-xs font-medium text-[var(--fg)] transition hover:text-[var(--accent-text)]"
+          <div className={frame}>
+            {state === "unplayable" && elsewhereUrl && (
+              <a
+                href={elsewhereUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="absolute inset-x-0 top-0 z-20 flex items-center justify-center gap-2 bg-[var(--surface-2)] px-3 py-2.5 text-xs font-medium text-[var(--fg)] transition hover:text-[var(--accent-text)]"
+              >
+                {problem ?? "Can't play this here"}
+                <ExternalIcon className="size-3" />
+              </a>
+            )}
+
+            <button
+              type="button"
+              onClick={toggleTheater}
+              aria-label={expanded ? "Shrink video" : "Expand video"}
+              aria-pressed={expanded}
+              className="group absolute inset-0 z-10 flex cursor-pointer items-start justify-end p-2 focus:outline-none"
             >
-              {problem ?? "Can't play this here"}
-              <ExternalIcon className="size-3" />
-            </a>
-          )}
+              <span className="slab-sm flex size-8 items-center justify-center rounded-[var(--r-sm)] bg-[var(--surface-1)] text-[var(--fg)] opacity-0 transition duration-200 ease-[var(--ease)] group-hover:opacity-100 group-focus-visible:opacity-100">
+                {expanded ? <CollapseIcon className="size-4" /> : <ExpandIcon className="size-4" />}
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={toggleTheater}
-            aria-label={expanded ? "Shrink video" : "Expand video"}
-            aria-pressed={expanded}
-            className="group absolute inset-0 z-10 flex cursor-pointer items-start justify-end p-2 focus:outline-none"
-          >
-            <span className="slab-sm flex size-8 items-center justify-center rounded-[var(--r-sm)] bg-[var(--surface-1)] text-[var(--fg)] opacity-0 transition duration-200 ease-[var(--ease)] group-hover:opacity-100 group-focus-visible:opacity-100">
-              {expanded ? <CollapseIcon className="size-4" /> : <ExpandIcon className="size-4" />}
-            </span>
-          </button>
-
-          {activeSource === "soundcloud" ? (
-            <SoundCloudPlayer
-              trackUrl={soundcloudUrl}
-              artworkUrl={artworkUrl}
-              expanded={expanded}
-              size={size("h-[166px]")}
-            />
-          ) : mixcloudKey ? (
-            <MixcloudPlayer
-              cloudcastKey={mixcloudKey}
-              artworkUrl={artworkUrl}
-              size={size("h-[280px]")}
-            />
-          ) : spotifyTrackId ? (
-            <SpotifyPlayer trackId={spotifyTrackId} size={size("h-[200px]")} />
-          ) : subscriptionTrack ? (
-            <SubscriptionPlayer
-              track={subscriptionTrack}
-              size={size(subscriptionTrack.source === "deezer" ? "h-[300px]" : "h-[200px]")}
-            />
-          ) : streamUrl ? (
-            <ProgressiveAudioPlayer
-              streamUrl={streamUrl}
-              artworkUrl={artworkUrl}
-              artworkFallbacks={current?.artworkFallbacks}
-              title={current?.title}
-              size={size("h-[200px]")}
-            />
-          ) : (
-            <YouTubePlayer size={size("h-[200px]")} />
-          )}
+            {activeSource === "soundcloud" ? (
+              <SoundCloudPlayer
+                trackUrl={soundcloudUrl}
+                artworkUrl={artworkUrl}
+                expanded={expanded}
+                size={size}
+              />
+            ) : mixcloudKey ? (
+              <MixcloudPlayer cloudcastKey={mixcloudKey} artworkUrl={artworkUrl} size={size} />
+            ) : spotifyTrackId ? (
+              <SpotifyPlayer trackId={spotifyTrackId} size={size} />
+            ) : subscriptionTrack ? (
+              <SubscriptionPlayer track={subscriptionTrack} size={size} />
+            ) : streamUrl ? (
+              <ProgressiveAudioPlayer
+                streamUrl={streamUrl}
+                artworkUrl={artworkUrl}
+                artworkFallbacks={current?.artworkFallbacks}
+                title={current?.title}
+                size={size}
+              />
+            ) : (
+              <YouTubePlayer size={size} />
+            )}
+          </div>
         </div>
 
         <div className={listBox}>
