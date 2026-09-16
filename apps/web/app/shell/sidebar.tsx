@@ -307,7 +307,11 @@ function LibraryCard({
         ref={list}
         data-above={edges.above || undefined}
         data-below={edges.below || undefined}
-        className="edge-fade scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+        // `pt-1` is 4px, and it is the focus ring's. A scroller clips at its padding box, the
+        // ring is drawn 4px outside the row it belongs to, and the first row starts flush with
+        // the top — so tabbing into the queue lit a ring with its top edge shaved off square.
+        // The cost is 4px of rail: everything below moves down by it, and nothing else changes.
+        className="edge-fade scroller min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1"
       >
         {filter === "Playlists" ? (
           <>
