@@ -57,6 +57,27 @@ const SOURCE_HOSTS: Record<string, readonly string[]> = {
 
 const PREVIEW_HOSTS = [".dzcdn.net", ".itunes.apple.com", ".mzstatic.com", ".scdn.co"];
 
+/**
+ * The link a stored song is allowed to keep for one of its sources: https, and on a host that
+ * source actually serves.
+ *
+ * Exported because `timbre:history` holds `source`, `sourceId` and `url` too, under a second
+ * parser (`playedSong`), and that one copied all three through untouched. A rule only one of two
+ * readers applies is not a rule — the same storage-shape bug, told again.
+ *
+ * `SOURCE_HOSTS[source] ?? []` looked like it defaulted an unknown source to "no hosts", and did
+ * for every name except the ones Object.prototype already answers. A stored song whose `source`
+ * is "constructor" or "__proto__" got back a function or the prototype — not nullish, so `??`
+ * never fired — and `hosts.includes(...)` was then a TypeError thrown out of a parser the whole
+ * of this file exists to make total. One planted entry in `timbre:likes` put "This page
+ * stopped working." on /library and /liked on every load, and the only way out was clearing
+ * storage, which takes the playlists with it.
+ */
+export function usableSourceUrl(source: string, value: unknown): string | null {
+  const hosts = Object.hasOwn(SOURCE_HOSTS, source) ? SOURCE_HOSTS[source] : [];
+  return typeof value === "string" && onHosts(value, hosts) ? value : null;
+}
+
 function usableSource(value: unknown): SourceTrack | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
@@ -65,15 +86,7 @@ function usableSource(value: unknown): SourceTrack | null {
   const playback = PLAYBACK.has(raw.playback as SourceTrack["playback"])
     ? (raw.playback as SourceTrack["playback"])
     : "link";
-  // `SOURCE_HOSTS[raw.source] ?? []` looked like it defaulted an unknown source to "no hosts",
-  // and did for every name except the ones Object.prototype already answers. A stored song
-  // whose `source` is "constructor" or "__proto__" got back a function or the prototype — not
-  // nullish, so `??` never fired — and `hosts.includes(...)` below was then a TypeError thrown
-  // out of a parser this file exists to make total. One planted entry in
-  // `timbre:likes` put "This page stopped working." on /library and /liked on every load, and
-  // the only way out was clearing storage, which takes the playlists with it.
-  const hosts = Object.hasOwn(SOURCE_HOSTS, raw.source) ? SOURCE_HOSTS[raw.source] : [];
-  const url = typeof raw.url === "string" && onHosts(raw.url, hosts) ? raw.url : null;
+  const url = usableSourceUrl(raw.source, raw.url);
   const previewUrl =
     typeof raw.previewUrl === "string" && underDomains(raw.previewUrl, PREVIEW_HOSTS) ? raw.previewUrl : null;
 
@@ -86,7 +99,7 @@ function usableSource(value: unknown): SourceTrack | null {
   };
 }
 
-function usableContext(value: unknown): PlayContext | null {
+export function usableContext(value: unknown): PlayContext | null {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (raw.kind !== "artist" || typeof raw.name !== "string") return null;
