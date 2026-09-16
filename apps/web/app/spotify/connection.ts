@@ -55,33 +55,39 @@ const NO_CLIENT_ID: ConnectFailure = {
  * use and live about ten minutes), or a dead refresh token later on. Only the second is worth
  * throwing the stored connection away for, so `accessToken` handles that case rather than this
  * table.
+ *
+ * A `Map` for the same reason as `REDIRECT_FAILURES` below: the key is a string off the wire.
+ * `post()` in pkce.ts throws `new SpotifyAuthError(data.error || ...)`, so whatever the token
+ * endpoint puts in `error` is what reaches this lookup.
  */
-const EXCHANGE_FAILURES: Record<string, ConnectFailure> = {
-  network: {
-    title: "Could not reach Spotify",
-    detail:
-      "The sign-in got as far as Spotify and back, but exchanging it for a token never left this machine. A VPN or a content blocker holding accounts.spotify.com is the usual cause.",
-    retry: true,
-  },
-  invalid_grant: {
-    title: "That sign-in expired before it finished",
-    detail:
-      "Spotify's one-time codes last about ten minutes and cannot be used twice. Nothing is wrong — start the connection again.",
-    retry: true,
-  },
-  invalid_client: {
-    title: "Spotify does not recognise that client id",
-    detail:
-      "Check it against the app on developer.spotify.com. The client id is the public one, not the client secret.",
-    retry: false,
-  },
-  invalid_request: {
-    title: "Spotify rejected the sign-in request",
-    detail:
-      "Most often the redirect URI: this browser's is shown in Settings, and the Spotify app has to list it exactly, character for character.",
-    retry: false,
-  },
-};
+const EXCHANGE_FAILURES = new Map<string, ConnectFailure>(
+  Object.entries({
+    network: {
+      title: "Could not reach Spotify",
+      detail:
+        "The sign-in got as far as Spotify and back, but exchanging it for a token never left this machine. A VPN or a content blocker holding accounts.spotify.com is the usual cause.",
+      retry: true,
+    },
+    invalid_grant: {
+      title: "That sign-in expired before it finished",
+      detail:
+        "Spotify's one-time codes last about ten minutes and cannot be used twice. Nothing is wrong — start the connection again.",
+      retry: true,
+    },
+    invalid_client: {
+      title: "Spotify does not recognise that client id",
+      detail:
+        "Check it against the app on developer.spotify.com. The client id is the public one, not the client secret.",
+      retry: false,
+    },
+    invalid_request: {
+      title: "Spotify rejected the sign-in request",
+      detail:
+        "Most often the redirect URI: this browser's is shown in Settings, and the Spotify app has to list it exactly, character for character.",
+      retry: false,
+    },
+  }),
+);
 
 /**
  * What Spotify sends back on the redirect when it will not issue a code at all.
@@ -91,31 +97,41 @@ const EXCHANGE_FAILURES: Record<string, ConnectFailure> = {
  * `completeConnect` checks `state` before it reaches this table, which is what stops a stranger's
  * link getting this far; the table is the second lock, and the reason the callback screen cannot
  * be made to display someone else's sentence.
+ *
+ * A `Map`, not an object literal. A plain object hands back an `Object.prototype` member for the
+ * handful of keys that name one, so `REDIRECT_FAILURES[denied] ?? REFUSED` never fell back for
+ * them: `?error=constructor` returned the `Object` constructor — not nullish — and the callback
+ * rendered a refusal panel with no heading and no explanation at all, while `?error=banana` was
+ * refused properly. `__proto__`, `toString`, `valueOf`, `hasOwnProperty` and `isPrototypeOf` did
+ * the same. That is the same class of bug, and it is fixed at the table rather than at the reader so a
+ * second reader cannot reintroduce it.
  */
-const REDIRECT_FAILURES: Record<string, ConnectFailure> = {
-  access_denied: {
-    title: "Sign-in was cancelled",
-    detail:
-      "Nothing was connected and nothing was stored. Spotify search still works without an account; it just cannot play whole tracks.",
-    retry: true,
-  },
-  invalid_scope: {
-    title: "The Spotify app does not allow what Timbre asked for",
-    detail:
-      "Timbre requests streaming and playback permissions. An app with those turned off cannot grant them.",
-    retry: false,
-  },
-  server_error: {
-    title: "Spotify had a problem of its own",
-    detail: "Nothing on this side went wrong. Trying again in a moment usually works.",
-    retry: true,
-  },
-  temporarily_unavailable: {
-    title: "Spotify is temporarily unavailable",
-    detail: "Its sign-in service is refusing requests just now. Try again shortly.",
-    retry: true,
-  },
-};
+const REDIRECT_FAILURES = new Map<string, ConnectFailure>(
+  Object.entries({
+    access_denied: {
+      title: "Sign-in was cancelled",
+      detail:
+        "Nothing was connected and nothing was stored. Spotify search still works without an account; it just cannot play whole tracks.",
+      retry: true,
+    },
+    invalid_scope: {
+      title: "The Spotify app does not allow what Timbre asked for",
+      detail:
+        "Timbre requests streaming and playback permissions. An app with those turned off cannot grant them.",
+      retry: false,
+    },
+    server_error: {
+      title: "Spotify had a problem of its own",
+      detail: "Nothing on this side went wrong. Trying again in a moment usually works.",
+      retry: true,
+    },
+    temporarily_unavailable: {
+      title: "Spotify is temporarily unavailable",
+      detail: "Its sign-in service is refusing requests just now. Try again shortly.",
+      retry: true,
+    },
+  }),
+);
 
 /**
  * Both of these are read off the browser, and both are rendered by a panel that Next renders on
@@ -218,7 +234,7 @@ export async function completeConnect(params: URLSearchParams): Promise<ConnectF
   }
 
   const denied = params.get("error");
-  if (denied) return REDIRECT_FAILURES[denied] ?? REFUSED;
+  if (denied) return REDIRECT_FAILURES.get(denied) ?? REFUSED;
 
   const code = params.get("code");
   if (!code) {
@@ -239,7 +255,7 @@ export async function completeConnect(params: URLSearchParams): Promise<ConnectF
     );
     return null;
   } catch (cause) {
-    if (cause instanceof SpotifyAuthError) return EXCHANGE_FAILURES[cause.code] ?? REFUSED;
+    if (cause instanceof SpotifyAuthError) return EXCHANGE_FAILURES.get(cause.code) ?? REFUSED;
     return REFUSED;
   }
 }
