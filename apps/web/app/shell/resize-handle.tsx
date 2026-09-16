@@ -170,6 +170,14 @@ export function ResizeHandle({
       // loses nothing to it. The line is the only thing you see, and only once you are on it.
       className={`group absolute z-30 w-2 cursor-col-resize touch-none select-none outline-none ${className}`}
     >
+      {/* A finger's worth of edge, for a finger. The box is 8px wide — right for a pointer that
+          lands where you aimed it, and a third of the 24px WCAG asks of a touch target, which is
+          why dragging either pane on a touch laptop or an iPad meant three tries. This reaches
+          8px further into the gutter on each side; a pointer event on it still bubbles to the
+          handler above, so the grab area grows and the line stays exactly where it was. There is
+          nothing in that gutter to steal a tap from: it is the rail's own padding on one side
+          and the main column's rounded edge on the other. */}
+      <span className="absolute inset-y-0 -left-2 -right-2 hidden touch-none [@media(pointer:coarse)]:block" />
       <span className="pointer-events-none absolute inset-y-0 left-1/2 w-[2px] -translate-x-1/2 rounded-[var(--r-full)] bg-[var(--accent)] opacity-0 transition-opacity duration-150 group-hover:opacity-60 group-focus-visible:opacity-100 [[data-resizing]_&]:opacity-100" />
     </div>
   );
