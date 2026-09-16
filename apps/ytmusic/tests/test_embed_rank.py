@@ -12,8 +12,16 @@ OMV, OFFICIAL, UGC, ATV = (
 )
 
 
+def vid(label: str) -> str:
+    """An 11-character video id that still reads as its label.
+
+    `Track.video_id` is pinned to the shape YouTube actually uses, so a one-word stand-in
+    is no longer a video id. Padding keeps the assertions below readable as themselves.
+    """
+    return label.ljust(11, "_")
+
 def rank(video_type: str | None) -> int:
-    return _embed_rank(Track(video_id="x", title="Song", video_type=video_type))
+    return _embed_rank(Track(video_id=vid("x"), title="Song", video_type=video_type))
 
 
 @pytest.mark.parametrize(
@@ -40,7 +48,7 @@ def test_embed_rank_ties(one, other) -> None:
 def result(video_id: str, video_type: str, result_type: str = "video") -> dict:
     return {
         "resultType": result_type,
-        "videoId": video_id,
+        "videoId": vid(video_id),
         "title": "Delilah (pull me out of this)",
         "artists": [{"name": "Fred again.."}],
         "videoType": video_type,
@@ -61,9 +69,9 @@ def test_the_artists_own_upload_survives_the_limit(monkeypatch) -> None:
     videos = [result(f"ugc{index}", UGC) for index in range(14)] + [result("own", OFFICIAL)]
     ids = search(monkeypatch, [result("atv", ATV, "song")], videos)
     assert len(ids) == 10
-    assert ids[0] == "own"
+    assert ids[0] == vid("own")
 
 
 def test_a_podcast_episode_no_longer_outranks_the_song(monkeypatch) -> None:
     videos = [result("episode", "MUSIC_VIDEO_TYPE_PODCAST_EPISODE")]
-    assert search(monkeypatch, [result("atv", ATV, "song")], videos) == ["atv", "episode"]
+    assert search(monkeypatch, [result("atv", ATV, "song")], videos) == [vid("atv"), vid("episode")]
