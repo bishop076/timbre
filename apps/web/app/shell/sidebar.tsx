@@ -158,7 +158,10 @@ export function Sidebar() {
         // wrappers already set — which is safe only because nothing in the rail is fixed. The
         // library drawer below is a `<dialog>` in the top layer, and it is not in here anyway.
         style={{ "--rail-w": `${width}px` } as React.CSSProperties}
-        className="@container relative hidden w-[var(--rail-w,4.5rem)] shrink-0 flex-col p-2 pb-1.5 lg:flex"
+        // `p-2` all round, not `p-2 pb-1.5`. The main column and the now-playing panel both
+        // stop 8px short of the row, so a 6px bottom left this card's edge two pixels lower
+        // than the two it sits beside — three cards in a row, two lined up and one not.
+        className="@container relative hidden w-[var(--rail-w,4.5rem)] shrink-0 flex-col p-2 lg:flex"
       >
         {/* One rail, one edge. The brand, the nav and the library used to be three separate
             bordered cards stacked with a gap, which at icon width read as a column of unrelated
@@ -205,7 +208,7 @@ export function Sidebar() {
           direction={1}
           resolve={resolve}
           onCommit={saveRailWidth}
-          className="bottom-1.5 right-0 top-2"
+          className="bottom-2 right-0 top-2"
         />
       </aside>
 
@@ -246,7 +249,12 @@ function LibraryCard({
           exitTheater();
           onNavigate?.();
         }}
-        className={`press ${style.wide} items-center gap-3 px-3.5 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+        // `.focus-ring-inset`, for the same reason a tile's cover art uses it. This link is a
+        // flex child of the `overflow: hidden` box above with no padding between them, so it is
+        // flush left, right and top — and the ordinary ring is drawn *outside* the border box,
+        // which means three of its four sides were clipped away. What a keyboard reader saw
+        // when they reached their library was a white bar under the icon, not a ring.
+        className={`focus-ring-inset press ${style.wide} items-center gap-3 rounded-[var(--r-md)] px-3.5 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
       >
         <LibraryIcon className="size-[18px] shrink-0" />
         <span className="text-sm font-bold">Your library</span>
@@ -267,7 +275,7 @@ function LibraryCard({
         }}
         aria-label="Your library"
         title="Your library"
-        className={`press ${style.narrow} shrink-0 items-center justify-center px-2 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+        className={`focus-ring-inset press ${style.narrow} shrink-0 items-center justify-center rounded-[var(--r-md)] px-2 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
       >
         <LibraryIcon className="size-[18px] shrink-0" />
       </Link>
