@@ -37,9 +37,14 @@ let movedOnce = false;
 const SUGGESTIONS_ID = "search-suggestions";
 const SEARCH_HINT_ID = "search-hint";
 
-/** The one bar that outlives the page under it: history, search and your profile, reachable
- * from every route. Search used to live on three of them and vanish on the rest, so getting
- * back to it from an album meant navigating away first. */
+/** The one bar that outlives the page under it: search, reachable from every route. Search used
+ * to live on three of them and vanish on the rest, so getting back to it from an album meant
+ * navigating away first.
+ *
+ * Your profile used to sit at the right-hand end of it. It is in the rail beside the mark now —
+ * except below `lg`, where there is no rail at all and the bottom nav is Home, Explore and
+ * Library. Deleting the avatar outright would have left `/profile` with no way in on a phone,
+ * so the header keeps it at exactly the widths the rail is hidden at. */
 function ShellBar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -147,7 +152,7 @@ function ShellBar() {
         )}
       </div>
 
-      <div className="flex shrink-0 items-center justify-end gap-1 pl-2">
+      <div className="flex shrink-0 items-center justify-end gap-1 pl-2 lg:hidden">
         <ProfileButton />
       </div>
     </header>

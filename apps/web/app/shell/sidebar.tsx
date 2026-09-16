@@ -73,6 +73,21 @@ const RAIL: RailStyle = {
   pad: "px-1 @[9rem]:px-3",
 };
 
+/** How much room the reveal zone gives the chevron to be found in, at labelled width.
+ *
+ * The button is 32px. A zone that is only the button is a control you have to already know
+ * about — you cannot hover your way onto something invisible that is exactly its own size. A
+ * zone that is the whole brand row is the other failure, and the one that was shipped: the
+ * chevron lit up with the pointer on the palm mark 160px away, which reads as the rail
+ * twitching rather than as a control answering you.
+ *
+ * 56px is the button plus 12px of approach on each side, in a 48px-tall row. It starts where
+ * the mark's link ends and runs to the avatar, so the only way to cross it is to be moving
+ * toward that corner of the rail — and it is comfortably past the 44px minimum for a target
+ * anyone has to aim at.
+ */
+const TOGGLE_ZONE = "w-14";
+
 /**
  * Collapse the rail to icons, or open it back out.
  *
@@ -80,18 +95,26 @@ const RAIL: RailStyle = {
  * 8px of gutter with no mark on it — so there was nothing to click, and nothing to say the two
  * states existed. This is that affordance.
  *
- * Hidden until the rail is hovered, which is what was asked for: the rail is chrome, and a
- * chevron sitting on it permanently is one more thing in the corner of the eye on every page.
- * It is *not* hidden from anyone who cannot hover — `touch:` keeps it visible on a touchscreen
- * and `focus-visible` brings it back for the keyboard. That escape is the whole point of the
+ * Hidden until you come near it, which is what was asked for: the rail is chrome, and a chevron
+ * sitting on it permanently is one more thing in the corner of the eye on every page. It is
+ * *not* hidden from anyone who cannot hover — `touch:` keeps it visible on a touchscreen and
+ * `focus-visible` brings it back for the keyboard. That escape is the whole point of the
  * `touch:` variant: eleven controls in this app were hover-only and unreachable on a phone, and
  * adding a twelfth would have put one back the day the other eleven were fixed.
  *
- * Absolutely positioned rather than a flex sibling because at icon width the row is 44px of
- * content — there is no room for the mark and a button side by side, so at that width it sits
- * over the mark and swaps for it on hover.
+ * `pointer-events-none` while invisible is load-bearing and stays: without it the button
+ * swallows the click that goes home at icon width, where it sits over the mark. Which is also
+ * why the reveal cannot be the button's own `:hover` — with pointer events off it never gets
+ * one, and with them on it blocks the mark again. The trigger has to be something else, and
+ * `className` is where the caller says what.
+ *
+ * Two callers, one at each width, because the answer differs. At labelled width the chevron has
+ * a slot of its own between the mark and the avatar, and hovering that slot reveals it. At icon
+ * width the row is 44px of content — there is no slot to give it, so it goes back to sitting
+ * over the mark and the mark's row is the zone. At that size the row *is* "near it": the whole
+ * thing is 44px across.
  */
-function RailToggle({ wide }: { wide: boolean }) {
+function RailToggle({ wide, className }: { wide: boolean; className: string }) {
   return (
     <button
       type="button"
@@ -100,7 +123,7 @@ function RailToggle({ wide }: { wide: boolean }) {
       aria-expanded={wide}
       aria-controls={RAIL_ID}
       title={wide ? "Collapse the sidebar" : "Expand the sidebar"}
-      className="press absolute right-1 grid h-8 w-8 place-items-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg-dim)] pointer-events-none opacity-0 transition hover:bg-[var(--surface-3)] hover:text-[var(--fg)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/brand:pointer-events-auto group-hover/brand:opacity-100 touch:pointer-events-auto touch:opacity-100"
+      className={`press grid h-8 w-8 place-items-center rounded-[var(--r-md)] bg-[var(--surface-2)] text-[var(--fg-dim)] pointer-events-none opacity-0 transition hover:bg-[var(--surface-3)] hover:text-[var(--fg)] focus-visible:pointer-events-auto focus-visible:opacity-100 touch:pointer-events-auto touch:opacity-100 ${className}`}
     >
       <ChevronIcon
         aria-hidden
@@ -110,6 +133,32 @@ function RailToggle({ wide }: { wide: boolean }) {
   );
 }
 
+/**
+ * What a rail row looks like when you are on the page it points at.
+ *
+ * One function rather than one class string per row, because there are three rows and they were
+ * not agreeing. Home and Explore are `NavLinks`; the library is `LibraryCard`, a card rather
+ * than a link because it carries the Queue/Playlists switch and the list under it — and
+ * `/library` is filtered out of NAV in rail mode precisely so the card can render it. The cost
+ * of that split was that the card's header row never reached the line that paints the wash, so
+ * clicking your library lit nothing and announced nothing. It was not a missing class; it was a
+ * row that had no way of reaching the class.
+ *
+ * `aria-current` is in here for the same reason the wash is. A reader who cannot see the tint
+ * has only that attribute to tell them which of the three they are standing on, and two of the
+ * three were setting it.
+ */
+function activeRow(active: boolean) {
+  return {
+    current: active ? ("page" as const) : undefined,
+    row: active
+      ? "text-[var(--fg)]"
+      : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]",
+    icon: active ? "tint text-[var(--accent)]" : "",
+    wash: active ? { background: "var(--accent-wash)" } : undefined,
+  };
+}
+
 function NavLinks({ rail }: { rail?: RailStyle }) {
   const pathname = usePathname();
   const { exitTheater } = usePlayerControls();
@@ -117,33 +166,24 @@ function NavLinks({ rail }: { rail?: RailStyle }) {
   const items = rail ? NAV.filter((item) => item.href !== "/library") : NAV;
   return items.map(({ label, icon: Icon, href }) => {
     const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+    const on = activeRow(active);
     return (
       <Link
         key={href}
         href={href}
         onClick={exitTheater}
-        aria-current={active ? "page" : undefined}
+        aria-current={on.current}
         title={rail ? label : undefined}
         className={
           rail
-            ? `press flex items-center gap-3.5 rounded-[var(--r-md)] py-2.5 text-sm font-semibold ${rail.row} ${rail.pad} ${
-                active
-                  ? "text-[var(--fg)]"
-                  : "text-[var(--fg-dim)] hover:bg-[var(--surface-2)] hover:text-[var(--fg)]"
-              }`
+            ? `press flex items-center gap-3.5 rounded-[var(--r-md)] py-2.5 text-sm font-semibold ${rail.row} ${rail.pad} ${on.row}`
             : `flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-bold ${
                 active ? "tint text-[var(--accent)]" : "text-[var(--fg-faint)]"
               }`
         }
-        style={rail && active ? { background: "var(--accent-wash)" } : undefined}
+        style={rail ? on.wash : undefined}
       >
-        <Icon
-          className={
-            rail
-              ? `size-[18px] shrink-0 ${active ? "tint text-[var(--accent)]" : ""}`
-              : "size-[22px]"
-          }
-        />
+        <Icon className={rail ? `size-[18px] shrink-0 ${on.icon}` : "size-[22px]"} />
         <span className={rail ? rail.label : undefined}>{label}</span>
       </Link>
     );
@@ -198,18 +238,52 @@ export function Sidebar() {
             boxes rather than a sidebar. They are sections inside a single surface now, separated
             by a rule instead of by air. */}
         <div className="slab flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden rounded-[var(--r-lg)] bg-[var(--shell-1)] p-1.5">
-          {/* The mark alone. The wordmark that used to sit beside it said the app's name to
-              someone already inside the app, and it was the only thing making this row wide. */}
-          <div className="group/brand relative flex h-12 items-center">
-            <Link
-              href="/"
-              onClick={exitTheater}
-              aria-label="Timbre — home"
-              className={`press flex h-12 flex-1 items-center rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
+          {/* The mark, and you. The wordmark that used to sit beside it said the app's name to
+              someone already inside the app, and it was the only thing making this row wide;
+              the space it freed is where your profile lives now, moved off the top bar.
+
+              Two dresses again, and for the same reason the labels have them. A labelled rail
+              has room for the mark and a 36px avatar side by side, so they share one row and
+              the avatar takes the far end. An icon rail's content is 44px, which one of them
+              fills on its own — so the row becomes a column and the avatar sits under the mark
+              rather than being shrunk to fit beside it. `flex-col @[9rem]:flex-row`, the
+              container query, not a JS branch: the rail's width is dragged, so there is no
+              viewport query that could describe it, and this way the two layouts swap in the
+              same paint as the width.
+
+              The mark is `flex-1` only once the row is horizontal. In a column that would set
+              its flex basis on the vertical axis and fight the `h-12`. */}
+          <div className="flex flex-col @[9rem]:flex-row @[9rem]:items-center">
+            {/* The mark and its own toggle are one box so that `group/brand` stops at the mark's
+                row. It used to wrap the lot, which is why the chevron lit up from the far left. */}
+            <div className="group/brand relative flex h-12 items-center @[9rem]:flex-1">
+              <Link
+                href="/"
+                onClick={exitTheater}
+                aria-label="Timbre — home"
+                className={`press flex h-12 w-full items-center rounded-[var(--r-md)] ${RAIL.row} ${RAIL.pad}`}
+              >
+                <TimbreMark aria-hidden className="h-7 w-auto shrink-0 text-[var(--accent)]" />
+              </Link>
+              <RailToggle
+                wide={wide}
+                className="absolute right-1 @[9rem]:hidden group-hover/brand:pointer-events-auto group-hover/brand:opacity-100"
+              />
+            </div>
+
+            {/* The chevron's slot at labelled width: real width in the row rather than something
+                pinned over the mark, so approaching it is not the same gesture as approaching
+                home. `hidden @[9rem]:grid` is the rail's own two-dresses idiom, one more time. */}
+            <div
+              className={`group/toggle hidden h-12 ${TOGGLE_ZONE} shrink-0 place-items-center @[9rem]:grid`}
             >
-              <TimbreMark aria-hidden className="h-7 w-auto shrink-0 text-[var(--accent)]" />
-            </Link>
-            <RailToggle wide={wide} />
+              <RailToggle
+                wide={wide}
+                className="group-hover/toggle:pointer-events-auto group-hover/toggle:opacity-100"
+              />
+            </div>
+
+            <ProfileButton className="h-12 justify-center px-1 @[9rem]:justify-end @[9rem]:pr-2" />
           </div>
 
           <nav aria-label="Primary" className="flex flex-col gap-0.5">
@@ -252,6 +326,10 @@ function LibraryCard({
   const { queue, current, play, exitTheater } = usePlayerControls();
   const { playlists, settled } = usePlaylists();
   const [list, edges] = useScrollEdges();
+  const pathname = usePathname();
+  // The same test the nav rows use for anything that is not "/", so the three agree on what
+  // "you are here" means as well as on what it looks like. /library and its subpages both count.
+  const on = activeRow(pathname.startsWith("/library"));
 
   const count = (filter === "Queue" ? queue.length : (playlists?.length ?? 0)) || "";
 
@@ -265,9 +343,11 @@ function LibraryCard({
         // flush left, right and top — and the ordinary ring is drawn *outside* the border box,
         // which means three of its four sides were clipped away. What a keyboard reader saw
         // when they reached their library was a white bar under the icon, not a ring.
-        className={`focus-ring-inset press ${style.wide} items-center gap-3 rounded-[var(--r-md)] px-3.5 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+        aria-current={on.current}
+        style={on.wash}
+        className={`focus-ring-inset press ${style.wide} items-center gap-3 rounded-[var(--r-md)] px-3.5 pb-2.5 pt-3 ${on.row}`}
       >
-        <LibraryIcon className="size-[18px] shrink-0" />
+        <LibraryIcon className={`size-[18px] shrink-0 ${on.icon}`} />
         <span className="text-sm font-bold">Your library</span>
         <span className="ml-auto text-xs font-semibold tabular-nums text-[var(--fg-faint)]">
           {count}
@@ -283,9 +363,11 @@ function LibraryCard({
         onClick={exitTheater}
         aria-label="Your library"
         title="Your library"
-        className={`focus-ring-inset press ${style.narrow} shrink-0 items-center justify-center rounded-[var(--r-md)] px-2 pb-2.5 pt-3 text-[var(--fg-dim)] hover:text-[var(--fg)]`}
+        aria-current={on.current}
+        style={on.wash}
+        className={`focus-ring-inset press ${style.narrow} shrink-0 items-center justify-center rounded-[var(--r-md)] px-2 pb-2.5 pt-3 ${on.row}`}
       >
-        <LibraryIcon className="size-[18px] shrink-0" />
+        <LibraryIcon className={`size-[18px] shrink-0 ${on.icon}`} />
       </Link>
 
       <div className={`${style.wide} gap-1.5 px-3 pb-2.5`} role="group" aria-label="Library filter">
