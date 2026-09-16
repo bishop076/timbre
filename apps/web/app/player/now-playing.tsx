@@ -280,12 +280,19 @@ export function NowPlayingPanel() {
           : "pointer-events-none translate-y-3 opacity-0 xl:w-0 xl:p-0"
       }`;
 
+  // Below `xl` the expanded player is a column: the picture, then the transport under it. The
+  // picture used to be `shrink-0` with a hard 200px floor, so on any window too short for both
+  // the transport went off the bottom — and the transport is where "collapse the player" lives.
+  // Now the picture is what gives: it shrinks, its floor yields on a short screen, and the
+  // column scrolls if even that is not enough. Sideways, where a column cannot work at all, the
+  // two sit side by side instead. At every size that already fitted, none of this does anything
+  // — flex-shrink only acts on a deficit.
   const card = expanded
-    ? "flex min-h-0 w-full flex-1 flex-col gap-2 xl:flex-row"
+    ? "flex min-h-0 w-full flex-1 flex-col gap-2 overflow-y-auto sideways:flex-row sideways:overflow-hidden xl:flex-row xl:overflow-y-visible"
     : "slab flex w-[19rem] max-w-[calc(100dvw-1.5rem-var(--safe-l)-var(--safe-r))] flex-col overflow-hidden rounded-[var(--r-lg)] bg-[var(--shell-1)] xl:h-full xl:w-full xl:max-w-none";
 
   const videoBox = expanded
-    ? "slab relative min-h-[200px] w-full shrink-0 overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
+    ? "slab relative min-h-[min(200px,45dvh)] w-full shrink overflow-hidden rounded-[var(--r-lg)] bg-black aspect-video sideways:aspect-auto sideways:h-full sideways:min-h-0 sideways:w-auto sideways:min-w-0 sideways:flex-1 xl:aspect-auto xl:h-full xl:min-h-0 xl:w-auto xl:min-w-0 xl:shrink xl:flex-1"
     : "relative shrink-0 bg-black";
 
   const size = (docked: string) => (expanded ? "h-full w-full" : `${docked} w-full`);
@@ -587,7 +594,7 @@ export function NowPlayingPanel() {
         </div>
 
         {expanded && (
-          <div className="xl:hidden">
+          <div className="shrink-0 sideways:w-[21rem] sideways:min-h-0 sideways:overflow-y-auto xl:hidden">
             <MobileTransport />
           </div>
         )}

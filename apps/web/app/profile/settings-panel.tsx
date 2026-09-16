@@ -668,7 +668,12 @@ export function SettingsPanel() {
           >
             <nav
               aria-label="Settings sections"
-              className="shelf flex shrink-0 gap-1 overflow-x-auto border-b-2 border-[var(--ink)] bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r-2 sm:p-3"
+              // `sm:overflow-y-auto`, not `sm:overflow-visible`. Upright this is a row of chips
+              // that scrolls sideways; at `sm` it turns into a column, and the column was told
+              // to stop scrolling — on the assumption that eight sections always fit. The panel
+              // is `max-h-[85dvh]`, so on a phone held sideways it is 330px tall and the last
+              // two rows, About and the version, sat below the clip with nothing to scroll.
+              className="shelf flex shrink-0 gap-1 overflow-x-auto border-b-2 border-[var(--ink)] bg-[var(--surface-2)] p-2 sm:w-[13.5rem] sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r-2 sm:p-3"
             >
               {SECTIONS.map((entry) => {
                 const selected = entry === active;
