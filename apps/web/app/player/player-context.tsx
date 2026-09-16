@@ -16,7 +16,7 @@ import { SkipLink } from "../a11y/skip-link";
 import { createLocalStore, createNotifier, useLocalStore } from "../local-store.ts";
 import { log } from "../logs.ts";
 import { addSourcesToSong } from "../playlists/store";
-import { getSpotifyTokens } from "../spotify/token-store.ts";
+import { getSpotifyTokens, useSpotifyTokens } from "../spotify/token-store.ts";
 import type { Song, SongsResponse } from "../types";
 import { judgeDeadTrack } from "./dead-track";
 import { drawRadio } from "./draw-radio";
@@ -33,6 +33,7 @@ import { forgetFailedSource, pickSource, rememberedSource } from "./source-choic
 import { isProgressive, streamUrlFor, type ProgressiveSource } from "./stream-url";
 import { describeVerdict, judgePause, RESUME_DELAY_MS } from "./unasked-pause";
 import { useTabSync } from "./use-tab-sync";
+import { volumeOutOfReach } from "./volume-reach.ts";
 import { useVolume, writeMuteToggle, writeVolume } from "./volume-store";
 import { whyLeftYouTube, type LeftYouTube, type YouTubeFailures } from "./youtube-refusal";
 
@@ -306,6 +307,7 @@ function usePlayerValue() {
   const { shuffle, repeat } = useLocalStore(modeStore);
   const { continueWithRadio } = usePlaybackPrefs();
   const { volume, muted } = useVolume();
+  const spotifyTokens = useSpotifyTokens();
 
   const queueRef = useRef<Song[]>([]);
   const stateRef = useRef<PlayState>("idle");
@@ -344,6 +346,9 @@ function usePlayerValue() {
   const spotifyTrackId = playing?.kind === "spotify" ? playing.id : null;
   const subscriptionTrack = playing?.kind === "subscription" ? playing : null;
   const playingPreview = playing?.kind === "preview";
+  // Why the volume control cannot reach this source, if it cannot. Null for the five players
+  // that take a level, which is every source but Spotify's embed and the two subscription ones.
+  const volumeUnreachable = volumeOutOfReach(playing?.kind ?? null, spotifyTokens !== null);
   const streamUrl =
     playing?.kind === "progressive"
       ? streamUrlFor(playing.source, playing.sourceId)
@@ -1184,6 +1189,7 @@ function usePlayerValue() {
     problem,
     volume,
     muted,
+    volumeUnreachable,
     radio,
     shuffle,
     repeat,
