@@ -149,7 +149,13 @@ export function ProfileView({ serverName }: { serverName: string | null }) {
           />
         ) : null}
 
-        <div className="absolute right-4 top-4 z-20 flex items-center gap-2 opacity-100 transition @lg:opacity-0 @lg:focus-within:opacity-100 @lg:group-hover/banner:opacity-100">
+        {/* Settings lives here and nowhere else, so "fades out until you hover the banner" has
+            to have a reading for a device with no hover. On a touch screen wide enough for the
+            container's `@lg` — a tablet, a phone held sideways — there was no such reading: the
+            gear was at opacity 0 and stayed there, and Timbre had no reachable settings at all.
+            `[@media(hover:none)]:opacity-100` is the escape the queue rows and the add-to-queue
+            button already use. */}
+        <div className="absolute right-4 top-4 z-20 flex items-center gap-2 opacity-100 transition @lg:opacity-0 @lg:focus-within:opacity-100 @lg:group-hover/banner:opacity-100 @lg:[@media(hover:none)]:opacity-100">
           <SettingsPanel />
           <span className="relative flex items-center">
             <ImagePicker kind="banner" hasImage={Boolean(local.banner)} variant="button" />
