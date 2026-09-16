@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { stalledStart, START_DEADLINE_MS } from "./progressive-stall.ts";
+import { stalledStart, startedPlaying, START_DEADLINE_MS } from "./progressive-stall.ts";
 
 // The four HTMLMediaElement readyStates, by their spec names.
 const NOTHING = 0;
@@ -36,4 +36,20 @@ test("an element the browser refused to autoplay is paused, not stalled", () => 
 
 test("the deadline leaves room for a slow first byte", () => {
   assert.ok(START_DEADLINE_MS >= 8000);
+});
+
+test("a `play` with nothing loaded is not playing — it is `play()` having been called", () => {
+  // The report that went with this claim wrote the song into the listening history and the play
+  // log, and reset the allowance that stops a queue of dead streams skipping for ever.
+  assert.equal(startedPlaying(media()), false);
+  assert.equal(startedPlaying(media({ readyState: METADATA })), false);
+});
+
+test("a `play` on an element that already has the audio is playing, and says so at once", () => {
+  assert.equal(startedPlaying(media({ readyState: CURRENT_DATA })), true);
+  assert.equal(startedPlaying(media({ readyState: FUTURE_DATA })), true);
+});
+
+test("a paused element is never playing, however much it has buffered", () => {
+  assert.equal(startedPlaying(media({ paused: true, readyState: FUTURE_DATA })), false);
 });

@@ -31,3 +31,19 @@ export function stalledStart(media: {
 }): boolean {
   return !media.paused && media.readyState < HAVE_CURRENT_DATA && media.currentTime <= 0;
 }
+
+/**
+ * Whether a `play` report from the element means audio is actually coming out.
+ *
+ * The element fires `play` the instant `play()` is called, before a byte of the body has
+ * arrived — so a stream that never loads at all was reported as *playing*: the bar showed Pause
+ * and an equaliser over silence, the song was written into the listening history and the play
+ * log, and the fresh skip allowance that a playing track earns went to one that never played,
+ * which is what bounds a queue of rotted streams. `playing` is the event that means audio, and
+ * it is what the component reports on now. This covers the one case that would otherwise feel
+ * slower for it: resuming a track the element already has, where `play` arrives first and there
+ * is nothing to wait for.
+ */
+export function startedPlaying(media: { paused: boolean; readyState: number }): boolean {
+  return !media.paused && media.readyState >= HAVE_CURRENT_DATA;
+}
