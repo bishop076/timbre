@@ -125,12 +125,18 @@ export function queryRoute<S extends z.ZodObject>(
   };
 }
 
+/** How long a merged answer is held in process. Exported so a route's header cannot drift from it. */
+export const RESPONSE_CACHE_TTL_MS = 120_000;
+
 export function cached<T>(
   key: string,
   produce: () => Promise<T>,
   keep?: (value: T) => boolean,
 ): Promise<T> {
-  globalForApi.__timbreResponseCache ??= createCache<unknown>({ ttlMs: 120_000, max: 500 });
+  globalForApi.__timbreResponseCache ??= createCache<unknown>({
+    ttlMs: RESPONSE_CACHE_TTL_MS,
+    max: 500,
+  });
   return globalForApi.__timbreResponseCache.take(
     key,
     produce,
