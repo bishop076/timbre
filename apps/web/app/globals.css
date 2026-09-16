@@ -1,6 +1,23 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
+   A phone on its side.
+
+   Every other breakpoint in this app is a width, which is the right question
+   almost everywhere: a narrow window wants one column, a wide one wants three.
+   The full-screen player is the exception, because what it stacks — a 16:9 box
+   and a transport — is paid for in HEIGHT, and a phone held sideways is 390px
+   tall. At 844x390 the video claimed 466 of those 390 and pushed the transport,
+   and with it the only button that closes the player, off the bottom of a screen
+   nothing scrolls. You could not get out.
+
+   Wider than a phone held upright, shorter than a paperback: that pair is what
+   "sideways" means, and no width alone describes it. `lg` is not it — a 1024x768
+   tablet is landscape too and has the height for a column.
+   --------------------------------------------------------------------------- */
+@custom-variant sideways (@media (min-width: 40rem) and (max-height: 34rem));
+
+/* ---------------------------------------------------------------------------
    Registered colour tokens.
 
    An unregistered custom property is an untyped string to the engine: it flips
